@@ -67,293 +67,305 @@
     <FxCompile Include="Resources\Shaders\SkinningObject3d.PS.hlsl">
       <Filter>Resources\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Resources\Shaders\LuminanceBasedOutline.PS.hlsl" />
-    <FxCompile Include="Resources\Shaders\LuminanceBasedOutline.VS.hlsl" />
-    <FxCompile Include="Resources\Shaders\RadialBlur.PS.hlsl" />
+    <FxCompile Include="Resources\Shaders\LuminanceBasedOutline.PS.hlsl">
+      <Filter>Resources\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Resources\Shaders\LuminanceBasedOutline.VS.hlsl">
+      <Filter>Resources\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Resources\Shaders\RadialBlur.PS.hlsl">
+      <Filter>Resources\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
-      <Filter>ソースファイルcpp</Filter>
+      <Filter>project</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\D3DResourceLeakChecker.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\DirectXCommon.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\Framework.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\GraphicsPipeline.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\ImGuiManager.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\Logger.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
-    <ClCompile Include="engine\base\OfscreenRenderManager.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+    <ClCompile Include="engine\base\OffscreenRenderManager.cpp">
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\SrvManager.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\WinApp.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\StringUtility.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\TextureManager.cpp">
-      <Filter>ソースファイルcpp\base</Filter>
+      <Filter>engine\base</Filter>
     </ClCompile>
     <ClCompile Include="engine\3d\Object3D.cpp">
-      <Filter>ソースファイルcpp\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClCompile>
     <ClCompile Include="engine\3d\Object3DCommon.cpp">
-      <Filter>ソースファイルcpp\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClCompile>
     <ClCompile Include="engine\3d\Model.cpp">
-      <Filter>ソースファイルcpp\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClCompile>
     <ClCompile Include="engine\3d\ModelCommon.cpp">
-      <Filter>ソースファイルcpp\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClCompile>
     <ClCompile Include="engine\3d\ModelManager.cpp">
-      <Filter>ソースファイルcpp\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClCompile>
     <ClCompile Include="engine\2d\SpriteCommon.cpp">
-      <Filter>ソースファイルcpp\2d</Filter>
+      <Filter>engine\2d</Filter>
     </ClCompile>
     <ClCompile Include="engine\2d\Sprite.cpp">
-      <Filter>ソースファイルcpp\2d</Filter>
+      <Filter>engine\2d</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\TitleScene.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\SceneManager.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\SceneFactory.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\GamePlayScene.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\GameOverScene.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\GameClearScene.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\particle\MagicCircleBehavior.cpp">
-      <Filter>ソースファイルcpp\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClCompile>
-    <ClCompile Include="engine\particle\ParticleMnager.cpp">
-      <Filter>ソースファイルcpp\particle</Filter>
+    <ClCompile Include="engine\particle\ParticleManager.cpp">
+      <Filter>engine\particle</Filter>
     </ClCompile>
     <ClCompile Include="engine\particle\ParticleEmitter.cpp">
-      <Filter>ソースファイルcpp\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClCompile>
     <ClCompile Include="engine\particle\IParticleBehavior.cpp">
-      <Filter>ソースファイルcpp\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\Game.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\skybox\SkyBoxCommon.cpp">
-      <Filter>ソースファイルcpp\skybox</Filter>
+      <Filter>engine\skybox</Filter>
     </ClCompile>
     <ClCompile Include="engine\skybox\SkyBox.cpp">
-      <Filter>ソースファイルcpp\skybox</Filter>
+      <Filter>engine\skybox</Filter>
     </ClCompile>
     <ClCompile Include="engine\math\MyMath.cpp">
-      <Filter>ソースファイルcpp\math</Filter>
+      <Filter>engine\math</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\AbstractSceneFactory.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClCompile>
     <ClCompile Include="engine\particle\AttackBehavior.cpp">
-      <Filter>ソースファイルcpp\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClCompile>
     <ClCompile Include="engine\audio\Audio.cpp">
-      <Filter>ソースファイルcpp\audio</Filter>
+      <Filter>engine\audio</Filter>
     </ClCompile>
     <ClCompile Include="engine\Line\LineCommon.cpp">
-      <Filter>ソースファイルcpp\Line</Filter>
+      <Filter>engine\Line</Filter>
     </ClCompile>
     <ClCompile Include="engine\Line\Line.cpp">
-      <Filter>ソースファイルcpp\Line</Filter>
+      <Filter>engine\Line</Filter>
     </ClCompile>
     <ClCompile Include="engine\input\Input.cpp">
-      <Filter>ソースファイルcpp\input</Filter>
+      <Filter>engine\input</Filter>
     </ClCompile>
     <ClCompile Include="engine\camera\CameraManager.cpp">
-      <Filter>ソースファイルcpp\camera</Filter>
+      <Filter>engine\camera</Filter>
     </ClCompile>
     <ClCompile Include="engine\camera\Camera.cpp">
-      <Filter>ソースファイルcpp\camera</Filter>
+      <Filter>engine\camera</Filter>
     </ClCompile>
     <ClCompile Include="engine\scene\BaseScene.cpp">
-      <Filter>ソースファイルcpp\scne</Filter>
+      <Filter>engine\scene</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\PlayerControlState.cpp">
+      <Filter>engine\scene</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="engine\base\D3DResourceLeakChecker.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\DirectXCommon.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\Framework.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\GraphicsPipeline.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\ImGuiManager.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\Logger.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
-    <ClInclude Include="engine\base\OfscreenRenderManager.h">
-      <Filter>ヘッダーファイル\base</Filter>
+    <ClInclude Include="engine\base\OffscreenRenderManager.h">
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\StringUtility.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\TextureManager.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\WinApp.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\particle\AttackBehavior.h">
-      <Filter>ヘッダーファイル\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\AbstractSceneFactory.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\audio\Audio.h">
-      <Filter>ヘッダーファイル\aoudio</Filter>
+      <Filter>engine\audio</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\BaseScene.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\camera\Camera.h">
-      <Filter>ヘッダーファイル\camera</Filter>
+      <Filter>engine\camera</Filter>
     </ClInclude>
     <ClInclude Include="engine\camera\CameraManager.h">
-      <Filter>ヘッダーファイル\camera</Filter>
+      <Filter>engine\camera</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\GameClearScene.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\GameOverScene.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\Game.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\GamePlayScene.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\input\Input.h">
-      <Filter>ヘッダーファイル\input</Filter>
+      <Filter>engine\input</Filter>
     </ClInclude>
     <ClInclude Include="engine\particle\IParticleBehavior.h">
-      <Filter>ヘッダーファイル\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClInclude>
     <ClInclude Include="engine\Line\Line.h">
-      <Filter>ヘッダーファイル\line</Filter>
+      <Filter>engine\Line</Filter>
     </ClInclude>
     <ClInclude Include="engine\Line\LineCommon.h">
-      <Filter>ヘッダーファイル\line</Filter>
+      <Filter>engine\Line</Filter>
     </ClInclude>
     <ClInclude Include="engine\particle\MagicCircleBehavior.h">
-      <Filter>ヘッダーファイル\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\Matrix3x3.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\Matrix4x4.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\Model.h">
-      <Filter>ヘッダーファイル\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\ModelCommon.h">
-      <Filter>ヘッダーファイル\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\ModelManager.h">
-      <Filter>ヘッダーファイル\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\MyMath.h">
-      <Filter>ヘッダーファイル\line</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\Object3D.h">
-      <Filter>ヘッダーファイル\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\Object3DCommon.h">
-      <Filter>ヘッダーファイル\3d</Filter>
+      <Filter>engine\3d</Filter>
     </ClInclude>
     <ClInclude Include="engine\particle\ParticleEmitter.h">
-      <Filter>ヘッダーファイル\particle</Filter>
+      <Filter>engine\particle</Filter>
     </ClInclude>
-    <ClInclude Include="engine\particle\ParticleMnager.h">
-      <Filter>ヘッダーファイル\particle</Filter>
+    <ClInclude Include="engine\particle\ParticleManager.h">
+      <Filter>engine\particle</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\Quaternion.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\RenderingData.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\SceneFactory.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\skybox\SkyBox.h">
-      <Filter>ヘッダーファイル\skybox</Filter>
+      <Filter>engine\skybox</Filter>
     </ClInclude>
     <ClInclude Include="engine\skybox\SkyBoxCommon.h">
-      <Filter>ヘッダーファイル\skybox</Filter>
+      <Filter>engine\skybox</Filter>
     </ClInclude>
     <ClInclude Include="engine\2d\Sprite.h">
-      <Filter>ヘッダーファイル\2d</Filter>
+      <Filter>engine\2d</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\Vector2.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\Vector3.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\math\Vector4.h">
-      <Filter>ヘッダーファイル\math</Filter>
+      <Filter>engine\math</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\SrvManager.h">
-      <Filter>ヘッダーファイル\base</Filter>
+      <Filter>engine\base</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\SceneManager.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\TitleScene.h">
-      <Filter>ヘッダーファイル\scne</Filter>
+      <Filter>engine\scene</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\PlayerControlState.h">
+      <Filter>engine\scene</Filter>
     </ClInclude>
     <ClInclude Include="engine\2d\SpriteCommon.h">
-      <Filter>ヘッダーファイル\2d</Filter>
+      <Filter>engine\2d</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\models\player.gltf">
-      <Filter>Resources</Filter>
+      <Filter>Resources\models</Filter>
     </None>
     <None Include="Resources\models\animationfly.gltf">
-      <Filter>Resources</Filter>
+      <Filter>Resources\models</Filter>
     </None>
     <None Include="Resources\models\animationfly.bin">
-      <Filter>Resources</Filter>
+      <Filter>Resources\models</Filter>
     </None>
     <None Include="Resources\Shaders\BoxFilter.hlsli">
       <Filter>Resources\Shaders</Filter>
@@ -385,11 +397,16 @@
     <None Include="Resources\Shaders\Vignette.hlsli">
       <Filter>Resources\Shaders</Filter>
     </None>
-    <None Include="Resources\Shaders\LuminanceBasedOutline.hlsli" />
+    <None Include="Resources\Shaders\LuminanceBasedOutline.hlsli">
+      <Filter>Resources\Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <Filter Include="ソースファイルcpp">
+    <Filter Include="project">
       <UniqueIdentifier>{899dbaa7-bbd4-4ff8-b571-3ae9a96e42f1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine">
+      <UniqueIdentifier>{4c431f6c-6b2e-4d34-b562-83569ecfd556}</UniqueIdentifier>
     </Filter>
     <Filter Include="Resources">
       <UniqueIdentifier>{339777f2-4f7e-46a9-a81d-1a565c23da43}</UniqueIdentifier>
@@ -397,74 +414,41 @@
     <Filter Include="Resources\Shaders">
       <UniqueIdentifier>{8fa53334-ede0-4695-bddd-0601f0b37cd6}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\audio">
+    <Filter Include="Resources\models">
+      <UniqueIdentifier>{f58e7d4e-d905-4950-aa3d-90914f2f4c84}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\audio">
       <UniqueIdentifier>{f40a8ce5-71d6-4ab2-b0f3-45aa5da8e74f}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\base">
+    <Filter Include="engine\base">
       <UniqueIdentifier>{893d7df9-5fe3-401b-b0ef-4a61bb1bdc74}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\camera">
+    <Filter Include="engine\camera">
       <UniqueIdentifier>{8f0d6691-4093-4cd0-a884-965eb0429217}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\input">
+    <Filter Include="engine\input">
       <UniqueIdentifier>{da739236-83a4-4dd7-9050-86daa671bd86}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\Line">
+    <Filter Include="engine\Line">
       <UniqueIdentifier>{f27e4436-3c64-4085-8405-bde6a8ebb19a}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\math">
+    <Filter Include="engine\math">
       <UniqueIdentifier>{4d29d29f-d514-4bfc-afbe-4018cfb87a06}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\particle">
+    <Filter Include="engine\particle">
       <UniqueIdentifier>{f95094e2-3680-4ecc-87e2-584b02e03f06}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\skybox">
+    <Filter Include="engine\skybox">
       <UniqueIdentifier>{6f71c67f-02b3-44ad-a06f-d3dd7c6a32df}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\scne">
+    <Filter Include="engine\scene">
       <UniqueIdentifier>{ee6f25f2-9764-423f-8e66-aaf11313fe36}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\2d">
+    <Filter Include="engine\2d">
       <UniqueIdentifier>{5ea55c2a-9b41-4d27-aa8b-8b9dd82b1830}</UniqueIdentifier>
     </Filter>
-    <Filter Include="ソースファイルcpp\3d">
+    <Filter Include="engine\3d">
       <UniqueIdentifier>{8a0340a9-2164-43fc-bdf9-d015a7c3ac49}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル">
-      <UniqueIdentifier>{48255584-fee4-41f4-bd98-394f6437af08}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\2d">
-      <UniqueIdentifier>{c76c7617-96fa-4b26-a00f-b5966bd4a7a1}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\3d">
-      <UniqueIdentifier>{fd99c62f-9ec8-42a6-8934-eb76a6aa792e}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\aoudio">
-      <UniqueIdentifier>{a92afb8e-ae07-4d20-babd-27a647ae9537}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\base">
-      <UniqueIdentifier>{ca3ee147-f872-46c4-8d70-72ff9009022a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\camera">
-      <UniqueIdentifier>{2ded8981-76f5-40b9-a609-df6760e3cddc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\input">
-      <UniqueIdentifier>{5ec0c1d6-865a-47f1-80b4-e04b21f868dc}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\line">
-      <UniqueIdentifier>{9b78465b-4ad4-44ee-8caf-c957c717852b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\math">
-      <UniqueIdentifier>{84af86f3-26a6-4979-994c-32e6db68996c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\particle">
-      <UniqueIdentifier>{0aff12a9-18ea-41f3-8fe7-22ab1336a7e5}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\scne">
-      <UniqueIdentifier>{e1fd85d8-2cdc-4761-97ee-4604a0a2dcaf}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="ヘッダーファイル\skybox">
-      <UniqueIdentifier>{0df2743e-5807-4ffb-84de-6c5523f55086}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

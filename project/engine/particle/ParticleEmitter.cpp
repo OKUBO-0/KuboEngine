@@ -1,9 +1,14 @@
 #include "ParticleEmitter.h"
+#include "ParticleManager.h"
 
+namespace {
+constexpr float kFixedEmitterDeltaTime = 1.0f / 60.0f;
+constexpr float kEmitterResetTime = 0.0f;
+}
 
+namespace Engine::Particle {
 
-
-ParticleEmitter::ParticleEmitter(const Vector3& position, const float lifetime, const float currentTime, const uint32_t count, const std::string& name)
+ParticleEmitter::ParticleEmitter(const Vector3& position, float lifetime, float currentTime, uint32_t count, const std::string& name)
 {
 	position_ = position;//位置
 	frequency = lifetime;//寿命
@@ -16,12 +21,12 @@ ParticleEmitter::ParticleEmitter(const Vector3& position, const float lifetime, 
 void ParticleEmitter::Update()
 {
 	// 時間を進める
-	frequencyTime += 1.0f / 60.0f;
+	frequencyTime += kFixedEmitterDeltaTime;
 
 	// 寿命（frequency）を超えたら発生
 	if (frequencyTime >= frequency) {
-		ParticleMnager::GetInstance()->Emit(name_, position_, count);
-		frequencyTime = 0.0f;
+		ParticleManager::GetInstance()->Emit(name_, position_, count);
+		frequencyTime = kEmitterResetTime;
 	}
 }
 
@@ -29,6 +34,8 @@ void ParticleEmitter::Emit()
 {
 
 	//パーティクルを発生
-	ParticleMnager::GetInstance()->Emit(name_, position_, count);
+	ParticleManager::GetInstance()->Emit(name_, position_, count);
+
+}
 
 }

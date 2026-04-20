@@ -1,5 +1,7 @@
 #include "SrvManager.h"
 
+namespace Engine::Base {
+
 const uint32_t SrvManager::kMaxSRVCount = 512;
 void SrvManager::Initialize(DirectXCommon* dxcommon)
 {
@@ -18,7 +20,7 @@ uint32_t SrvManager::Allocate()
 	assert(CheckTexturesNumber());
 
 	//reurnする番号をいったん記録しておく
-	int index = useIndex;
+	uint32_t index = useIndex;
 	//次回のために番号を１進める
 	useIndex++;
 	//上で記録した番号をreturn
@@ -39,7 +41,7 @@ D3D12_GPU_DESCRIPTOR_HANDLE SrvManager::GetGPUDescriptorHandle(uint32_t index)
 	return handleGPU;
 }
 
-void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT foemat, UINT MipLevels, DirectX::TexMetadata metadata)
+void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT foemat, UINT MipLevels, const DirectX::TexMetadata& metadata)
 {
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{  };
@@ -64,7 +66,7 @@ void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResou
 
 }
 
-void SrvManager::CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResourece, UINT numElements, UINT structureByteStride)
+void SrvManager::CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements, UINT structureByteStride)
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -75,7 +77,7 @@ void SrvManager::CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource*
 	srvDesc.Buffer.NumElements = numElements;
 	srvDesc.Buffer.StructureByteStride = structureByteStride;
 
-	directXCommon->GetDevice()->CreateShaderResourceView(pResourece, &srvDesc, GetCPUDescriptorHandle(srvIndex));
+	directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
 
 }
 
@@ -98,5 +100,7 @@ bool SrvManager::CheckTexturesNumber()
 		return false;
 	};
 	return true;
+
+}
 
 }

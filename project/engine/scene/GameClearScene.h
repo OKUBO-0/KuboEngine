@@ -1,27 +1,34 @@
 #pragma once
 #include "BaseScene.h"
-class GameClearScene:public BaseScene
+
+/// @brief ゲームクリア画面を表すシーンクラス
+/// @details ゲームクリア時の初期化、更新、描画、終了処理を担当する。
+namespace Engine::Scene {
+
+class GameClearScene : public BaseScene
 {
 
 public:
-	/// <summary>
-	/// シーンの初期化
-	/// </summary>
+	/// @brief ゲームクリアシーンを初期化する
+	/// @param なし
+	/// @return なし
 	void Initialize() override;
-	/// <summary>
-	/// シーンの終了処理
-	/// </summary>
+	/// @brief ゲームクリアシーンの終了処理を行う
+	/// @param なし
+	/// @return なし
 	void Finalize()override;
-	/// <summary>
-	/// シーンの更新
-	/// </summary>
+	/// @brief ゲームクリアシーンを更新する
+	/// @param なし
+	/// @return なし
 	void Update()override;
-	/// <summary>
-	/// シーンの描画
-	/// </summary>
+	/// @brief ゲームクリアシーンを描画する
+	/// @param なし
+	/// @return なし
 	void Draw()override;
 
 private:
 
 };
+
+}
 

@@ -1,88 +1,102 @@
 #include "Framework.h"
+#include "Input.h"
+#include "WinApp.h"
+#include "DirectXCommon.h"
+#include "SpriteCommon.h"
+#include "Object3DCommon.h"
+#include "ModelManager.h"
+#include "TextureManager.h"
+#include "ImGuiManager.h"
+#include "Audio.h"
+#include "SrvManager.h"
+#include "SceneManager.h"
+#include "OffscreenRenderManager.h"
+#include "Linecommon.h"
+#include "SkyBoxCommon.h"
 #include <CameraManager.h>
-#include "ParticleMnager.h"
+#include "ParticleManager.h"
+
+namespace Engine::Base {
+
+Framework::~Framework() = default;
 
 void Framework::Initialize()
 {
-	// 初期化
-	// Windows API初期化
-	endRequst_ = false;
+	endRequest_ = false;
+	InitializeCoreServices();
+	InitializeSharedManagers();
+	InitializeRenderingCommons();
+	InitializeDebugTools();
+}
 
-	winApp = std::make_unique<WinApp>();
+void Framework::InitializeCoreServices()
+{
+	winApp = std::make_unique<Engine::Base::WinApp>();
 	winApp->Initialize();
-	// DirectX初期化
 
-	dxCommon = std::make_unique<DirectXCommon>();
+	dxCommon = std::make_unique<Engine::Base::DirectXCommon>();
 	dxCommon->Initialize(winApp.get());
-	// SRVマネージャの初期化
-	srvManager = std::make_unique<SrvManager>();
+
+	srvManager = std::make_unique<Engine::Base::SrvManager>();
 	srvManager->Initialize(dxCommon.get());
-	// オフスクリーンレンダーマネージャの初期化
-	ofscreenRenderManager = std::make_unique<OfscreenRenderManager>();
-	ofscreenRenderManager->Initialize(dxCommon.get(), srvManager.get());
 
-	//テクスチャマネージャの初期化
-	TextureManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
-	//Input初期化
-	Input::GetInstance()->Initialize(winApp.get());
-	//Audio初期化
-	Audio::GetInstance()->Initialize();
-	//パーティクル
-	ParticleMnager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
-	//camera初期化
-	CameraManager::GetInstance()->Initialize();
+	offscreenRenderManager = std::make_unique<Engine::Base::OffscreenRenderManager>();
+	offscreenRenderManager->Initialize(dxCommon.get(), srvManager.get());
+}
 
-	//スプライト共通部分の初期化
-	SpriteCommon::GetInstance()->Initialize(dxCommon.get());
+void Framework::InitializeSharedManagers()
+{
+	Engine::Base::TextureManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::InputSystem::Input::GetInstance()->Initialize(winApp.get());
+	Engine::AudioSystem::Audio::GetInstance()->Initialize();
+	Engine::Particle::ParticleManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
+}
 
-	//3Dモデルマネージャの初期化
-	ModelManager::GetInstans()->Initialize(dxCommon.get(), srvManager.get());
-
-	//3Dオブジェクト共通部の初期化
-	Object3DCommon::GetInstance()->Initialize(dxCommon.get(),srvManager.get());
-
-	// Line初期化
+void Framework::InitializeRenderingCommons()
+{
+	Engine::Graphics2D::SpriteCommon::GetInstance()->Initialize(dxCommon.get());
+	Engine::Graphics3D::ModelManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::Graphics3D::Object3DCommon::GetInstance()->Initialize(dxCommon.get(),srvManager.get());
 	LineCommon::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::Skybox::SkyBoxCommon::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+}
 
-	SkyBoxCommon::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
-
+void Framework::InitializeDebugTools()
+{
 #ifdef _DEBUG
-	// ImGuiマネージャの初期化
-	imGuiMnager = std::make_unique<ImGuiManager>();
-	imGuiMnager->Initialize(dxCommon.get(), winApp.get());
+	imGuiManager = std::make_unique<Engine::Base::ImGuiManager>();
+	imGuiManager->Initialize(dxCommon.get(), winApp.get());
 #endif // _DEBUG
 }
 
 void Framework::Finalize()
 {
+	FinalizeDebugTools();
+	FinalizeSharedManagers();
+}
+
+void Framework::FinalizeDebugTools()
+{
 #ifdef _DEBUG
-	imGuiMnager->Finalize();
-#endif // DEBUG
-
-	// Audio解放
-	Audio::GetInstance()->Finalize();
-	//WindowsAPI終了処理
-	winApp->Finalize();
-	//WindowsAPI解放
-	TextureManager::GetInstance()->Finalize();
-	//DirectXCommon解放
-	ModelManager::GetInstans()->Finalize();
-	//カメラの解放
-	CameraManager::GetInstance()->Finalize();
-	//パーティクルの解放
-	ParticleMnager::GetInstance()->Finalize();
-
-	SkyBoxCommon::GetInstance()->Finalize();
-
-	// ユニークポインタは自動的に解放されるため、deleteは不要
-#ifdef _DEBUG
-	imGuiMnager.reset();
+	imGuiManager->Finalize();
+	imGuiManager.reset();
 #endif // _DEBUG
+}
 
-	Input::GetInstance()->Finalize();
-	SpriteCommon::GetInstance()->Finalize();
-	Object3DCommon::GetInstance()->Finalize();
-	SceneManager::GetInstance()->Finalize();
+void Framework::FinalizeSharedManagers()
+{
+	Engine::AudioSystem::Audio::GetInstance()->Finalize();
+	winApp->Finalize();
+	Engine::Base::TextureManager::GetInstance()->Finalize();
+	Engine::Graphics3D::ModelManager::GetInstance()->Finalize();
+	Engine::CameraSystem::CameraManager::GetInstance()->Finalize();
+	Engine::Particle::ParticleManager::GetInstance()->Finalize();
+	Engine::Skybox::SkyBoxCommon::GetInstance()->Finalize();
+	Engine::InputSystem::Input::GetInstance()->Finalize();
+	Engine::Graphics2D::SpriteCommon::GetInstance()->Finalize();
+	Engine::Graphics3D::Object3DCommon::GetInstance()->Finalize();
+	Engine::Scene::SceneManager::GetInstance()->Finalize();
 	LineCommon::GetInstance()->Finalize();
 }
 
@@ -91,27 +105,26 @@ void Framework::Update()
 	//Windowsのメッセージ処理
 	if (winApp->ProcessMessage()) {
 		//ゲームループを抜ける
-		endRequst_ = true;
+	endRequest_ = true;
 	}
 
-	Input::GetInstance()->Update();
-	ParticleMnager::GetInstance()->Update();
-	SceneManager::GetInstance()->Update();
+	Engine::InputSystem::Input::GetInstance()->Update();
+	Engine::Particle::ParticleManager::GetInstance()->Update();
+	Engine::Scene::SceneManager::GetInstance()->Update();
 	LineCommon::GetInstance()->Update();
 }
 
 void Framework::Run()
 {
 	Initialize();
-	while (true)
-	{
+	while (true) {
 		Update();
-
 		if (IsEndRequest()) {
 			break;
 		}
-		//描画
 		Draw();
 	}
 	Finalize();
+}
+
 }

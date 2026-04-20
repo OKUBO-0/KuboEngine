@@ -3,7 +3,9 @@
 #include <imgui_impl_win32.h>
 #include <imgui_impl_dx12.h>
 
-void ImGuiManager::Initialize(DirectXCommon* dxCommon, WinApp* winapp)
+namespace Engine::Base {
+
+void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* winapp)
 {
 #ifdef _DEBUG
 
@@ -80,14 +82,16 @@ void ImGuiManager::Draw()
 {
 #ifdef _DEBUG
 
-	ID3D12GraphicsCommandList* commansList = dxCommon_->GetCommandList();
+	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 
 	//デスクリプタヒープの配列をセットする
 	ID3D12DescriptorHeap* ppHeaps[] = { srvHeap_.Get() };
-	commansList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+	commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 	//描画コマンドを発行
-	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commansList);
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
 #endif // _DEBUG
 
+
+}
 
 }
