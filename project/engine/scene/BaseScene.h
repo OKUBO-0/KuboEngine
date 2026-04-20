@@ -1,27 +1,41 @@
 #pragma once
 
+namespace Engine::Scene {
+
 class SceneManager;
+/// @brief すべてのシーンが満たす共通インターフェース
+/// @details 初期化、終了、更新、描画と SceneManager 参照の受け取りを定義する。
 class BaseScene
 {
 public:
-	//すべて純粋仮想関数として宣言する
-
-
-	//ゲームの初期化
+	/// @brief シーンの初期化を行う
+	/// @param なし
+	/// @return なし
 	virtual void Initialize() = 0;
-	//終了
+	/// @brief シーンの終了処理を行う
+	/// @param なし
+	/// @return なし
 	virtual void Finalize() = 0;
-	//更新
+	/// @brief シーンの更新処理を行う
+	/// @param なし
+	/// @return なし
 	virtual void Update() = 0;
-	//描画
+	/// @brief シーンの描画処理を行う
+	/// @param なし
+	/// @return なし
 	virtual void Draw() = 0;
-	//デストラクタ
+	/// @brief 仮想デストラクタ
 	virtual ~BaseScene() = default;
 
+	/// @brief SceneManager 参照を受け取る
+	/// @param sceneManager 管理元の SceneManager
+	/// @return なし
 	virtual void SetSceneManager(SceneManager* sceneManager) { sceneManager_ = sceneManager; }
 
 private:
 	SceneManager* sceneManager_ = nullptr;
 
 };
+
+}
 

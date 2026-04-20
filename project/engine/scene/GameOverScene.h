@@ -1,28 +1,35 @@
 #pragma once
 #include "BaseScene.h"
-class GameOverScene :public BaseScene
+
+/// @brief ゲームオーバー画面を表すシーンクラス
+/// @details ゲームオーバー時の初期化、更新、描画、終了処理を担当する。
+namespace Engine::Scene {
+
+class GameOverScene : public BaseScene
 {
 
 public:
-	/// <summary>
-	/// シーンの初期化
-	/// </summary>
+	/// @brief ゲームオーバーシーンを初期化する
+	/// @param なし
+	/// @return なし
 	void Initialize() override;
-	/// <summary>
-	/// シーンの終了処理
-	/// </summary>
+	/// @brief ゲームオーバーシーンの終了処理を行う
+	/// @param なし
+	/// @return なし
 	void Finalize()override;
-	/// <summary>
-	/// シーンの更新
-	/// </summary>
+	/// @brief ゲームオーバーシーンを更新する
+	/// @param なし
+	/// @return なし
 	void Update()override;
-	/// <summary>
-	/// シーンの描画
-	/// </summary>
+	/// @brief ゲームオーバーシーンを描画する
+	/// @param なし
+	/// @return なし
 	void Draw()override;
 
 private:
 
 
 };
+
+}
 

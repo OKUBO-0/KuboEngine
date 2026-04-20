@@ -1,22 +1,27 @@
-#include <string>
-#include <format>
-#include <windows.h>
-#pragma comment(lib,"dxguid.lib")
-#include "Vector3.h"
-#include "Vector4.h"
-#include "Matrix4x4.h"
-#include "MyMath.h"
 #include "Framework.h"
-#include "BaseScene.h"
 
-class Game : public Framework {
+/// @brief アプリケーション固有のシーン制御と描画順を定義するクラス
+/// @details Framework を継承し、シーン生成とオフスクリーン描画の流れを構築する。
+namespace Engine::Scene {
+
+class Game : public Engine::Base::Framework {
 public:
-	// ゲームの初期化
+	/// @brief ゲーム固有の初期化を行う
+	/// @param なし
+	/// @return なし
 	void Initialize() override;
-	// 終了
+	/// @brief ゲーム固有の終了処理を行う
+	/// @param なし
+	/// @return なし
 	void Finalize() override;
-	// 更新
+	/// @brief ゲーム全体の更新処理を行う
+	/// @param なし
+	/// @return なし
 	void Update() override;
-	// 描画
+	/// @brief シーン描画と最終合成を行う
+	/// @param なし
+	/// @return なし
 	void Draw() override;
 };
+
+}

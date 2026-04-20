@@ -6,6 +6,81 @@
 #include <imgui.h>
 #include <numbers>
 
+namespace {
+Matrix4x4 MakeMatrixFromRows(
+	const Vector4& row0,
+	const Vector4& row1,
+	const Vector4& row2,
+	const Vector4& row3)
+{
+	return Matrix4x4{
+		row0.x, row0.y, row0.z, row0.w,
+		row1.x, row1.y, row1.z, row1.w,
+		row2.x, row2.y, row2.z, row2.w,
+		row3.x, row3.y, row3.z, row3.w
+	};
+}
+
+Vector3 SelectOrthogonalAxis(const Vector3& normalizedVector)
+{
+	return (std::abs(normalizedVector.x) < 0.1f) ? Vector3{ 1, 0, 0 } : Vector3{ 0, 1, 0 };
+}
+
+Vector3 ClampPointToAabb(const Vector3& point, const AABB& aabb)
+{
+	return {
+		std::clamp(point.x, aabb.min.x, aabb.max.x),
+		std::clamp(point.y, aabb.min.y, aabb.max.y),
+		std::clamp(point.z, aabb.min.z, aabb.max.z)
+	};
+}
+
+bool IsPointInsideTriangleOnPlane(
+	const Vector3& point,
+	const Triangle& triangle,
+	const Plane& plane,
+	const Vector3& edge01,
+	const Vector3& edge12,
+	const Vector3& edge20)
+{
+	Vector3 pointFromV1 = point - triangle.vertices[1];
+	Vector3 pointFromV2 = point - triangle.vertices[2];
+	Vector3 pointFromV0 = point - triangle.vertices[0];
+
+	Vector3 cross01 = edge01.Cross(pointFromV1);
+	Vector3 cross12 = edge12.Cross(pointFromV2);
+	Vector3 cross20 = edge20.Cross(pointFromV0);
+	return MyMath::Dot(cross01, plane.normal) >= 0.0f &&
+		MyMath::Dot(cross12, plane.normal) >= 0.0f &&
+		MyMath::Dot(cross20, plane.normal) >= 0.0f;
+}
+
+void CalculateAabbSegmentParamRange(const AABB& aabb, const Segment& segment, Vector3& tNear, Vector3& tFar)
+{
+	Vector3 tMin{
+		(aabb.min.x - segment.origin.x) / segment.diff.x,
+		(aabb.min.y - segment.origin.y) / segment.diff.y,
+		(aabb.min.z - segment.origin.z) / segment.diff.z,
+	};
+	Vector3 tMax{
+		(aabb.max.x - segment.origin.x) / segment.diff.x,
+		(aabb.max.y - segment.origin.y) / segment.diff.y,
+		(aabb.max.z - segment.origin.z) / segment.diff.z,
+	};
+
+	tNear = {
+		std::min(tMin.x, tMax.x),
+		std::min(tMin.y, tMax.y),
+		std::min(tMin.z, tMax.z)
+	};
+	tFar = {
+		std::max(tMin.x, tMax.x),
+		std::max(tMin.y, tMax.y),
+		std::max(tMin.z, tMax.z)
+	};
+}
+}
+
 
 
 
@@ -87,7 +162,7 @@ Vector3 MyMath::Transform(const Vector3& vector, const Matrix4x4& matrix)
 
 }
 
-Vector3 MyMath::Normlize(const Vector3& vector)
+Vector3 MyMath::Normalize(const Vector3& vector)
 {
 
 	float length = std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
@@ -260,94 +335,32 @@ Vector3 MyMath::Lerp(const Vector3& v1, const Vector3& v2, float t)
 
 }
 
-Matrix4x4 MyMath::MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearCilp, float farClip)
+Matrix4x4 MyMath::MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip)
 {
-
-	Matrix4x4 ans;
-
-	ans.m[0][0] = Cot(fovY / 2) / aspectRatio;
-	ans.m[0][1] = 0;
-	ans.m[0][2] = 0;
-	ans.m[0][3] = 0;
-
-	ans.m[1][0] = 0;
-	ans.m[1][1] = Cot(fovY / 2);
-	ans.m[1][2] = 0;
-	ans.m[1][3] = 0;
-
-	ans.m[2][0] = 0;
-	ans.m[2][1] = 0;
-	ans.m[2][2] = nearCilp / (farClip - nearCilp);
-	ans.m[2][3] = 1;
-
-	ans.m[3][0] = 0;
-	ans.m[3][1] = 0;
-	ans.m[3][2] = -(nearCilp + nearCilp) / (farClip - nearCilp);
-	ans.m[3][3] = 0;
-
-	return ans;
-
+	float cotHalfFov = Cot(fovY / 2);
+	float depthRange = farClip - nearClip;
+	return MakeMatrixFromRows(
+		{ cotHalfFov / aspectRatio, 0.0f, 0.0f, 0.0f },
+		{ 0.0f, cotHalfFov, 0.0f, 0.0f },
+		{ 0.0f, 0.0f, nearClip / depthRange, 1.0f },
+		{ 0.0f, 0.0f, -(nearClip + nearClip) / depthRange, 0.0f });
 }
 Matrix4x4 MyMath::MakeOrthographicMatrix(float left, float top, float right, float bottm, float nearCip, float farCip)
 {
-
-	Matrix4x4 ans;
-
-	ans.m[0][0] = 2 / (right - left);
-	ans.m[0][1] = 0;
-	ans.m[0][2] = 0;
-	ans.m[0][3] = 0;
-
-	ans.m[1][0] = 0;
-	ans.m[1][1] = 2 / (top - bottm);
-	ans.m[1][2] = 0;
-	ans.m[1][3] = 0;
-
-	ans.m[2][0] = 0;
-	ans.m[2][1] = 0;
-	ans.m[2][2] = 1 / (farCip - nearCip);
-	ans.m[2][3] = 0;
-
-	ans.m[3][0] = (left + right) / (left - right);
-	ans.m[3][1] = (top + bottm) / (bottm - top);
-	ans.m[3][2] = nearCip / (nearCip - farCip);
-	ans.m[3][3] = 1;
-
-	return ans;
-
+	return MakeMatrixFromRows(
+		{ 2 / (right - left), 0.0f, 0.0f, 0.0f },
+		{ 0.0f, 2 / (top - bottm), 0.0f, 0.0f },
+		{ 0.0f, 0.0f, 1 / (farCip - nearCip), 0.0f },
+		{ (left + right) / (left - right), (top + bottm) / (bottm - top), nearCip / (nearCip - farCip), 1.0f });
 }
 
 Matrix4x4 MyMath::MakeViewportMatrix(float left, float top, float width, float height, float minDepth, float maxDepth)
 {
-	Matrix4x4 ans;
-
-
-
-	ans.m[0][0] = width / 2;
-	ans.m[0][1] = 0;
-	ans.m[0][2] = 0;
-	ans.m[0][3] = 0;
-
-	ans.m[1][0] = 0;
-	ans.m[1][1] = -(height / 2);
-	ans.m[1][2] = 0;
-	ans.m[1][3] = 0;
-
-	ans.m[2][0] = 0;
-	ans.m[2][1] = 0;
-	ans.m[2][2] = maxDepth - minDepth;
-	ans.m[2][3] = 0;
-
-	ans.m[3][0] = left + (width / 2);
-	ans.m[3][1] = top + (height / 2);
-	ans.m[3][2] = minDepth;
-	ans.m[3][3] = 1;
-
-
-
-
-	return ans;
-
+	return MakeMatrixFromRows(
+		{ width / 2, 0.0f, 0.0f, 0.0f },
+		{ 0.0f, -(height / 2), 0.0f, 0.0f },
+		{ 0.0f, 0.0f, maxDepth - minDepth, 0.0f },
+		{ left + (width / 2), top + (height / 2), minDepth, 1.0f });
 }
 
 //単位行列
@@ -435,11 +448,11 @@ bool MyMath::IsCollision(const Segment& segment, const Plane& plane)
 
 bool MyMath::IsCollision(const Segment& segment, const Triangle& triangle)
 {
-	Vector3 v1 = triangle.vertices[0] - triangle.vertices[1];
-	Vector3 v2 = triangle.vertices[2] - triangle.vertices[1];
-	Vector3 v3 = triangle.vertices[0] - triangle.vertices[2];
+	Vector3 edge01 = triangle.vertices[0] - triangle.vertices[1];
+	Vector3 edge12 = triangle.vertices[2] - triangle.vertices[1];
+	Vector3 edge20 = triangle.vertices[0] - triangle.vertices[2];
 	Plane plane;
-	plane.normal = Normlize(v1.Cross(v2));
+	plane.normal = Normalize(edge01.Cross(edge12));
 	plane.distance = Dot(plane.normal, triangle.vertices[0]);
 
 	float dot = Dot(plane.normal, segment.diff);
@@ -447,28 +460,12 @@ bool MyMath::IsCollision(const Segment& segment, const Triangle& triangle)
 		return false;
 	}
 	float t = (plane.distance - Dot(segment.origin, plane.normal)) / dot;
-	Vector3 p = segment.origin + segment.diff * t;
-	Vector3 v1p = p - triangle.vertices[1];
-	Vector3 v2p = p - triangle.vertices[2];
-	Vector3 v0p = p - triangle.vertices[0];
-
-	Vector3 cross01 = v1.Cross(v1p);
-	Vector3 cross12 = v2.Cross(v2p);
-	Vector3 cross20 = v3.Cross(v0p);
-	if (0 <= t && t <= 1) {
-
-		if (Dot(cross01, plane.normal) >= 0.0f &&
-			Dot(cross12, plane.normal) >= 0.0f &&
-			Dot(cross20, plane.normal) >= 0.0f) {
-
-			return true;
-
-
-		}
-
-
+	if (t < 0.0f || t > 1.0f) {
+		return false;
 	}
-	return false;
+
+	Vector3 collisionPoint = segment.origin + segment.diff * t;
+	return IsPointInsideTriangleOnPlane(collisionPoint, triangle, plane, edge01, edge12, edge20);
 }
 
 bool MyMath::IsCollision(const AABB& aabb1, const AABB& aabb2)
@@ -487,64 +484,23 @@ bool MyMath::IsCollision(const AABB& aabb1, const AABB& aabb2)
 
 bool MyMath::IsCollision(const AABB& aabb, const Sphere& sphere)
 {
-	// 最近接点を求める
-	Vector3 closesetPint{
-		{std::clamp(sphere.center.x,aabb.min.x,aabb.max.x)},
-		{std::clamp(sphere.center.y,aabb.min.y,aabb.max.y)},
-		{std::clamp(sphere.center.z,aabb.min.z,aabb.max.z)},
-	};
-	//最近接点と球の中心との距離を求める
-	float distance = Length(closesetPint - sphere.center);
-	//距離が半径よりも小さければ衝突
-	if (distance <= sphere.radius) {
-		return true;
-	}
-	return false;
+	Vector3 closestPoint = ClampPointToAabb(sphere.center, aabb);
+	float distance = Length(closestPoint - sphere.center);
+	return distance <= sphere.radius;
 }
 
 bool MyMath::IsCollision(const AABB& aabb, const Segment& segment)
 {
-	Vector3 Tmin{
-
-		{(aabb.min.x - segment.origin.x) / segment.diff.x},
-		{(aabb.min.y - segment.origin.y) / segment.diff.y},
-		{(aabb.min.z - segment.origin.z) / segment.diff.z},
-	};
-
-	Vector3 Tmax{
-		{(aabb.max.x - segment.origin.x) / segment.diff.x},
-		{(aabb.max.y - segment.origin.y) / segment.diff.y},
-		{(aabb.max.z - segment.origin.z) / segment.diff.z},
-	};
-
-	Vector3 tNear{
-
-		{std::min(Tmin.x,Tmax.x)},
-		{std::min(Tmin.y,Tmax.y)},
-		{std::min(Tmin.z,Tmax.z)}
-	};
-	Vector3 tFar{
-
-		{std::max(Tmin.x,Tmax.x)},
-		{std::max(Tmin.y,Tmax.y)},
-		{std::max(Tmin.z,Tmax.z)}
-	};
-
+	Vector3 tNear{};
+	Vector3 tFar{};
+	CalculateAabbSegmentParamRange(aabb, segment, tNear, tFar);
 	float tmin = std::max(std::max(tNear.x, tNear.y), tNear.z);
 	float tmax = std::min(std::min(tFar.x, tFar.y), tFar.z);
-	if (tmin <= tmax) {
-		if (tmin * tmax < 0.0f)
-		{
-			return true;
-		}
-	}
-	return false;
+	return tmin <= tmax && tmin * tmax < 0.0f;
 }
 
 Matrix4x4 MyMath::MakeRotateAxisAngle(const Vector3& axis, float angle)
 {
-	Matrix4x4 ans;
-
 	float cosA = cosf(angle);
 	float sinA = sinf(angle);
 	float oneMinusCosA = 1.0f - cosA;
@@ -552,38 +508,17 @@ Matrix4x4 MyMath::MakeRotateAxisAngle(const Vector3& axis, float angle)
 	float x = axis.x;
 	float y = axis.y;
 	float z = axis.z;
-
-	// Row 0
-	ans.m[0][0] = x * x * oneMinusCosA + cosA;
-	ans.m[0][1] = x * y * oneMinusCosA + z * sinA;
-	ans.m[0][2] = x * z * oneMinusCosA - y * sinA;
-	ans.m[0][3] = 0.0f;
-
-	// Row 1
-	ans.m[1][0] = y * x * oneMinusCosA - z * sinA;
-	ans.m[1][1] = y * y * oneMinusCosA + cosA;
-	ans.m[1][2] = y * z * oneMinusCosA + x * sinA;
-	ans.m[1][3] = 0.0f;
-
-	// Row 2
-	ans.m[2][0] = z * x * oneMinusCosA + y * sinA;
-	ans.m[2][1] = z * y * oneMinusCosA - x * sinA;
-	ans.m[2][2] = z * z * oneMinusCosA + cosA;
-	ans.m[2][3] = 0.0f;
-
-	// Row 3
-	ans.m[3][0] = 0.0f;
-	ans.m[3][1] = 0.0f;
-	ans.m[3][2] = 0.0f;
-	ans.m[3][3] = 1.0f;
-
-	return ans;
+	return MakeMatrixFromRows(
+		{ x * x * oneMinusCosA + cosA, y * x * oneMinusCosA - z * sinA, z * x * oneMinusCosA + y * sinA, 0.0f },
+		{ x * y * oneMinusCosA + z * sinA, y * y * oneMinusCosA + cosA, z * y * oneMinusCosA - x * sinA, 0.0f },
+		{ x * z * oneMinusCosA - y * sinA, y * z * oneMinusCosA + x * sinA, z * z * oneMinusCosA + cosA, 0.0f },
+		{ 0.0f, 0.0f, 0.0f, 1.0f });
 }
 
 Matrix4x4 MyMath::DirectionToDirection(const Vector3& from, const Vector3& to)
 {
-	Vector3 f = MyMath::Normlize(from);
-	Vector3 t = MyMath::Normlize(to);
+	Vector3 f = MyMath::Normalize(from);
+	Vector3 t = MyMath::Normalize(to);
 	float dot = MyMath::Dot(f, t);
 
 	// ほぼ同じ方向なら単位行列
@@ -593,16 +528,15 @@ Matrix4x4 MyMath::DirectionToDirection(const Vector3& from, const Vector3& to)
 
 	// 真逆方向（180度）なら適当な直交軸を使って180度回転
 	if (dot < -0.9999f) {
-		// from と直交する適当なベクトルを選ぶ
-		Vector3 ortho = (std::abs(f.x) < 0.1f) ? Vector3{ 1, 0, 0 } : Vector3{ 0, 1, 0 };
+		Vector3 ortho = SelectOrthogonalAxis(f);
 		Vector3 axis = MyMath::Cross(f, ortho);
-		axis = MyMath::Normlize(axis);
+		axis = MyMath::Normalize(axis);
 		return MakeRotateAxisAngle(axis, std::numbers::pi_v<float>);
 	}
 
 	// 通常回転
 	Vector3 axis = MyMath::Cross(f, t);
-	axis = MyMath::Normlize(axis);
+	axis = MyMath::Normalize(axis);
 	float angle = std::acos(std::clamp(dot, -1.0f, 1.0f)); // NaN対策
 
 	return MakeRotateAxisAngle(axis, angle);

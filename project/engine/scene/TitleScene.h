@@ -1,31 +1,30 @@
 #pragma once
-#include "Camera.h"	
-#include "Model.h"
-#include"Sprite.h"
-#include "Object3D.h"
-#include "Audio.h"
 #include "BaseScene.h"
 
-class TitleScene :public BaseScene
+/// @brief タイトル画面を表すシーンクラス
+/// @details タイトル中の初期化、更新、描画、終了処理を担当する。
+namespace Engine::Scene {
+
+class TitleScene : public BaseScene
 {
 
 public:
 
-	/// <summary>
-	/// シーンの初期化
-	/// </summary>
+	/// @brief タイトルシーンを初期化する
+	/// @param なし
+	/// @return なし
 	void Initialize()override;
-	/// <summary>
-	/// シーンの終了処理
-	/// </summary>
+	/// @brief タイトルシーンの終了処理を行う
+	/// @param なし
+	/// @return なし
 	void Finalize()override;
-	/// <summary>
-	/// シーンの更新
-	/// </summary>
+	/// @brief タイトルシーンを更新する
+	/// @param なし
+	/// @return なし
 	void Update()override;
-	/// <summary>
-	/// シーンの描画
-	/// </summary>
+	/// @brief タイトルシーンを描画する
+	/// @param なし
+	/// @return なし
 	void Draw()override;
 
 public:
@@ -34,4 +33,6 @@ public:
 
 
 };
+
+}
 

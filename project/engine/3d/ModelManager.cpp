@@ -1,24 +1,21 @@
 #include "ModelManager.h"
-ModelManager* ModelManager::instance = nullptr;
 
-ModelManager* ModelManager::GetInstans()
+namespace Engine::Graphics3D {
+
+ModelManager* ModelManager::GetInstance()
 {
-	if (instance == nullptr) {
-
-		instance = new ModelManager;
-	}
-	return instance;
+	static ModelManager instance;
+	return &instance;
 }
 
 void ModelManager::Finalize()
 {
-
-	delete instance;
-	instance = nullptr;
-
+	models.clear();
+	modelCommon.reset();
+	srvmnager_ = nullptr;
 }
 
-void ModelManager::Initialize(DirectXCommon* dxcommon, SrvManager* srvmnager)
+void ModelManager::Initialize(Engine::Base::DirectXCommon* dxcommon, Engine::Base::SrvManager* srvmnager)
 {
 	srvmnager_ = srvmnager;
 	modelCommon = std::make_unique<ModelCommon>();
@@ -52,4 +49,6 @@ Model* ModelManager::FindModel(const std::string& filePath)
 
 	//ファイル名一致なし
 	return nullptr;
+}
+
 }

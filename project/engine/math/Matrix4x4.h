@@ -1,8 +1,7 @@
 #pragma once
 
-/// <summary>
-/// 4x4行列
-/// </summary>
+/// @brief 4x4 行列
+/// @details 変換行列や射影行列を保持する基本データ構造。
 
 struct Matrix4x4 {
 	float m[4][4];

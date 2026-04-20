@@ -2,40 +2,51 @@
 #include "DirectXCommon.h"
 #include <map>
 
-
-
-
 enum class PostEffectType;
+/// @brief 描画種別ごとのルートシグネチャとPSOを生成・保持するクラス
+/// @details 3D、スプライト、パーティクル、ライン、スキニング、ポストエフェクトを扱う。
+namespace Engine::Base {
+
 class GraphicsPipeline
 {
 public:
-	/// <summary>
-	/// 初期化
-	/// </summary>
-	void Initialize(DirectXCommon* dxCommon);
+	/// @brief DirectX 共通参照を保持する
+	/// @param dxCommon DirectX 共通管理
+	/// @return なし
+	void Initialize(Engine::Base::DirectXCommon* dxCommon);
 
-
+	/// @brief 3Dオブジェクト用PSOを生成する
 	void Create();//3dオブジェクト用
+	/// @brief 3Dオブジェクト用ルートシグネチャを生成する
 	void RootSignatureCreate();//3dオブジェクト用
 
+	/// @brief パーティクル用PSOを生成する
 	void CreateParticle();//パーティクル用
+	/// @brief パーティクル用ルートシグネチャを生成する
 	void RootSignatureParticleCreate();//パーティクル用
 
+	/// @brief スプライト用PSOを生成する
 	void CreateSprite();//スプライト用
+	/// @brief スプライト用ルートシグネチャを生成する
 	void RootSignatureSpriteCreate();//スプライト用
 
 	void CreateCopyImage(PostEffectType type, const std::wstring& psFilename); // ← 従来通りの単一バージョン
 	void CreateAllPostEffects(); // ← 新：複数ポストエフェクト用
 	void RootSignatureCopyImageCreate();
 	
-
+	/// @brief ライン用PSOを生成する
 	void CreateLine();//ライン用
+	/// @brief ライン用ルートシグネチャを生成する
 	void RootSignatureLineCreate();//ライン用
 
+	/// @brief スキニング用PSOを生成する
 	void CreateSkinning();//スキニング用
+	/// @brief スキニング用ルートシグネチャを生成する
 	void RootSignatureSkinningCreate();//スキニング用
 
+	/// @brief スカイボックス用PSOを生成する
 	void CreateSkybox();//Skybox用
+	/// @brief スカイボックス用ルートシグネチャを生成する
 	void RootSignatureSkyboxCreate();//Skybox用
 
 
@@ -68,7 +79,7 @@ public:
 	ID3D12PipelineState* GetGraphicsPipelineStateSkybox()const { return graphicsPipelineStateSkybox.Get(); }
 
 private:
-	DirectXCommon* dxCommon_ = nullptr;
+	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState = nullptr;
@@ -104,4 +115,6 @@ private:
 
 
 };
+
+}
 

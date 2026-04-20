@@ -1,7 +1,9 @@
-#include "OfscreenRenderManager.h"
+#include "OffscreenRenderManager.h"
 #include <imgui.h>
 
-void OfscreenRenderManager::Initialize(DirectXCommon* dxcommon, SrvManager* srvmanager)
+namespace Engine::Base {
+
+void OffscreenRenderManager::Initialize(Engine::Base::DirectXCommon* dxcommon, Engine::Base::SrvManager* srvmanager)
 {
 	dxCommon_ = dxcommon;
 	srvManager_ = srvmanager;
@@ -9,12 +11,12 @@ void OfscreenRenderManager::Initialize(DirectXCommon* dxcommon, SrvManager* srvm
 	//RTVの作成
 
 	renderTargetTextureResource = CreateRenderTargetTextureResource(
-		WinApp::kClientWindth,
-		WinApp::kClientHeight,
+		Engine::Base::WinApp::kClientWidth,
+		Engine::Base::WinApp::kClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-		clearColor
+		kClearColor
 	);
-	renderTargetTextureHandle = dxCommon_->GetRTVCPUDescriputorHandole(2);
+	renderTargetTextureHandle = dxCommon_->GetRTVCPUDescriptorHandle(2);
 
 	dxCommon_->GetDevice()->CreateRenderTargetView(renderTargetTextureResource.Get(),
 		&dxCommon_->GetRTVDesc(), renderTargetTextureHandle);
@@ -33,7 +35,7 @@ void OfscreenRenderManager::Initialize(DirectXCommon* dxcommon, SrvManager* srvm
 	graphicsPipeline_->CreateAllPostEffects(); // ←これだけ！
 }
 
-void OfscreenRenderManager::Begin()
+void OffscreenRenderManager::Begin()
 {
 	if (currentState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
 
@@ -53,13 +55,11 @@ void OfscreenRenderManager::Begin()
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dxCommon_->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
 	dxCommon_->GetCommandList()->OMSetRenderTargets(1, &renderTargetTextureHandle, false, &dsvHandle);
 	//指定した色で画面全体をクリアする
-	float kclearColor[] = { clearColor.x,clearColor.y,clearColor.z,clearColor.w };//青っぽい色。RGBAの順
-	dxCommon_->GetCommandList()->ClearRenderTargetView(renderTargetTextureHandle, kclearColor, 0, nullptr);
+	float clearColor[] = { kClearColor.x,kClearColor.y,kClearColor.z,kClearColor.w };
+	dxCommon_->GetCommandList()->ClearRenderTargetView(renderTargetTextureHandle, clearColor, 0, nullptr);
 	dxCommon_->GetCommandList()->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 
-
-	//コマンドリストの内容を確定させる。すべてのコマンドを積んでからCliseすること
 
 	D3D12_VIEWPORT viewport = dxCommon_->GetViewport();
 	D3D12_RECT scissorRect = dxCommon_->GetScissorRect();
@@ -70,7 +70,7 @@ void OfscreenRenderManager::Begin()
 
 }
 
-void OfscreenRenderManager::End()
+void OffscreenRenderManager::End()
 {
 	if (currentState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
 		D3D12_RESOURCE_BARRIER barrier{};
@@ -87,7 +87,7 @@ void OfscreenRenderManager::End()
 
 }
 
-void OfscreenRenderManager::Draw()
+void OffscreenRenderManager::Draw()
 {
 	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateCopyImage(currentEffectType_));
 	dxCommon_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureCopyImage());
@@ -106,13 +106,13 @@ void OfscreenRenderManager::Draw()
 
 
 
-Microsoft::WRL::ComPtr<ID3D12Resource> OfscreenRenderManager::CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& ClearColor)
+Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& clearColor)
 {
 	D3D12_RESOURCE_DESC resouceDesc{ };
 	resouceDesc.Width = width;//Textureの幅
 	resouceDesc.Height = height;//Textureの高さ
 	resouceDesc.MipLevels = 1;//mipmapの数
-	resouceDesc.DepthOrArraySize = 1;//奥行きor配Texturaの配列数
+	resouceDesc.DepthOrArraySize = 1;//奥行きまたは配列テクスチャの配列数
 	resouceDesc.Format = format;//Textureのフォーマット
 	resouceDesc.SampleDesc.Count = 1;//サンプリクト。１固定。
 	resouceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;//RenderTargetとして使う
@@ -146,9 +146,9 @@ Microsoft::WRL::ComPtr<ID3D12Resource> OfscreenRenderManager::CreateRenderTarget
 	return resource;
 }
 
-void OfscreenRenderManager::DrawImGui()
+void OffscreenRenderManager::DrawImGui()
 {
-	ImGui::Begin("OfscreenRenderManager");
+	ImGui::Begin("OffscreenRenderManager");
 	const char* items[] = {
 	   "Fullscreen",
 	   "Grayscale",
@@ -166,4 +166,6 @@ void OfscreenRenderManager::DrawImGui()
 		SetPostEffectType(static_cast<PostEffectType>(current));
 	}
 	ImGui::End();
+}
+
 }

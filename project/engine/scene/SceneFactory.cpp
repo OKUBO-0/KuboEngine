@@ -3,27 +3,32 @@
 #include "TitleScene.h"
 #include "GameClearScene.h"
 #include "GameOverScene.h"
+#include <cassert>
 
-BaseScene* SceneFactory::CreateScene(const std::string& sceneName)
+namespace Engine::Scene {
+
+std::unique_ptr<BaseScene> SceneFactory::CreateScene(const std::string& sceneName)
 {
-	BaseScene* newscene = nullptr;
+	std::unique_ptr<BaseScene> newscene;
 
 	if (sceneName == "GAMEPLAY") {
-		newscene = new GamePlayScene();
+		newscene = std::make_unique<GamePlayScene>();
 	}
 	else if (sceneName == "TITLE") {
-		newscene = new TitleScene();
+		newscene = std::make_unique<TitleScene>();
 	}
 	else if (sceneName == "GAMECLEAR") {
-		newscene = new GameClearScene();
+		newscene = std::make_unique<GameClearScene>();
 	}
 	else if (sceneName == "GAMEOVER") {
-		newscene = new GameOverScene();
+		newscene = std::make_unique<GameOverScene>();
 	}
 	else {
 		assert(0);
 	}
 
 	return newscene;
+
+}
 
 }

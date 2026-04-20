@@ -1,18 +1,17 @@
 #include "GameOverScene.h"
-#include "GameClearScene.h"
 #include "Object3DCommon.h"
 #include "SpriteCommon.h"
-#include "ImGuiManager.h"
 #ifdef _DEBUG
 #include <imgui.h>
 #endif // _DEBUG
-#include "Input.h"
 #include "SceneManager.h"
 #include "CameraManager.h"
 
+namespace Engine::Scene {
+
 void GameOverScene::Initialize()
 {
-	CameraManager::GetInstance()->Initialize();
+	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 }
 
 void GameOverScene::Finalize()
@@ -37,11 +36,13 @@ void GameOverScene::Draw()
 {
 #pragma region 3Dオブジェクト描画
 	//3dオブジェクトの描画準備。3Dオブジェクトの描画に共通のグラフィックスコマンドを積む
-	Object3DCommon::GetInstance()->CommonDraw();
+	Engine::Graphics3D::Object3DCommon::GetInstance()->CommonDraw();
 #pragma endregion
 
 #pragma region スプライト描画
 	//Spriteの描画準備。spriteの描画に共通のグラフィックスコマンドを積む
-	SpriteCommon::GetInstance()->CommonDraw();
+	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
 #pragma endregion
+}
+
 }

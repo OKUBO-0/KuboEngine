@@ -54,7 +54,7 @@ struct TransformationMatrix
 {
 	Matrix4x4 WVP;
 	Matrix4x4 World;
-	Matrix4x4 worldInberseTranspose;
+	Matrix4x4 worldInverseTranspose;
 
 };
 
@@ -93,8 +93,8 @@ struct SpotLight
 	Vector3 direction; //ライトの向き
 	float distance; //ライトの距離
 	float decay; //減衰率
-	float consAngle; //スポットライトの余弦
-	float cosFalloffstrt;
+	float coneAngleCos; //スポットライトの余弦
+	float cosFalloffStart;
 	int enable;
 	float padding[2];
 

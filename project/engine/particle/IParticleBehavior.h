@@ -4,16 +4,34 @@
 #include <random>        
 #include "Vector3.h"
 
+struct Material;
+
+namespace Engine::Particle {
+
 struct Particle;
-struct Material; 
+
+/// @brief パーティクル生成と更新ロジックを差し替えるためのインターフェース
+/// @details ParticleManager から呼ばれ、生成時の初期値設定と毎フレーム更新を
+///          振る舞いごとに切り替えるための Strategy を表す。
 class IParticleBehavior
 {
 public:
 	virtual~IParticleBehavior() = default;
-	// 毎フレームの更新処理
-	virtual void Update(Particle& particle, float dt,  Material* matelialData) = 0;
-	// 新規生成時の初期化（Emitの中で呼ばれる）
+
+	/// @brief 既存パーティクルを 1 フレーム更新する
+	/// @param particle 更新対象パーティクル
+	/// @param dt 経過時間
+	/// @param materialData 描画用マテリアル
+	/// @return なし
+	virtual void Update(Particle& particle, float dt, ::Material* materialData) = 0;
+
+	/// @brief 新規パーティクルの初期状態を生成する
+	/// @param rng 乱数生成器
+	/// @param pos 発生位置
+	/// @return 初期化済みパーティクル
 	virtual Particle Create(std::mt19937& rng, const Vector3& pos) = 0;
 
 };
+
+}
 

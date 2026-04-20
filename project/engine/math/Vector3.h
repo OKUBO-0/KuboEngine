@@ -1,9 +1,8 @@
 #pragma once
 #include <corecrt_math.h>
 
-/// <summary>
-/// 3次元ベクトル
-/// </summary>
+/// @brief 3 次元ベクトル
+/// @details 座標、方向、スケールなどに使う基本演算付きの値オブジェクト。
 struct Vector3 final {
 
 	float x;
