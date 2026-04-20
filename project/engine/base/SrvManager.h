@@ -1,16 +1,16 @@
 #pragma once
-//#include <d3d12.h>
-//#include <dxgi1_6.h>
-//#include <wrl.h>
 #include "DirectXCommon.h"
 
+/// @brief SRVディスクリプタヒープの確保と設定を担当するクラス
+/// @details テクスチャや StructuredBuffer 用の SRV を生成し、描画前にヒープをバインドする。
+namespace Engine::Base {
 
 class SrvManager
 {
 public:
-/// <summary>
-/// 初期化
-/// </summary>
+	/// @brief SRV管理を初期化する
+	/// @param dxcommon DirectX共通管理
+	/// @return なし
 	void Initialize(DirectXCommon* dxcommon);
 
 	//アロケータ（ヒープのアドレスを指定するやつ）
@@ -21,9 +21,9 @@ public:
 	D3D12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle(uint32_t index);
 
 	//SRV生成（テクスチャ用）
-	void CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT foemat, UINT MipLevels, DirectX::TexMetadata metadata);
+	void CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT foemat, UINT MipLevels, const DirectX::TexMetadata& metadata);
 	//SRV生成(structured Buffer用)
-	void CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResourece, UINT numElements,
+	void CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements,
 		UINT structureByteStride);
 	void PreDraw();
 	void SetGraficsRootDescriptorTable(UINT RootprameterIndex, uint32_t srvIndex);
@@ -42,4 +42,6 @@ private:
 	
 
 };
+
+}
 

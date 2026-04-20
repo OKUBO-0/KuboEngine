@@ -1,8 +1,7 @@
 #pragma once
 
-/// <summary>
-/// 4次元ベクトル
-/// </summary>
+/// @brief 4 次元ベクトル
+/// @details RGBA カラーや同次座標を表現するための値オブジェクト。
 struct Vector4 final {
 	float x;
 	float y;

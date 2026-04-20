@@ -149,8 +149,9 @@ copy "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dx
     <ClCompile Include="engine\base\SrvManager.cpp" />
     <ClCompile Include="engine\scene\TitleScene.cpp" />
     <ClCompile Include="engine\particle\ParticleEmitter.cpp" />
-    <ClCompile Include="engine\particle\ParticleMnager.cpp" />
-    <ClCompile Include="engine\base\OfscreenRenderManager.cpp" />
+    <ClCompile Include="engine\particle\ParticleManager.cpp" />
+    <ClCompile Include="engine\base\OffscreenRenderManager.cpp" />
+    <ClCompile Include="engine\scene\PlayerControlState.cpp" />
     <ClCompile Include="engine\skybox\SkyBox.cpp" />
     <ClCompile Include="engine\skybox\SkyBoxCommon.cpp" />
   </ItemGroup>
@@ -309,8 +310,9 @@ copy "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dx
     <ClInclude Include="engine\scene\GameOverScene.h" />
     <ClInclude Include="engine\base\GraphicsPipeline.h" />
     <ClInclude Include="engine\particle\ParticleEmitter.h" />
-    <ClInclude Include="engine\particle\ParticleMnager.h" />
-    <ClInclude Include="engine\base\OfscreenRenderManager.h" />
+    <ClInclude Include="engine\particle\ParticleManager.h" />
+    <ClInclude Include="engine\scene\PlayerControlState.h" />
+    <ClInclude Include="engine\base\OffscreenRenderManager.h" />
     <ClInclude Include="engine\Line\Line.h" />
     <ClInclude Include="engine\Line\LineCommon.h" />
     <ClInclude Include="engine\particle\IParticleBehavior.h" />

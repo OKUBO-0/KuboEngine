@@ -1,24 +1,34 @@
 #include "Game.h"
 #include "Framework.h"
+#include "D3DResourceLeakChecker.h"
+
+namespace {
+
+/// @brief アプリケーション実行の起動処理をまとめるヘルパークラス
+/// @details WinMain は Windows の都合で残し、実際の初期化と実行責務はこのクラスへ委譲する。
+class Application final {
+public:
+	/// @brief ゲーム本体を初期化して実行する
+	/// @param なし
+	/// @return 終了コード
+	int Run() const {
+		// DirectX リソースリーク検出用オブジェクト
+		Engine::Base::D3DResourceLeakChecker leakCheck;
+
+		// デバッグビルド時に起動確認メッセージを出しておく
+		OutputDebugStringA("Hello, DirectX!\n");
+
+		// Framework を継承した Game を生成して、実行責務を一本化する
+		std::unique_ptr<Engine::Base::Framework> game = std::make_unique<Engine::Scene::Game>();
+		game->Run();
+
+		return 0;
+	}
+};
+
+}
 
 // Windowsアプリのエントリーポイント（main関数に相当）
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-	// DirectXリソースリーク検出用オブジェクト
-	D3DResourceLeakChecker leakCheck;
-
-	// COMライブラリ初期化（マルチスレッド対応）
-	CoInitializeEx(0, COINIT_MULTITHREADED);
-
-	// デバッグ出力（Visual Studioの出力ウィンドウに表示）
-	OutputDebugStringA("Hello, DirectX!\n");
-
-#pragma region 基盤システム初期化
-	// Frameworkを継承したGameクラスのインスタンスを生成
-	std::unique_ptr<Framework> game = std::make_unique<Game>();
-
-	// ゲーム実行（初期化 → メインループ → 終了処理）
-	game->Run();
-#pragma endregion
-
-	return 0;
+	return Application{}.Run();
 }

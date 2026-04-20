@@ -6,8 +6,8 @@
 #include "MyMath.h"
 #include "RenderingData.h"
 #include "Model.h"
-#include "Camera.h"
-#include "Line.h"
+
+namespace Engine::Graphics3D {
 
 struct EnvironmentReflectionSetting {
 	float reflectionStrength = 1.0f; // 反射の強さ（0 = 無効、1 = 最大）
@@ -16,26 +16,31 @@ struct EnvironmentReflectionSetting {
 };
 
 class Object3DCommon;
+/// @brief 3Dモデルの描画状態を保持し、更新と描画を担当するクラス
+/// @details トランスフォーム、ライト、カメラ、スキニング、環境反射設定をまとめて扱う。
 class Object3D
 {
 public:
-	/// <summary>
-	/// 初期化
-	/// </summary>
+	/// @brief 描画に必要なGPUリソースを初期化する
+	/// @param object3DCommon 共通描画設定
+	/// @return なし
 	void Initialize(Object3DCommon* object3DCommon);
 
-	/// <summary>
-	/// 更新
-	/// </summary>
+	/// @brief アニメーションと行列定数を更新する
+	/// @param なし
+	/// @return なし
 	void Update();
 
 	void SkeletonUpdate( Skeleton& skeleton);
 	void ApplyAnimation(Skeleton& skeleton, const Animation& animation, float animationTime);
 	void SkinClusterUpdate(SkinCluster&skinCluster,const Skeleton&skeleton);
-	/// <summary>
-	/// 描画
-	/// </summary>
+	/// @brief 通常描画用のコマンドを積む
+	/// @param なし
+	/// @return なし
 	void Draw();
+	/// @brief スキニング描画用のコマンドを積む
+	/// @param なし
+	/// @return なし
 	void DrawSkinning();
 
 
@@ -44,13 +49,13 @@ public:
 	void SetModel(const std::string& filepath);
 
 	//環境マップ
-	void setskyboxfilepath(const std::string& filepath) { skyboxFilePath_=filepath; }
-	void SetreflectionStrengthforkankyouMap(float reflectionStrength) { environmentReflectionSettingData->reflectionStrength = reflectionStrength; }
-	void SettoughnessforkankyouMap(float roughness) { environmentReflectionSettingData->roughness = roughness; }
-	float GetreflectionStrengthforkankyouMap() { return environmentReflectionSettingData->reflectionStrength; }
-	float GetoughnessforkankyouMap() { return environmentReflectionSettingData->roughness; }
+	void SetSkyboxFilePath(const std::string& filepath) { skyboxFilePath_ = filepath; }
+	void SetEnvironmentReflectionStrength(float reflectionStrength) { environmentReflectionSettingData->reflectionStrength = reflectionStrength; }
+	void SetEnvironmentRoughness(float roughness) { environmentReflectionSettingData->roughness = roughness; }
+	float GetEnvironmentReflectionStrength() { return environmentReflectionSettingData->reflectionStrength; }
+	float GetEnvironmentRoughness() { return environmentReflectionSettingData->roughness; }
 
-	//transrat
+	// transform
 	void SetTransform(const EulerTransform& transform) { this->transform = transform; }
 	EulerTransform GetTransform() { return transform; }
 
@@ -62,9 +67,6 @@ public:
 	void SetRotate(const Vector3& rotate) { transform.rotate = rotate; }
 	//位置
 	void SetTranslate(const Vector3& transrate) { transform.translate = transrate; }
-	//カメラ
-	//void SetCamera(Camera* camera) { this->camera = camera; }
-	////デフォルトカメラ
 
 	//ディレクションライト
 	void SetDirectionalLight(const DirectionalLight& directionalLight) { *directionalLightData = directionalLight; }
@@ -113,9 +115,9 @@ public:
 	//スポットライトの減衰率
 	void SetSpotLightDecay(float decay) { spotLightData->decay = decay; }
 	//スポットライトのコーンの角度
-	void SetSpotLightConsAngle(float consAngle) { spotLightData->consAngle = consAngle; }
+	void SetSpotLightConeAngleCos(float coneAngleCos) { spotLightData->coneAngleCos = coneAngleCos; }
 
-	void SetSpotLightCosFalloffstrt(float cosFalloffstrt) { spotLightData->cosFalloffstrt = cosFalloffstrt; }
+	void SetSpotLightCosFalloffStart(float cosFalloffStart) { spotLightData->cosFalloffStart = cosFalloffStart; }
 	//スポットライトのオンオフ
 	void SetSpotLightEnable(bool enable) { spotLightData->enable = enable; }
 
@@ -133,6 +135,14 @@ public:
 
 
 private:
+	void InitializeTransformResources();
+	void InitializeLightResources();
+	void InitializeEnvironmentResources();
+	void InitializeCameraResources();
+	void UpdateAnimationState();
+	void ApplyModelSettings();
+	void UpdateTransformationMatrices();
+
 	Object3DCommon* object3DCommon_ = nullptr;//Object3DCommonのポインタ
 
 	Model* model_ = nullptr;//モデルのポインタ
@@ -142,11 +152,11 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource;
 	//データを書き込む
 
-	TransformationMatrix* transformaitionMatrixData = nullptr;
+	TransformationMatrix* transformationMatrixData_ = nullptr;
 
 
 	//平行光源
-	//平行光源用のResoureceを作成
+	//平行光源用のResourceを作成
 	Microsoft::WRL::ComPtr<ID3D12Resource> directionalLightResource;
 	DirectionalLight* directionalLightData = nullptr;
 
@@ -167,8 +177,6 @@ private:
 
 	//ライトのオンオフ
 	bool enableLighting = true;
-	//カメラ
-	Camera* camera = nullptr;
 	//カメラforGPU
 	Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource;//カメラのデータを送るためのリソース
 	CaMeraForGpu* cameraForGpu = nullptr;//カメラのデータをGPUに送るための構造体
@@ -177,7 +185,6 @@ private:
 	bool enableAnimation_= true;
 
 	Vector4 color_ = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルトは白
-	Line line_; // Lineクラスのポインタ
 	std::vector<Matrix4x4> skeletonPose_;
 
 	std::string skyboxFilePath_ ; // スカイボックスのファイルパス
@@ -185,4 +192,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> environmentReflectionSettingResource;
 
 };
+
+}
 

@@ -6,13 +6,14 @@
 #include "SrvManager.h"
 #include <unordered_map>
 
-
+/// @brief テクスチャ資産の読込と SRV 管理を行うクラス
+/// @details テクスチャファイルを GPU リソースへ展開し、ファイルパス単位で
+///          SRV ハンドルとメタデータを再利用できるよう保持する。
+namespace Engine::Base {
 
 class TextureManager
 {
 private:
-	static TextureManager* instance;
-
 	TextureManager() = default;
 	~TextureManager() = default;
 	TextureManager(TextureManager&) = default;
@@ -29,39 +30,58 @@ private:
 
 	};
 public:
-	//シングルトンインタンス
+	/// @brief シングルトンインスタンスを取得する
+	/// @param なし
+	/// @return TextureManager のインスタンス
 	static TextureManager* GetInstance();
-	//終了
+
+	/// @brief 保持しているテクスチャ資産を解放する
+	/// @param なし
+	/// @return なし
 	void Finalize();
 
-	/// <summary>
-	/// 初期化
-	/// </summary>
-	void Initialize(DirectXCommon* dxCommon, SrvManager* srvmanager);
+	/// @brief テクスチャ管理に必要な共通リソースを初期化する
+	/// @param dxCommon DirectX 共通管理クラス
+	/// @param srvmanager SRV 管理クラス
+	/// @return なし
+	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvmanager);
 
-	//メタデータを取得
+	/// @brief 読み込み済みテクスチャのメタデータを取得する
+	/// @param filepath テクスチャのファイルパス
+	/// @return 指定テクスチャのメタデータ
 	const DirectX::TexMetadata& GetMetaData(const std::string&filepath);
 	
-	//テクスチャファイルの読み込み
+	/// @brief テクスチャファイルを読み込んで GPU へ登録する
+	/// @param filePath 読み込むテクスチャのファイルパス
+	/// @return なし
 	void LoadTexture(const std::string& filePath);
 
-	//SRVインデックスの開始番号
+	/// @brief ファイルパスに対応するテクスチャの SRV インデックスを取得する
+	/// @param filePath 検索対象のファイルパス
+	/// @return 該当テクスチャの SRV インデックス
 	uint32_t GetTextureIndexByFilePath(const std::string& filePath);
 
 
-	//テクスチャ番号からCPUハンドルを取得
+	/// @brief ファイルパスに対応するテクスチャの GPU ハンドルを取得する
+	/// @param filepath 検索対象のファイルパス
+	/// @return 該当テクスチャの GPU デスクリプタハンドル
 	D3D12_GPU_DESCRIPTOR_HANDLE GetSrvHandleGPU(const std::string& filepath);
 
 	//Srvの最初
 	static uint32_t kSRVIndexTop;
 
 private:
+	DirectX::ScratchImage LoadTextureImage(const std::string& filePath);
+	DirectX::ScratchImage CreateMipImages(DirectX::ScratchImage&& image);
+	void UploadTextureResource(TexturData& textureData, const DirectX::ScratchImage& mipImages);
 
 	//テクスチャデータ
 	
-	DirectXCommon* dxCommon_=nullptr;
+	Engine::Base::DirectXCommon* dxCommon_=nullptr;
 	std::unordered_map<std::string, TexturData> textureDatas;
-	SrvManager* srvmanager = nullptr;
+	Engine::Base::SrvManager* srvmanager = nullptr;
 
 };
+
+}
 

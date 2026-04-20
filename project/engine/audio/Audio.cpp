@@ -1,18 +1,75 @@
 #include "Audio.h"
 #include <wrl.h>
 
-Audio* Audio::instance_ = nullptr;
+namespace Engine::AudioSystem {
+
+namespace {
+constexpr char kRiffChunkId[] = "RIFF";
+constexpr char kWaveChunkId[] = "WAVE";
+constexpr char kFormatChunkId[] = "fmt ";
+constexpr char kDataChunkId[] = "data";
+constexpr char kJunkChunkId[] = "JUNK";
+constexpr char kListChunkId[] = "LIST";
+constexpr size_t kChunkIdLength = 4;
+
+RiffHeader ReadRiffHeader(std::ifstream& file)
+{
+    RiffHeader riff{};
+    file.read(reinterpret_cast<char*>(&riff), sizeof(riff));
+    assert(strncmp(riff.chunk.id, kRiffChunkId, kChunkIdLength) == 0);
+    assert(strncmp(riff.type, kWaveChunkId, kChunkIdLength) == 0);
+    return riff;
+}
+
+FormatChunk ReadFormatChunk(std::ifstream& file)
+{
+    FormatChunk format{};
+    file.read(reinterpret_cast<char*>(&format), sizeof(ChunkHeader));
+    assert(strncmp(format.chunk.id, kFormatChunkId, kChunkIdLength) == 0);
+    assert(format.chunk.size <= sizeof(format.fmt));
+    file.read(reinterpret_cast<char*>(&format.fmt), format.chunk.size);
+    return format;
+}
+
+bool IsSkippableChunk(const ChunkHeader& chunk)
+{
+    return strncmp(chunk.id, kJunkChunkId, kChunkIdLength) == 0 ||
+        strncmp(chunk.id, kListChunkId, kChunkIdLength) == 0;
+}
+
+ChunkHeader ReadDataChunk(std::ifstream& file)
+{
+    ChunkHeader data{};
+    file.read(reinterpret_cast<char*>(&data), sizeof(data));
+    while (IsSkippableChunk(data)) {
+        file.seekg(data.size, std::ios_base::cur);
+        file.read(reinterpret_cast<char*>(&data), sizeof(data));
+    }
+
+    assert(strncmp(data.id, kDataChunkId, kChunkIdLength) == 0);
+    return data;
+}
+
+SoundData ReadSoundData(std::ifstream& file, const FormatChunk& format, const ChunkHeader& data)
+{
+    SoundData soundData{};
+    soundData.buffer.resize(data.size);
+    file.read(reinterpret_cast<char*>(soundData.buffer.data()), data.size);
+    soundData.wfex = format.fmt;
+    soundData.bufferSize = data.size;
+    return soundData;
+}
+}
 
 Audio* Audio::GetInstance()
 {
-    if (instance_ == nullptr) {
-        instance_ = new Audio();
-    }
-    return instance_;
+    static Audio instance;
+    return &instance;
 }
 
 void Audio::Initialize()
 {
+    // XAudio2 本体とマスターボイスを先に生成して、以降の SourceVoice 作成先を確保する
     HRESULT hr = XAudio2Create(&xAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
     assert(SUCCEEDED(hr));
 
@@ -23,7 +80,8 @@ void Audio::Initialize()
 void Audio::Finalize()
 {
     // すべての再生中の音を停止
-    for (auto& [soundData, voice] : activeVoices) {
+    for (auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             voice->Stop();
             voice->DestroyVoice();
@@ -32,7 +90,7 @@ void Audio::Finalize()
     activeVoices.clear();
 
     xAudio2.Reset();
-    delete instance_;
+    masterVoice = nullptr;
 }
 
 SoundData Audio::SoundLoadWave(const char* filename)
@@ -40,35 +98,12 @@ SoundData Audio::SoundLoadWave(const char* filename)
     std::ifstream file(filename, std::ios_base::binary);
     assert(file.is_open());
 
-    RiffHeader riff;
-    file.read((char*)&riff, sizeof(riff));
-    assert(strncmp(riff.chunk.id, "RIFF", 4) == 0);
-    assert(strncmp(riff.type, "WAVE", 4) == 0);
-
-    FormatChunk format = {};
-    file.read((char*)&format, sizeof(ChunkHeader));
-    assert(strncmp(format.chunk.id, "fmt ", 4) == 0);
-    assert(format.chunk.size <= sizeof(format.fmt));
-    file.read((char*)&format.fmt, format.chunk.size);
-
-    ChunkHeader data;
-    file.read((char*)&data, sizeof(data));
-
-    if (strncmp(data.id, "JUNK", 4) == 0 || strncmp(data.id, "LIST", 4) == 0) {
-        file.seekg(data.size, std::ios_base::cur);
-        file.read((char*)&data, sizeof(data));
-    }
-
-    assert(strncmp(data.id, "data", 4) == 0);
-
-    char* pbuffer = new char[data.size];
-    file.read(pbuffer, data.size);
+    // RIFF -> fmt -> data の順で抽出し、補助チャンクはヘルパー側で読み飛ばす
+    ReadRiffHeader(file);
+    FormatChunk format = ReadFormatChunk(file);
+    ChunkHeader data = ReadDataChunk(file);
+    SoundData soundData = ReadSoundData(file, format, data);
     file.close();
-
-    SoundData soundData = {};
-    soundData.wfex = format.fmt;
-    soundData.PBuffer = reinterpret_cast<BYTE*>(pbuffer);
-    soundData.bufferSize = data.size;
 
     return soundData;
 }
@@ -76,8 +111,7 @@ SoundData Audio::SoundLoadWave(const char* filename)
 void Audio::SoundUnload(SoundData* soundData)
 {
     StopSpecificAudio(soundData);
-    delete[] soundData->PBuffer;
-    soundData->PBuffer = nullptr;
+    soundData->buffer.clear();
     soundData->bufferSize = 0;
     soundData->wfex = {};
 }
@@ -86,14 +120,16 @@ void Audio::SoundPlayWave(const SoundData& soundData)
 {
     HRESULT hr;
 
+    // 同じ SoundData の二重再生を避けるため、既存 Voice があれば先に止める
     StopSpecificAudio(const_cast<SoundData*>(&soundData));
 
     IXAudio2SourceVoice* newVoice = nullptr;
     hr = xAudio2->CreateSourceVoice(&newVoice, &soundData.wfex);
     assert(SUCCEEDED(hr));
 
+    // 読み込み済みバッファをそのまま SourceVoice へ渡して再生する
     XAUDIO2_BUFFER buf{};
-    buf.pAudioData = soundData.PBuffer;
+    buf.pAudioData = soundData.buffer.data();
     buf.AudioBytes = soundData.bufferSize;
     buf.Flags = XAUDIO2_END_OF_STREAM;
 
@@ -105,7 +141,9 @@ void Audio::SoundPlayWave(const SoundData& soundData)
 
 void Audio::StopAudio()
 {
-    for (auto& [soundData, voice] : activeVoices) {
+    // 生成済み Voice をすべて破棄して再生状態をリセットする
+    for (auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             voice->Stop();
             voice->DestroyVoice();
@@ -129,7 +167,8 @@ void Audio::StopSpecificAudio(SoundData* soundData)
 
 void Audio::PauseAudio()
 {
-    for (auto& [soundData, voice] : activeVoices) {
+    for (auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             voice->Stop();
         }
@@ -149,7 +188,8 @@ void Audio::PauseSpecificAudio(SoundData* soundData)
 
 void Audio::ResumeAudio()
 {
-    for (auto& [soundData, voice] : activeVoices) {
+    for (auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             voice->Start();
         }
@@ -169,7 +209,9 @@ void Audio::ResumeSpecificAudio(SoundData* soundData)
 
 void Audio::SetPlaybackSpeed(float speed)
 {
-    for (auto& [soundData, voice] : activeVoices) {
+    // 再生中の全 Voice に同じ周波数比を適用する
+    for (auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             HRESULT hr = voice->SetFrequencyRatio(speed);
             assert(SUCCEEDED(hr));
@@ -191,7 +233,8 @@ void Audio::SetPlaybackSpeed(SoundData* soundData, float speed)
 
 bool Audio::IsSoundPlaying() const
 {
-    for (const auto& [soundData, voice] : activeVoices) {
+    for (const auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             XAUDIO2_VOICE_STATE state;
             voice->GetState(&state);
@@ -221,7 +264,8 @@ bool Audio::IsSoundPlaying(SoundData* soundData) const
 
 void Audio::SetVolume(float volume)
 {
-    for (auto& [soundData, voice] : activeVoices) {
+    for (auto& voiceEntry : activeVoices) {
+        IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             voice->SetVolume(volume);
         }
@@ -237,4 +281,6 @@ void Audio::SetVolume(SoundData* soundData, float volume)
             voice->SetVolume(volume);
         }
     }
+}
+
 }

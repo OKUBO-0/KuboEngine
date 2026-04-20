@@ -59,7 +59,7 @@ namespace MyMath {
 	Matrix4x4 MakeScaleMatrix(const Vector3& scale);
 	//同時座標変換
 	Vector3 Transform(const Vector3& vector, const Matrix4x4& matrix);
-	Vector3 Normlize(const Vector3& vector);
+	Vector3 Normalize(const Vector3& vector);
 
 	//Add
 	Vector3 Add(const Vector3& v, float scalar);
@@ -92,7 +92,7 @@ namespace MyMath {
 	Vector3 Lerp(const Vector3& v1, const Vector3& v2, float t);
 
 	//透視投影行列
-	Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearCilp, float farClip);
+	Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip);
 
 	//正射影行列
 	Matrix4x4 MakeOrthographicMatrix(float left, float top, float right, float bottm, float nearCip, float farCip);

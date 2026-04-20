@@ -5,7 +5,7 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #pragma comment(lib,"winmm.lib")
 
-
+namespace Engine::Base {
 
 LRESULT WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -33,54 +33,17 @@ LRESULT WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 void WinApp::Initialize()
 {
 	timeBeginPeriod(1);
-
 	HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
-
-	//ウィンドウプロシージャ
-	wc.lpfnWndProc = WindowProc;
-	//ウィンドウクラス名
-	wc.lpszClassName = L"CG2WindowClass";
-	//インスタンスハンドル
-	wc.hInstance = GetModuleHandle(nullptr);
-	//カーソル
-	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-
-	//ウィンドウクラス登録する
-	RegisterClass(&wc);
-
-	
-
-	RECT wrc = { 0,0,kClientWindth ,kClientHeight };
-
-	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
-
-	//ウィンドウ生成
-	 hwnd = CreateWindow(
-
-		wc.lpszClassName, L"CG2,",
-		WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT,
-		CW_USEDEFAULT,
-		wrc.right - wrc.left,
-		wrc.bottom - wrc.top,
-		nullptr,
-		nullptr,
-		wc.hInstance,
-		nullptr
-	);
+	assert(SUCCEEDED(hr));
+	RegisterWindowClass();
+	CreateMainWindow();
 	ShowWindow(hwnd, SW_SHOW);
-
-
 }
-
-
 
 void WinApp::Finalize()
 {
-	
 	CloseWindow(hwnd);
 	CoUninitialize();
-
 }
 
 bool WinApp::ProcessMessage()
@@ -96,4 +59,33 @@ bool WinApp::ProcessMessage()
 		return true;
 	}
 	return false;
+}
+
+void WinApp::RegisterWindowClass()
+{
+	wc.lpfnWndProc = WindowProc;
+	wc.lpszClassName = L"WindowClass";
+	wc.hInstance = GetModuleHandle(nullptr);
+	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	RegisterClass(&wc);
+}
+
+void WinApp::CreateMainWindow()
+{
+	RECT wrc = { 0,0,kClientWidth ,kClientHeight };
+	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
+	hwnd = CreateWindow(
+		wc.lpszClassName,
+		L"KuboEngine",
+		WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT,
+		CW_USEDEFAULT,
+		wrc.right - wrc.left,
+		wrc.bottom - wrc.top,
+		nullptr,
+		nullptr,
+		wc.hInstance,
+		nullptr);
+}
+
 }
