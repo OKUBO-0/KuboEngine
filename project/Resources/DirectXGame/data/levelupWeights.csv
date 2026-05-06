@@ -1,0 +1,17 @@
+orbit.unlockWeight,2.2
+normal.highLevelWeight,0.35
+normal.fastestIntervalWeight,0.5
+normal.fastIntervalWeight,0.7
+normal.midIntervalWeight,1.1
+drone.unlockWeight,1.8
+lightning.unlockWeight,1.4
+attack.lowWeight,1.5
+attack.midWeight,1.1
+attack.highWeight,0.75
+maxHp.lowWeight,1.5
+maxHp.highWeight,0.85
+moveSpeed.firstWeight,1.5
+moveSpeed.repeatWeight,1.0
+heal.lowHpWeight,2.5
+heal.midHpWeight,1.4
+heal.highHpWeight,0.7

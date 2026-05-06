@@ -4,13 +4,16 @@
 #include <wrl.h>
 #define DIRECTINPUT_VERSION 0x0800 // DirectInputのバージョン指定
 #include <dinput.h>
-#include "WinApp.h"
 #include <Vector2.h>
 #include <array>
 template <class T>using ComPtr = Microsoft::WRL::ComPtr<T>;
 
 #include <Xinput.h>
 #pragma comment(lib, "Xinput.lib")
+
+namespace Engine::Base {
+class WinApp;
+}
 
 namespace Engine::InputSystem {
 
@@ -89,17 +92,17 @@ public:
 	/// @return 押されたフレームなら true
 	bool TriggerGamePadButton(WORD button);
 	/// @brief ゲームパッドの X 軸スティック値を取得する
-	/// @param righ true なら右スティック、false なら左スティック
+	/// @param right true なら右スティック、false なら左スティック
 	/// @return 正規化したスティック値
-	float GetGamePadStickX(bool righ=false);
+	float GetGamePadStickX(bool right=false);
 	/// @brief ゲームパッドの Y 軸スティック値を取得する
-	/// @param righ true なら右スティック、false なら左スティック
+	/// @param right true なら右スティック、false なら左スティック
 	/// @return 正規化したスティック値
-	float GetGamePadStickY(bool righ = false);
+	float GetGamePadStickY(bool right = false);
 	/// @brief ゲームパッドのトリガー値を取得する
-	/// @param righ true なら右トリガー、false なら左トリガー
+	/// @param right true なら右トリガー、false なら左トリガー
 	/// @return トリガーの入力値
-	BYTE GetGamePadTrigger(bool righ = false);
+	BYTE GetGamePadTrigger(bool right = false);
 
 	/// @brief ゲームパッドの振動を設定する
 	/// @param leftMotor 左モーターの強さ

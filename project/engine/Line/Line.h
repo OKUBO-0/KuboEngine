@@ -7,6 +7,8 @@
 /// @brief デバッグ用ラインプリミティブを発行するユーティリティクラス
 /// @details 単線、AABB、グリッド、球、スケルトンなどをライン群へ変換し、
 ///          LineCommon に描画要求を送る役割を持つ。
+namespace Engine::LineSystem {
+
 class LineCommon;
 class Line
 {
@@ -65,3 +67,4 @@ private:
 
 };
 
+}

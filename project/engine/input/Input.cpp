@@ -1,9 +1,9 @@
 #include "Input.h"
+#include "WinApp.h"
 #include <cassert>
 #pragma comment(lib,"dinput8.lib")
 #pragma comment(lib,"dxguid.lib")
 #include <cmath>
-#include <iostream>
 
 namespace Engine::InputSystem {
 

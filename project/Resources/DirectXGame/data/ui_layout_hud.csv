@@ -1,0 +1,11 @@
+hpPosition,48,40
+hpSize,260,24
+expFramePosition,260,40
+expFrameSize,420,24
+expGaugePosition,260,40
+expGaugeSize,420,24
+lvLabelPosition,204,24
+lvLabelSize,48,48
+lvDigitsPosition,246,24
+timerPosition,1030,24
+timerScale,1.5

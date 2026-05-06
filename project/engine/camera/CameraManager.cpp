@@ -74,7 +74,7 @@ void CameraManager::SetActiveCamera(const std::string& name) {
     if (cameras.find(name) != cameras.end()) {
         activeCameraName = name;
     } else {
-        Logger::Log("Warning: Attempted to set an invalid active camera. Using default camera.");
+        Engine::Base::Logger::Log("Warning: Attempted to set an invalid active camera. Using default camera.");
         activeCameraName.clear(); // 無効なカメラを選択した場合、リセット
     }
 }

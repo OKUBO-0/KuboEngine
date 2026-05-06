@@ -1,0 +1,17 @@
+level,1
+nextLevelExp,10
+maxLifeStock,3
+lifeStock,3
+exp,0
+totalExp,0
+attackPower,1
+invincibilityDuration,1.25
+normalBulletInterval,0.85
+normalBulletUpgradeMultiplier,0.84
+normalBulletMinInterval,0.18
+droneInterval,2.0
+droneUpgradeMultiplier,0.8
+maxLifeStockCap,6
+moveSpeedUpgradeCap,5
+moveSpeedUpgradeStep,3.0
+moveSpeedMax,45.0

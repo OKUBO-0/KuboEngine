@@ -1,6 +1,8 @@
 #include "Game.h"
 #include "Framework.h"
 #include "D3DResourceLeakChecker.h"
+#include <Windows.h>
+#include <memory>
 
 namespace {
 
@@ -28,7 +30,8 @@ public:
 
 }
 
-// Windowsアプリのエントリーポイント（main関数に相当）
+/// @brief Windows サブシステムが要求するプロセスエントリーポイント
+/// @details 外部公開される自由関数はこの OS エントリーポイントだけに留め、実行責務は Application へ委譲する。
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	return Application{}.Run();
 }

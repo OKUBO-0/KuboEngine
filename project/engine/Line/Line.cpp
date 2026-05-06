@@ -1,5 +1,6 @@
 #include "Line.h"
 #include "LineCommon.h"
+#include <cassert>
 #include <numbers>
 #include <utility>
 #include "Vector3.h"
@@ -9,6 +10,8 @@ namespace {
 const Vector4 kDefaultGridLineColor = { 0.5f, 0.5f, 0.5f, 1.0f };
 
 }
+
+namespace Engine::LineSystem {
 
 std::array<Vector3, 8> Line::CreateAabbVertices(const Vector3& min, const Vector3& max) const
 {
@@ -138,4 +141,6 @@ void Line::DrawSkeleton(const Skeleton& skeleton, const std::vector<Matrix4x4>& 
 		DrawSphere(jointPosition, 0.005f, color);
 		DrawJointToParent(joint, jointPosition, skeletonPose, worldMatrix, color);
 	}
+}
+
 }

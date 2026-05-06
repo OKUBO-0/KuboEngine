@@ -1,0 +1,12 @@
+cursorSize,1280,720
+titlePosition,0,0
+guidePosition,0,0
+titleSize,1280,720
+cursorBasePosition,0,0
+menuHitboxPosition,145,340
+menuHitboxSize,300,88
+menuHitboxStepY,128
+modelBasePosition,20,-5,0
+cursorStepY,120
+guideSize,1280,720
+modelScale,4.5,4.5,4.5
