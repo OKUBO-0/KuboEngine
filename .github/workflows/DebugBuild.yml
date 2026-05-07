@@ -1,16 +1,18 @@
-name: DebugBuid
+name: DebugBuild
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
-      
+      - main
+      - checkpoint/directxgame-migration-stage16
+
 env:
   SOLUTION_FILE_PATH: project/KuboEngine.sln
   CONFIGURATION: Debug
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
 
     steps:
       - name: Checkout
@@ -19,11 +21,9 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
         with:
-           msbuild-architecture: x64
+          vs-version: '[18.0,19.0)'
+          vs-prerelease: true
+          msbuild-architecture: x64
 
       - name: Build
-        run: |
-          msbuild ${{env.SOLUTION_FILE_PATH}} /p:Platform=x64,Configuration=${{env.CONFIGURATION}}
-     
-    
- 
+        run: msbuild $env:SOLUTION_FILE_PATH /p:Configuration=$env:CONFIGURATION /p:Platform=x64

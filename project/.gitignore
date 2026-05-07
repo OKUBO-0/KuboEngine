@@ -13,6 +13,11 @@
 *.cache
 imgui.ini
 .env
+.env.example
+
+# Local Codex/work notes
+docs/
+scripts/
 
 # Build output
 [Dd]ebug/
@@ -23,4 +28,11 @@ bin/
 build/
 
 # Large local third-party binaries
-externals/assimp/lib/
+externals/assimp/lib/*
+!externals/assimp/lib/
+!externals/assimp/lib/Debug/
+externals/assimp/lib/Debug/*
+!externals/assimp/lib/Debug/assimp-vc143-mtd.lib
+!externals/assimp/lib/Release/
+externals/assimp/lib/Release/*
+!externals/assimp/lib/Release/assimp-vc143-mt.lib
