@@ -14,7 +14,11 @@
 #include "SceneManager.h"
 #include "SpriteCommon.h"
 #include <algorithm>
+#include <cmath>
+#include <optional>
 #include <random>
+#include <string>
+#include <utility>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -27,6 +31,23 @@ constexpr char kAudioPauseToggle[] = "game.pauseToggle";
 constexpr char kAudioLevelUp[] = "game.levelUp";
 constexpr char kAudioDeath[] = "game.death";
 constexpr float kLevelUpSlideSpeed = 4200.0f;
+constexpr Vector2 kLevelUpChoiceSize{ 1280.0f, 720.0f };
+
+constexpr std::array<std::pair<const char*, float>, 13> kAudioTuningDefaults{ {
+	{ "title.bgm", 0.1f },
+	{ "title.select", 1.0f },
+	{ "title.decide", 1.0f },
+	{ kAudioStart, 1.0f },
+	{ kAudioPauseToggle, 0.5f },
+	{ kAudioLevelUp, 1.0f },
+	{ kAudioDeath, 1.0f },
+	{ "combat.shot", 1.0f },
+	{ "combat.enemyHit", 0.5f },
+	{ "combat.enemyDeath", 1.0f },
+	{ "combat.playerDamage", 0.8f },
+	{ "combat.expPickup", 1.0f },
+	{ "result.finish", 1.0f },
+} };
 
 bool IsConfirmTriggered()
 {
@@ -71,6 +92,11 @@ float Clamp01(float value)
 	return std::clamp(value, 0.0f, 1.0f);
 }
 
+std::string WeaponLevelTexturePath(const char* weaponDirectory, int32_t nextLevel)
+{
+	return std::string("ui/game/") + weaponDirectory + "/lv" + std::to_string(nextLevel) + ".png";
+}
+
 }
 
 namespace DirectXGame {
@@ -90,6 +116,7 @@ void DirectXGameScene::Initialize()
 
 	InitializeLighting();
 	InitializeWorld();
+	LoadDebugTuning();
 	InitializeUi();
 	InitializeParticles();
 	curtain_ = std::make_unique<CurtainTransition>();
@@ -256,7 +283,12 @@ void DirectXGameScene::InitializeUi()
 
 	for (UILabel& choiceSprite : levelUpChoiceSprites_) {
 		choiceSprite.Initialize("ui/game/lvup_attack.png", { 0.0f, 0.0f });
-		choiceSprite.SetSize({ 1280.0f, 720.0f });
+		choiceSprite.SetSize(kLevelUpChoiceSize);
+	}
+	for (UILabel& choiceIcon : levelUpChoiceIcons_) {
+		choiceIcon.Initialize("ui/game/lvup_attack_icon.png", { 0.0f, 0.0f });
+		choiceIcon.SetSize(kLevelUpChoiceSize);
+		choiceIcon.SetVisible(false);
 	}
 	InitializePauseBuildUi();
 
@@ -316,11 +348,165 @@ void DirectXGameScene::InitializeParticles()
 		std::make_unique<SparkParticleBehavior>());
 	particleManager->SetBehavior("DirectXGame.Spark", std::make_unique<SparkParticleBehavior>());
 	particleManager->CreateParticleGroup(
+		"DirectXGame.EnemyHitSpark",
+		"Resources/DirectXGame/white1x1.png",
+		Engine::Particle::VerticesType::Quad,
+		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }));
+	particleManager->SetBehavior("DirectXGame.EnemyHitSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }));
+	particleManager->CreateParticleGroup(
+		"DirectXGame.ExpSpark",
+		"Resources/DirectXGame/white1x1.png",
+		Engine::Particle::VerticesType::Quad,
+		std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }));
+	particleManager->SetBehavior("DirectXGame.ExpSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }));
+	particleManager->CreateParticleGroup(
+		"DirectXGame.LightningSpark",
+		"Resources/DirectXGame/white1x1.png",
+		Engine::Particle::VerticesType::Quad,
+		std::make_unique<SparkParticleBehavior>(Vector4{ 0.48f, 0.84f, 1.0f, 1.0f }));
+	particleManager->SetBehavior("DirectXGame.LightningSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.48f, 0.84f, 1.0f, 1.0f }));
+	particleManager->CreateParticleGroup(
+		"DirectXGame.PlayerDeathSpark",
+		"Resources/DirectXGame/white1x1.png",
+		Engine::Particle::VerticesType::Quad,
+		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }));
+	particleManager->SetBehavior("DirectXGame.PlayerDeathSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }));
+	particleManager->CreateParticleGroup(
+		"DirectXGame.DeathSmoke",
+		"Resources/DirectXGame/white1x1.png",
+		Engine::Particle::VerticesType::Quad,
+		std::make_unique<SmokeParticleBehavior>());
+	particleManager->SetBehavior("DirectXGame.DeathSmoke", std::make_unique<SmokeParticleBehavior>());
+	particleManager->CreateParticleGroup(
 		"DirectXGame.Confetti",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<ConfettiParticleBehavior>());
 	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>());
+	ApplyParticleBehaviorTuning();
+}
+
+void DirectXGameScene::LoadDebugTuning()
+{
+	const UILayoutIO::LayoutMap tuning = UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {});
+
+	GameAudioCache::SetMasterVolume(UILayoutIO::GetFloat(tuning, "audio.master", GameAudioCache::GetMasterVolume()));
+	for (const auto& [key, fallback] : kAudioTuningDefaults) {
+		GameAudioCache::SetTunedVolume(key, UILayoutIO::GetFloat(tuning, std::string("audio.") + key, fallback));
+	}
+
+	particleTuning_.playerDamageSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDamageSparkCount", static_cast<float>(particleTuning_.playerDamageSparkCount)));
+	particleTuning_.playerDamageRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDamageRippleCount", static_cast<float>(particleTuning_.playerDamageRippleCount)));
+	particleTuning_.enemyHitSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyHitSparkCount", static_cast<float>(particleTuning_.enemyHitSparkCount)));
+	particleTuning_.enemyDeathSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathSparkCount", static_cast<float>(particleTuning_.enemyDeathSparkCount)));
+	particleTuning_.enemyDeathSmokeCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathSmokeCount", static_cast<float>(particleTuning_.enemyDeathSmokeCount)));
+	particleTuning_.enemyDeathRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathRippleCount", static_cast<float>(particleTuning_.enemyDeathRippleCount)));
+	particleTuning_.expRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.expRippleCount", static_cast<float>(particleTuning_.expRippleCount)));
+	particleTuning_.expSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.expSparkCount", static_cast<float>(particleTuning_.expSparkCount)));
+	particleTuning_.lightningSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.lightningSparkCount", static_cast<float>(particleTuning_.lightningSparkCount)));
+	particleTuning_.lightningRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.lightningRippleCount", static_cast<float>(particleTuning_.lightningRippleCount)));
+	particleTuning_.levelUpConfettiCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.levelUpConfettiCount", static_cast<float>(particleTuning_.levelUpConfettiCount)));
+	particleTuning_.playerDeathSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDeathSparkCount", static_cast<float>(particleTuning_.playerDeathSparkCount)));
+	particleTuning_.playerDeathSmokeCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDeathSmokeCount", static_cast<float>(particleTuning_.playerDeathSmokeCount)));
+	particleTuning_.playerDeathRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDeathRippleCount", static_cast<float>(particleTuning_.playerDeathRippleCount)));
+	particleTuning_.sparkLifetime = UILayoutIO::GetFloat(tuning, "particle.sparkLifetime", particleTuning_.sparkLifetime);
+	particleTuning_.sparkVelocityScale = UILayoutIO::GetFloat(tuning, "particle.sparkVelocityScale", particleTuning_.sparkVelocityScale);
+	particleTuning_.sparkScaleMultiplier = UILayoutIO::GetFloat(tuning, "particle.sparkScaleMultiplier", particleTuning_.sparkScaleMultiplier);
+	particleTuning_.smokeLifetime = UILayoutIO::GetFloat(tuning, "particle.smokeLifetime", particleTuning_.smokeLifetime);
+	particleTuning_.smokeScaleMultiplier = UILayoutIO::GetFloat(tuning, "particle.smokeScaleMultiplier", particleTuning_.smokeScaleMultiplier);
+	particleTuning_.rippleLifetime = UILayoutIO::GetFloat(tuning, "particle.rippleLifetime", particleTuning_.rippleLifetime);
+	particleTuning_.rippleExpandSpeed = UILayoutIO::GetFloat(tuning, "particle.rippleExpandSpeed", particleTuning_.rippleExpandSpeed);
+	particleTuning_.confettiVelocityScale = UILayoutIO::GetFloat(tuning, "particle.confettiVelocityScale", particleTuning_.confettiVelocityScale);
+	particleTuning_.confettiScaleMultiplier = UILayoutIO::GetFloat(tuning, "particle.confettiScaleMultiplier", particleTuning_.confettiScaleMultiplier);
+
+	if (player_) {
+		player_->SetCameraHeight(UILayoutIO::GetFloat(tuning, "camera.height", player_->GetCameraHeight()));
+		player_->SetCameraDistance(UILayoutIO::GetFloat(tuning, "camera.distance", player_->GetCameraDistance()));
+		player_->SetCameraPitch(UILayoutIO::GetFloat(tuning, "camera.pitch", player_->GetCameraPitch()));
+		player_->SetMouseAimEnabled(UILayoutIO::GetFloat(tuning, "camera.mouseAimEnabled", player_->IsMouseAimEnabled() ? 1.0f : 0.0f) > 0.5f);
+		const int32_t cameraMode = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "camera.mode", static_cast<float>(player_->GetCameraMode())));
+		if (cameraMode >= 0 && cameraMode <= static_cast<int32_t>(Player::CameraMode::TopDown)) {
+			player_->SetCameraMode(static_cast<Player::CameraMode>(cameraMode));
+		}
+	}
+}
+
+void DirectXGameScene::SaveDebugTuning() const
+{
+#ifdef _DEBUG
+	std::vector<UILayoutIO::Entry> entries{
+		{ "audio.master", { GameAudioCache::GetMasterVolume() } },
+		{ "particle.playerDamageSparkCount", { static_cast<float>(particleTuning_.playerDamageSparkCount) } },
+		{ "particle.playerDamageRippleCount", { static_cast<float>(particleTuning_.playerDamageRippleCount) } },
+		{ "particle.enemyHitSparkCount", { static_cast<float>(particleTuning_.enemyHitSparkCount) } },
+		{ "particle.enemyDeathSparkCount", { static_cast<float>(particleTuning_.enemyDeathSparkCount) } },
+		{ "particle.enemyDeathSmokeCount", { static_cast<float>(particleTuning_.enemyDeathSmokeCount) } },
+		{ "particle.enemyDeathRippleCount", { static_cast<float>(particleTuning_.enemyDeathRippleCount) } },
+		{ "particle.expRippleCount", { static_cast<float>(particleTuning_.expRippleCount) } },
+		{ "particle.expSparkCount", { static_cast<float>(particleTuning_.expSparkCount) } },
+		{ "particle.lightningSparkCount", { static_cast<float>(particleTuning_.lightningSparkCount) } },
+		{ "particle.lightningRippleCount", { static_cast<float>(particleTuning_.lightningRippleCount) } },
+		{ "particle.levelUpConfettiCount", { static_cast<float>(particleTuning_.levelUpConfettiCount) } },
+		{ "particle.playerDeathSparkCount", { static_cast<float>(particleTuning_.playerDeathSparkCount) } },
+		{ "particle.playerDeathSmokeCount", { static_cast<float>(particleTuning_.playerDeathSmokeCount) } },
+		{ "particle.playerDeathRippleCount", { static_cast<float>(particleTuning_.playerDeathRippleCount) } },
+		{ "particle.sparkLifetime", { particleTuning_.sparkLifetime } },
+		{ "particle.sparkVelocityScale", { particleTuning_.sparkVelocityScale } },
+		{ "particle.sparkScaleMultiplier", { particleTuning_.sparkScaleMultiplier } },
+		{ "particle.smokeLifetime", { particleTuning_.smokeLifetime } },
+		{ "particle.smokeScaleMultiplier", { particleTuning_.smokeScaleMultiplier } },
+		{ "particle.rippleLifetime", { particleTuning_.rippleLifetime } },
+		{ "particle.rippleExpandSpeed", { particleTuning_.rippleExpandSpeed } },
+		{ "particle.confettiVelocityScale", { particleTuning_.confettiVelocityScale } },
+		{ "particle.confettiScaleMultiplier", { particleTuning_.confettiScaleMultiplier } },
+	};
+
+	for (const auto& [key, fallback] : kAudioTuningDefaults) {
+		entries.push_back({ std::string("audio.") + key, { GameAudioCache::GetTunedVolume(key, fallback) } });
+	}
+	if (player_) {
+		entries.push_back({ "camera.height", { player_->GetCameraHeight() } });
+		entries.push_back({ "camera.distance", { player_->GetCameraDistance() } });
+		entries.push_back({ "camera.pitch", { player_->GetCameraPitch() } });
+		entries.push_back({ "camera.mode", { static_cast<float>(player_->GetCameraMode()) } });
+		entries.push_back({ "camera.mouseAimEnabled", { player_->IsMouseAimEnabled() ? 1.0f : 0.0f } });
+	}
+	UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+#endif
+}
+
+void DirectXGameScene::ApplyParticleBehaviorTuning()
+{
+	SparkParticleBehavior::Settings sparkSettings{};
+	sparkSettings.lifetime = particleTuning_.sparkLifetime;
+	sparkSettings.horizontalSpeed *= particleTuning_.sparkVelocityScale;
+	sparkSettings.verticalSpeedMin *= particleTuning_.sparkVelocityScale;
+	sparkSettings.verticalSpeedMax *= particleTuning_.sparkVelocityScale;
+	sparkSettings.scaleMin *= particleTuning_.sparkScaleMultiplier;
+	sparkSettings.scaleMax *= particleTuning_.sparkScaleMultiplier;
+
+	SmokeParticleBehavior::Settings smokeSettings{};
+	smokeSettings.lifetime = particleTuning_.smokeLifetime;
+	smokeSettings.scaleMin *= particleTuning_.smokeScaleMultiplier;
+	smokeSettings.scaleMax *= particleTuning_.smokeScaleMultiplier;
+
+	RippleParticleBehavior::Settings rippleSettings{};
+	rippleSettings.lifetime = particleTuning_.rippleLifetime;
+	rippleSettings.expandSpeed = particleTuning_.rippleExpandSpeed;
+
+	ConfettiParticleBehavior::Settings confettiSettings{};
+	confettiSettings.velocityScale = particleTuning_.confettiVelocityScale;
+	confettiSettings.scaleMultiplier = particleTuning_.confettiScaleMultiplier;
+
+	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
+	particleManager->SetBehavior("DirectXGame.Ripple", std::make_unique<RippleParticleBehavior>(Vector4{ 0.45f, 0.75f, 1.0f, 1.0f }, rippleSettings));
+	particleManager->SetBehavior("DirectXGame.Spark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.35f, 0.25f, 1.0f }, sparkSettings));
+	particleManager->SetBehavior("DirectXGame.EnemyHitSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }, sparkSettings));
+	particleManager->SetBehavior("DirectXGame.ExpSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }, sparkSettings));
+	particleManager->SetBehavior("DirectXGame.LightningSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.48f, 0.84f, 1.0f, 1.0f }, sparkSettings));
+	particleManager->SetBehavior("DirectXGame.PlayerDeathSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }, sparkSettings));
+	particleManager->SetBehavior("DirectXGame.DeathSmoke", std::make_unique<SmokeParticleBehavior>(Vector4{ 0.45f, 0.42f, 0.38f, 0.85f }, smokeSettings));
+	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>(confettiSettings));
 }
 
 void DirectXGameScene::UpdateGamePlay(float deltaTime)
@@ -356,23 +542,42 @@ void DirectXGameScene::UpdateEffects()
 
 	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
 	const Vector3 playerPosition = player_->GetWorldPosition();
+	if (enemyManager_) {
+		for (const Vector3& hitPosition : enemyManager_->GetRecentHitEffectPositions()) {
+			particleManager->Emit("DirectXGame.EnemyHitSpark", hitPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyHitSparkCount)));
+		}
+		for (const Vector3& deathPosition : enemyManager_->GetRecentDeathEffectPositions()) {
+			particleManager->Emit("DirectXGame.EnemyHitSpark", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount)));
+			particleManager->Emit("DirectXGame.DeathSmoke", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount)));
+			particleManager->Emit("DirectXGame.Ripple", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathRippleCount)));
+		}
+		enemyManager_->ClearRecentEffectPositions();
+	}
+
 	const int32_t hp = playerManager_->GetHP();
 	if (hp < previousEffectHp_) {
 		particleManager->Emit("DirectXGame.Spark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDamageSparkCount)));
 		particleManager->Emit("DirectXGame.Ripple", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDamageRippleCount)));
 	}
 	previousEffectHp_ = hp;
+	if (gameState_ == GameState::Dead && !deathEffectEmitted_) {
+		particleManager->Emit("DirectXGame.PlayerDeathSpark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSparkCount)));
+		particleManager->Emit("DirectXGame.DeathSmoke", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSmokeCount)));
+		particleManager->Emit("DirectXGame.Ripple", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathRippleCount)));
+		deathEffectEmitted_ = true;
+	}
 
 	const int32_t totalExp = playerManager_->GetTotalEXP();
 	if (totalExp > previousEffectTotalExp_) {
 		particleManager->Emit("DirectXGame.Ripple", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.expRippleCount)));
+		particleManager->Emit("DirectXGame.ExpSpark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.expSparkCount)));
 	}
 	previousEffectTotalExp_ = totalExp;
 
 	const float lightningTimer = playerManager_->GetLightningEffectTimer();
 	if (lightningTimer > previousLightningEffectTimer_) {
 		for (const Vector3& target : playerManager_->GetLightningEffectTargets()) {
-			particleManager->Emit("DirectXGame.Spark", target, static_cast<uint32_t>((std::max)(0, particleTuning_.lightningSparkCount)));
+			particleManager->Emit("DirectXGame.LightningSpark", target, static_cast<uint32_t>((std::max)(0, particleTuning_.lightningSparkCount)));
 			particleManager->Emit("DirectXGame.Ripple", target, static_cast<uint32_t>((std::max)(0, particleTuning_.lightningRippleCount)));
 		}
 	}
@@ -384,6 +589,8 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 	if (!uiInitialized_) {
 		return;
 	}
+
+	uiAnimationTime_ += deltaTime;
 
 	if (playerManager_) {
 		const int32_t currentHp = playerManager_->GetHP();
@@ -437,6 +644,9 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 			MoveMenuSelection(1);
 		}
 		pauseCursor_.SetPosition({ 790.0f, menuSelection_ == 0 ? 318.0f : 486.0f });
+		const float cursorPulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 8.0f);
+		pauseCursor_.SetScale(1.0f + cursorPulse * 0.08f);
+		pauseCursor_.SetAlpha(0.72f + cursorPulse * 0.28f);
 		if (IsConfirmTriggered()) {
 			if (menuSelection_ == 0) {
 				EnterPlaying();
@@ -461,10 +671,16 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 		if (IsMenuDownTriggered()) {
 			MoveMenuSelection(1);
 		}
+		const float selectedPulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 7.2f);
 		for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
-			levelUpChoiceSprites_[index].SetColor(index == static_cast<size_t>(menuSelection_)
-				? Vector4{ 1.15f, 1.15f, 0.75f, 1.0f }
-				: Vector4{ 1.0f, 1.0f, 1.0f, 1.0f });
+			const bool selected = index == static_cast<size_t>(menuSelection_);
+			const Vector4 choiceColor = selected
+				? Vector4{ 1.08f + selectedPulse * 0.10f, 1.08f + selectedPulse * 0.10f, 0.74f + selectedPulse * 0.16f, 1.0f }
+				: Vector4{ 0.86f, 0.86f, 0.86f, 1.0f };
+			levelUpChoiceSprites_[index].SetColor(choiceColor);
+			levelUpChoiceIcons_[index].SetColor(choiceColor);
+			levelUpChoiceSprites_[index].SetAlpha(selected ? 1.0f : 0.78f);
+			levelUpChoiceIcons_[index].SetAlpha(selected ? 1.0f : 0.78f);
 		}
 		if (IsConfirmTriggered()) {
 			levelUpSelectionPending_ = true;
@@ -503,6 +719,9 @@ void DirectXGameScene::DrawUi()
 		for (UILabel& choiceSprite : levelUpChoiceSprites_) {
 			choiceSprite.Draw();
 		}
+		for (UILabel& choiceIcon : levelUpChoiceIcons_) {
+			choiceIcon.Draw();
+		}
 	}
 	hitFlashOverlay_.Draw();
 	deathOverlay_.Draw();
@@ -525,12 +744,15 @@ void DirectXGameScene::UpdatePauseBuildUi()
 
 	for (size_t index = 0; index < pauseBuildIcons_.size(); ++index) {
 		UILabel& icon = pauseBuildIcons_[index];
+		const float pulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 3.8f + static_cast<float>(index) * 0.65f);
+		const bool enabled = alphas[index] >= 0.95f;
 		icon.SetPosition({
 			pauseBuildLayout_.position.x + pauseBuildLayout_.stepX * static_cast<float>(index),
 			pauseBuildLayout_.position.y,
 		});
 		icon.SetSize(pauseBuildLayout_.iconSize);
 		icon.SetVisible(showBuildIcons);
+		icon.SetScale(enabled ? 1.0f + pulse * 0.035f : 1.0f);
 		icon.SetColor({ 1.0f, 1.0f, 1.0f, alphas[index] });
 	}
 }
@@ -595,6 +817,7 @@ void DirectXGameScene::EnterPlaying()
 	}
 	gameState_ = GameState::Playing;
 	deathTimer_ = 0.0f;
+	deathEffectEmitted_ = false;
 	menuSelection_ = 0;
 }
 
@@ -684,23 +907,43 @@ void DirectXGameScene::BuildLevelUpChoices()
 		return;
 	}
 
+	const auto addChoice = [this](std::string texturePath, std::string iconPath, std::function<void()> apply) {
+		levelUpChoices_.push_back({
+			std::move(texturePath),
+			std::move(iconPath),
+			std::move(apply),
+			});
+		};
+
 	if (!playerManager_->IsNormalBulletMaxLevel()) {
-		levelUpChoices_.push_back({ UpgradeType::Normal, "ui/game/normal/choice.png" });
+		addChoice(
+			WeaponLevelTexturePath("normal", playerManager_->GetNormalBulletLevel() + 1),
+			"ui/game/normal/icon.png",
+			[this]() { playerManager_->UpgradeNormalBullets(); });
 	}
 	if (!playerManager_->IsOrbitBulletMaxLevel()) {
-		levelUpChoices_.push_back({ UpgradeType::Orbit, playerManager_->HasOrbitBullets() ? "ui/game/orbit/upgrade.png" : "ui/game/orbit/add.png" });
+		addChoice(
+			playerManager_->HasOrbitBullets() ? WeaponLevelTexturePath("orbit", playerManager_->GetOrbitBulletLevel() + 1) : "ui/game/orbit/add.png",
+			"ui/game/orbit/icon.png",
+			[this]() { playerManager_->UpgradeOrbitBullets(); });
 	}
 	if (!playerManager_->IsDroneMaxLevel()) {
-		levelUpChoices_.push_back({ UpgradeType::Drone, playerManager_->HasDrone() ? "ui/game/drone/upgrade.png" : "ui/game/drone/add.png" });
+		addChoice(
+			playerManager_->HasDrone() ? WeaponLevelTexturePath("drone", playerManager_->GetDroneLevel() + 1) : "ui/game/drone/add.png",
+			"ui/game/drone/icon.png",
+			[this]() { playerManager_->UpgradeDrone(); });
 	}
 	if (!playerManager_->IsLightningMaxLevel()) {
-		levelUpChoices_.push_back({ UpgradeType::Lightning, playerManager_->HasLightning() ? "ui/game/lightning/upgrade.png" : "ui/game/lightning/add.png" });
+		addChoice(
+			playerManager_->HasLightning() ? WeaponLevelTexturePath("lightning", playerManager_->GetLightningLevel() + 1) : "ui/game/lightning/add.png",
+			"ui/game/lightning/icon.png",
+			[this]() { playerManager_->UpgradeLightning(); });
 	}
-	levelUpChoices_.push_back({ UpgradeType::Attack, "ui/game/lvup_attack.png" });
-	levelUpChoices_.push_back({ UpgradeType::MaxHP, "ui/game/lvup_maxhp.png" });
-	levelUpChoices_.push_back({ UpgradeType::MoveSpeed, "ui/game/lvup_speed.png" });
+	addChoice("ui/game/lvup_attack.png", "ui/game/lvup_attack_icon.png", [this]() { playerManager_->UpgradeAttackPower(); });
+	addChoice("ui/game/lvup_maxhp.png", "ui/game/lvup_maxhp_icon.png", [this]() { playerManager_->IncreaseMaxHP(); });
+	addChoice("ui/game/lvup_speed.png", "ui/game/lvup_speed_icon.png", [this]() { playerManager_->UpgradeMoveSpeed(); });
 	if (playerManager_->GetHP() < playerManager_->GetMaxHP()) {
-		levelUpChoices_.push_back({ UpgradeType::Heal, "ui/game/lvup_heal.png" });
+		addChoice("ui/game/lvup_heal.png", "ui/game/lvup_heal_icon.png", [this]() { playerManager_->RecoverHP(); });
 	}
 
 	static std::mt19937 rng{ std::random_device{}() };
@@ -712,7 +955,14 @@ void DirectXGameScene::BuildLevelUpChoices()
 	for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
 		const std::string path = index < levelUpChoices_.size() ? levelUpChoices_[index].texturePath : "ui/game/lvup_attack.png";
 		levelUpChoiceSprites_[index].Initialize(path, { 0.0f, 140.0f * static_cast<float>(index) });
-		levelUpChoiceSprites_[index].SetSize({ 1280.0f, 720.0f });
+		levelUpChoiceSprites_[index].SetSize(kLevelUpChoiceSize);
+		const std::string iconPath = index < levelUpChoices_.size() ? levelUpChoices_[index].iconPath : "ui/game/lvup_attack_icon.png";
+		levelUpChoiceIcons_[index].Initialize(iconPath, {
+			0.0f,
+			140.0f * static_cast<float>(index),
+		});
+		levelUpChoiceIcons_[index].SetSize(kLevelUpChoiceSize);
+		levelUpChoiceIcons_[index].SetVisible(index < levelUpChoices_.size());
 	}
 	ApplyLevelUpLayout();
 }
@@ -724,31 +974,8 @@ void DirectXGameScene::ApplySelectedLevelUpChoice()
 	}
 
 	const LevelUpChoice& choice = levelUpChoices_[static_cast<size_t>(std::clamp(menuSelection_, 0, static_cast<int32_t>(levelUpChoices_.size()) - 1))];
-	switch (choice.type) {
-	case UpgradeType::Normal:
-		playerManager_->UpgradeNormalBullets();
-		break;
-	case UpgradeType::Orbit:
-		playerManager_->UpgradeOrbitBullets();
-		break;
-	case UpgradeType::Drone:
-		playerManager_->UpgradeDrone();
-		break;
-	case UpgradeType::Lightning:
-		playerManager_->UpgradeLightning();
-		break;
-	case UpgradeType::Attack:
-		playerManager_->UpgradeAttackPower();
-		break;
-	case UpgradeType::MaxHP:
-		playerManager_->IncreaseMaxHP();
-		break;
-	case UpgradeType::MoveSpeed:
-		playerManager_->UpgradeMoveSpeed();
-		break;
-	case UpgradeType::Heal:
-		playerManager_->RecoverHP();
-		break;
+	if (choice.apply) {
+		choice.apply();
 	}
 }
 
@@ -760,7 +987,12 @@ void DirectXGameScene::ApplyLevelUpLayout()
 			levelUpSlideOffsetX_,
 			140.0f * static_cast<float>(index),
 		});
-		levelUpChoiceSprites_[index].SetSize({ 1280.0f, 720.0f });
+		levelUpChoiceSprites_[index].SetSize(kLevelUpChoiceSize);
+		levelUpChoiceIcons_[index].SetPosition({
+			levelUpSlideOffsetX_,
+			140.0f * static_cast<float>(index),
+		});
+		levelUpChoiceIcons_[index].SetSize(kLevelUpChoiceSize);
 	}
 }
 
@@ -886,6 +1118,14 @@ void DirectXGameScene::UpdateDebugUi()
 	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
 		GameAudioCache::SetMasterVolume(masterVolume);
 	}
+	if (ImGui::Button("Save Debug Tuning")) {
+		SaveDebugTuning();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Reload Debug Tuning")) {
+		LoadDebugTuning();
+		ApplyParticleBehaviorTuning();
+	}
 	if (ImGui::CollapsingHeader("Audio Balance")) {
 		auto tuneVolume = [](const char* label, const char* key, float fallback) {
 			float volume = GameAudioCache::GetTunedVolume(key, fallback);
@@ -911,6 +1151,56 @@ void DirectXGameScene::UpdateDebugUi()
 		ImGui::Separator();
 		ImGui::Text("Run Count: %u", sessionContext_->GetRunCount());
 		ImGui::Text("Frame Count: %u", sessionContext_->GetGameFrameCount());
+	}
+	if (ImGui::CollapsingHeader("Gameplay Dashboard", ImGuiTreeNodeFlags_DefaultOpen)) {
+		const size_t enemyCount = enemyManager_ ? enemyManager_->GetActiveEnemyCount() : 0;
+		const size_t orbCount = enemyManager_ ? enemyManager_->GetExpOrbCount() : 0;
+		const size_t normalBulletCount = playerManager_ ? playerManager_->GetNormalBullets().size() : 0;
+		const size_t orbitBulletCount = playerManager_ ? playerManager_->GetOrbitBullets().size() : 0;
+		size_t droneBulletCount = 0;
+		if (playerManager_ && playerManager_->HasDrone() && playerManager_->GetDrone()) {
+			droneBulletCount = playerManager_->GetDrone()->GetBullets().size();
+		}
+
+		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
+		ImGui::Text("State: %s", GetGameStateName());
+		ImGui::Text("Enemies: %zu  EXP Orbs: %zu  Kills: %d", enemyCount, orbCount, enemyManager_ ? enemyManager_->GetTotalKillCount() : 0);
+		ImGui::Text("Bullets: Normal %zu / Orbit %zu / Drone %zu", normalBulletCount, orbitBulletCount, droneBulletCount);
+		ImGui::Text("Particles: %zu active across %zu groups",
+			particleManager->GetTotalActiveParticleCount(),
+			particleManager->GetParticleGroupCount());
+		if (ImGui::TreeNode("Particle Groups")) {
+			constexpr std::array<const char*, 8> kDirectXGameParticleGroups{
+				"DirectXGame.Ripple",
+				"DirectXGame.Spark",
+				"DirectXGame.EnemyHitSpark",
+				"DirectXGame.ExpSpark",
+				"DirectXGame.LightningSpark",
+				"DirectXGame.PlayerDeathSpark",
+				"DirectXGame.DeathSmoke",
+				"DirectXGame.Confetti",
+			};
+			for (const char* groupName : kDirectXGameParticleGroups) {
+				const std::optional<size_t> activeCount = particleManager->GetActiveParticleCount(groupName);
+				ImGui::Text("%s: %zu", groupName, activeCount.value_or(0));
+			}
+			ImGui::TreePop();
+		}
+		if (playerManager_) {
+			ImGui::Text("Weapons: Normal Lv%d Dmg%d Interval %.2f",
+				playerManager_->GetNormalBulletLevel(),
+				playerManager_->GetNormalBulletDamage(),
+				playerManager_->GetNormalBulletInterval());
+			ImGui::Text("Orbit Lv%d Dmg%d | Drone Lv%d Dmg%d | Lightning Lv%d Dmg%d Count%d Radius %.1f",
+				playerManager_->GetOrbitBulletLevel(),
+				playerManager_->GetOrbitBulletDamage(),
+				playerManager_->GetDroneLevel(),
+				playerManager_->GetDroneDamage(),
+				playerManager_->GetLightningLevel(),
+				playerManager_->GetLightningDamage(),
+				playerManager_->GetLightningStrikeCount(),
+				playerManager_->GetLightningRadius());
+		}
 	}
 	if (player_) {
 		const Vector3& position = player_->GetWorldPosition();
@@ -987,15 +1277,62 @@ void DirectXGameScene::UpdateDebugUi()
 		if (ImGui::CollapsingHeader("Particle Tuning")) {
 			ImGui::SliderInt("Damage Spark Count", &particleTuning_.playerDamageSparkCount, 0, 100);
 			ImGui::SliderInt("Damage Ripple Count", &particleTuning_.playerDamageRippleCount, 0, 12);
+			ImGui::SliderInt("Enemy Hit Spark Count", &particleTuning_.enemyHitSparkCount, 0, 80);
+			ImGui::SliderInt("Enemy Death Spark Count", &particleTuning_.enemyDeathSparkCount, 0, 120);
+			ImGui::SliderInt("Enemy Death Smoke Count", &particleTuning_.enemyDeathSmokeCount, 0, 80);
+			ImGui::SliderInt("Enemy Death Ripple Count", &particleTuning_.enemyDeathRippleCount, 0, 12);
 			ImGui::SliderInt("EXP Ripple Count", &particleTuning_.expRippleCount, 0, 12);
+			ImGui::SliderInt("EXP Spark Count", &particleTuning_.expSparkCount, 0, 80);
 			ImGui::SliderInt("Lightning Spark Count", &particleTuning_.lightningSparkCount, 0, 100);
 			ImGui::SliderInt("Lightning Ripple Count", &particleTuning_.lightningRippleCount, 0, 12);
 			ImGui::SliderInt("LevelUp Confetti Count", &particleTuning_.levelUpConfettiCount, 0, 160);
+			ImGui::SliderInt("Player Death Spark Count", &particleTuning_.playerDeathSparkCount, 0, 160);
+			ImGui::SliderInt("Player Death Smoke Count", &particleTuning_.playerDeathSmokeCount, 0, 100);
+			ImGui::SliderInt("Player Death Ripple Count", &particleTuning_.playerDeathRippleCount, 0, 12);
+			bool particleBehaviorChanged = false;
+			particleBehaviorChanged |= ImGui::SliderFloat("Spark Lifetime", &particleTuning_.sparkLifetime, 0.08f, 1.2f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Spark Velocity Scale", &particleTuning_.sparkVelocityScale, 0.2f, 3.0f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Spark Scale Multiplier", &particleTuning_.sparkScaleMultiplier, 0.25f, 3.0f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Smoke Lifetime", &particleTuning_.smokeLifetime, 0.2f, 2.0f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Smoke Scale Multiplier", &particleTuning_.smokeScaleMultiplier, 0.25f, 3.0f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Ripple Lifetime", &particleTuning_.rippleLifetime, 0.1f, 1.2f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Ripple Expand Speed", &particleTuning_.rippleExpandSpeed, 1.0f, 9.0f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Confetti Velocity Scale", &particleTuning_.confettiVelocityScale, 0.2f, 3.0f);
+			particleBehaviorChanged |= ImGui::SliderFloat("Confetti Scale Multiplier", &particleTuning_.confettiScaleMultiplier, 0.25f, 3.0f);
+			if (particleBehaviorChanged) {
+				ApplyParticleBehaviorTuning();
+			}
 			if (ImGui::Button("Emit Player Spark") && player_) {
 				Engine::Particle::ParticleManager::GetInstance()->Emit(
 					"DirectXGame.Spark",
 					player_->GetWorldPosition(),
 					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDamageSparkCount)));
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Emit Enemy Death") && player_) {
+				Engine::Particle::ParticleManager::GetInstance()->Emit(
+					"DirectXGame.EnemyHitSpark",
+					player_->GetWorldPosition(),
+					static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount)));
+				Engine::Particle::ParticleManager::GetInstance()->Emit(
+					"DirectXGame.DeathSmoke",
+					player_->GetWorldPosition(),
+					static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount)));
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Emit Player Death") && player_) {
+				Engine::Particle::ParticleManager::GetInstance()->Emit(
+					"DirectXGame.PlayerDeathSpark",
+					player_->GetWorldPosition(),
+					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSparkCount)));
+				Engine::Particle::ParticleManager::GetInstance()->Emit(
+					"DirectXGame.DeathSmoke",
+					player_->GetWorldPosition(),
+					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSmokeCount)));
+				Engine::Particle::ParticleManager::GetInstance()->Emit(
+					"DirectXGame.Ripple",
+					player_->GetWorldPosition(),
+					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathRippleCount)));
 			}
 			ImGui::SameLine();
 			if (ImGui::Button("Emit LevelUp Confetti")) {
@@ -1086,6 +1423,24 @@ void DirectXGameScene::ApplyPostEffect() const
 		break;
 	}
 	offscreen->SetScenePostEffectType(effect);
+}
+
+const char* DirectXGameScene::GetGameStateName() const
+{
+	switch (gameState_) {
+	case GameState::Start:
+		return "Start";
+	case GameState::Playing:
+		return "Playing";
+	case GameState::Paused:
+		return "Paused";
+	case GameState::LevelUp:
+		return "LevelUp";
+	case GameState::Dead:
+		return "Dead";
+	default:
+		return "Unknown";
+	}
 }
 
 }

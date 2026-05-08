@@ -3,10 +3,12 @@
 #include "RenderingData.h"
 #include <d3d12.h>
 #include <wrl.h>
+#include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <random>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -158,6 +160,19 @@ public:
 	/// @param behavior 設定する振る舞い
 	/// @return なし
 	void SetBehavior(const std::string& groupName, std::unique_ptr<IParticleBehavior> behavior);
+
+	/// @brief 全グループの生存パーティクル数を取得する
+	/// @return 生存パーティクル数
+	size_t GetTotalActiveParticleCount() const;
+
+	/// @brief 指定グループの生存パーティクル数を取得する
+	/// @param groupName 対象グループ名
+	/// @return グループが存在する場合は生存数、存在しない場合は std::nullopt
+	std::optional<size_t> GetActiveParticleCount(const std::string& groupName) const;
+
+	/// @brief 登録済みパーティクルグループ数を取得する
+	/// @return グループ数
+	size_t GetParticleGroupCount() const { return particleGroups.size(); }
 
 
 private:

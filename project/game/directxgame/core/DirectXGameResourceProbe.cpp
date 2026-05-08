@@ -6,7 +6,12 @@
 #include "ModelManager.h"
 #include "TextureManager.h"
 #include <cassert>
+#include <array>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <string_view>
+#include <vector>
 
 namespace DirectXGame {
 
@@ -27,6 +32,83 @@ std::vector<UILayoutIO::Entry> BuildDefaultHudLayout()
 		{ "timerPosition", { 1030.0f, 24.0f } },
 		{ "timerScale", { 1.5f } },
 	};
+}
+
+std::vector<std::string> BuildRequiredAssetPaths()
+{
+	std::vector<std::string> paths{
+		ResourcePaths::MakeTexturePath("white1x1.png"),
+		ResourcePaths::MakeTexturePath("ui/title/title.png"),
+		ResourcePaths::MakeTexturePath("ui/title/guideUI.png"),
+		ResourcePaths::MakeTexturePath("ui/title/cursor.png"),
+		ResourcePaths::MakeTexturePath("ui/game/start.png"),
+		ResourcePaths::MakeTexturePath("ui/game/pause.png"),
+		ResourcePaths::MakeTexturePath("ui/game/pause_arrow.png"),
+		ResourcePaths::MakeTexturePath("ui/game/death.png"),
+		ResourcePaths::MakeTexturePath("ui/game/levelup.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_attack.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_attack_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_maxhp.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_maxhp_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_speed.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_speed_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_heal.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup_heal_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/normal/icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/orbit/icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/orbit/add.png"),
+		ResourcePaths::MakeTexturePath("ui/game/drone/icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/drone/add.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lightning/icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lightning/add.png"),
+		ResourcePaths::MakeTexturePath("ui/result/Result.png"),
+		ResourcePaths::MakeTexturePath("ui/result/finish_ui.png"),
+		ResourcePaths::MakeTexturePath("ui/number/numbers.png"),
+		ResourcePaths::MakeAudioPath("se/se_exp.wav"),
+		ResourcePaths::MakeAudioPath("se/se_pause.wav"),
+		ResourcePaths::MakeAudioPath("se/se_death.wav"),
+		ResourcePaths::MakeDataPath("playerStatus.csv"),
+		ResourcePaths::MakeDataPath("weaponUpgradeSettings.csv"),
+		ResourcePaths::MakeDataPath("enemySpawnSettings.csv"),
+		ResourcePaths::MakeDataPath("levelupWeights.csv"),
+		ResourcePaths::MakeDataPath("enemyTypes.csv"),
+		ResourcePaths::MakeDataPath("debug_tuning.csv"),
+	};
+
+	const std::array<const char*, 4> weaponDirectories{ "normal", "orbit", "drone", "lightning" };
+	for (const char* weaponDirectory : weaponDirectories) {
+		for (int32_t level = 2; level <= 8; ++level) {
+			paths.push_back(ResourcePaths::MakeTexturePath(
+				std::string("ui/game/") + weaponDirectory + "/lv" + std::to_string(level) + ".png"));
+		}
+	}
+
+	return paths;
+}
+
+bool ExistsRelativeToKnownRoots(const std::string& path)
+{
+	if (std::filesystem::exists(path)) {
+		return true;
+	}
+
+	std::error_code error;
+	const std::filesystem::path exeRelative =
+		std::filesystem::current_path(error).parent_path() / path;
+	return !error && std::filesystem::exists(exeRelative);
+}
+
+void VerifyRequiredAssets(DirectXGameResourceProbeStatus& status)
+{
+	const std::vector<std::string> requiredAssets = BuildRequiredAssetPaths();
+	status.requiredAssetCount = requiredAssets.size();
+	status.missingRequiredAssets.clear();
+	for (const std::string& path : requiredAssets) {
+		if (!ExistsRelativeToKnownRoots(path)) {
+			status.missingRequiredAssets.push_back(path);
+		}
+	}
+	status.requiredAssetsReady = status.missingRequiredAssets.empty();
 }
 
 }
@@ -69,6 +151,8 @@ const DirectXGameResourceProbeStatus& DirectXGameResourceProbe::Verify()
 		hudLayout.contains("hpPosition") &&
 		hudLayout.contains("expFramePosition") &&
 		hudLayout.contains("timerPosition");
+
+	VerifyRequiredAssets(status);
 
 	status.verified = true;
 	return status;

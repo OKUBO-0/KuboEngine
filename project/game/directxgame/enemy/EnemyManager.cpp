@@ -131,10 +131,17 @@ size_t EnemyManager::GetActiveEnemyCount() const
 	}));
 }
 
+void EnemyManager::ClearRecentEffectPositions()
+{
+	recentHitEffectPositions_.clear();
+	recentDeathEffectPositions_.clear();
+}
+
 void EnemyManager::DamageAllEnemies(int32_t damage)
 {
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
 		if (enemy && enemy->IsActive()) {
+			recentHitEffectPositions_.push_back(enemy->GetPosition());
 			enemy->TakeDamage(damage);
 		}
 	}
@@ -397,6 +404,7 @@ void EnemyManager::ResolveEnemySeparation()
 void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 {
 	++totalKillCount_;
+	recentDeathEffectPositions_.push_back(enemy.GetPosition());
 	auto orb = std::make_unique<ExpOrb>();
 	orb->SetLightSettings(lightSettings_);
 	orb->Initialize(enemy.GetPosition(), enemy.GetEXP());
@@ -427,6 +435,7 @@ bool EnemyManager::TryHandleBulletHit(Enemy& enemy, const Vector3& impactPositio
 	}
 
 	enemy.TakeDamage(damage, knockDirection, knockStrength);
+	recentHitEffectPositions_.push_back(enemyPosition);
 	return true;
 }
 

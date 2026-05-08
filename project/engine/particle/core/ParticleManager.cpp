@@ -333,4 +333,22 @@ void ParticleManager::SetBehavior(const std::string& groupName, std::unique_ptr<
 	particleGroups.at(groupName).behavior = std::move(behavior);
 }
 
+size_t ParticleManager::GetTotalActiveParticleCount() const
+{
+	size_t total = 0;
+	for (const auto& particleGroupEntry : particleGroups) {
+		total += particleGroupEntry.second.particles.size();
+	}
+	return total;
+}
+
+std::optional<size_t> ParticleManager::GetActiveParticleCount(const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return it->second.particles.size();
+}
+
 }

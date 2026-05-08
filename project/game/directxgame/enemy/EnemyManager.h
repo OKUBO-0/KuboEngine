@@ -30,6 +30,9 @@ public:
 	int32_t GetTotalKillCount() const { return totalKillCount_; }
 	size_t GetActiveEnemyCount() const;
 	size_t GetExpOrbCount() const { return expOrbs_.size(); }
+	const std::vector<Vector3>& GetRecentHitEffectPositions() const { return recentHitEffectPositions_; }
+	const std::vector<Vector3>& GetRecentDeathEffectPositions() const { return recentDeathEffectPositions_; }
+	void ClearRecentEffectPositions();
 	void DamageAllEnemies(int32_t damage);
 	void CheckCollisions(Player* player, PlayerManager* playerManager);
 	bool FindNearestEnemyPosition(const Vector3& origin, float maxDistance, Vector3& outPosition) const;
@@ -101,6 +104,8 @@ private:
 	float baseSpawnInterval_ = kDefaultBaseSpawnInterval;
 	float spawnAcceleration_ = kDefaultSpawnAcceleration;
 	int32_t totalKillCount_ = 0;
+	std::vector<Vector3> recentHitEffectPositions_;
+	std::vector<Vector3> recentDeathEffectPositions_;
 };
 
 } // namespace DirectXGame

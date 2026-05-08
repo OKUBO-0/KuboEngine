@@ -17,6 +17,7 @@
 #include "game/directxgame/world/GridPlane.h"
 #include "game/directxgame/world/SkyDome.h"
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -40,6 +41,9 @@ private:
 	void InitializeUi();
 	void InitializePauseBuildUi();
 	void InitializeParticles();
+	void LoadDebugTuning();
+	void SaveDebugTuning() const;
+	void ApplyParticleBehaviorTuning();
 	void UpdateGamePlay(float deltaTime);
 	void UpdateEffects();
 	void UpdateUi(float deltaTime);
@@ -64,6 +68,7 @@ private:
 	void QueueEffectDraw();
 	void UpdateDebugUi();
 	void ApplyPostEffect() const;
+	const char* GetGameStateName() const;
 
 	enum class GameState {
 		Start,
@@ -92,8 +97,9 @@ private:
 	};
 
 	struct LevelUpChoice {
-		UpgradeType type = UpgradeType::Attack;
 		std::string texturePath;
+		std::string iconPath;
+		std::function<void()> apply;
 	};
 
 	struct PauseBuildLayout {
@@ -107,10 +113,27 @@ private:
 	struct ParticleTuning {
 		int32_t playerDamageSparkCount = 18;
 		int32_t playerDamageRippleCount = 1;
+		int32_t enemyHitSparkCount = 10;
+		int32_t enemyDeathSparkCount = 24;
+		int32_t enemyDeathSmokeCount = 10;
+		int32_t enemyDeathRippleCount = 1;
 		int32_t expRippleCount = 1;
+		int32_t expSparkCount = 8;
 		int32_t lightningSparkCount = 14;
 		int32_t lightningRippleCount = 1;
 		int32_t levelUpConfettiCount = 56;
+		int32_t playerDeathSparkCount = 48;
+		int32_t playerDeathSmokeCount = 18;
+		int32_t playerDeathRippleCount = 2;
+		float sparkLifetime = 0.35f;
+		float sparkVelocityScale = 1.0f;
+		float sparkScaleMultiplier = 1.0f;
+		float smokeLifetime = 0.72f;
+		float smokeScaleMultiplier = 1.0f;
+		float rippleLifetime = 0.42f;
+		float rippleExpandSpeed = 4.5f;
+		float confettiVelocityScale = 1.0f;
+		float confettiScaleMultiplier = 1.0f;
 	};
 
 	std::shared_ptr<DirectXGameSessionContext> sessionContext_;
@@ -135,6 +158,7 @@ private:
 	UILabel hitFlashOverlay_;
 	UILabel deathOverlay_;
 	std::array<UILabel, 3> levelUpChoiceSprites_;
+	std::array<UILabel, 3> levelUpChoiceIcons_;
 	std::array<UILabel, 5> pauseBuildIcons_;
 	std::vector<LevelUpChoice> levelUpChoices_;
 	PauseBuildLayout pauseBuildLayout_{};
@@ -151,6 +175,7 @@ private:
 	float deathTimer_ = 0.0f;
 	float previousLightningEffectTimer_ = 0.0f;
 	float levelUpSlideOffsetX_ = 1280.0f;
+	float uiAnimationTime_ = 0.0f;
 	std::string pendingSceneId_;
 	LevelUpAnimationState levelUpAnimationState_ = LevelUpAnimationState::Hidden;
 	bool levelUpSelectionPending_ = false;
@@ -158,6 +183,7 @@ private:
 		GameInputBindings::NavigationInputDevice::Keyboard;
 	bool uiInitialized_ = false;
 	bool gameOverSePlayed_ = false;
+	bool deathEffectEmitted_ = false;
 	bool debugDrawEnabled_ = false;
 };
 

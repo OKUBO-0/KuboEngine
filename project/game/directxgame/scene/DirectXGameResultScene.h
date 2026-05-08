@@ -29,8 +29,14 @@ private:
 	void ApplyLayout();
 	void SaveLayout() const;
 	void UpdateCountUp(float deltaTime);
+	void UpdateFinishUiPulse();
 	void DrawNumber(const std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites);
-	void SetNumberSprites(std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites, const Vector2& basePosition, int32_t value);
+	void SetNumberSprites(
+		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites,
+		const Vector2& basePosition,
+		int32_t value,
+		float scaleMultiplier = 1.0f,
+		float alpha = 1.0f);
 	bool IsCountUpFinished() const;
 	void FinishCountUp();
 	void RequestSceneChange(const char* sceneId);
@@ -63,6 +69,7 @@ private:
 	float displayedLevel_ = 0.0f;
 	float displayedKills_ = 0.0f;
 	float displayedTotalScore_ = 0.0f;
+	float resultAnimationTime_ = 0.0f;
 	std::string pendingSceneId_;
 	GameInputBindings::NavigationInputDevice navigationInputDevice_ =
 		GameInputBindings::NavigationInputDevice::Keyboard;

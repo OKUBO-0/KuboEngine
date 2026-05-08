@@ -2,8 +2,59 @@
 #include "DirectXCommon.h"
 #include "SrvManager.h"
 #include "StringUtility.h"
+#include <Windows.h>
+#include <array>
+#include <filesystem>
 
 namespace Engine::Base {
+
+namespace {
+
+std::filesystem::path GetExecutableDirectory()
+{
+	std::array<char, MAX_PATH> path{};
+	const DWORD length = GetModuleFileNameA(nullptr, path.data(), static_cast<DWORD>(path.size()));
+	if (length == 0 || length >= path.size()) {
+		return {};
+	}
+	return std::filesystem::path(path.data()).parent_path();
+}
+
+std::string ResolveTexturePath(const std::string& filePath)
+{
+	if (filePath.empty()) {
+		return filePath;
+	}
+
+	const std::filesystem::path requestedPath(filePath);
+	if (std::filesystem::exists(requestedPath)) {
+		return requestedPath.generic_string();
+	}
+
+	const std::filesystem::path exeDirectory = GetExecutableDirectory();
+	const std::filesystem::path currentDirectory = std::filesystem::current_path();
+	const std::array<std::filesystem::path, 4> baseDirectories{
+		exeDirectory,
+		exeDirectory.parent_path(),
+		currentDirectory,
+		currentDirectory / "project",
+	};
+
+	for (const std::filesystem::path& baseDirectory : baseDirectories) {
+		if (baseDirectory.empty()) {
+			continue;
+		}
+
+		const std::filesystem::path candidate = baseDirectory / requestedPath;
+		if (std::filesystem::exists(candidate)) {
+			return candidate.generic_string();
+		}
+	}
+
+	return requestedPath.generic_string();
+}
+
+}
 
 TextureManager* TextureManager::GetInstance()
 {
@@ -52,12 +103,16 @@ void TextureManager::LoadTexture(const std::string& filePath)
 DirectX::ScratchImage TextureManager::LoadTextureImage(const std::string& filePath)
 {
 	DirectX::ScratchImage image{};
-	std::wstring filePathW = StringUtility::ConvertString(filePath);
+	const std::string resolvedPath = ResolveTexturePath(filePath);
+	std::wstring filePathW = StringUtility::ConvertString(resolvedPath);
 	HRESULT hr;
 	if (filePathW.ends_with(L".dds")) {
 		hr = DirectX::LoadFromDDSFile(filePathW.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
 	} else {
 		hr = DirectX::LoadFromWICFile(filePathW.c_str(), DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, image);
+	}
+	if (FAILED(hr)) {
+		OutputDebugStringA(("Failed to load texture: " + resolvedPath + "\n").c_str());
 	}
 	assert(SUCCEEDED(hr));
 	return image;

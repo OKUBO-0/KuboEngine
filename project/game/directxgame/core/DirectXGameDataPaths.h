@@ -16,6 +16,7 @@ inline constexpr char kPauseLayout[] = "ui_layout_pause.csv";
 inline constexpr char kLevelupLayout[] = "ui_layout_levelup.csv";
 inline constexpr char kResultLayout[] = "ui_layout_result.csv";
 inline constexpr char kHudLayout[] = "ui_layout_hud.csv";
+inline constexpr char kDebugTuning[] = "debug_tuning.csv";
 
 inline std::string Resolve(std::string_view relativePath)
 {

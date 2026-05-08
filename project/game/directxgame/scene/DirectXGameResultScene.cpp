@@ -85,7 +85,9 @@ void DirectXGameResultScene::Update()
 	}
 
 	constexpr float kFixedDeltaTime = 1.0f / 60.0f;
+	resultAnimationTime_ += kFixedDeltaTime;
 	UpdateCountUp(kFixedDeltaTime);
+	UpdateFinishUiPulse();
 	UpdateCurtain(kFixedDeltaTime);
 
 	if (!pendingSceneId_.empty()) {
@@ -307,10 +309,11 @@ void DirectXGameResultScene::UpdateCountUp(float deltaTime)
 	const int32_t totalScore = CalculateTotalScore(resultData.totalExp, resultData.finalLevel, resultData.totalKillCount);
 	displayedTotalScore_ = (std::min)(static_cast<float>(totalScore), displayedTotalScore_ + (std::max)(1.0f, static_cast<float>(totalScore) * stepScale));
 
-	SetNumberSprites(expDigits_, expPosition_, static_cast<int32_t>(displayedExp_));
-	SetNumberSprites(levelDigits_, levelPosition_, static_cast<int32_t>(displayedLevel_));
-	SetNumberSprites(killDigits_, killPosition_, static_cast<int32_t>(displayedKills_));
-	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
+	const float countPulse = 1.0f + (0.5f + 0.5f * std::sin(resultAnimationTime_ * 12.0f)) * 0.055f;
+	SetNumberSprites(expDigits_, expPosition_, static_cast<int32_t>(displayedExp_), countPulse, 0.92f);
+	SetNumberSprites(levelDigits_, levelPosition_, static_cast<int32_t>(displayedLevel_), countPulse, 0.92f);
+	SetNumberSprites(killDigits_, killPosition_, static_cast<int32_t>(displayedKills_), countPulse, 0.92f);
+	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_), countPulse, 1.0f);
 
 	countUpFinished_ =
 		static_cast<int32_t>(displayedExp_) >= resultData.totalExp &&
@@ -322,6 +325,22 @@ void DirectXGameResultScene::UpdateCountUp(float deltaTime)
 		GameAudioCache::SetVolumeFromTuning(finishSeHandle_, kAudioResultFinish, 1.0f);
 		finishSePlayed_ = true;
 	}
+}
+
+void DirectXGameResultScene::UpdateFinishUiPulse()
+{
+	if (!countUpFinished_) {
+		finishUi_.SetAlpha(0.0f);
+		return;
+	}
+
+	const float pulse = 0.5f + 0.5f * std::sin(resultAnimationTime_ * 4.8f);
+	finishUi_.SetAlpha(0.62f + pulse * 0.38f);
+	finishUi_.SetScale(1.0f + pulse * 0.035f);
+	SetNumberSprites(expDigits_, expPosition_, static_cast<int32_t>(displayedExp_));
+	SetNumberSprites(levelDigits_, levelPosition_, static_cast<int32_t>(displayedLevel_));
+	SetNumberSprites(killDigits_, killPosition_, static_cast<int32_t>(displayedKills_));
+	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
 }
 
 void DirectXGameResultScene::DrawNumber(const std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites)
@@ -338,9 +357,12 @@ void DirectXGameResultScene::DrawNumber(const std::array<std::unique_ptr<Engine:
 void DirectXGameResultScene::SetNumberSprites(
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites,
 	const Vector2& basePosition,
-	int32_t value)
+	int32_t value,
+	float scaleMultiplier,
+	float alpha)
 {
-	const Vector2 scaledSize{ digitSize_.x * scoreScale_, digitSize_.y * scoreScale_ };
+	const Vector2 scaledSize{ digitSize_.x * scoreScale_ * scaleMultiplier, digitSize_.y * scoreScale_ * scaleMultiplier };
+	const float yOffset = (digitSize_.y * scoreScale_ - scaledSize.y) * 0.5f;
 	value = std::clamp(value, 0, 999999);
 	for (size_t index = 0; index < sprites.size(); ++index) {
 		if (!sprites[index]) {
@@ -348,8 +370,12 @@ void DirectXGameResultScene::SetNumberSprites(
 		}
 		const int32_t divisor = static_cast<int32_t>(std::pow(10, static_cast<int32_t>(sprites.size() - index - 1)));
 		const int32_t digit = divisor > 0 ? (value / divisor) % 10 : 0;
-		sprites[index]->SetPosition({ basePosition.x + scaledSize.x * static_cast<float>(index), basePosition.y });
+		sprites[index]->SetPosition({
+			basePosition.x + scaledSize.x * static_cast<float>(index),
+			basePosition.y + yOffset,
+		});
 		sprites[index]->SetSize(scaledSize);
+		sprites[index]->SetColor({ 1.0f, 1.0f, 1.0f, alpha });
 		DigitSpriteUtil::SetDigitSprite(*sprites[index], digitSize_.x, digitSize_, digit);
 	}
 }

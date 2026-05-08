@@ -19,6 +19,7 @@
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -453,6 +454,16 @@ void DirectXGameTitleScene::DrawDebugUi()
 	ImGui::Text("Texture Probe: %s", probeStatus.textureLoaded ? "OK" : "NG");
 	ImGui::Text("Model Probe: %s", probeStatus.modelLoaded ? "OK" : "NG");
 	ImGui::Text("CSV Probe: %s", probeStatus.csvOpened ? "OK" : "NG");
+	ImGui::Text("Required Assets: %s (%zu checked, %zu missing)",
+		probeStatus.requiredAssetsReady ? "OK" : "NG",
+		probeStatus.requiredAssetCount,
+		probeStatus.missingRequiredAssets.size());
+	if (!probeStatus.missingRequiredAssets.empty() && ImGui::TreeNode("Missing DirectXGame Assets")) {
+		for (const std::string& path : probeStatus.missingRequiredAssets) {
+			ImGui::TextUnformatted(path.c_str());
+		}
+		ImGui::TreePop();
+	}
 
 	ImGui::Separator();
 	ImGui::Checkbox("Enable Title Debug", &layoutSettings_.debugEnabled);
