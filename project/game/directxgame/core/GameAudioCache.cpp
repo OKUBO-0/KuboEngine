@@ -1,8 +1,11 @@
 #include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/core/DirectXGameResourcePaths.h"
 #include "Audio.h"
+#include <Windows.h>
 #include <algorithm>
 #include <cassert>
+#include <filesystem>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
@@ -56,6 +59,16 @@ std::unordered_map<std::string, float>& GetTunedVolumes()
 	return tunedVolumes;
 }
 
+void LogAudioLoadMessage(const std::string& relativePath, const std::string& fullPath, const char* reason)
+{
+	std::ostringstream message;
+	message << "[DirectXGame][GameAudioCache::LoadWave] " << reason
+		<< " relativePath=\"" << relativePath << "\""
+		<< " fullPath=\"" << fullPath << "\""
+		<< " currentPath=\"" << std::filesystem::current_path().generic_string() << "\"\n";
+	OutputDebugStringA(message.str().c_str());
+}
+
 }
 
 SoundHandle GameAudioCache::LoadWave(const std::string& relativePath)
@@ -69,7 +82,14 @@ SoundHandle GameAudioCache::LoadWave(const std::string& relativePath)
 	SoundHandle handle = GetNextHandle()++;
 	CachedSoundEntry entry{};
 	entry.fullPath = fullPath;
+	if (!std::filesystem::exists(fullPath)) {
+		LogAudioLoadMessage(relativePath, fullPath, "wave file is missing");
+	}
 	entry.soundData = Engine::AudioSystem::Audio::GetInstance()->SoundLoadWave(fullPath.c_str());
+	if (entry.soundData.buffer.empty() || entry.soundData.bufferSize == 0) {
+		LogAudioLoadMessage(relativePath, fullPath, "Audio::SoundLoadWave returned empty sound data");
+		assert(false && "GameAudioCache::LoadWave failed; see OutputDebugString for path details");
+	}
 	pathToHandle.emplace(fullPath, handle);
 	GetHandleToSound().emplace(handle, std::move(entry));
 	return handle;

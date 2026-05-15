@@ -16,6 +16,7 @@ namespace {
 constexpr float kFixedDeltaTime = 1.0f / 60.0f;
 constexpr char kGameCameraName[] = "directxgame_player";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
+constexpr float kPlayerModelScale = 1.0f;
 
 float NormalizeAngle(float angle)
 {
@@ -84,7 +85,7 @@ void Player::InitializeObjects()
 	playerObject_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	playerObject_->SetEnvironmentReflectionStrength(0.0f);
 	playerObject_->SetEnvironmentRoughness(1.0f);
-	playerObject_->SetScale({ 2.5f, 2.5f, 2.5f });
+	playerObject_->SetScale({ kPlayerModelScale, kPlayerModelScale, kPlayerModelScale });
 	lightSettings_.ApplyTo(*playerObject_);
 
 	const ModelHandle indicatorHandle = GameModelCache::Load("cube.obj");
@@ -277,10 +278,10 @@ void Player::UpdateCamera()
 		};
 
 	applyCamera(*camera_);
-	if (Engine::CameraSystem::Camera* registeredCamera =
-		Engine::CameraSystem::CameraManager::GetInstance()->GetCamera(kGameCameraName)) {
-		applyCamera(*registeredCamera);
-		Engine::CameraSystem::CameraManager::GetInstance()->SetActiveCamera(kGameCameraName);
+	Engine::CameraSystem::CameraManager* cameraManager =
+		Engine::CameraSystem::CameraManager::GetInstance();
+	if (cameraManager->SyncCamera(kGameCameraName, camera_.get())) {
+		cameraManager->SetActiveCamera(kGameCameraName);
 	}
 }
 

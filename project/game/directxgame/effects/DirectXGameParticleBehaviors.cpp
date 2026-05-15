@@ -27,12 +27,11 @@ RippleParticleBehavior::RippleParticleBehavior(const Vector4& color, const Setti
 Engine::Particle::Particle RippleParticleBehavior::Create(std::mt19937& rng, const Vector3& pos)
 {
 	std::uniform_real_distribution<float> scaleDist(settings_.initialScaleMin, settings_.initialScaleMax);
-	std::uniform_real_distribution<float> rotateDist(-std::numbers::pi_v<float>, std::numbers::pi_v<float>);
 
 	Engine::Particle::Particle particle{};
 	const float scale = scaleDist(rng);
 	particle.transform.scale = { scale, scale, scale };
-	particle.transform.rotate = { std::numbers::pi_v<float> * 0.5f, 0.0f, rotateDist(rng) };
+	particle.transform.rotate = { std::numbers::pi_v<float> * 0.5f, 0.0f, 0.0f };
 	particle.transform.translate = { pos.x, settings_.groundY, pos.z };
 	particle.Velocity = { 0.0f, 0.0f, 0.0f };
 	particle.color = color_;
@@ -47,6 +46,7 @@ void RippleParticleBehavior::Update(Engine::Particle::Particle& particle, float 
 	const float progress = particle.currentTime / particle.lifetime;
 	const float scale = 1.0f + progress * settings_.expandSpeed;
 	particle.transform.scale = { scale, scale, scale };
+	particle.transform.rotate = { std::numbers::pi_v<float> * 0.5f, 0.0f, 0.0f };
 }
 
 SparkParticleBehavior::SparkParticleBehavior(const Vector4& color, const Settings& settings)

@@ -1,6 +1,8 @@
 #include "SrvManager.h"
 #include "DirectXCommon.h"
 #include "externals/DirectXTex/DirectXTex.h"
+#include <algorithm>
+#include <string>
 
 namespace Engine::Base {
 
@@ -13,6 +15,8 @@ void SrvManager::Initialize(DirectXCommon* dxCommon)
 	//デスクリプタ1個分のサイズを取得して記録
 	descriptorSize = directXCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	useIndex = 0;
+	usageRecords_.clear();
+	usageRecords_.reserve(kMaxSRVCount);
 
 }
 
@@ -25,6 +29,7 @@ uint32_t SrvManager::Allocate()
 	uint32_t index = useIndex;
 	//次回のために番号を１進める
 	useIndex++;
+	SetUsage(index, "Allocated");
 	//上で記録した番号をreturn
 	return index;
 }
@@ -65,6 +70,7 @@ void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResou
 
 
 	directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
+	SetUsage(srvIndex, metadata.IsCubemap() ? "TextureCube" : "Texture2D");
 
 }
 
@@ -80,6 +86,9 @@ void SrvManager::CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource*
 	srvDesc.Buffer.StructureByteStride = structureByteStride;
 
 	directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
+	SetUsage(srvIndex,
+		"StructuredBuffer elements=" + std::to_string(numElements) +
+		" stride=" + std::to_string(structureByteStride));
 
 }
 
@@ -103,6 +112,19 @@ bool SrvManager::CheckTexturesNumber()
 	};
 	return true;
 
+}
+
+void SrvManager::SetUsage(uint32_t srvIndex, const std::string& usage)
+{
+	auto it = std::find_if(
+		usageRecords_.begin(),
+		usageRecords_.end(),
+		[srvIndex](const UsageRecord& record) { return record.index == srvIndex; });
+	if (it != usageRecords_.end()) {
+		it->usage = usage;
+		return;
+	}
+	usageRecords_.push_back({ srvIndex, usage });
 }
 
 }

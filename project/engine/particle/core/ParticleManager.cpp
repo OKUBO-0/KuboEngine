@@ -6,12 +6,11 @@
 #include <TextureManager.h>
 #include "CameraManager.h"
 #include <MyMath.h>
+#include <algorithm>
 #include <numbers>
 #include <imgui.h>
 
 namespace {
-constexpr uint32_t kMaxParticleInstanceCount = 1000;
-constexpr float kFixedParticleDeltaTime = 1.0f / 60.0f;
 constexpr float kTwoPi = 2.0f * std::numbers::pi_v<float>;
 constexpr float kQuadHalfSize = 0.5f;
 const Vector3 kDefaultParticleNormal = { 0.0f, 0.0f, 1.0f };
@@ -57,20 +56,35 @@ void ParticleManager::Finalize()
 
 void ParticleManager::Update()
 {
+	Update(kFixedParticleDeltaTime);
+}
+
+void ParticleManager::Update(float deltaTime)
+{
 	Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
 	if (!activeCamera) {
 		return;
 	}
+	const float appliedDeltaTime = ResolveDeltaTime(deltaTime);
+	lastAppliedDeltaTime_ = appliedDeltaTime;
 
 	Matrix4x4 viewMatrix = activeCamera->GetViewMatrix();
 	Matrix4x4 projectionMatrix = activeCamera->GetProjectionMatrix();
 
 	for (auto& particleGroupEntry : particleGroups) {
-		UpdateParticleGroup(particleGroupEntry.second, viewMatrix, projectionMatrix);
+		UpdateParticleGroup(particleGroupEntry.second, appliedDeltaTime, viewMatrix, projectionMatrix);
 	}
 }
 
-void ParticleManager::UpdateParticleGroup(ParticleGroup& particleGroup, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix)
+float ParticleManager::ResolveDeltaTime(float deltaTime) const
+{
+	if (useFixedDeltaTime_) {
+		return kFixedParticleDeltaTime;
+	}
+	return std::clamp(deltaTime, 0.0f, kMaxParticleDeltaTime);
+}
+
+void ParticleManager::UpdateParticleGroup(ParticleGroup& particleGroup, float deltaTime, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix)
 {
 	auto& behavior = particleGroup.behavior;
 	if (!behavior) {
@@ -78,16 +92,21 @@ void ParticleManager::UpdateParticleGroup(ParticleGroup& particleGroup, const Ma
 		return;
 	}
 	uint32_t counter = 0;
-	for (auto particleIterator = particleGroup.particles.begin(); particleIterator != particleGroup.particles.end();) {
-		if (particleIterator->lifetime <= particleIterator->currentTime) {
-			particleIterator = particleGroup.particles.erase(particleIterator);
+	size_t writeIndex = 0;
+	for (size_t readIndex = 0; readIndex < particleGroup.particles.size(); ++readIndex) {
+		Particle& particle = particleGroup.particles[readIndex];
+		if (particle.lifetime <= particle.currentTime) {
 			continue;
 		}
 
-		behavior->Update(*particleIterator, kFixedParticleDeltaTime, particleGroup.materialData);
-		UpdateAliveParticle(*particleIterator, particleGroup, counter, viewMatrix, projectionMatrix);
-		++particleIterator;
+		behavior->Update(particle, deltaTime, particleGroup.materialData);
+		UpdateAliveParticle(particle, particleGroup, counter, viewMatrix, projectionMatrix);
+		if (writeIndex != readIndex) {
+			particleGroup.particles[writeIndex] = particle;
+		}
+		++writeIndex;
 	}
+	particleGroup.particles.resize(writeIndex);
 
 	// このフレームに実際に生存していた数だけ描画数へ反映する
 	particleGroup.instanceCount = counter;
@@ -101,7 +120,7 @@ void ParticleManager::UpdateAliveParticle(Particle& particle, ParticleGroup& par
 	Matrix4x4 worldViewProjectionMatrix = worldMatrix * viewMatrix * projectionMatrix;
 
 	// 生存中インスタンスだけを前から詰めて書き込み、残りは描画対象から外す
-	if (counter < kMaxParticleInstanceCount) {
+	if (counter < particleGroup.maxInstanceCount) {
 		particleGroup.instanceData[counter].WVP = worldViewProjectionMatrix;
 		particleGroup.instanceData[counter].World = worldMatrix;
 		particleGroup.instanceData[counter].color = particle.color;
@@ -112,6 +131,9 @@ void ParticleManager::UpdateAliveParticle(Particle& particle, ParticleGroup& par
 
 void ParticleManager::Draw()
 {
+	lastDrawCallCount_ = 0;
+	lastDrawnInstanceCount_ = 0;
+
 	// パーティクルグループが設定されていない場合は描画しない
 	if (particleGroups.empty()) {
 		return;
@@ -136,10 +158,17 @@ void ParticleManager::Draw()
 		srvManager_->SetGraphicsRootDescriptorTable(2, particleGroup.materialdata.textureIndex);
 		srvManager_->SetGraphicsRootDescriptorTable(1, particleGroup.srvIndex);
 		dxCommon_->GetCommandList()->DrawInstanced(UINT(particleGroup.vertexCount), particleGroup.instanceCount, 0, 0);
+		++lastDrawCallCount_;
+		lastDrawnInstanceCount_ += particleGroup.instanceCount;
 	}
 }
 
-void ParticleManager::CreateParticleGroup(const std::string& name, const std::string& textureFilePath, VerticesType verticesType, std::unique_ptr<IParticleBehavior> behavior)
+void ParticleManager::CreateParticleGroup(
+	const std::string& name,
+	const std::string& textureFilePath,
+	VerticesType verticesType,
+	std::unique_ptr<IParticleBehavior> behavior,
+	uint32_t maxInstanceCount)
 {
 	//登録済みなら早期リターン
 	if (particleGroups.contains(name)) {
@@ -148,6 +177,8 @@ void ParticleManager::CreateParticleGroup(const std::string& name, const std::st
 
 	// 先に空グループを登録して以後の初期化を at(name) で揃える
 	ParticleGroup particleGroup;
+	particleGroup.debugName = name;
+	particleGroup.maxInstanceCount = (std::max)(1u, maxInstanceCount);
 	particleGroups.insert(std::make_pair(name, std::move(particleGroup)));
 
 	ParticleGroup& targetGroup = particleGroups.at(name);
@@ -207,14 +238,14 @@ void ParticleManager::InitializeParticleGroupTexture(ParticleGroup& particleGrou
 void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGroup)
 {
 	particleGroup.instanceCount = 0;
-	particleGroup.instanceResource = dxCommon_->CreateBufferResource(sizeof(ParticleForGPU) * kMaxParticleInstanceCount);
+	particleGroup.instanceResource = dxCommon_->CreateBufferResource(sizeof(ParticleForGPU) * particleGroup.maxInstanceCount);
 	particleGroup.instanceResource->Map(0, nullptr, reinterpret_cast<void**>(&particleGroup.instanceData));
 
 	ParticleForGPU particleForGPU;
 	particleForGPU.WVP = particleForGPU.WVP.MakeIdentity4x4();
 	particleForGPU.World = particleForGPU.World.MakeIdentity4x4();
 	particleForGPU.color = kInitialParticleColor;
-	for (uint32_t index = 0; index < kMaxParticleInstanceCount; ++index) {
+	for (uint32_t index = 0; index < particleGroup.maxInstanceCount; ++index) {
 		particleGroup.instanceData[index] = particleForGPU;
 	}
 
@@ -222,7 +253,7 @@ void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGr
 	srvManager_->CreateSRVforStructuredBuffer(
 		particleGroup.srvIndex,
 		particleGroup.instanceResource.Get(),
-		kMaxParticleInstanceCount,
+		particleGroup.maxInstanceCount,
 		sizeof(ParticleForGPU));
 }
 
@@ -239,7 +270,7 @@ void ParticleManager::Emit(const std::string& name, const Vector3& position, uin
 	}
 
 	// 次の Update までの暫定描画数として今回追加分を記録する
-	particleGroups.at(name).instanceCount = count;
+	particleGroups.at(name).instanceCount = (std::min)(count, particleGroups.at(name).maxInstanceCount);
 }
 
 void ParticleManager::SetModel(const std::string& filepath)
@@ -349,6 +380,33 @@ std::optional<size_t> ParticleManager::GetActiveParticleCount(const std::string&
 		return std::nullopt;
 	}
 	return it->second.particles.size();
+}
+
+std::optional<uint32_t> ParticleManager::GetParticleGroupMaxInstanceCount(const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return it->second.maxInstanceCount;
+}
+
+void ParticleManager::SetParticleGroupDebugName(const std::string& groupName, const std::string& debugName)
+{
+	auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return;
+	}
+	it->second.debugName = debugName;
+}
+
+std::optional<std::string> ParticleManager::GetParticleGroupDebugName(const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return it->second.debugName;
 }
 
 }

@@ -1,7 +1,10 @@
 #include "game/directxgame/core/GameTextureCache.h"
 #include "game/directxgame/core/DirectXGameResourcePaths.h"
 #include "TextureManager.h"
+#include <Windows.h>
 #include <cassert>
+#include <filesystem>
+#include <sstream>
 #include <unordered_map>
 
 namespace DirectXGame {
@@ -20,6 +23,16 @@ std::unordered_map<TextureHandle, std::string>& GetHandleToPath()
 	return cache;
 }
 
+void LogTextureLoadMessage(const std::string& relativePath, const std::string& fullPath, const char* reason)
+{
+	std::ostringstream message;
+	message << "[DirectXGame][GameTextureCache::Load] " << reason
+		<< " relativePath=\"" << relativePath << "\""
+		<< " fullPath=\"" << fullPath << "\""
+		<< " currentPath=\"" << std::filesystem::current_path().generic_string() << "\"\n";
+	OutputDebugStringA(message.str().c_str());
+}
+
 }
 
 TextureHandle GameTextureCache::Load(const std::string& relativePath)
@@ -30,8 +43,15 @@ TextureHandle GameTextureCache::Load(const std::string& relativePath)
 		return pathToHandle.at(fullPath);
 	}
 
+	if (!std::filesystem::exists(fullPath)) {
+		LogTextureLoadMessage(relativePath, fullPath, "texture file is not visible from current directory before TextureManager fallback");
+	}
 	Engine::Base::TextureManager::GetInstance()->LoadTexture(fullPath);
 	const TextureHandle handle = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(fullPath);
+	if (handle == 0) {
+		LogTextureLoadMessage(relativePath, fullPath, "TextureManager returned invalid SRV handle");
+		assert(false && "GameTextureCache::Load failed; see OutputDebugString for path details");
+	}
 	pathToHandle.emplace(fullPath, handle);
 	GetHandleToPath().emplace(handle, fullPath);
 	return handle;

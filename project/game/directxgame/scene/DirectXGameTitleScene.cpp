@@ -1,6 +1,7 @@
 #include "game/directxgame/scene/DirectXGameTitleScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/DirectXGameResourceProbe.h"
+#include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameInputBindings.h"
@@ -275,7 +276,9 @@ void DirectXGameTitleScene::UpdateGuide()
 
 	if (guideActive_) {
 		Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-		if (GameInputBindings::IsUiCancelTriggered(input) || GameInputBindings::IsUiConfirmTriggered(input)) {
+		const GameMenuInputState menuInput = GameMenuController::Update(input, navigationInputDevice_);
+		navigationInputDevice_ = menuInput.device;
+		if (menuInput.cancel || menuInput.confirm) {
 			CloseGuide();
 		}
 	}
@@ -298,11 +301,8 @@ void DirectXGameTitleScene::UpdateNavigation()
 		}
 	}
 
-	if (GameInputBindings::HasMouseNavigationInput(input) && hoveredMenuIndex < 0) {
-		navigationInputDevice_ = GameInputBindings::NavigationInputDevice::Mouse;
-	} else {
-		navigationInputDevice_ = GameInputBindings::DetectNavigationInputDevice(input, navigationInputDevice_);
-	}
+	const GameMenuInputState menuInput = GameMenuController::Update(input, navigationInputDevice_);
+	navigationInputDevice_ = menuInput.device;
 
 	const int32_t previousIndex = menuIndex_;
 	switch (navigationInputDevice_) {
@@ -312,19 +312,9 @@ void DirectXGameTitleScene::UpdateNavigation()
 		}
 		break;
 	case GameInputBindings::NavigationInputDevice::Keyboard:
-		if (GameInputBindings::IsKeyboardMenuUpTriggered(input)) {
-			menuIndex_ = (std::max)(0, menuIndex_ - 1);
-		}
-		if (GameInputBindings::IsKeyboardMenuDownTriggered(input)) {
-			menuIndex_ = (std::min)(2, menuIndex_ + 1);
-		}
-		break;
 	case GameInputBindings::NavigationInputDevice::Gamepad:
-		if (GameInputBindings::IsGamepadMenuUpTriggered(input)) {
-			menuIndex_ = (std::max)(0, menuIndex_ - 1);
-		}
-		if (GameInputBindings::IsGamepadMenuDownTriggered(input)) {
-			menuIndex_ = (std::min)(2, menuIndex_ + 1);
+		if (menuInput.moveDelta != 0) {
+			menuIndex_ = std::clamp(menuIndex_ + menuInput.moveDelta, 0, 2);
 		}
 		break;
 	case GameInputBindings::NavigationInputDevice::None:
@@ -342,21 +332,10 @@ void DirectXGameTitleScene::UpdateNavigation()
 		layoutSettings_.cursorBasePosition.y + layoutSettings_.cursorStepY * static_cast<float>(menuIndex_)
 		});
 
-	bool confirmTriggered = false;
-	switch (navigationInputDevice_) {
-	case GameInputBindings::NavigationInputDevice::Mouse:
-		confirmTriggered = IsMouseMenuConfirm(hoveredMenuIndex);
-		break;
-	case GameInputBindings::NavigationInputDevice::Keyboard:
-		confirmTriggered = GameInputBindings::IsKeyboardConfirmTriggered(input);
-		break;
-	case GameInputBindings::NavigationInputDevice::Gamepad:
-		confirmTriggered = GameInputBindings::IsGamepadConfirmTriggered(input);
-		break;
-	case GameInputBindings::NavigationInputDevice::None:
-	default:
-		break;
-	}
+	const bool confirmTriggered =
+		navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse
+		? IsMouseMenuConfirm(hoveredMenuIndex)
+		: menuInput.confirm;
 
 	if (!confirmTriggered) {
 		return;

@@ -16,6 +16,7 @@
 #include "SkyBoxCommon.h"
 #include <CameraManager.h>
 #include "ParticleManager.h"
+#include <algorithm>
 
 namespace Engine::Base {
 
@@ -25,6 +26,8 @@ Framework::~Framework() = default;
 void Framework::Initialize()
 {
 	endRequest_ = false;
+	frameDeltaTime_ = 1.0f / 60.0f;
+	lastFrameTime_ = std::chrono::steady_clock::now();
 	InitializeCoreServices();
 	InitializeSharedManagers();
 	InitializeRenderingCommons();
@@ -104,6 +107,8 @@ void Framework::FinalizeSharedManagers()
 
 void Framework::Update()
 {
+	UpdateFrameDeltaTime();
+
 	//Windowsのメッセージ処理
 	if (winApp->ProcessMessage()) {
 		//ゲームループを抜ける
@@ -111,9 +116,17 @@ void Framework::Update()
 	}
 
 	Engine::InputSystem::Input::GetInstance()->Update();
-	Engine::Particle::ParticleManager::GetInstance()->Update();
+	Engine::Particle::ParticleManager::GetInstance()->Update(frameDeltaTime_);
 	Engine::Scene::SceneManager::GetInstance()->Update();
 	Engine::LineSystem::LineCommon::GetInstance()->Update();
+}
+
+void Framework::UpdateFrameDeltaTime()
+{
+	const auto now = std::chrono::steady_clock::now();
+	const std::chrono::duration<float> elapsed = now - lastFrameTime_;
+	lastFrameTime_ = now;
+	frameDeltaTime_ = std::clamp(elapsed.count(), 0.0f, 0.25f);
 }
 
 void Framework::Run()

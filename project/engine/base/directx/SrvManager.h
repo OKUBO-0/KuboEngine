@@ -2,6 +2,8 @@
 #include <d3d12.h>
 #include <wrl.h>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace DirectX {
 struct TexMetadata;
@@ -16,6 +18,11 @@ class DirectXCommon;
 class SrvManager
 {
 public:
+	struct UsageRecord {
+		uint32_t index = 0;
+		std::string usage;
+	};
+
 	/// @brief SRV管理を初期化する
 	/// @param dxCommon DirectX共通管理
 	/// @return なし
@@ -37,7 +44,13 @@ public:
 	void SetGraphicsRootDescriptorTable(UINT rootParameterIndex, uint32_t srvIndex);
 
 	bool CheckTexturesNumber();
+	uint32_t GetUsedCount() const { return useIndex; }
+	uint32_t GetMaxCount() const { return kMaxSRVCount; }
+	uint32_t GetRemainingCount() const { return kMaxSRVCount > useIndex ? kMaxSRVCount - useIndex : 0; }
+	const std::vector<UsageRecord>& GetUsageRecords() const { return usageRecords_; }
 private:
+	void SetUsage(uint32_t srvIndex, const std::string& usage);
+
 	DirectXCommon* directXCommon = nullptr;
 	//最大SRV数（最大テクスチャ枚数）
 	static const uint32_t kMaxSRVCount;
@@ -47,6 +60,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptorHeap;
 	//次に使用するSRVインデックス
 	uint32_t useIndex = 0;
+	std::vector<UsageRecord> usageRecords_;
 	
 
 };

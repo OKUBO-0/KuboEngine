@@ -1,5 +1,6 @@
 #include "game/directxgame/scene/DirectXGameResultScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
@@ -18,21 +19,6 @@
 #endif
 
 namespace {
-
-bool IsConfirmTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_SPACE) ||
-		input->TriggerKey(DIK_RETURN) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_A);
-}
-
-bool IsCancelTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_ESCAPE) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_B);
-}
 
 constexpr char kAudioResultFinish[] = "result.finish";
 constexpr int32_t kScorePerExp = 1;
@@ -76,9 +62,10 @@ void DirectXGameResultScene::Finalize()
 
 void DirectXGameResultScene::Update()
 {
-	navigationInputDevice_ = GameInputBindings::DetectNavigationInputDevice(
+	const GameMenuInputState menuInput = GameMenuController::Update(
 		Engine::InputSystem::Input::GetInstance(),
 		navigationInputDevice_);
+	navigationInputDevice_ = menuInput.device;
 
 	if (Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) {
 		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()->Update();
@@ -94,7 +81,7 @@ void DirectXGameResultScene::Update()
 		return;
 	}
 
-	if (IsConfirmTriggered() || IsCancelTriggered()) {
+	if (menuInput.confirm || menuInput.cancel) {
 		if (!IsCountUpFinished()) {
 			FinishCountUp();
 			return;

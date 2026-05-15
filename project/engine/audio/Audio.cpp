@@ -1,6 +1,10 @@
 #include "Audio.h"
+#include <Windows.h>
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <sstream>
+#include <string>
 #include <wrl.h>
 
 namespace Engine::AudioSystem {
@@ -12,12 +16,34 @@ constexpr char kFormatChunkId[] = "fmt ";
 constexpr char kDataChunkId[] = "data";
 constexpr size_t kChunkIdLength = 4;
 
-RiffHeader ReadRiffHeader(std::ifstream& file)
+std::string ChunkIdToString(const char* id)
+{
+    return std::string(id, id + kChunkIdLength);
+}
+
+void FailWaveLoad(const std::string& filename, const std::string& reason)
+{
+    std::ostringstream message;
+    message << "[Audio::SoundLoadWave] " << reason
+        << " filePath=\"" << filename << "\"\n";
+    OutputDebugStringA(message.str().c_str());
+    assert(false && "Audio::SoundLoadWave failed; see OutputDebugString for file path and chunk details");
+    std::abort();
+}
+
+RiffHeader ReadRiffHeader(std::ifstream& file, const std::string& filename)
 {
     RiffHeader riff{};
     file.read(reinterpret_cast<char*>(&riff), sizeof(riff));
-    assert(strncmp(riff.chunk.id, kRiffChunkId, kChunkIdLength) == 0);
-    assert(strncmp(riff.type, kWaveChunkId, kChunkIdLength) == 0);
+    if (!file) {
+        FailWaveLoad(filename, "failed to read RIFF header");
+    }
+    if (strncmp(riff.chunk.id, kRiffChunkId, kChunkIdLength) != 0) {
+        FailWaveLoad(filename, "invalid RIFF chunk id: actual=\"" + ChunkIdToString(riff.chunk.id) + "\" expected=\"RIFF\"");
+    }
+    if (strncmp(riff.type, kWaveChunkId, kChunkIdLength) != 0) {
+        FailWaveLoad(filename, "invalid WAVE type id: actual=\"" + ChunkIdToString(riff.type) + "\" expected=\"WAVE\"");
+    }
     return riff;
 }
 
@@ -45,7 +71,7 @@ FormatChunk ReadFormatChunkPayload(std::ifstream& file, const ChunkHeader& heade
     return format;
 }
 
-FormatChunk FindFormatChunk(std::ifstream& file)
+FormatChunk FindFormatChunk(std::ifstream& file, const std::string& filename)
 {
     ChunkHeader chunk{};
     while (file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))) {
@@ -55,11 +81,11 @@ FormatChunk FindFormatChunk(std::ifstream& file)
         SkipChunk(file, chunk.size);
     }
 
-    assert(false && "fmt chunk not found in wave file");
+    FailWaveLoad(filename, "fmt chunk not found: expected chunk id=\"fmt \"");
     return {};
 }
 
-ChunkHeader ReadDataChunk(std::ifstream& file)
+ChunkHeader ReadDataChunk(std::ifstream& file, const std::string& filename)
 {
     ChunkHeader data{};
     while (file.read(reinterpret_cast<char*>(&data), sizeof(data))) {
@@ -69,15 +95,19 @@ ChunkHeader ReadDataChunk(std::ifstream& file)
         SkipChunk(file, data.size);
     }
 
-    assert(false && "data chunk not found in wave file");
+    FailWaveLoad(filename, "data chunk not found: expected chunk id=\"data\"");
     return {};
 }
 
-SoundData ReadSoundData(std::ifstream& file, const FormatChunk& format, const ChunkHeader& data)
+SoundData ReadSoundData(std::ifstream& file, const FormatChunk& format, const ChunkHeader& data, const std::string& filename)
 {
     SoundData soundData{};
     soundData.buffer.resize(data.size);
     file.read(reinterpret_cast<char*>(soundData.buffer.data()), data.size);
+    if (!file) {
+        FailWaveLoad(filename, "failed to read data chunk payload: chunk id=\"" + ChunkIdToString(data.id) +
+            "\" size=" + std::to_string(data.size));
+    }
     soundData.wfex = format.fmt;
     soundData.bufferSize = data.size;
     return soundData;
@@ -118,14 +148,21 @@ void Audio::Finalize()
 
 SoundData Audio::SoundLoadWave(const char* filename)
 {
+    const std::string path = filename != nullptr ? filename : "<null>";
+    if (filename == nullptr) {
+        FailWaveLoad(path, "filename is null");
+    }
+
     std::ifstream file(filename, std::ios_base::binary);
-    assert(file.is_open());
+    if (!file.is_open()) {
+        FailWaveLoad(path, "failed to open wave file");
+    }
 
     // RIFF 内のチャンクは fmt/data の間に JUNK/LIST/fact などが入ることがあるため、ID で探す
-    ReadRiffHeader(file);
-    FormatChunk format = FindFormatChunk(file);
-    ChunkHeader data = ReadDataChunk(file);
-    SoundData soundData = ReadSoundData(file, format, data);
+    ReadRiffHeader(file, path);
+    FormatChunk format = FindFormatChunk(file, path);
+    ChunkHeader data = ReadDataChunk(file, path);
+    SoundData soundData = ReadSoundData(file, format, data, path);
     file.close();
 
     return soundData;

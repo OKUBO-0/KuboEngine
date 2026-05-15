@@ -115,6 +115,11 @@ void Drone::FireForward(float angle, int32_t shotCount, float bulletSpeed, float
 		bullet->SetLightSettings(lightSettings_);
 		bullet->InitializeForward(position_, shotDirection, bulletSpeed, bulletRange, bulletPierceCount);
 		bullets_.push_back(std::move(bullet));
+		peakBulletCount_ = (std::max)(peakBulletCount_, bullets_.size());
+		if (bullets_.size() > Drone::kMaxActiveBullets) {
+			bullets_.erase(bullets_.begin());
+			++bulletPruneCount_;
+		}
 	}
 }
 

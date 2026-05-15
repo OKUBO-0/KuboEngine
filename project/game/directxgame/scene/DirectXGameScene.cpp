@@ -1,5 +1,6 @@
 #include "game/directxgame/scene/DirectXGameScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/UILayoutIO.h"
@@ -8,17 +9,21 @@
 #include "Input.h"
 #include "Line.h"
 #include "LineCommon.h"
+#include "Model.h"
 #include "Object3DCommon.h"
 #include "OffscreenRenderManager.h"
 #include "ParticleManager.h"
 #include "SceneManager.h"
 #include "SpriteCommon.h"
+#include "SrvManager.h"
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <optional>
 #include <random>
 #include <string>
 #include <utility>
+#include <vector>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -49,47 +54,45 @@ constexpr std::array<std::pair<const char*, float>, 13> kAudioTuningDefaults{ {
 	{ "result.finish", 1.0f },
 } };
 
-bool IsConfirmTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_SPACE) ||
-		input->TriggerKey(DIK_RETURN) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_A);
-}
-
-bool IsCancelTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_ESCAPE) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_B);
-}
-
-bool IsPauseTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_ESCAPE) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_START);
-}
-
-bool IsMenuUpTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_W) ||
-		input->TriggerKey(DIK_UP) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_UP);
-}
-
-bool IsMenuDownTriggered()
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	return input->TriggerKey(DIK_S) ||
-		input->TriggerKey(DIK_DOWN) ||
-		input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_DOWN);
-}
-
 float Clamp01(float value)
 {
 	return std::clamp(value, 0.0f, 1.0f);
+}
+
+const char* BoolText(bool value)
+{
+	return value ? "true" : "false";
+}
+
+Vector2 GetKeyboardMoveDebug(Engine::InputSystem::Input* input)
+{
+	Vector2 move{ 0.0f, 0.0f };
+	if (!input) {
+		return move;
+	}
+
+	if (input->PushKey(DIK_W) || input->PushKey(DIK_UP)) { move.y += 1.0f; }
+	if (input->PushKey(DIK_S) || input->PushKey(DIK_DOWN)) { move.y -= 1.0f; }
+	if (input->PushKey(DIK_A) || input->PushKey(DIK_LEFT)) { move.x -= 1.0f; }
+	if (input->PushKey(DIK_D) || input->PushKey(DIK_RIGHT)) { move.x += 1.0f; }
+	return move;
+}
+
+Vector2 GetGamepadMoveDebug(Engine::InputSystem::Input* input)
+{
+	if (!input) {
+		return { 0.0f, 0.0f };
+	}
+
+	Vector2 move{
+		DirectXGame::GameInputBindings::ClampAxis(input->GetGamePadStickX()),
+		DirectXGame::GameInputBindings::ClampAxis(input->GetGamePadStickY()),
+	};
+	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_UP)) { move.y += 1.0f; }
+	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_DOWN)) { move.y -= 1.0f; }
+	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_LEFT)) { move.x -= 1.0f; }
+	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_RIGHT)) { move.x += 1.0f; }
+	return move;
 }
 
 std::string WeaponLevelTexturePath(const char* weaponDirectory, int32_t nextLevel)
@@ -151,7 +154,13 @@ void DirectXGameScene::Update()
 		return;
 	}
 
-	if (gameState_ == GameState::Playing) {
+#ifdef _DEBUG
+	const bool gameplayFrozen = debugFreezeGameplay_;
+#else
+	const bool gameplayFrozen = false;
+#endif
+
+	if (gameState_ == GameState::Playing && !gameplayFrozen) {
 		if (timer_.GetTime() >= kGameTimeLimitSeconds) {
 			RequestResultScene();
 			ApplyPostEffect();
@@ -169,14 +178,18 @@ void DirectXGameScene::Update()
 		skyDome_->Update();
 	}
 
-	if (sessionContext_ && gameState_ == GameState::Playing) {
+	if (sessionContext_ && gameState_ == GameState::Playing && !gameplayFrozen) {
 		sessionContext_->AdvanceGameFrame();
 	}
 
 	if (gameState_ == GameState::Dead) {
 		deathTimer_ += kFixedDeltaTime;
 		RecordResultSummary();
-		if (deathTimer_ >= 1.15f || IsConfirmTriggered()) {
+		const GameMenuInputState menuInput = GameMenuController::Update(
+			Engine::InputSystem::Input::GetInstance(),
+			navigationInputDevice_);
+		navigationInputDevice_ = menuInput.device;
+		if (deathTimer_ >= 1.15f || menuInput.confirm) {
 			RequestResultScene();
 			ApplyPostEffect();
 			return;
@@ -339,49 +352,57 @@ void DirectXGameScene::InitializeParticles()
 		"DirectXGame.Ripple",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Ring,
-		std::make_unique<RippleParticleBehavior>());
+		std::make_unique<RippleParticleBehavior>(),
+		192);
 	particleManager->SetBehavior("DirectXGame.Ripple", std::make_unique<RippleParticleBehavior>());
 	particleManager->CreateParticleGroup(
 		"DirectXGame.Spark",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>());
+		std::make_unique<SparkParticleBehavior>(),
+		384);
 	particleManager->SetBehavior("DirectXGame.Spark", std::make_unique<SparkParticleBehavior>());
 	particleManager->CreateParticleGroup(
 		"DirectXGame.EnemyHitSpark",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }));
+		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }),
+		384);
 	particleManager->SetBehavior("DirectXGame.EnemyHitSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }));
 	particleManager->CreateParticleGroup(
 		"DirectXGame.ExpSpark",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }));
+		std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }),
+		256);
 	particleManager->SetBehavior("DirectXGame.ExpSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }));
 	particleManager->CreateParticleGroup(
 		"DirectXGame.LightningSpark",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 0.48f, 0.84f, 1.0f, 1.0f }));
+		std::make_unique<SparkParticleBehavior>(Vector4{ 0.48f, 0.84f, 1.0f, 1.0f }),
+		384);
 	particleManager->SetBehavior("DirectXGame.LightningSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.48f, 0.84f, 1.0f, 1.0f }));
 	particleManager->CreateParticleGroup(
 		"DirectXGame.PlayerDeathSpark",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }));
+		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }),
+		256);
 	particleManager->SetBehavior("DirectXGame.PlayerDeathSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }));
 	particleManager->CreateParticleGroup(
 		"DirectXGame.DeathSmoke",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SmokeParticleBehavior>());
+		std::make_unique<SmokeParticleBehavior>(),
+		256);
 	particleManager->SetBehavior("DirectXGame.DeathSmoke", std::make_unique<SmokeParticleBehavior>());
 	particleManager->CreateParticleGroup(
 		"DirectXGame.Confetti",
 		"Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
-		std::make_unique<ConfettiParticleBehavior>());
+		std::make_unique<ConfettiParticleBehavior>(),
+		192);
 	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>());
 	ApplyParticleBehaviorTuning();
 }
@@ -472,6 +493,81 @@ void DirectXGameScene::SaveDebugTuning() const
 		entries.push_back({ "camera.mouseAimEnabled", { player_->IsMouseAimEnabled() ? 1.0f : 0.0f } });
 	}
 	UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+#endif
+}
+
+void DirectXGameScene::SaveSoftCapTelemetrySnapshot() const
+{
+#ifdef _DEBUG
+	const std::string path = DataPaths::Resolve(DataPaths::kSoftCapTelemetry);
+	bool writeHeader = true;
+	{
+		std::ifstream existing(path);
+		writeHeader = !existing.good() || existing.peek() == std::ifstream::traits_type::eof();
+	}
+
+	std::ofstream file(path, std::ios::app);
+	if (!file.is_open()) {
+		return;
+	}
+
+	const uint32_t gameFrameCount = sessionContext_ ? sessionContext_->GetGameFrameCount() : 0u;
+	const uint32_t telemetryFrames = gameFrameCount >= debugSoftCapTelemetryStartFrame_ ?
+		gameFrameCount - debugSoftCapTelemetryStartFrame_ :
+		gameFrameCount;
+	const float telemetryMinutes = static_cast<float>(telemetryFrames) / (60.0f * 60.0f);
+	const float pruneRateDivisor = (std::max)(telemetryMinutes, 0.01f);
+
+	const size_t enemyCount = enemyManager_ ? enemyManager_->GetActiveEnemyCount() : 0;
+	const int32_t killCount = enemyManager_ ? enemyManager_->GetTotalKillCount() : 0;
+	const size_t expOrbCount = enemyManager_ ? enemyManager_->GetExpOrbCount() : 0;
+	const size_t expOrbPeak = enemyManager_ ? enemyManager_->GetPeakExpOrbCount() : 0;
+	const size_t expOrbPrunes = enemyManager_ ? enemyManager_->GetExpOrbPruneCount() : 0;
+	const size_t normalBulletCount = playerManager_ ? playerManager_->GetNormalBullets().size() : 0;
+	const size_t normalBulletPeak = playerManager_ ? playerManager_->GetPeakNormalBulletCount() : 0;
+	const size_t normalBulletPrunes = playerManager_ ? playerManager_->GetNormalBulletPruneCount() : 0;
+	size_t droneBulletCount = 0;
+	size_t droneBulletPeak = 0;
+	size_t droneBulletPrunes = 0;
+	if (playerManager_ && playerManager_->HasDrone() && playerManager_->GetDrone()) {
+		droneBulletCount = playerManager_->GetDrone()->GetBullets().size();
+		droneBulletPeak = playerManager_->GetDrone()->GetPeakBulletCount();
+		droneBulletPrunes = playerManager_->GetDrone()->GetBulletPruneCount();
+	}
+	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
+	const size_t particleCount = particleManager ? particleManager->GetTotalActiveParticleCount() : 0;
+
+	if (writeHeader) {
+		file << "frame,telemetryFrames,telemetryMinutes,state,level,enemyCount,killCount,"
+			"expOrbCount,expOrbCap,expOrbPeak,expOrbPrunes,expOrbPrunesPerMinute,"
+			"normalBulletCount,normalBulletCap,normalBulletPeak,normalBulletPrunes,normalBulletPrunesPerMinute,"
+			"droneBulletCount,droneBulletCap,droneBulletPeak,droneBulletPrunes,droneBulletPrunesPerMinute,"
+			"particleCount\n";
+	}
+
+	file << gameFrameCount << ','
+		<< telemetryFrames << ','
+		<< telemetryMinutes << ','
+		<< GetGameStateName() << ','
+		<< (playerManager_ ? playerManager_->GetLevel() : 0) << ','
+		<< enemyCount << ','
+		<< killCount << ','
+		<< expOrbCount << ','
+		<< EnemyManager::kMaxExpOrbs << ','
+		<< expOrbPeak << ','
+		<< expOrbPrunes << ','
+		<< static_cast<float>(expOrbPrunes) / pruneRateDivisor << ','
+		<< normalBulletCount << ','
+		<< PlayerManager::kMaxActiveNormalBullets << ','
+		<< normalBulletPeak << ','
+		<< normalBulletPrunes << ','
+		<< static_cast<float>(normalBulletPrunes) / pruneRateDivisor << ','
+		<< droneBulletCount << ','
+		<< Drone::kMaxActiveBullets << ','
+		<< droneBulletPeak << ','
+		<< droneBulletPrunes << ','
+		<< static_cast<float>(droneBulletPrunes) / pruneRateDivisor << ','
+		<< particleCount << '\n';
 #endif
 }
 
@@ -625,36 +721,45 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 		miniMap_.Update(player_.get(), *enemyManager_);
 		UpdatePauseBuildUi();
 	}
-	if (gameState_ == GameState::Playing) {
+	if (gameState_ == GameState::Playing
+#ifdef _DEBUG
+		&& !debugFreezeGameplay_
+#endif
+	) {
 		timer_.Update(deltaTime);
 	}
 
+	const GameMenuInputState menuInput = GameMenuController::Update(
+		Engine::InputSystem::Input::GetInstance(),
+		navigationInputDevice_);
+	navigationInputDevice_ = menuInput.device;
+
 	if (gameState_ == GameState::Start) {
-		if (IsConfirmTriggered()) {
+		if (menuInput.confirm) {
 			EnterPlaying();
 		}
-		if (IsCancelTriggered()) {
+		if (menuInput.cancel) {
 			RequestSceneChange(SceneId::kTitle);
 		}
 		return;
 	}
 
 	if (gameState_ == GameState::Paused) {
-		if (IsMenuUpTriggered() || IsMenuDownTriggered()) {
+		if (menuInput.moveDelta != 0) {
 			MoveMenuSelection(1);
 		}
 		pauseCursor_.SetPosition({ 790.0f, menuSelection_ == 0 ? 318.0f : 486.0f });
 		const float cursorPulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 8.0f);
 		pauseCursor_.SetScale(1.0f + cursorPulse * 0.08f);
 		pauseCursor_.SetAlpha(0.72f + cursorPulse * 0.28f);
-		if (IsConfirmTriggered()) {
+		if (menuInput.confirm) {
 			if (menuSelection_ == 0) {
 				EnterPlaying();
 			} else {
 				RequestSceneChange(SceneId::kTitle);
 			}
 		}
-		if (IsCancelTriggered()) {
+		if (menuInput.cancel) {
 			EnterPlaying();
 		}
 		return;
@@ -665,11 +770,8 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 		if (levelUpAnimationState_ != LevelUpAnimationState::Idle) {
 			return;
 		}
-		if (IsMenuUpTriggered()) {
-			MoveMenuSelection(-1);
-		}
-		if (IsMenuDownTriggered()) {
-			MoveMenuSelection(1);
+		if (menuInput.moveDelta != 0) {
+			MoveMenuSelection(menuInput.moveDelta);
 		}
 		const float selectedPulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 7.2f);
 		for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
@@ -682,14 +784,14 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 			levelUpChoiceSprites_[index].SetAlpha(selected ? 1.0f : 0.78f);
 			levelUpChoiceIcons_[index].SetAlpha(selected ? 1.0f : 0.78f);
 		}
-		if (IsConfirmTriggered()) {
+		if (menuInput.confirm) {
 			levelUpSelectionPending_ = true;
 			levelUpAnimationState_ = LevelUpAnimationState::Exiting;
 		}
 		return;
 	}
 
-	if (gameState_ == GameState::Playing && IsPauseTriggered()) {
+	if (gameState_ == GameState::Playing && menuInput.pause) {
 		TogglePause();
 	}
 }
@@ -1105,7 +1207,9 @@ void DirectXGameScene::UpdateDebugUi()
 		return;
 	}
 
-	ImGui::Begin("DirectXGame Game");
+	ImGui::SetNextWindowPos(ImVec2(288.0f, 12.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(430.0f, 420.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Gameplay Monitor");
 	ImGui::Text("Stage 17.1 particle tuning scene");
 	ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
 	ImGui::Text("WASD / Left Stick: Move");
@@ -1114,6 +1218,54 @@ void DirectXGameScene::UpdateDebugUi()
 	ImGui::Text("Pause: %s", GameInputBindings::GetPauseLabel(navigationInputDevice_));
 	ImGui::Text("Cancel / Title on Start: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
 	ImGui::Text("Debug: F6 Death / F8 EXP / F9 Max Weapons / F10 Result / F11 Time-up Result");
+	ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(260.0f, 92.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Gameplay Control");
+	if (ImGui::Button(debugFreezeGameplay_ ? "Resume Gameplay" : "Freeze Gameplay", ImVec2(-1.0f, 32.0f))) {
+		debugFreezeGameplay_ = !debugFreezeGameplay_;
+	}
+	ImGui::Text("Freeze: %s", BoolText(debugFreezeGameplay_));
+	ImGui::Text("State: %s", GetGameStateName());
+	ImGui::End();
+
+	if (ImGui::CollapsingHeader("Input / State Debug", ImGuiTreeNodeFlags_DefaultOpen)) {
+		const Vector2 keyboardMove = GetKeyboardMoveDebug(input);
+		const Vector2 gamepadMove = GetGamepadMoveDebug(input);
+		Vector2 gamepadAim{ 0.0f, 0.0f };
+		const bool rightStickAimActive = GameInputBindings::GetAimVector(input, gamepadAim);
+		const auto mouseMove = input->GetMouseMove();
+		const bool mouseAimActive = mouseMove.lX != 0 || mouseMove.lY != 0 || input->PushMouse(0) || input->PushMouse(1);
+
+		ImGui::Text("Priority Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
+		ImGui::Text("Keyboard Move: %.2f, %.2f", keyboardMove.x, keyboardMove.y);
+		ImGui::Text("Gamepad Move: %.2f, %.2f", gamepadMove.x, gamepadMove.y);
+		ImGui::Text("Mouse Aim: %s  Move: %ld, %ld  Pos: %.0f, %.0f",
+			BoolText(mouseAimActive),
+			mouseMove.lX,
+			mouseMove.lY,
+			input->GetMousePos().x,
+			input->GetMousePos().y);
+		ImGui::Text("Right Stick Aim: %s  %.2f, %.2f",
+			BoolText(rightStickAimActive),
+			gamepadAim.x,
+			gamepadAim.y);
+
+		const bool gameplayUpdateRuns = gameState_ == GameState::Playing && pendingSceneId_.empty() && !debugFreezeGameplay_;
+		ImGui::Separator();
+		ImGui::Text("Scene State: %s  Pending Scene: %s",
+			GetGameStateName(),
+			pendingSceneId_.empty() ? "none" : pendingSceneId_.c_str());
+		ImGui::Text("Gameplay Update: %s", BoolText(gameplayUpdateRuns));
+		ImGui::Text("Player / Enemy / Bullet / Collision / EXP Update: %s", BoolText(gameplayUpdateRuns));
+		ImGui::Text("UI / Curtain / Effects Update: %s", BoolText(true));
+		ImGui::Text("Paused Safety: %s", BoolText(gameState_ != GameState::Paused || !gameplayUpdateRuns));
+		ImGui::Text("LevelUp Safety: %s", BoolText(gameState_ != GameState::LevelUp || !gameplayUpdateRuns));
+		ImGui::Text("Dead Safety: %s", BoolText(gameState_ != GameState::Dead || !gameplayUpdateRuns));
+		const Engine::Graphics3D::ModelLoadDiagnostics modelDiagnostics = Engine::Graphics3D::Model::GetLoadDiagnostics();
+		ImGui::Text("Model Load Warnings: non-triangle skipped %u / mesh fallback %u",
+			modelDiagnostics.skippedNonTriangleFaceCount,
+			modelDiagnostics.meshFallbackCount);
+	}
 	float masterVolume = GameAudioCache::GetMasterVolume();
 	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
 		GameAudioCache::SetMasterVolume(masterVolume);
@@ -1157,18 +1309,124 @@ void DirectXGameScene::UpdateDebugUi()
 		const size_t orbCount = enemyManager_ ? enemyManager_->GetExpOrbCount() : 0;
 		const size_t normalBulletCount = playerManager_ ? playerManager_->GetNormalBullets().size() : 0;
 		const size_t orbitBulletCount = playerManager_ ? playerManager_->GetOrbitBullets().size() : 0;
+		const size_t normalBulletPeak = playerManager_ ? playerManager_->GetPeakNormalBulletCount() : 0;
+		const size_t normalBulletPrunes = playerManager_ ? playerManager_->GetNormalBulletPruneCount() : 0;
+		const size_t expOrbPrunes = enemyManager_ ? enemyManager_->GetExpOrbPruneCount() : 0;
 		size_t droneBulletCount = 0;
+		size_t droneBulletPeak = 0;
+		size_t droneBulletPrunes = 0;
 		if (playerManager_ && playerManager_->HasDrone() && playerManager_->GetDrone()) {
 			droneBulletCount = playerManager_->GetDrone()->GetBullets().size();
+			droneBulletPeak = playerManager_->GetDrone()->GetPeakBulletCount();
+			droneBulletPrunes = playerManager_->GetDrone()->GetBulletPruneCount();
 		}
+		const uint32_t gameFrameCount = sessionContext_ ? sessionContext_->GetGameFrameCount() : 0u;
+		const uint32_t telemetryFrames = gameFrameCount >= debugSoftCapTelemetryStartFrame_ ?
+			gameFrameCount - debugSoftCapTelemetryStartFrame_ :
+			gameFrameCount;
+		const float gameplayMinutes = sessionContext_ ?
+			static_cast<float>(telemetryFrames) / (60.0f * 60.0f) :
+			0.0f;
+		const float pruneRateDivisor = (std::max)(gameplayMinutes, 0.01f);
+		const float expOrbPrunesPerMinute = static_cast<float>(expOrbPrunes) / pruneRateDivisor;
+		const float normalBulletPrunesPerMinute = static_cast<float>(normalBulletPrunes) / pruneRateDivisor;
+		const float droneBulletPrunesPerMinute = static_cast<float>(droneBulletPrunes) / pruneRateDivisor;
 
 		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
 		ImGui::Text("State: %s", GetGameStateName());
-		ImGui::Text("Enemies: %zu  EXP Orbs: %zu  Kills: %d", enemyCount, orbCount, enemyManager_ ? enemyManager_->GetTotalKillCount() : 0);
-		ImGui::Text("Bullets: Normal %zu / Orbit %zu / Drone %zu", normalBulletCount, orbitBulletCount, droneBulletCount);
+		ImGui::Text("Enemies: %zu  EXP Orbs: %zu / %zu  Kills: %d", enemyCount, orbCount, EnemyManager::kMaxExpOrbs, enemyManager_ ? enemyManager_->GetTotalKillCount() : 0);
+		ImGui::Text("EXP Orb Peak: %zu  Pruned: %zu",
+			enemyManager_ ? enemyManager_->GetPeakExpOrbCount() : 0,
+			expOrbPrunes);
+		ImGui::Text("Bullets: Normal %zu / %zu | Orbit %zu | Drone %zu / %zu",
+			normalBulletCount,
+			PlayerManager::kMaxActiveNormalBullets,
+			orbitBulletCount,
+			droneBulletCount,
+			Drone::kMaxActiveBullets);
+		ImGui::Text("Bullet Peaks: Normal %zu / Drone %zu  Pruned: Normal %zu / Drone %zu",
+			normalBulletPeak,
+			droneBulletPeak,
+			normalBulletPrunes,
+			droneBulletPrunes);
+		ImGui::Text("Prune Rate/min: EXP %.1f | Normal %.1f | Drone %.1f",
+			expOrbPrunesPerMinute,
+			normalBulletPrunesPerMinute,
+			droneBulletPrunesPerMinute);
+		if (ImGui::Button("Reset Soft Cap Telemetry")) {
+			if (enemyManager_) {
+				enemyManager_->ResetExpOrbTelemetry();
+			}
+			if (playerManager_) {
+				playerManager_->ResetBulletTelemetry();
+			}
+			debugSoftCapTelemetryStartFrame_ = gameFrameCount;
+			debugSoftCapNextAutoLogFrame_ = gameFrameCount + static_cast<uint32_t>(debugSoftCapAutoLogIntervalSeconds_ * 60);
+			debugSoftCapLastAutoLogFrame_ = UINT32_MAX;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Save Soft Cap CSV")) {
+			SaveSoftCapTelemetrySnapshot();
+		}
+		if (ImGui::Checkbox("Auto Save Soft Cap CSV", &debugSoftCapAutoLogEnabled_)) {
+			debugSoftCapNextAutoLogFrame_ = gameFrameCount;
+			debugSoftCapLastAutoLogFrame_ = UINT32_MAX;
+		}
+		if (ImGui::DragInt("Auto Save Interval Sec", &debugSoftCapAutoLogIntervalSeconds_, 1.0f, 5, 300)) {
+			debugSoftCapAutoLogIntervalSeconds_ = (std::max)(5, debugSoftCapAutoLogIntervalSeconds_);
+			debugSoftCapNextAutoLogFrame_ = gameFrameCount + static_cast<uint32_t>(debugSoftCapAutoLogIntervalSeconds_ * 60);
+		}
+		if (debugSoftCapAutoLogEnabled_) {
+			const uint32_t framesUntilNextAutoLog = gameFrameCount < debugSoftCapNextAutoLogFrame_ ?
+				debugSoftCapNextAutoLogFrame_ - gameFrameCount :
+				0u;
+			ImGui::Text("Next Auto Save: %.1f sec", static_cast<float>(framesUntilNextAutoLog) / 60.0f);
+		}
+		if (debugSoftCapAutoLogEnabled_ &&
+			gameState_ == GameState::Playing &&
+			!debugFreezeGameplay_ &&
+			gameFrameCount >= debugSoftCapNextAutoLogFrame_ &&
+			gameFrameCount != debugSoftCapLastAutoLogFrame_) {
+			SaveSoftCapTelemetrySnapshot();
+			debugSoftCapLastAutoLogFrame_ = gameFrameCount;
+			debugSoftCapNextAutoLogFrame_ = gameFrameCount + static_cast<uint32_t>(debugSoftCapAutoLogIntervalSeconds_ * 60);
+		}
+		if (orbCount >= EnemyManager::kMaxExpOrbs ||
+			normalBulletCount >= PlayerManager::kMaxActiveNormalBullets ||
+			droneBulletCount >= Drone::kMaxActiveBullets) {
+			ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.25f, 1.0f), "Soft cap currently active");
+		}
 		ImGui::Text("Particles: %zu active across %zu groups",
 			particleManager->GetTotalActiveParticleCount(),
 			particleManager->GetParticleGroupCount());
+		bool useFixedParticleDelta = particleManager->IsUsingFixedDeltaTime();
+		if (ImGui::Checkbox("Use Fixed Particle Delta", &useFixedParticleDelta)) {
+			particleManager->SetUseFixedDeltaTime(useFixedParticleDelta);
+		}
+		ImGui::Text("Particle Delta: %.4f sec  fixed %.4f sec",
+			particleManager->GetLastAppliedDeltaTime(),
+			particleManager->GetFixedDeltaTime());
+		if (ImGui::CollapsingHeader("Render Debug")) {
+			const std::string& activeCameraName =
+				Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCameraName();
+			ImGui::Text("Active Camera: %s", activeCameraName.empty() ? "none" : activeCameraName.c_str());
+			ImGui::Text("Particle Draw Calls: %u", particleManager->GetLastDrawCallCount());
+			ImGui::Text("Particle Drawn Instances: %u", particleManager->GetLastDrawnInstanceCount());
+		}
+		if (Engine::Base::SrvManager* srvManager = Engine::Graphics3D::Object3DCommon::GetInstance()->GetSrvManager()) {
+			ImGui::Text("SRV: %u / %u used  remaining %u",
+				srvManager->GetUsedCount(),
+				srvManager->GetMaxCount(),
+				srvManager->GetRemainingCount());
+			if (ImGui::TreeNode("SRV Usage")) {
+				const std::vector<Engine::Base::SrvManager::UsageRecord>& records = srvManager->GetUsageRecords();
+				const size_t firstIndex = records.size() > 24 ? records.size() - 24 : 0;
+				for (size_t index = firstIndex; index < records.size(); ++index) {
+					ImGui::Text("#%u %s", records[index].index, records[index].usage.c_str());
+				}
+				ImGui::TreePop();
+			}
+		}
 		if (ImGui::TreeNode("Particle Groups")) {
 			constexpr std::array<const char*, 8> kDirectXGameParticleGroups{
 				"DirectXGame.Ripple",
@@ -1182,7 +1440,12 @@ void DirectXGameScene::UpdateDebugUi()
 			};
 			for (const char* groupName : kDirectXGameParticleGroups) {
 				const std::optional<size_t> activeCount = particleManager->GetActiveParticleCount(groupName);
-				ImGui::Text("%s: %zu", groupName, activeCount.value_or(0));
+				const std::optional<uint32_t> maxInstanceCount = particleManager->GetParticleGroupMaxInstanceCount(groupName);
+				const std::optional<std::string> debugName = particleManager->GetParticleGroupDebugName(groupName);
+				ImGui::Text("%s: %zu / %u",
+					debugName.value_or(groupName).c_str(),
+					activeCount.value_or(0),
+					maxInstanceCount.value_or(0));
 			}
 			ImGui::TreePop();
 		}
@@ -1202,6 +1465,11 @@ void DirectXGameScene::UpdateDebugUi()
 				playerManager_->GetLightningRadius());
 		}
 	}
+	ImGui::End();
+
+	ImGui::SetNextWindowPos(ImVec2(730.0f, 12.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Player Debug");
 	if (player_) {
 		const Vector3& position = player_->GetWorldPosition();
 		ImGui::Separator();
@@ -1270,6 +1538,11 @@ void DirectXGameScene::UpdateDebugUi()
 			playerManager_->MaxAllWeapons();
 		}
 	}
+	ImGui::End();
+
+	ImGui::SetNextWindowPos(ImVec2(288.0f, 445.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(430.0f, 420.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Visual Tuning");
 	if (uiInitialized_) {
 		ImGui::Separator();
 		ImGui::Checkbox("DebugDraw collision / spawn range", &debugDrawEnabled_);
@@ -1367,10 +1640,15 @@ void DirectXGameScene::UpdateDebugUi()
 			}
 		}
 	}
+	ImGui::End();
+
+	ImGui::SetNextWindowPos(ImVec2(730.0f, 385.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("Scene Actions");
 	if (enemyManager_) {
 		ImGui::Separator();
 		ImGui::Text("Enemies: %zu / %zu", enemyManager_->GetActiveEnemyCount(), enemyManager_->GetEnemies().size());
-		ImGui::Text("EXP Orbs: %zu", enemyManager_->GetExpOrbCount());
+		ImGui::Text("EXP Orbs: %zu / %zu", enemyManager_->GetExpOrbCount(), EnemyManager::kMaxExpOrbs);
 		ImGui::Text("Kills: %d", enemyManager_->GetTotalKillCount());
 		if (ImGui::Button("Debug Damage All Enemies")) {
 			enemyManager_->DamageAllEnemies(999);
@@ -1411,7 +1689,7 @@ void DirectXGameScene::ApplyPostEffect() const
 		effect = PostEffectType::Vignette;
 		break;
 	case GameState::LevelUp:
-		effect = PostEffectType::RadialBlur;
+		effect = PostEffectType::Fullscreen;
 		break;
 	case GameState::Dead:
 		effect = PostEffectType::Grayscale;

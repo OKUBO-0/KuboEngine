@@ -2,10 +2,12 @@
 #include "DirectXCommon.h"
 #include "ModelCommon.h"
 #include "MyMath.h"
+#include <Windows.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -15,6 +17,8 @@
 #include "SrvManager.h"
 
 namespace {
+
+Engine::Graphics3D::ModelLoadDiagnostics g_modelLoadDiagnostics{};
 
 std::string ResolveModelFilePath(const std::string& directoryPath, const std::string& filename)
 {
@@ -51,9 +55,45 @@ std::string ResolveResourceFilePath(const std::string& directoryPath, const std:
     return directPath.generic_string();
 }
 
+void FailModelLoad(const std::string& operation, const std::string& path, const std::string& detail)
+{
+    std::ostringstream message;
+    message << "[Model::" << operation << "] " << detail
+        << " path=\"" << path << "\"\n";
+    OutputDebugStringA(message.str().c_str());
+    assert(false && "Model load failed; see OutputDebugString for path and Assimp details");
+    std::abort();
+}
+
+void LogSkippedNonTriangleFace(const char* meshName, uint32_t faceIndex, uint32_t indexCount)
+{
+    ++g_modelLoadDiagnostics.skippedNonTriangleFaceCount;
+    std::ostringstream message;
+    message << "[Model::LoadIndicesFromMesh] skipped non-triangle face"
+        << " mesh=\"" << (meshName ? meshName : "")
+        << "\" face=" << faceIndex
+        << " indices=" << indexCount << "\n";
+    OutputDebugStringA(message.str().c_str());
+}
+
+void LogMeshFallback(const std::string& path, uint32_t meshIndex, const char* detail)
+{
+    ++g_modelLoadDiagnostics.meshFallbackCount;
+    std::ostringstream message;
+    message << "[Model::LoadModelFile] " << detail
+        << " path=\"" << path
+        << "\" meshIndex=" << meshIndex << "\n";
+    OutputDebugStringA(message.str().c_str());
+}
+
 }
 
 namespace Engine::Graphics3D {
+
+ModelLoadDiagnostics Model::GetLoadDiagnostics()
+{
+    return g_modelLoadDiagnostics;
+}
 
 void Model::Initialize(ModelCommon* modelCommon, const std::string& directorypath, const std::string& filename)
 {
@@ -232,14 +272,23 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
 
     // 頂点、法線、UV を揃えたうえでエンジン形式へ変換する
     // Assimpでモデルファイル読み込み
-    const aiScene* scene = importer.ReadFile(path.c_str(), aiProcess_FlipWindingOrder | aiProcess_FlipUVs);
-    assert(scene->HasMeshes()); // メッシュが存在しない場合は停止
+    const aiScene* scene = importer.ReadFile(path.c_str(), aiProcess_Triangulate | aiProcess_FlipWindingOrder | aiProcess_FlipUVs);
+    if (scene == nullptr) {
+        FailModelLoad("LoadModelFile", path, std::string("Assimp::ReadFile failed: ") + importer.GetErrorString());
+    }
+    if (!scene->HasMeshes()) {
+        FailModelLoad("LoadModelFile", path, "model has no meshes");
+    }
 
     // メッシュごとの処理
     for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
         aiMesh* mesh = scene->mMeshes[meshIndex];
-        assert(mesh->HasNormals());        // 法線情報必須
-        assert(mesh->HasTextureCoords(0)); // テクスチャ座標必須
+        if (!mesh->HasNormals()) {
+            LogMeshFallback(path, meshIndex, "mesh has no normals; using fallback normal");
+        }
+        if (!mesh->HasTextureCoords(0)) {
+            LogMeshFallback(path, meshIndex, "mesh has no texture coordinates; using fallback uv");
+        }
 
         LoadVerticesFromMesh(mesh, modelData);
         LoadIndicesFromMesh(mesh, modelData);
@@ -262,7 +311,9 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
     Assimp::Importer importer;
     std::string filepath = ResolveModelFilePath(directoryPath, filename);
     const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
-    assert(scene != nullptr);
+    if (scene == nullptr) {
+        FailModelLoad("LoadAnimationFile", filepath, std::string("Assimp::ReadFile failed: ") + importer.GetErrorString());
+    }
 
     // アニメーションが存在しない場合は空を返す
     if (scene->mNumAnimations == 0) {
@@ -283,8 +334,8 @@ void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
     // 頂点情報の読み込み
     for (uint32_t vertexIndex = 0; vertexIndex < mesh->mNumVertices; ++vertexIndex) {
         aiVector3D& position = mesh->mVertices[vertexIndex];
-        aiVector3D& normal = mesh->mNormals[vertexIndex];
-        aiVector3D& texcoord = mesh->mTextureCoords[0][vertexIndex];
+        const aiVector3D normal = mesh->HasNormals() ? mesh->mNormals[vertexIndex] : aiVector3D{ 0.0f, 1.0f, 0.0f };
+        const aiVector3D texcoord = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][vertexIndex] : aiVector3D{ 0.0f, 0.0f, 0.0f };
 
         // 右手系 → 左手系変換
         modelData.vertices[vertexIndex].position = { -position.x, position.y, position.z, 1.0f };
@@ -298,7 +349,10 @@ void Model::LoadIndicesFromMesh(aiMesh* mesh, ModelData& modelData)
     // インデックス情報の読み込み（三角形のみ対応）
     for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
         aiFace& face = mesh->mFaces[faceIndex];
-        assert(face.mNumIndices == 3);
+        if (face.mNumIndices != 3) {
+            LogSkippedNonTriangleFace(mesh->mName.C_Str(), faceIndex, face.mNumIndices);
+            continue;
+        }
         for (uint32_t element = 0; element < face.mNumIndices; ++element) {
             modelData.indices.push_back(face.mIndices[element]);
         }

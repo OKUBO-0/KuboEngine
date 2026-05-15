@@ -30,6 +30,14 @@ public:
 	int32_t GetTotalKillCount() const { return totalKillCount_; }
 	size_t GetActiveEnemyCount() const;
 	size_t GetExpOrbCount() const { return expOrbs_.size(); }
+	size_t GetPeakExpOrbCount() const { return peakExpOrbCount_; }
+	size_t GetExpOrbPruneCount() const { return expOrbPruneCount_; }
+	void ResetExpOrbTelemetry()
+	{
+		peakExpOrbCount_ = expOrbs_.size();
+		expOrbPruneCount_ = 0;
+	}
+	static constexpr size_t kMaxExpOrbs = 160;
 	const std::vector<Vector3>& GetRecentHitEffectPositions() const { return recentHitEffectPositions_; }
 	const std::vector<Vector3>& GetRecentDeathEffectPositions() const { return recentDeathEffectPositions_; }
 	void ClearRecentEffectPositions();
@@ -104,6 +112,8 @@ private:
 	float baseSpawnInterval_ = kDefaultBaseSpawnInterval;
 	float spawnAcceleration_ = kDefaultSpawnAcceleration;
 	int32_t totalKillCount_ = 0;
+	size_t peakExpOrbCount_ = 0;
+	size_t expOrbPruneCount_ = 0;
 	std::vector<Vector3> recentHitEffectPositions_;
 	std::vector<Vector3> recentDeathEffectPositions_;
 };

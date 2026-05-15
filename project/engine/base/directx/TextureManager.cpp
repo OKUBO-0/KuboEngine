@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <array>
 #include <filesystem>
+#include <sstream>
 
 namespace Engine::Base {
 
@@ -112,7 +113,12 @@ DirectX::ScratchImage TextureManager::LoadTextureImage(const std::string& filePa
 		hr = DirectX::LoadFromWICFile(filePathW.c_str(), DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, image);
 	}
 	if (FAILED(hr)) {
-		OutputDebugStringA(("Failed to load texture: " + resolvedPath + "\n").c_str());
+		std::ostringstream message;
+		message << "[TextureManager::LoadTextureImage] failed to load texture"
+			<< " requestedPath=\"" << filePath << "\""
+			<< " resolvedPath=\"" << resolvedPath << "\""
+			<< " HRESULT=0x" << std::hex << static_cast<unsigned long>(hr) << "\n";
+		OutputDebugStringA(message.str().c_str());
 	}
 	assert(SUCCEEDED(hr));
 	return image;

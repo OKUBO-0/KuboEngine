@@ -23,6 +23,11 @@ class ModelCommon;
 // 1頂点あたりの最大ボーン影響数
 const uint32_t kNumMaxInfluence = 4;
 
+struct ModelLoadDiagnostics {
+    uint32_t skippedNonTriangleFaceCount = 0;
+    uint32_t meshFallbackCount = 0;
+};
+
 struct VertexInfluence {
     std::array<float, kNumMaxInfluence> weights;      // 各ボーンの重み
     std::array<int32_t, kNumMaxInfluence> jointIndices; // 各ボーンのインデックス
@@ -60,6 +65,7 @@ public:
     /// @param filename 読み込むモデルファイル名
     /// @return なし
     void Initialize(ModelCommon* modelCommon, const std::string& directorypath, const std::string& filename);
+    static ModelLoadDiagnostics GetLoadDiagnostics();
 
     /// @brief モデルを描画する
     /// @param なし

@@ -409,6 +409,11 @@ void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 	orb->SetLightSettings(lightSettings_);
 	orb->Initialize(enemy.GetPosition(), enemy.GetEXP());
 	expOrbs_.push_back(std::move(orb));
+	peakExpOrbCount_ = (std::max)(peakExpOrbCount_, expOrbs_.size());
+	while (expOrbs_.size() > kMaxExpOrbs) {
+		expOrbs_.pop_front();
+		++expOrbPruneCount_;
+	}
 }
 
 bool EnemyManager::TryHandleBulletHit(Enemy& enemy, const Vector3& impactPosition, int32_t damage, float knockStrength)

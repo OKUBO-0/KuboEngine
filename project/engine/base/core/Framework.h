@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <memory>
 
 namespace Engine::Scene {
@@ -47,6 +48,10 @@ public:
 	/// @return 終了要求があれば true
 	virtual bool IsEndRequest() const { return endRequest_; }
 
+	/// @brief 直近フレームの経過秒を返す
+	/// @return 経過秒
+	float GetFrameDeltaTime() const { return frameDeltaTime_; }
+
 protected:
 	void InitializeCoreServices();
 	void InitializeSharedManagers();
@@ -54,9 +59,12 @@ protected:
 	void InitializeDebugTools();
 	void FinalizeDebugTools();
 	void FinalizeSharedManagers();
+	void UpdateFrameDeltaTime();
 
 	// ゲーム終了フラグ
 	bool endRequest_ = false;
+	float frameDeltaTime_ = 1.0f / 60.0f;
+	std::chrono::steady_clock::time_point lastFrameTime_;
 
 	// WinAppのポインタ
 	std::unique_ptr<Engine::Base::WinApp> winApp;

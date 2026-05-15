@@ -17,6 +17,7 @@
 #include "game/directxgame/world/GridPlane.h"
 #include "game/directxgame/world/SkyDome.h"
 #include <array>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -43,6 +44,7 @@ private:
 	void InitializeParticles();
 	void LoadDebugTuning();
 	void SaveDebugTuning() const;
+	void SaveSoftCapTelemetrySnapshot() const;
 	void ApplyParticleBehaviorTuning();
 	void UpdateGamePlay(float deltaTime);
 	void UpdateEffects();
@@ -121,7 +123,7 @@ private:
 		int32_t expSparkCount = 8;
 		int32_t lightningSparkCount = 14;
 		int32_t lightningRippleCount = 1;
-		int32_t levelUpConfettiCount = 56;
+		int32_t levelUpConfettiCount = 22;
 		int32_t playerDeathSparkCount = 48;
 		int32_t playerDeathSmokeCount = 18;
 		int32_t playerDeathRippleCount = 2;
@@ -132,8 +134,8 @@ private:
 		float smokeScaleMultiplier = 1.0f;
 		float rippleLifetime = 0.42f;
 		float rippleExpandSpeed = 4.5f;
-		float confettiVelocityScale = 1.0f;
-		float confettiScaleMultiplier = 1.0f;
+		float confettiVelocityScale = 0.55f;
+		float confettiScaleMultiplier = 0.55f;
 	};
 
 	std::shared_ptr<DirectXGameSessionContext> sessionContext_;
@@ -146,6 +148,9 @@ private:
 	GameLightSettings lightSettings_{};
 
 	GameState gameState_ = GameState::Start;
+#ifdef _DEBUG
+	bool debugFreezeGameplay_ = false;
+#endif
 	Timer timer_;
 	HpGauge hpGauge_;
 	ExpGauge expGauge_;
@@ -174,6 +179,11 @@ private:
 	float hitFlashTimer_ = 0.0f;
 	float deathTimer_ = 0.0f;
 	float previousLightningEffectTimer_ = 0.0f;
+	uint32_t debugSoftCapTelemetryStartFrame_ = 0;
+	bool debugSoftCapAutoLogEnabled_ = false;
+	int32_t debugSoftCapAutoLogIntervalSeconds_ = 60;
+	uint32_t debugSoftCapNextAutoLogFrame_ = 0;
+	uint32_t debugSoftCapLastAutoLogFrame_ = UINT32_MAX;
 	float levelUpSlideOffsetX_ = 1280.0f;
 	float uiAnimationTime_ = 0.0f;
 	std::string pendingSceneId_;

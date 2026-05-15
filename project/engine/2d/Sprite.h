@@ -62,8 +62,13 @@ public:
     const Vector2& GetTextureSize() const { return textureSize_; }
     void SetTextureSize(const Vector2& textureSize) { textureSize_ = textureSize; }
 
+    // デバッグ表示名
+    void SetDebugName(const std::string& debugName) { debugName_ = debugName; }
+    const std::string& GetDebugName() const { return debugName_; }
+
 private:
     std::string textureFilePath_;
+    std::string debugName_;
 
     /// テクスチャサイズを画像に合わせる
     void AdjustTextureSize();

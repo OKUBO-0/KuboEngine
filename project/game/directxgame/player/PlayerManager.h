@@ -57,9 +57,20 @@ public:
 
 	void UpgradeNormalBullets();
 	const std::vector<std::unique_ptr<NormalBullet>>& GetNormalBullets() const { return normalBullets_; }
+	size_t GetPeakNormalBulletCount() const { return peakNormalBulletCount_; }
+	size_t GetNormalBulletPruneCount() const { return normalBulletPruneCount_; }
+	void ResetBulletTelemetry()
+	{
+		peakNormalBulletCount_ = normalBullets_.size();
+		normalBulletPruneCount_ = 0;
+		if (drone_) {
+			drone_->ResetBulletTelemetry();
+		}
+	}
 	float GetNormalBulletInterval() const { return normalBulletInterval_; }
 	int32_t GetNormalBulletLevel() const { return normalBulletLevel_; }
 	static constexpr int32_t kNormalBulletMaxLevel = 8;
+	static constexpr size_t kMaxActiveNormalBullets = 96;
 	bool IsNormalBulletMaxLevel() const { return normalBulletLevel_ >= kNormalBulletMaxLevel; }
 	int32_t GetNormalBulletDamage() const { return attackPower_ + normalBulletDamageBonus_; }
 
@@ -135,6 +146,8 @@ private:
 	int32_t normalBulletPierceCount_ = 1;
 	float normalBulletSpeed_ = 1.0f;
 	float normalBulletRange_ = 30.0f;
+	size_t peakNormalBulletCount_ = 0;
+	size_t normalBulletPruneCount_ = 0;
 
 	int32_t maxLifeStockCap_ = 6;
 	int32_t moveSpeedUpgradeCap_ = 5;

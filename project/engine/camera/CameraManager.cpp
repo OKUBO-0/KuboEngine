@@ -33,11 +33,29 @@ void CameraManager::Initialize()
 
 void CameraManager::AddCamera(const std::string& name, const Camera* camera)
 {
+    if (!camera) {
+        Engine::Base::Logger::Log("Warning: Attempted to add a null camera.");
+        return;
+    }
     cameras[name] = *camera; // Dereference the pointer to store the Camera object
     // 最初のカメラをアクティブに設定
     if (activeCameraName.empty()) {
         activeCameraName = name;
     }
+}
+
+bool CameraManager::SyncCamera(const std::string& name, const Camera* camera)
+{
+    if (!camera) {
+        Engine::Base::Logger::Log("Warning: Attempted to sync a null camera.");
+        return false;
+    }
+    auto it = cameras.find(name);
+    if (it == cameras.end()) {
+        return false;
+    }
+    it->second = *camera;
+    return true;
 }
 
 void CameraManager::RemoveCamera(const std::string& name) {

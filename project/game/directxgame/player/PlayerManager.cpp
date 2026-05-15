@@ -434,6 +434,11 @@ void PlayerManager::UpdateNormalBullets(float deltaTime)
 				bullet->SetLightSettings(lightSettings_);
 				bullet->InitializeForward(startPosition, forward, normalBulletSpeed_, normalBulletRange_, normalBulletPierceCount_);
 				normalBullets_.push_back(std::move(bullet));
+				peakNormalBulletCount_ = (std::max)(peakNormalBulletCount_, normalBullets_.size());
+				if (normalBullets_.size() > PlayerManager::kMaxActiveNormalBullets) {
+					normalBullets_.erase(normalBullets_.begin());
+					++normalBulletPruneCount_;
+				}
 			}
 
 			normalBulletTimer_ -= normalBulletInterval_;

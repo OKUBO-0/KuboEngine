@@ -26,6 +26,14 @@ public:
 	void Draw();
 
 	const std::vector<std::unique_ptr<NormalBullet>>& GetBullets() const { return bullets_; }
+	size_t GetPeakBulletCount() const { return peakBulletCount_; }
+	size_t GetBulletPruneCount() const { return bulletPruneCount_; }
+	void ResetBulletTelemetry()
+	{
+		peakBulletCount_ = bullets_.size();
+		bulletPruneCount_ = 0;
+	}
+	static constexpr size_t kMaxActiveBullets = 64;
 	const Vector3& GetPosition() const { return position_; }
 	void SetLightSettings(const GameLightSettings& lightSettings);
 
@@ -41,6 +49,8 @@ private:
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
 	std::vector<std::unique_ptr<NormalBullet>> bullets_;
 	GameLightSettings lightSettings_{};
+	size_t peakBulletCount_ = 0;
+	size_t bulletPruneCount_ = 0;
 };
 
 } // namespace DirectXGame

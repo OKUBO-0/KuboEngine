@@ -129,6 +129,9 @@ public:
 	void SetColor(const Vector4& color) { color_ = color; }
 	const Vector4& GetColor() const { return color_; }
 
+	void SetDebugName(const std::string& debugName) { debugName_ = debugName; }
+	const std::string& GetDebugName() const { return debugName_; }
+
 	//アニメーション
 	Vector3 CalculateValue(const std::vector<KeyframeVector3>& keyframes, float time);
 	Quaternion CalculateValue(const std::vector<KeyframeQuaternion>& keyframes, float time);
@@ -189,6 +192,7 @@ private:
 	Vector4 color_ = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルトは白
 	std::vector<Matrix4x4> skeletonPose_;
 
+	std::string debugName_;
 	std::string skyboxFilePath_ ; // スカイボックスのファイルパス
 	EnvironmentReflectionSetting* environmentReflectionSettingData; // 環境反射設定
 	Microsoft::WRL::ComPtr<ID3D12Resource> environmentReflectionSettingResource;

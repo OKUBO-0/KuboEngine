@@ -36,7 +36,25 @@ std::vector<UILayoutIO::Entry> BuildDefaultHudLayout()
 
 std::vector<std::string> BuildRequiredAssetPaths()
 {
-	std::vector<std::string> paths{
+	std::vector<std::string> paths;
+	const CsvReader::CsvTable manifest = CsvReader::LoadRows(DataPaths::kResourceManifest);
+	for (const CsvReader::CsvRow& row : manifest) {
+		if (row.size() < 2 || row[0] == "type") {
+			continue;
+		}
+		if (row[0] == "texture") {
+			paths.push_back(ResourcePaths::MakeTexturePath(row[1]));
+		} else if (row[0] == "audio") {
+			paths.push_back(ResourcePaths::MakeAudioPath(row[1]));
+		} else if (row[0] == "data") {
+			paths.push_back(ResourcePaths::MakeDataPath(row[1]));
+		}
+	}
+	if (!paths.empty()) {
+		return paths;
+	}
+
+	paths = {
 		ResourcePaths::MakeTexturePath("white1x1.png"),
 		ResourcePaths::MakeTexturePath("ui/title/title.png"),
 		ResourcePaths::MakeTexturePath("ui/title/guideUI.png"),

@@ -16,8 +16,12 @@ imgui.ini
 .env.example
 
 # Local Codex/work notes
+.codex/
 docs/
 scripts/
+
+# DirectXGame debug runtime logs
+Resources/DirectXGame/data/soft_cap_telemetry.csv
 
 # Build output
 [Dd]ebug/
