@@ -42,6 +42,10 @@ constexpr float kLevelUpChoiceStepY = 140.0f;
 constexpr Vector2 kLevelUpChoiceHitboxOffset{ 465.0f, 214.0f };
 constexpr Vector2 kLevelUpChoiceHitboxSize{ 435.0f, 68.0f };
 constexpr float kPauseCursorStepY = 168.0f;
+constexpr float kStartIntroDuration = 1.2f;
+constexpr float kDeathPresentationDuration = 1.35f;
+constexpr float kDeathCurtainStartTime = 1.2f;
+constexpr float kDeathOverlayDelay = 0.75f;
 constexpr std::array<std::pair<const char*, float>, 13> kAudioTuningDefaults{ {
 	{ "title.bgm", 0.1f },
 	{ "title.select", 1.0f },
@@ -133,6 +137,9 @@ void DirectXGameScene::Initialize()
 	InitializeWorld();
 	InitializeDebugCamera();
 	LoadDebugTuning();
+	if (player_) {
+		player_->StartIntroPresentation();
+	}
 	InitializeUi();
 	InitializeParticles();
 	curtain_ = std::make_unique<CurtainTransition>();
@@ -182,6 +189,12 @@ void DirectXGameScene::Update()
 			return;
 		}
 		UpdateGamePlay(kFixedDeltaTime);
+	} else if (gameState_ == GameState::Start) {
+		startIntroTimer_ = (std::min)(startIntroTimer_ + kFixedDeltaTime, kStartIntroDuration);
+		startIntroFinished_ = startIntroTimer_ >= kStartIntroDuration;
+		if (player_) {
+			player_->UpdateIntroPresentation(startIntroTimer_, kStartIntroDuration);
+		}
 	}
 	UpdatePlayerLight();
 	UpdateEffects();
@@ -201,11 +214,15 @@ void DirectXGameScene::Update()
 	if (gameState_ == GameState::Dead) {
 		deathTimer_ += kFixedDeltaTime;
 		RecordResultSummary();
+		if (player_) {
+			player_->UpdateDeathPresentation(deathTimer_, kDeathPresentationDuration);
+		}
 		const GameMenuInputState menuInput = GameMenuController::Update(
 			Engine::InputSystem::Input::GetInstance(),
 			navigationInputDevice_);
 		navigationInputDevice_ = menuInput.device;
-		if (deathTimer_ >= 1.15f || menuInput.confirm) {
+		if (!deathCurtainStarted_ && (deathTimer_ >= kDeathCurtainStartTime || menuInput.confirm)) {
+			deathCurtainStarted_ = true;
 			RequestResultScene();
 			ApplyPostEffect();
 			return;
@@ -485,6 +502,7 @@ void DirectXGameScene::LoadDebugTuning()
 		player_->SetCameraHeight(UILayoutIO::GetFloat(tuning, "camera.height", player_->GetCameraHeight()));
 		player_->SetCameraDistance(UILayoutIO::GetFloat(tuning, "camera.distance", player_->GetCameraDistance()));
 		player_->SetCameraPitch(UILayoutIO::GetFloat(tuning, "camera.pitch", player_->GetCameraPitch()));
+		player_->SetCameraFollowSmoothness(UILayoutIO::GetFloat(tuning, "camera.followSmoothness", player_->GetCameraFollowSmoothness()));
 		player_->SetMouseAimEnabled(UILayoutIO::GetFloat(tuning, "camera.mouseAimEnabled", player_->IsMouseAimEnabled() ? 1.0f : 0.0f) > 0.5f);
 		const int32_t cameraMode = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "camera.mode", static_cast<float>(player_->GetCameraMode())));
 		if (cameraMode >= 0 && cameraMode <= static_cast<int32_t>(Player::CameraMode::TopDown)) {
@@ -556,6 +574,7 @@ void DirectXGameScene::SaveDebugTuning() const
 		entries.push_back({ "camera.height", { player_->GetCameraHeight() } });
 		entries.push_back({ "camera.distance", { player_->GetCameraDistance() } });
 		entries.push_back({ "camera.pitch", { player_->GetCameraPitch() } });
+		entries.push_back({ "camera.followSmoothness", { player_->GetCameraFollowSmoothness() } });
 		entries.push_back({ "camera.mode", { static_cast<float>(player_->GetCameraMode()) } });
 		entries.push_back({ "camera.mouseAimEnabled", { player_->IsMouseAimEnabled() ? 1.0f : 0.0f } });
 	}
@@ -713,6 +732,11 @@ void DirectXGameScene::UpdateGamePlay(float deltaTime)
 			GameAudioCache::SetVolumeFromTuning(gameOverSeHandle_, kAudioDeath, 1.0f);
 			gameOverSePlayed_ = true;
 		}
+		if (player_) {
+			player_->StartDeathPresentation();
+		}
+		deathTimer_ = 0.0f;
+		deathCurtainStarted_ = false;
 		gameState_ = GameState::Dead;
 	}
 }
@@ -795,7 +819,7 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 	}
 	if (gameState_ == GameState::Dead) {
 		deathOverlay_.SetVisible(true);
-		deathOverlay_.SetAlpha(Clamp01(deathTimer_ / 0.45f));
+		deathOverlay_.SetAlpha(0.65f * Clamp01((deathTimer_ - kDeathOverlayDelay) / 0.45f));
 	} else {
 		deathOverlay_.SetVisible(false);
 	}
@@ -822,7 +846,7 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 	navigationInputDevice_ = menuInput.device;
 
 	if (gameState_ == GameState::Start) {
-		if (menuInput.confirm) {
+		if (startIntroFinished_ && menuInput.confirm) {
 			EnterPlaying();
 		}
 		if (menuInput.cancel) {
@@ -914,7 +938,7 @@ void DirectXGameScene::DrawUi()
 		keyUI_.Draw();
 	}
 
-	if (gameState_ == GameState::Start) {
+	if (gameState_ == GameState::Start && startIntroFinished_) {
 		startOverlay_.Draw();
 	} else if (gameState_ == GameState::Paused) {
 		pauseOverlay_.Draw();
@@ -1025,9 +1049,12 @@ void DirectXGameScene::EnterPlaying()
 		GameAudioCache::Play(startSeHandle_);
 		GameAudioCache::SetVolumeFromTuning(startSeHandle_, kAudioStart, 1.0f);
 	}
+	startIntroFinished_ = true;
+	startIntroTimer_ = kStartIntroDuration;
 	gameState_ = GameState::Playing;
 	deathTimer_ = 0.0f;
 	deathEffectEmitted_ = false;
+	deathCurtainStarted_ = false;
 	menuSelection_ = 0;
 }
 
@@ -1853,6 +1880,10 @@ void DirectXGameScene::UpdateDebugUi()
 		if (ImGui::DragFloat("Camera Pitch", &cameraPitch, 0.01f, 0.2f, 1.5f)) {
 			player_->SetCameraPitch(cameraPitch);
 		}
+		float cameraFollowSmoothness = player_->GetCameraFollowSmoothness();
+		if (ImGui::DragFloat("Camera Follow Smoothness", &cameraFollowSmoothness, 0.1f, 0.0f, 30.0f)) {
+			player_->SetCameraFollowSmoothness(cameraFollowSmoothness);
+		}
 		constexpr const char* kCameraModeLabels[] = {
 			"World Back",
 			"Player Back",
@@ -2044,7 +2075,7 @@ void DirectXGameScene::ApplyPostEffect() const
 	PostEffectType effect = PostEffectType::Fullscreen;
 	switch (gameState_) {
 	case GameState::Paused:
-		effect = PostEffectType::Vignette;
+		effect = PostEffectType::Fullscreen;
 		break;
 	case GameState::LevelUp:
 		effect = PostEffectType::Fullscreen;

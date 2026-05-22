@@ -45,9 +45,9 @@ private:
 		float menuHitboxStepY = 128.0f;
 		Vector2 guidePosition{ 0.0f, 0.0f };
 		Vector2 guideSize{ 1280.0f, 720.0f };
-		Vector3 modelBasePosition{ -18.0f, 1.2f, 8.0f };
+		Vector3 modelBasePosition{ -18.0f, -2.0f, 8.0f };
 		Vector3 modelScale{ 4.5f, 4.5f, 4.5f };
-		Vector3 cameraTarget{ 0.0f, 1.0f, 0.0f };
+		Vector3 cameraTarget{ 0.0f, 4.5f, 0.0f };
 		float cameraDistance = 76.0f;
 		float cameraHeight = 44.0f;
 		float cameraPitch = 0.48f;
@@ -67,6 +67,7 @@ private:
 	void UpdateModelAnimation();
 	void UpdatePlayerLight();
 	void UpdateCameraAnimation();
+	void QueueDebugDraw();
 	void DrawDebugUi();
 
 	bool IsMouseMenuConfirm(int32_t hoveredMenuIndex) const;
@@ -87,6 +88,7 @@ private:
 	std::unique_ptr<GridPlane> gridPlane_;
 	GameLightSettings lightSettings_{};
 	Vector3 titleLightOffset_ = GameLightDefaults::kPlayerLightOffset;
+	bool titleDebugDrawEnabled_ = true;
 
 	SoundHandle titleBgmHandle_ = 0;
 	SoundHandle selectSeHandle_ = 0;

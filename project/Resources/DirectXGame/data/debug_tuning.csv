@@ -36,6 +36,7 @@ particle.playerDeathSmokeCount,18
 particle.playerDeathRippleCount,2
 camera.distance,45
 camera.height,80
+camera.followSmoothness,8
 particle.sparkLifetime,0.35
 particle.smokeScaleMultiplier,1
 particle.rippleExpandSpeed,4.5
@@ -56,3 +57,9 @@ light.directionalDirection,-0.35,-1,-0.4
 light.pointEnabled,1
 light.pointColor,1,0.96,0.82
 light.pointDecay,2.05
+title.light.height,25
+title.light.pointEnabled,1
+title.light.pointColor,1,0.960784,0.819608
+title.light.pointIntensity,2.02
+title.light.pointRadius,260
+title.light.pointDecay,2.05

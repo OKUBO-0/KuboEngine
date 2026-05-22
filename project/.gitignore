@@ -17,6 +17,7 @@ imgui.ini
 
 # Local Codex/work notes
 .codex/
+.playwright-mcp/
 docs/
 scripts/
 

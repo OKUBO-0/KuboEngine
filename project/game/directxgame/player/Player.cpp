@@ -53,6 +53,17 @@ bool ProjectWorldToScreen(
 	return std::isfinite(outScreen.x) && std::isfinite(outScreen.y);
 }
 
+float LerpFloat(float start, float end, float progress)
+{
+	return start + (end - start) * progress;
+}
+
+float SmoothStep(float progress)
+{
+	progress = std::clamp(progress, 0.0f, 1.0f);
+	return progress * progress * (3.0f - 2.0f * progress);
+}
+
 }
 
 namespace DirectXGame {
@@ -62,12 +73,23 @@ void Player::Initialize()
 	InitializeCamera();
 	InitializeObjects();
 	ApplyTransforms();
+	cameraFocusPosition_ = position_;
+	cameraFollowInitialized_ = true;
+	if (camera_) {
+		UpdateCamera(false);
+	}
+	if (playerObject_) {
+		playerObject_->Update();
+	}
+	if (aimIndicatorObject_) {
+		aimIndicatorObject_->Update();
+	}
 }
 
 void Player::InitializeCamera()
 {
 	camera_ = std::make_unique<Engine::CameraSystem::Camera>();
-	UpdateCamera();
+	UpdateCamera(false);
 	camera_->Update();
 
 	Engine::CameraSystem::CameraManager::GetInstance()->AddCamera(kGameCameraName, camera_.get());
@@ -101,10 +123,12 @@ void Player::InitializeObjects()
 
 void Player::Update(float deltaTime)
 {
+	deathPresentationActive_ = false;
+	introPresentationActive_ = false;
 	UpdateMovement(deltaTime);
-	UpdateCamera();
+	UpdateCamera(true);
 	UpdateAim(deltaTime);
-	UpdateCamera();
+	UpdateCamera(false);
 	ApplyTransforms();
 
 	if (camera_) {
@@ -120,7 +144,7 @@ void Player::Update(float deltaTime)
 
 void Player::Draw()
 {
-	if (aimIndicatorObject_) {
+	if (!deathPresentationActive_ && !introPresentationActive_ && aimIndicatorObject_) {
 		aimIndicatorObject_->Draw();
 	}
 	if (visible_ && playerObject_) {
@@ -136,6 +160,80 @@ void Player::SetLightSettings(const GameLightSettings& lightSettings)
 	}
 	if (aimIndicatorObject_) {
 		lightSettings_.ApplyTo(*aimIndicatorObject_);
+	}
+}
+
+void Player::StartIntroPresentation()
+{
+	visible_ = true;
+	introPresentationActive_ = true;
+	cameraFocusPosition_ = position_;
+	cameraFollowInitialized_ = true;
+	UpdateIntroPresentation(0.0f, 1.0f);
+}
+
+void Player::UpdateIntroPresentation(float elapsedTime, float duration)
+{
+	introPresentationActive_ = true;
+	visible_ = true;
+	const float progress = SmoothStep(duration > 0.0f ? elapsedTime / duration : 1.0f);
+	if (playerObject_) {
+		playerObject_->SetRotate({ 0.0f, rotationY_, 0.0f });
+		playerObject_->SetTranslate(position_);
+		playerObject_->Update();
+	}
+
+	if (camera_) {
+		const float distance = LerpFloat(18.0f, cameraDistance_, progress);
+		const float height = LerpFloat(28.0f, cameraHeight_, progress);
+		const float pitch = LerpFloat(0.72f, cameraPitch_, progress);
+		camera_->SetTranslate({ position_.x, height, position_.z - distance });
+		camera_->SetRotate({ pitch, 0.0f, 0.0f });
+		camera_->SetFarClip(500.0f);
+		camera_->Update();
+
+		Engine::CameraSystem::CameraManager* cameraManager =
+			Engine::CameraSystem::CameraManager::GetInstance();
+		if (cameraManager->SyncCamera(kGameCameraName, camera_.get())) {
+			cameraManager->SetActiveCamera(kGameCameraName);
+		}
+	}
+}
+
+void Player::StartDeathPresentation()
+{
+	visible_ = true;
+	deathPresentationActive_ = true;
+	deathStartCameraHeight_ = cameraHeight_;
+	deathStartCameraDistance_ = cameraDistance_;
+	deathStartCameraPitch_ = cameraPitch_;
+	cameraFocusPosition_ = position_;
+	cameraFollowInitialized_ = true;
+	ApplyDeathPose(0.0f);
+	UpdateDeathPresentation(0.0f, 1.0f);
+}
+
+void Player::UpdateDeathPresentation(float elapsedTime, float duration)
+{
+	deathPresentationActive_ = true;
+	visible_ = true;
+	const float progress = SmoothStep(duration > 0.0f ? elapsedTime / duration : 1.0f);
+	ApplyDeathPose(progress);
+
+	if (camera_) {
+		const float distance = LerpFloat(deathStartCameraDistance_, 18.0f, progress);
+		const float height = LerpFloat(deathStartCameraHeight_, 28.0f, progress);
+		const float pitch = LerpFloat(deathStartCameraPitch_, 0.72f, progress);
+		camera_->SetTranslate({ position_.x, height, position_.z - distance });
+		camera_->SetRotate({ pitch, 0.0f, 0.0f });
+		camera_->SetFarClip(500.0f);
+		camera_->Update();
+
+		Engine::CameraSystem::CameraManager* cameraManager =
+			Engine::CameraSystem::CameraManager::GetInstance();
+		if (cameraManager->SyncCamera(kGameCameraName, camera_.get())) {
+			cameraManager->SetActiveCamera(kGameCameraName);
+		}
 	}
 }
 
@@ -260,35 +358,50 @@ void Player::UpdateAimIndicator()
 		});
 }
 
-void Player::UpdateCamera()
+void Player::UpdateCamera(bool advanceFollow)
 {
 	if (!camera_) {
 		return;
 	}
 
-	auto applyCamera = [this](Engine::CameraSystem::Camera& camera) {
+	if (!cameraFollowInitialized_) {
+		cameraFocusPosition_ = position_;
+		cameraFollowInitialized_ = true;
+	} else if (advanceFollow) {
+		const float clampedSmoothness = (std::max)(0.0f, cameraFollowSmoothness_);
+		const float followRate = clampedSmoothness <= 0.0f
+			? 0.0f
+			: 1.0f - std::exp(-clampedSmoothness * kFixedDeltaTime);
+		cameraFocusPosition_.x += (position_.x - cameraFocusPosition_.x) * followRate;
+		cameraFocusPosition_.y += (position_.y - cameraFocusPosition_.y) * followRate;
+		cameraFocusPosition_.z += (position_.z - cameraFocusPosition_.z) * followRate;
+	}
+
+	const Vector3 focus = cameraFocusPosition_;
+
+	auto applyCamera = [this, focus](Engine::CameraSystem::Camera& camera) {
 		switch (cameraMode_) {
 		case CameraMode::PlayerBack: {
 			const Vector3 forward{ std::sin(rotationY_), 0.0f, std::cos(rotationY_) };
 			camera.SetTranslate({
-				position_.x - forward.x * cameraDistance_,
+				focus.x - forward.x * cameraDistance_,
 				cameraHeight_,
-				position_.z - forward.z * cameraDistance_,
+				focus.z - forward.z * cameraDistance_,
 				});
 			camera.SetRotate({ cameraPitch_, rotationY_, 0.0f });
 			break;
 		}
 		case CameraMode::WorldFront:
-			camera.SetTranslate({ position_.x, cameraHeight_, position_.z + cameraDistance_ });
+			camera.SetTranslate({ focus.x, cameraHeight_, focus.z + cameraDistance_ });
 			camera.SetRotate({ cameraPitch_, 3.14159265f, 0.0f });
 			break;
 		case CameraMode::TopDown:
-			camera.SetTranslate({ position_.x, cameraHeight_, position_.z });
+			camera.SetTranslate({ focus.x, cameraHeight_, focus.z });
 			camera.SetRotate({ 1.57079633f, 0.0f, 0.0f });
 			break;
 		case CameraMode::WorldBack:
 		default:
-			camera.SetTranslate({ position_.x, cameraHeight_, position_.z - cameraDistance_ });
+			camera.SetTranslate({ focus.x, cameraHeight_, focus.z - cameraDistance_ });
 			camera.SetRotate({ cameraPitch_, 0.0f, 0.0f });
 			break;
 		}
@@ -307,10 +420,34 @@ void Player::UpdateCamera()
 void Player::ApplyTransforms()
 {
 	if (playerObject_) {
-		playerObject_->SetRotate({ 0.0f, rotationY_, 0.0f });
-		playerObject_->SetTranslate(position_);
+		if (deathPresentationActive_) {
+			ApplyDeathPose(1.0f);
+		} else {
+			playerObject_->SetRotate({ 0.0f, rotationY_, 0.0f });
+			playerObject_->SetTranslate(position_);
+		}
 	}
 	UpdateAimIndicator();
+}
+
+void Player::ApplyDeathPose(float progress)
+{
+	if (!playerObject_) {
+		return;
+	}
+
+	const float fall = SmoothStep(progress);
+	playerObject_->SetRotate({
+		fall * 1.42f,
+		rotationY_,
+		fall * -0.28f,
+		});
+	playerObject_->SetTranslate({
+		position_.x,
+		position_.y - fall * 0.55f,
+		position_.z,
+		});
+	playerObject_->Update();
 }
 
 } // namespace DirectXGame

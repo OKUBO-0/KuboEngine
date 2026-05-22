@@ -40,6 +40,12 @@ constexpr char kAudioTitleSelect[] = "title.select";
 constexpr char kAudioTitleDecide[] = "title.decide";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kTitleCameraName[] = "directxgame_title";
+constexpr float kCubeModelLocalHeight = 2.0f;
+constexpr float kTitleLightTopOffset = 25.0f;
+const Vector4 kTitlePointColor{ 1.0f, 0.960784f, 0.819608f, 1.0f };
+constexpr float kTitlePointIntensity = 2.02f;
+constexpr float kTitlePointRadius = 260.0f;
+constexpr float kTitlePointDecay = 2.05f;
 
 bool IsPointInRect(const Vector2& point, const Vector2& rectPosition, const Vector2& rectSize)
 {
@@ -244,23 +250,25 @@ void DirectXGameTitleScene::InitializeLighting()
 	directional.enable = false;
 	lightSettings_.SetDirectionalLight(directional);
 
-	titleLightOffset_ = UILayoutIO::GetVector3(tuning, "light.pointPlayerOffset", titleLightOffset_);
+	titleLightOffset_ = { 0.0f, UILayoutIO::GetFloat(tuning, "title.light.height", kTitleLightTopOffset), 0.0f };
+	titleLightOffset_.x = 0.0f;
+	titleLightOffset_.z = 0.0f;
 
 	PointLight point{};
 	const Vector3 pointColor = UILayoutIO::GetVector3(
 		tuning,
-		"light.pointColor",
-		{ GameLightDefaults::kPointColor.x, GameLightDefaults::kPointColor.y, GameLightDefaults::kPointColor.z });
-	point.color = { pointColor.x, pointColor.y, pointColor.z, GameLightDefaults::kPointColor.w };
+		"title.light.pointColor",
+		{ kTitlePointColor.x, kTitlePointColor.y, kTitlePointColor.z });
+	point.color = { pointColor.x, pointColor.y, pointColor.z, kTitlePointColor.w };
 	point.position = {
-		layoutSettings_.modelBasePosition.x + titleLightOffset_.x,
-		layoutSettings_.modelBasePosition.y + titleLightOffset_.y,
-		layoutSettings_.modelBasePosition.z + titleLightOffset_.z,
+		layoutSettings_.modelBasePosition.x,
+		layoutSettings_.modelBasePosition.y + layoutSettings_.modelScale.y * kCubeModelLocalHeight + titleLightOffset_.y,
+		layoutSettings_.modelBasePosition.z,
 	};
-	point.intensity = UILayoutIO::GetFloat(tuning, "light.pointIntensity", GameLightDefaults::kPointIntensity);
-	point.radius = UILayoutIO::GetFloat(tuning, "light.pointRadius", GameLightDefaults::kPointRadius);
-	point.decay = UILayoutIO::GetFloat(tuning, "light.pointDecay", GameLightDefaults::kPointDecay);
-	point.enable = UILayoutIO::GetFloat(tuning, "light.pointEnabled", 1.0f) > 0.5f;
+	point.intensity = UILayoutIO::GetFloat(tuning, "title.light.pointIntensity", kTitlePointIntensity);
+	point.radius = UILayoutIO::GetFloat(tuning, "title.light.pointRadius", kTitlePointRadius);
+	point.decay = UILayoutIO::GetFloat(tuning, "title.light.pointDecay", kTitlePointDecay);
+	point.enable = UILayoutIO::GetFloat(tuning, "title.light.pointEnabled", 1.0f) > 0.5f;
 	lightSettings_.SetPointLight(point);
 	lightSettings_.SetLightingEnabled(true);
 }
@@ -280,8 +288,18 @@ void DirectXGameTitleScene::ApplyLayout()
 	if (titleObject_) {
 		titleObject_->SetScale(layoutSettings_.modelScale);
 		titleObject_->SetTranslate(layoutSettings_.modelBasePosition);
+		titleObject_->Update();
 	}
 	UpdateCameraAnimation();
+	if (gridPlane_) {
+		gridPlane_->Update(layoutSettings_.modelBasePosition);
+	}
+	if (skyDomeObject_) {
+		skyDomeObject_->Update();
+	}
+	if (Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) {
+		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()->Update();
+	}
 }
 
 void DirectXGameTitleScene::UpdateCurtain()
@@ -435,10 +453,11 @@ void DirectXGameTitleScene::UpdatePlayerLight()
 	if (titleObject_) {
 		position = titleObject_->GetTransform().translate;
 	}
+	const Vector3 scale = titleObject_ ? titleObject_->GetTransform().scale : layoutSettings_.modelScale;
 	point.position = {
-		position.x + titleLightOffset_.x,
-		position.y + titleLightOffset_.y,
-		position.z + titleLightOffset_.z,
+		position.x,
+		position.y + scale.y * kCubeModelLocalHeight + titleLightOffset_.y,
+		position.z,
 	};
 	lightSettings_.SetPointLight(point);
 
@@ -610,6 +629,47 @@ void DirectXGameTitleScene::DrawDebugUi()
 		if (ImGui::DragFloat3("Model Scale", modelScale, 0.1f, 0.5f, 10.0f)) {
 			layoutSettings_.modelScale = { modelScale[0], modelScale[1], modelScale[2] };
 			ApplyLayout();
+		}
+
+		if (ImGui::CollapsingHeader("Title Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+			PointLight point = lightSettings_.GetPointLight();
+			bool lightChanged = false;
+
+			bool pointEnabled = point.enable != 0;
+			if (ImGui::Checkbox("Title Light Enabled", &pointEnabled)) {
+				point.enable = pointEnabled;
+				lightChanged = true;
+			}
+			if (ImGui::DragFloat("Title Light Height", &titleLightOffset_.y, 0.25f, -8.0f, 80.0f)) {
+				lightChanged = true;
+			}
+			float pointColor[3]{ point.color.x, point.color.y, point.color.z };
+			if (ImGui::ColorEdit3("Title Light Color", pointColor)) {
+				point.color = { pointColor[0], pointColor[1], pointColor[2], point.color.w };
+				lightChanged = true;
+			}
+			if (ImGui::SliderFloat("Title Light Intensity", &point.intensity, 0.0f, 12.0f)) {
+				lightChanged = true;
+			}
+			if (ImGui::DragFloat("Title Light Radius", &point.radius, 0.5f, 1.0f, 260.0f)) {
+				lightChanged = true;
+			}
+			if (ImGui::DragFloat("Title Light Decay", &point.decay, 0.05f, 0.1f, 8.0f)) {
+				lightChanged = true;
+			}
+			if (ImGui::Button("Apply Title Reference Light")) {
+				titleLightOffset_ = { 0.0f, kTitleLightTopOffset, 0.0f };
+				point.color = kTitlePointColor;
+				point.intensity = kTitlePointIntensity;
+				point.radius = kTitlePointRadius;
+				point.decay = kTitlePointDecay;
+				point.enable = true;
+				lightChanged = true;
+			}
+			if (lightChanged) {
+				lightSettings_.SetPointLight(point);
+				UpdatePlayerLight();
+			}
 		}
 
 		float cameraTarget[3]{

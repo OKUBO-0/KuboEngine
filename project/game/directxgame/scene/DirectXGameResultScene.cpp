@@ -222,6 +222,7 @@ void DirectXGameResultScene::InitializeUi()
 	background_.Initialize("ui/result/Result.png", backgroundPosition_);
 	resultUi_.Initialize("ui/result/Result.png", resultPosition_);
 	finishUi_.Initialize("ui/result/finish_ui.png", finishPosition_);
+	finishUi_.SetAnchor(UIElement::Anchor::Center);
 	ApplyLayout();
 	curtain_ = std::make_unique<CurtainTransition>();
 	curtain_->Initialize();

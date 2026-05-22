@@ -204,6 +204,7 @@ private:
 	int32_t previousEffectTotalExp_ = 0;
 	float hitFlashTimer_ = 0.0f;
 	float deathTimer_ = 0.0f;
+	float startIntroTimer_ = 0.0f;
 	float previousLightningEffectTimer_ = 0.0f;
 	uint32_t debugSoftCapTelemetryStartFrame_ = 0;
 	bool debugSoftCapAutoLogEnabled_ = false;
@@ -224,6 +225,8 @@ private:
 	bool uiInitialized_ = false;
 	bool gameOverSePlayed_ = false;
 	bool deathEffectEmitted_ = false;
+	bool deathCurtainStarted_ = false;
+	bool startIntroFinished_ = false;
 	bool debugDrawEnabled_ = false;
 };
 

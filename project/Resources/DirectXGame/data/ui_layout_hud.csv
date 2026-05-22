@@ -1,12 +1,14 @@
 expFramePosition,0,0
 expGaugeSize,1260,30
 hpPosition,540,550
-lvLabelPosition,1156,11
+lvLabelPosition,1176,10
 expFrameSize,1280,50
 hpSize,200,25
 expGaugePosition,10,10
-lvLabelSize,48,48
-lvDigitsPosition,1215,9
+lvLabelSize,55,36
+lvDigitsPosition,1227,10
+lvDigitSize,26,36
+lvScale,0.811
 timerPosition,580,56
 timerScale,1
 miniMapEnemyIconSize,20

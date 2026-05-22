@@ -14,6 +14,7 @@ namespace {
 
 constexpr char kLvLabelPath[] = "ui/game/lv_label.png";
 constexpr char kLvDigitsPath[] = "ui/number/numbers.png";
+constexpr Vector2 kLvDigitTextureSize{ 24.0f, 32.0f };
 
 int32_t StepDisplayValue(int32_t displayedValue, int32_t targetValue)
 {
@@ -48,6 +49,8 @@ void ExpGauge::Initialize()
 	layoutSettings_.lvLabelPosition = UILayoutIO::GetVector2(layout, "lvLabelPosition", layoutSettings_.lvLabelPosition);
 	layoutSettings_.lvLabelSize = UILayoutIO::GetVector2(layout, "lvLabelSize", layoutSettings_.lvLabelSize);
 	layoutSettings_.lvDigitsPosition = UILayoutIO::GetVector2(layout, "lvDigitsPosition", layoutSettings_.lvDigitsPosition);
+	layoutSettings_.lvDigitSize = UILayoutIO::GetVector2(layout, "lvDigitSize", layoutSettings_.lvDigitSize);
+	layoutSettings_.lvScale = UILayoutIO::GetFloat(layout, "lvScale", layoutSettings_.lvScale);
 
 	frameBar_.Initialize();
 	frameBar_.SetColors({ 1.0f, 1.0f, 0.0f, 1.0f }, { 1.0f, 1.0f, 0.0f, 1.0f });
@@ -62,8 +65,8 @@ void ExpGauge::Initialize()
 
 	for (int32_t index = 0; index < kLvDigits; ++index) {
 		sprite_[index] = GameSpriteFactory::Create(lvDigitsHandle_, { 0.0f, 0.0f });
-		sprite_[index]->SetSize(digitSize_);
-		sprite_[index]->SetTextureSize(digitSize_);
+		sprite_[index]->SetSize(layoutSettings_.lvDigitSize);
+		sprite_[index]->SetTextureSize(kLvDigitTextureSize);
 	}
 
 	ApplyLayout();
@@ -98,7 +101,7 @@ void ExpGauge::SetEXP(int32_t current, int32_t max)
 
 void ExpGauge::SetLevel(int32_t level)
 {
-	DigitSpriteUtil::SetNumberSprites(sprite_, digitSize_.x, digitSize_, level, 10);
+	DigitSpriteUtil::SetNumberSprites(sprite_, kLvDigitTextureSize.x, kLvDigitTextureSize, level, 10);
 }
 
 bool ExpGauge::IsFilled() const
@@ -148,9 +151,25 @@ void ExpGauge::DebugDrawImGui()
 		ApplyLayout();
 	}
 
+	if (ImGui::SliderFloat("LV Scale", &layoutSettings_.lvScale, 0.25f, 3.0f)) {
+		ApplyLayout();
+	}
+
+	float labelSize[2]{ layoutSettings_.lvLabelSize.x, layoutSettings_.lvLabelSize.y };
+	if (ImGui::DragFloat2("LV Label Size", labelSize, 1.0f, 8.0f, 256.0f)) {
+		layoutSettings_.lvLabelSize = { labelSize[0], labelSize[1] };
+		ApplyLayout();
+	}
+
 	float digitsPosition[2]{ layoutSettings_.lvDigitsPosition.x, layoutSettings_.lvDigitsPosition.y };
 	if (ImGui::DragFloat2("LV Digits Pos", digitsPosition, 1.0f, -400.0f, 1280.0f)) {
 		layoutSettings_.lvDigitsPosition = { digitsPosition[0], digitsPosition[1] };
+		ApplyLayout();
+	}
+
+	float digitSize[2]{ layoutSettings_.lvDigitSize.x, layoutSettings_.lvDigitSize.y };
+	if (ImGui::DragFloat2("LV Digit Size", digitSize, 1.0f, 8.0f, 128.0f)) {
+		layoutSettings_.lvDigitSize = { digitSize[0], digitSize[1] };
 		ApplyLayout();
 	}
 
@@ -171,6 +190,8 @@ void ExpGauge::SaveLayout() const
 			{ "lvLabelPosition", { layoutSettings_.lvLabelPosition.x, layoutSettings_.lvLabelPosition.y } },
 			{ "lvLabelSize", { layoutSettings_.lvLabelSize.x, layoutSettings_.lvLabelSize.y } },
 			{ "lvDigitsPosition", { layoutSettings_.lvDigitsPosition.x, layoutSettings_.lvDigitsPosition.y } },
+			{ "lvDigitSize", { layoutSettings_.lvDigitSize.x, layoutSettings_.lvDigitSize.y } },
+			{ "lvScale", { layoutSettings_.lvScale } },
 		});
 }
 
@@ -181,15 +202,24 @@ void ExpGauge::ApplyLayout()
 	gaugeBar_.SetPosition(layoutSettings_.gaugePosition);
 	gaugeBar_.SetSize(layoutSettings_.gaugeSize);
 	lvLabel_.SetPosition(layoutSettings_.lvLabelPosition);
-	lvLabel_.SetSize(layoutSettings_.lvLabelSize);
+	const Vector2 scaledLabelSize{
+		layoutSettings_.lvLabelSize.x * layoutSettings_.lvScale,
+		layoutSettings_.lvLabelSize.y * layoutSettings_.lvScale,
+	};
+	const Vector2 scaledDigitSize{
+		layoutSettings_.lvDigitSize.x * layoutSettings_.lvScale,
+		layoutSettings_.lvDigitSize.y * layoutSettings_.lvScale,
+	};
+	lvLabel_.SetSize(scaledLabelSize);
 
 	for (int32_t index = 0; index < kLvDigits; ++index) {
 		if (!sprite_[index]) {
 			continue;
 		}
 		sprite_[index]->SetPosition(
-			{ layoutSettings_.lvDigitsPosition.x + digitSize_.x * static_cast<float>(index), layoutSettings_.lvDigitsPosition.y });
-		sprite_[index]->SetSize(digitSize_);
+			{ layoutSettings_.lvDigitsPosition.x + scaledDigitSize.x * static_cast<float>(index), layoutSettings_.lvDigitsPosition.y });
+		sprite_[index]->SetSize(scaledDigitSize);
+		sprite_[index]->SetTextureSize(kLvDigitTextureSize);
 	}
 }
 

@@ -6,27 +6,27 @@
 
 namespace {
 
-/// @brief アプリケーション実行の起動処理をまとめるヘルパークラス
-/// @details WinMain は Windows の都合で残し、実際の初期化と実行責務はこのクラスへ委譲する。
-class Application final {
-public:
-	/// @brief ゲーム本体を初期化して実行する
-	/// @param なし
-	/// @return 終了コード
-	int Run() const {
-		// DirectX リソースリーク検出用オブジェクト
-		Engine::Base::D3DResourceLeakChecker leakCheck;
+	/// @brief アプリケーション実行の起動処理をまとめるヘルパークラス
+	/// @details WinMain は Windows の都合で残し、実際の初期化と実行責務はこのクラスへ委譲する。
+	class Application final {
+	public:
+		/// @brief ゲーム本体を初期化して実行する
+		/// @param なし
+		/// @return 終了コード
+		int Run() const {
+			// DirectX リソースリーク検出用オブジェクト
+			Engine::Base::D3DResourceLeakChecker leakCheck;
 
-		// デバッグビルド時に起動確認メッセージを出しておく
-		OutputDebugStringA("Hello, DirectX!\n");
+			// デバッグビルド時に起動確認メッセージを出しておく
+			OutputDebugStringA("Hello, DirectX!\n");
 
-		// Framework を継承した Game を生成して、実行責務を一本化する
-		std::unique_ptr<Engine::Base::Framework> game = std::make_unique<Engine::Scene::Game>();
-		game->Run();
+			// Framework を継承した Game を生成して、実行責務を一本化する
+			std::unique_ptr<Engine::Base::Framework> game = std::make_unique<Engine::Scene::Game>();
+			game->Run();
 
-		return 0;
-	}
-};
+			return 0;
+		}
+	};
 
 }
 
