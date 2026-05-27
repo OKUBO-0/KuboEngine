@@ -67,7 +67,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\editor;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\IconFontCppHeaders;$(ProjectDir)externals\ImGuizmo;$(ProjectDir)externals\implot;$(ProjectDir)externals\imgui_node_editor;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -97,7 +97,7 @@ exit /B 0</Command>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\editor;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\IconFontCppHeaders;$(ProjectDir)externals\ImGuizmo;$(ProjectDir)externals\implot;$(ProjectDir)externals\imgui_node_editor;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>MinSpace</Optimization>
     </ClCompile>
     <Link>
@@ -131,6 +131,8 @@ exit /B 0</Command>
     <ClCompile Include="engine\input\Input.cpp" />
     <ClCompile Include="engine\base\utility\Logger.cpp" />
     <ClCompile Include="engine\base\render\ImGuiManager.cpp" />
+    <ClCompile Include="engine\editor\DebugEditorManager.cpp" />
+    <ClCompile Include="engine\editor\ImGuizmoManager.cpp" />
     <ClCompile Include="engine\base\core\Framework.cpp" />
     <ClCompile Include="engine\scene\game\Game.cpp" />
     <ClCompile Include="engine\scene\game\GamePlayScene.cpp" />
@@ -343,6 +345,8 @@ exit /B 0</Command>
     <ClInclude Include="engine\math\types\Vector4.h" />
     <ClInclude Include="engine\base\core\WinApp.h" />
     <ClInclude Include="engine\base\render\ImGuiManager.h" />
+    <ClInclude Include="engine\editor\DebugEditorManager.h" />
+    <ClInclude Include="engine\editor\ImGuizmoManager.h" />
     <ClInclude Include="engine\base\core\Framework.h" />
     <ClInclude Include="engine\scene\game\Game.h" />
     <ClInclude Include="engine\scene\game\GamePlayScene.h" />

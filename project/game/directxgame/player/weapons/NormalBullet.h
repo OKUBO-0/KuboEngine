@@ -22,6 +22,7 @@ public:
 	bool IsActive() const { return active_; }
 	void Deactivate() { active_ = false; }
 	const Vector3& GetPosition() const { return position_; }
+	float GetCollisionRadius() const;
 
 	bool CanHitEnemy(void* enemyPtr);
 	void RegisterHit(void* enemyPtr);

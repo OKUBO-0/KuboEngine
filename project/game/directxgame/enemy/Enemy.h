@@ -26,6 +26,7 @@ public:
 	void SetLightSettings(const GameLightSettings& lightSettings);
 
 	const Vector3& GetPosition() const { return position_; }
+	float GetCollisionRadius() const;
 	Player* GetPlayer() const { return player_; }
 	bool IsActive() const { return active_; }
 	void Deactivate() { active_ = false; }

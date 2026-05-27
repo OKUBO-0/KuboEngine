@@ -92,6 +92,8 @@ public:
     // 各種データ取得
     D3D12_VERTEX_BUFFER_VIEW GetVertexBufferView() const { return vertexBufferView; }
     const ModelData& GetModelData() const { return modelData; }
+    float GetLocalBoundingRadius() const { return modelData.localBoundingRadius; }
+    bool HasBounds() const { return modelData.hasBounds; }
     Animation& GetAnimation() { return animation; }
     Skeleton& GetSkeleton() { return skeleton; }
     SkinCluster& GetSkinCluster() { return skinCluster; }
@@ -155,6 +157,7 @@ private:
     /// @param modelData 書き込み先モデルデータ
     /// @return なし
     void LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData);
+    static void CalculateBounds(ModelData& modelData);
 
     /// @brief メッシュインデックスデータを内部形式へ変換する
     /// @param mesh Assimp メッシュ

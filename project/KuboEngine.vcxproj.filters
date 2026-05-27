@@ -96,6 +96,12 @@
     <ClCompile Include="engine\base\render\ImGuiManager.cpp">
       <Filter>engine\base\render</Filter>
     </ClCompile>
+    <ClCompile Include="engine\editor\DebugEditorManager.cpp">
+      <Filter>engine\editor</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\editor\ImGuizmoManager.cpp">
+      <Filter>engine\editor</Filter>
+    </ClCompile>
     <ClCompile Include="engine\base\utility\Logger.cpp">
       <Filter>engine\base\utility</Filter>
     </ClCompile>
@@ -328,6 +334,12 @@
     </ClInclude>
     <ClInclude Include="engine\base\render\ImGuiManager.h">
       <Filter>engine\base\render</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\DebugEditorManager.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\ImGuizmoManager.h">
+      <Filter>engine\editor</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\utility\Logger.h">
       <Filter>engine\base\utility</Filter>
@@ -746,6 +758,9 @@
     </Filter>
     <Filter Include="engine\base\render">
       <UniqueIdentifier>{26138c18-a896-49a8-8fdf-d82f6e08e053}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="engine\editor">
+      <UniqueIdentifier>{af74cc5d-0da4-43cc-b16e-56254eec0e92}</UniqueIdentifier>
     </Filter>
     <Filter Include="engine\base\utility">
       <UniqueIdentifier>{5344d702-d137-478d-a847-8706c8db24fa}</UniqueIdentifier>

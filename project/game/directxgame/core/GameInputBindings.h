@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Input.h"
+#include "game/directxgame/core/ScreenUtil.h"
 #include "Vector2.h"
 #include <Windows.h>
 #include <algorithm>
@@ -26,6 +27,9 @@ inline float ClampAxis(float value)
 inline bool IsGameInputSuppressedByImGui()
 {
 #ifdef _DEBUG
+	if (ScreenUtil::IsDebugSceneInputActive()) {
+		return false;
+	}
 	const ImGuiIO& io = ImGui::GetIO();
 	return io.WantCaptureMouse || io.WantCaptureKeyboard || ImGui::IsAnyItemActive();
 #else

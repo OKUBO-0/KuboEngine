@@ -122,6 +122,8 @@ public:
 	/// @return 描画コマンドリスト
 	ID3D12GraphicsCommandList* GetCommandList()const { return commandList.Get(); }
 
+	ID3D12CommandQueue* GetCommandQueue() const { return commandQueue.Get(); }
+
 	/// @brief RTV のビュー記述子を取得する
 	/// @param なし
 	/// @return レンダーターゲットビュー記述子

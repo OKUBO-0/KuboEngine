@@ -138,6 +138,11 @@ struct ModelData {
 	std::vector<uint32_t> indices;
 	MaterialData material;
 	Node rootNode;
+	Vector3 localAabbMin{ 0.0f, 0.0f, 0.0f };
+	Vector3 localAabbMax{ 0.0f, 0.0f, 0.0f };
+	Vector3 localAabbCenter{ 0.0f, 0.0f, 0.0f };
+	float localBoundingRadius = 1.0f;
+	bool hasBounds = false;
 
 
 }; 

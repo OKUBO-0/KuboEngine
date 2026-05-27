@@ -49,6 +49,7 @@ public:
 	void SetModel(Model* model) { model_ = model; }
 	void SetModel(const std::string& filepath);
 	void SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath);
+	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;
 
 	//環境マップ
 	void SetSkyboxFilePath(const std::string& filepath) { skyboxFilePath_ = filepath; }

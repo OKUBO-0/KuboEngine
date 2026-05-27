@@ -4,6 +4,7 @@
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
+#include "game/directxgame/core/ScreenUtil.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/ui/common/DigitSpriteUtil.h"
 #include "CameraManager.h"
@@ -14,7 +15,11 @@
 #include "SpriteCommon.h"
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <string_view>
 #ifdef _DEBUG
+#include "DebugEditorManager.h"
+#include "IconsFontAwesome5.h"
 #include <imgui.h>
 #endif
 
@@ -77,35 +82,91 @@ void DirectXGameResultScene::Update()
 	UpdateFinishUiPulse();
 	UpdateCurtain(kFixedDeltaTime);
 
-	if (!pendingSceneId_.empty()) {
-		return;
-	}
-
-	if (menuInput.confirm || menuInput.cancel) {
+	if (pendingSceneId_.empty() && (menuInput.confirm || menuInput.cancel)) {
 		if (!IsCountUpFinished()) {
 			FinishCountUp();
-			return;
+		} else {
+			RequestSceneChange(SceneId::kTitle);
 		}
-		RequestSceneChange(SceneId::kTitle);
-		return;
 	}
 
 #ifdef _DEBUG
-	ImGui::Begin("DirectXGame Result");
-	ImGui::Text("Stage 12 result scene");
-	ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
-	ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
-	ImGui::Text("Cancel: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
-	float masterVolume = GameAudioCache::GetMasterVolume();
-	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
-		GameAudioCache::SetMasterVolume(masterVolume);
+	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	if (input && input->TriggerKey(DIK_F5)) {
+		ReloadDebugData();
 	}
-	float resultFinishVolume = GameAudioCache::GetTunedVolume(kAudioResultFinish, 1.0f);
-	if (ImGui::SliderFloat("Result Finish Volume", &resultFinishVolume, 0.0f, 1.0f)) {
-		GameAudioCache::SetTunedVolume(kAudioResultFinish, resultFinishVolume);
+
+	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
+		{ "Scene", &debugWindows_.sceneView },
+		{ "統計", &debugWindows_.statisticsView },
+		{ "シーン設定", &debugWindows_.sceneSettings },
+		{ "オーディオ", &debugWindows_.audio },
+		{ "キー操作デバッグ", &debugWindows_.keyInputDebug },
+	};
+	const Engine::Editor::DebugEditorMenuItem editItems[] = {
+		{ "シーン設定", &debugWindows_.sceneSettings },
+	};
+	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
+		{ "Scene", &debugWindows_.sceneView },
+		{ "シーン設定", &debugWindows_.sceneSettings },
+	};
+	Engine::Editor::DebugEditorManager::DrawMainMenu({
+		windowItems,
+		std::size(windowItems),
+		editItems,
+		std::size(editItems),
+		objectItems,
+		std::size(objectItems),
+		"リザルトレイアウトを保存",
+		[this]() { SaveLayout(); },
+		"リザルト設定を再読み込み",
+		[this]() { ReloadDebugData(); },
+		"Result Debug UI",
+		[this]() { RequestSceneChange(SceneId::kTitle); },
+		{},
+		{},
+		&debugWindows_.windowSwitcher,
+	});
+
+	if (debugWindows_.windowSwitcher) {
+		Engine::Editor::DebugEditorManager::DrawWindowSwitcher(
+			"ウィンドウ表示切り替え",
+			&debugWindows_.windowSwitcher,
+			windowItems,
+			std::size(windowItems),
+			{ 260.0f, 180.0f });
 	}
-	ImGui::Checkbox("Enable Result Layout Debug", &layoutDebugEnabled_);
-	if (layoutDebugEnabled_) {
+
+	if (debugWindows_.sceneView) {
+		const Engine::Editor::DebugSceneViewportState sceneViewport =
+			Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugWindows_.sceneView);
+		ScreenUtil::SetDebugSceneInputActive(sceneViewport.inputActive);
+		if (sceneViewport.drawn) {
+			ScreenUtil::SetDebugSceneViewport(sceneViewport.min, sceneViewport.size);
+		} else {
+			ScreenUtil::ClearDebugSceneViewport();
+		}
+	} else {
+		ScreenUtil::ClearDebugSceneViewport();
+	}
+
+	if (debugWindows_.audio) {
+		ImGui::Begin("オーディオ", &debugWindows_.audio);
+		float masterVolume = GameAudioCache::GetMasterVolume();
+		if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
+			GameAudioCache::SetMasterVolume(masterVolume);
+		}
+		float resultFinishVolume = GameAudioCache::GetTunedVolume(kAudioResultFinish, 1.0f);
+		if (ImGui::SliderFloat("Result Finish Volume", &resultFinishVolume, 0.0f, 1.0f)) {
+			GameAudioCache::SetTunedVolume(kAudioResultFinish, resultFinishVolume);
+		}
+		ImGui::End();
+	}
+
+	if (debugWindows_.sceneSettings) {
+		ImGui::Begin("シーン設定", &debugWindows_.sceneSettings);
+		ImGui::Checkbox("Enable Result Layout Debug", &layoutDebugEnabled_);
+		if (layoutDebugEnabled_) {
 		float backgroundPosition[2]{ backgroundPosition_.x, backgroundPosition_.y };
 		if (ImGui::DragFloat2("Background Position", backgroundPosition, 1.0f, -400.0f, 1280.0f)) {
 			backgroundPosition_ = { backgroundPosition[0], backgroundPosition[1] };
@@ -168,7 +229,23 @@ void DirectXGameResultScene::Update()
 			SaveLayout();
 		}
 	}
-	if (sessionContext_) {
+		if (ImGui::Button("Back To Title")) {
+			RequestSceneChange(SceneId::kTitle);
+			ImGui::End();
+			return;
+		}
+		ImGui::End();
+	}
+
+	if (debugWindows_.statisticsView) {
+		ImGui::Begin("統計", &debugWindows_.statisticsView);
+		ImGui::Text("Stage 12 result scene");
+		ImGui::Text("Count Up Finished: %s", countUpFinished_ ? "true" : "false");
+		ImGui::Text("Displayed EXP: %.0f", displayedExp_);
+		ImGui::Text("Displayed Level: %.0f", displayedLevel_);
+		ImGui::Text("Displayed Kills: %.0f", displayedKills_);
+		ImGui::Text("Displayed Total Score: %.0f", displayedTotalScore_);
+		if (sessionContext_) {
 		const DirectXGameResultData& resultData = sessionContext_->GetResultData();
 		ImGui::Separator();
 		ImGui::Text("Run Count: %u", sessionContext_->GetRunCount());
@@ -176,12 +253,18 @@ void DirectXGameResultScene::Update()
 		ImGui::Text("Level: %u", resultData.level);
 		ImGui::Text("Kill Count: %u", resultData.killCount);
 	}
-	if (ImGui::Button("Back To Title")) {
-		RequestSceneChange(SceneId::kTitle);
 		ImGui::End();
-		return;
 	}
-	ImGui::End();
+
+	if (debugWindows_.keyInputDebug) {
+		ImGui::Begin("キー操作デバッグ", &debugWindows_.keyInputDebug);
+		ImGui::TextUnformatted("リザルトシーン入力");
+		ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
+		ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
+		ImGui::Text("Cancel: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
+		ImGui::Text("Pending Scene: %s", pendingSceneId_.empty() ? "none" : pendingSceneId_.c_str());
+		ImGui::End();
+	}
 #endif
 }
 
@@ -218,6 +301,17 @@ void DirectXGameResultScene::InitializeUi()
 	totalScorePosition_ = UILayoutIO::GetVector2(layout, "totalScorePosition", totalScorePosition_);
 	digitSize_ = UILayoutIO::GetVector2(layout, "digitSize", digitSize_);
 	scoreScale_ = UILayoutIO::GetFloat(layout, "scoreScale", scoreScale_);
+#ifdef _DEBUG
+	auto loadWindowVisible = [&layout](std::string_view key, bool fallback) {
+		return UILayoutIO::GetFloat(layout, key, fallback ? 1.0f : 0.0f) != 0.0f;
+	};
+	debugWindows_.windowSwitcher = loadWindowVisible("debug.windowSwitcher", debugWindows_.windowSwitcher);
+	debugWindows_.sceneView = loadWindowVisible("debug.sceneView", debugWindows_.sceneView);
+	debugWindows_.statisticsView = loadWindowVisible("debug.statisticsView", debugWindows_.statisticsView);
+	debugWindows_.sceneSettings = loadWindowVisible("debug.sceneSettings", debugWindows_.sceneSettings);
+	debugWindows_.audio = loadWindowVisible("debug.audio", debugWindows_.audio);
+	debugWindows_.keyInputDebug = loadWindowVisible("debug.keyInputDebug", debugWindows_.keyInputDebug);
+#endif
 
 	background_.Initialize("ui/result/Result.png", backgroundPosition_);
 	resultUi_.Initialize("ui/result/Result.png", resultPosition_);
@@ -280,7 +374,44 @@ void DirectXGameResultScene::SaveLayout() const
 			{ "totalScorePosition", { totalScorePosition_.x, totalScorePosition_.y } },
 			{ "digitSize", { digitSize_.x, digitSize_.y } },
 			{ "scoreScale", { scoreScale_ } },
+#ifdef _DEBUG
+			{ "debug.windowSwitcher", { debugWindows_.windowSwitcher ? 1.0f : 0.0f } },
+			{ "debug.sceneView", { debugWindows_.sceneView ? 1.0f : 0.0f } },
+			{ "debug.statisticsView", { debugWindows_.statisticsView ? 1.0f : 0.0f } },
+			{ "debug.sceneSettings", { debugWindows_.sceneSettings ? 1.0f : 0.0f } },
+			{ "debug.audio", { debugWindows_.audio ? 1.0f : 0.0f } },
+			{ "debug.keyInputDebug", { debugWindows_.keyInputDebug ? 1.0f : 0.0f } },
+#endif
 		});
+}
+
+void DirectXGameResultScene::ReloadDebugData()
+{
+	const UILayoutIO::LayoutMap layout = UILayoutIO::LoadOrDefault(DataPaths::kResultLayout, {});
+	backgroundPosition_ = UILayoutIO::GetVector2(layout, "backgroundPosition", backgroundPosition_);
+	backgroundSize_ = UILayoutIO::GetVector2(layout, "backgroundSize", backgroundSize_);
+	resultPosition_ = UILayoutIO::GetVector2(layout, "resultUIPosition", UILayoutIO::GetVector2(layout, "resultPosition", resultPosition_));
+	resultSize_ = UILayoutIO::GetVector2(layout, "resultUISize", UILayoutIO::GetVector2(layout, "resultSize", resultSize_));
+	finishPosition_ = UILayoutIO::GetVector2(layout, "finishUIPosition", finishPosition_);
+	finishSize_ = UILayoutIO::GetVector2(layout, "finishUISize", finishSize_);
+	expPosition_ = UILayoutIO::GetVector2(layout, "expPosition", expPosition_);
+	levelPosition_ = UILayoutIO::GetVector2(layout, "levelPosition", levelPosition_);
+	killPosition_ = UILayoutIO::GetVector2(layout, "killPosition", killPosition_);
+	totalScorePosition_ = UILayoutIO::GetVector2(layout, "totalScorePosition", totalScorePosition_);
+	digitSize_ = UILayoutIO::GetVector2(layout, "digitSize", digitSize_);
+	scoreScale_ = UILayoutIO::GetFloat(layout, "scoreScale", scoreScale_);
+#ifdef _DEBUG
+	auto loadWindowVisible = [&layout](std::string_view key, bool fallback) {
+		return UILayoutIO::GetFloat(layout, key, fallback ? 1.0f : 0.0f) != 0.0f;
+	};
+	debugWindows_.windowSwitcher = loadWindowVisible("debug.windowSwitcher", debugWindows_.windowSwitcher);
+	debugWindows_.sceneView = loadWindowVisible("debug.sceneView", debugWindows_.sceneView);
+	debugWindows_.statisticsView = loadWindowVisible("debug.statisticsView", debugWindows_.statisticsView);
+	debugWindows_.sceneSettings = loadWindowVisible("debug.sceneSettings", debugWindows_.sceneSettings);
+	debugWindows_.audio = loadWindowVisible("debug.audio", debugWindows_.audio);
+	debugWindows_.keyInputDebug = loadWindowVisible("debug.keyInputDebug", debugWindows_.keyInputDebug);
+#endif
+	ApplyLayout();
 }
 
 void DirectXGameResultScene::UpdateCountUp(float deltaTime)

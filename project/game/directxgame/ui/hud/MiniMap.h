@@ -15,6 +15,18 @@ class Player;
 class MiniMap {
 public:
 	void Initialize();
+	void ConfigureLayout(
+		const Vector2& backgroundPosition,
+		const Vector2& backgroundSize,
+		const Vector2& center,
+		float radius,
+		float scale,
+		float playerIconSize,
+		float enemyIconSize,
+		float orbIconSize,
+		bool visible);
+	void ConfigureAsScaledCopy(const MiniMap& source, float scale, const Vector2& backgroundPosition, bool visible);
+	void SetIconSizeMultiplier(float multiplier);
 	void Update(const Player* player, const EnemyManager& enemyManager);
 	void Draw();
 	void DebugDrawImGui();

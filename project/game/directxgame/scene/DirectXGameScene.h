@@ -2,6 +2,7 @@
 
 #include "BaseScene.h"
 #include "Camera.h"
+#include "ImGuizmoManager.h"
 #include "Object3D.h"
 #include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/core/GameInputBindings.h"
@@ -136,8 +137,6 @@ private:
 		int32_t enemyHitSparkCount = 10;
 		int32_t enemyDeathSparkCount = 24;
 		int32_t enemyDeathSmokeCount = 10;
-		int32_t enemyDeathRippleCount = 1;
-		int32_t expRippleCount = 1;
 		int32_t expSparkCount = 8;
 		int32_t lightningSparkCount = 14;
 		int32_t lightningRippleCount = 1;
@@ -154,6 +153,31 @@ private:
 		float rippleExpandSpeed = 4.5f;
 		float confettiVelocityScale = 0.55f;
 		float confettiScaleMultiplier = 0.55f;
+	};
+
+	struct DebugWindowVisibility {
+		bool windowSwitcher = false;
+		bool sceneView = true;
+		bool objectView = false;
+		bool particleView = false;
+		bool statisticsView = true;
+		bool offscreenSettings = false;
+		bool lightSettings = false;
+		bool gizmo = false;
+		bool objectManager = false;
+		bool motionEditor = false;
+		bool spriteManager = false;
+		bool colliderTagManager = false;
+		bool audio = false;
+		bool keyInputDebug = true;
+		bool sceneSettings = true;
+		bool sceneSpecificDebug = false;
+		bool objectSettings = false;
+	};
+
+	enum class DebugGizmoTarget {
+		Player,
+		PointLight,
 	};
 
 	std::shared_ptr<DirectXGameSessionContext> sessionContext_;
@@ -181,6 +205,7 @@ private:
 	ExpGauge expGauge_;
 	KeyUI keyUI_;
 	MiniMap miniMap_;
+	MiniMap gameplayMiniMap_;
 	UILabel startOverlay_;
 	UILabel pauseOverlay_;
 	UILabel pauseCursor_;
@@ -228,6 +253,10 @@ private:
 	bool deathCurtainStarted_ = false;
 	bool startIntroFinished_ = false;
 	bool debugDrawEnabled_ = false;
+	DebugWindowVisibility debugWindows_{};
+	DebugGizmoTarget debugGizmoTarget_ = DebugGizmoTarget::Player;
+	Engine::Editor::ImGuizmoManager::Operation debugGizmoOperation_ =
+		Engine::Editor::ImGuizmoManager::Operation::Translate;
 };
 
 }

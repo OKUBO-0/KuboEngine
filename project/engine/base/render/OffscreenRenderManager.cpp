@@ -128,6 +128,25 @@ void OffscreenRenderManager::SetScenePostEffectType(PostEffectType type)
 	}
 }
 
+void OffscreenRenderManager::CreateImGuiSceneTextureSrv(
+	D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle)
+{
+	imGuiSceneTextureCpuHandle = cpuHandle;
+	imGuiSceneTextureGpuHandle_ = gpuHandle;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = 1;
+	dxCommon_->GetDevice()->CreateShaderResourceView(
+		renderTargetTextureResource.Get(),
+		&srvDesc,
+		imGuiSceneTextureCpuHandle);
+	imGuiSceneTextureReady_ = true;
+}
+
 
 
 Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& clearColor)

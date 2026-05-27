@@ -46,7 +46,6 @@ void Game::Update()
 	Engine::Base::Framework::Update();
 
 #ifdef _DEBUG
-	offscreenRenderManager->DrawImGui();
 	imGuiManager->End();
 #endif // _DEBUG
 }

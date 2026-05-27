@@ -3,8 +3,10 @@
 #include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
+#include "game/directxgame/core/ScreenUtil.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/effects/DirectXGameParticleBehaviors.h"
+#include "ImGuizmoManager.h"
 #include "CameraManager.h"
 #include "Input.h"
 #include "Line.h"
@@ -20,13 +22,18 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <random>
 #include <string>
 #include <utility>
 #include <vector>
 #ifdef _DEBUG
+#include "DebugEditorManager.h"
+#include "IconsFontAwesome5.h"
+#include <implot.h>
 #include <imgui.h>
+#include <imgui_node_editor.h>
 #endif
 
 namespace {
@@ -44,8 +51,8 @@ constexpr Vector2 kLevelUpChoiceHitboxSize{ 435.0f, 68.0f };
 constexpr float kPauseCursorStepY = 168.0f;
 constexpr float kStartIntroDuration = 1.2f;
 constexpr float kDeathPresentationDuration = 1.35f;
-constexpr float kDeathCurtainStartTime = 1.2f;
-constexpr float kDeathOverlayDelay = 0.75f;
+constexpr float kDeathCurtainStartTime = 1.55f;
+constexpr float kDeathOverlayDelay = 1.25f;
 constexpr std::array<std::pair<const char*, float>, 13> kAudioTuningDefaults{ {
 	{ "title.bgm", 0.1f },
 	{ "title.select", 1.0f },
@@ -186,6 +193,8 @@ void DirectXGameScene::Update()
 			RequestResultScene();
 			ApplyPostEffect();
 			UpdateDebugUi();
+			QueueDebugDraw();
+			QueueEffectDraw();
 			return;
 		}
 		UpdateGamePlay(kFixedDeltaTime);
@@ -224,8 +233,6 @@ void DirectXGameScene::Update()
 		if (!deathCurtainStarted_ && (deathTimer_ >= kDeathCurtainStartTime || menuInput.confirm)) {
 			deathCurtainStarted_ = true;
 			RequestResultScene();
-			ApplyPostEffect();
-			return;
 		}
 	}
 
@@ -326,6 +333,9 @@ void DirectXGameScene::InitializeUi()
 	expGauge_.Initialize();
 	keyUI_.Initialize();
 	miniMap_.Initialize();
+	gameplayMiniMap_.Initialize();
+	gameplayMiniMap_.ConfigureAsScaledCopy(miniMap_, 0.28f, { 1062.0f, 506.0f }, true);
+	gameplayMiniMap_.SetIconSizeMultiplier(1.75f);
 
 	startOverlay_.Initialize("ui/game/start.png", { 0.0f, 0.0f });
 	startOverlay_.SetSize({ 1280.0f, 720.0f });
@@ -468,6 +478,27 @@ void DirectXGameScene::InitializeParticles()
 void DirectXGameScene::LoadDebugTuning()
 {
 	const UILayoutIO::LayoutMap tuning = UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {});
+	auto loadWindowVisible = [&tuning](const char* key, bool fallback) {
+		return UILayoutIO::GetFloat(tuning, std::string("debugWindow.") + key, fallback ? 1.0f : 0.0f) > 0.5f;
+	};
+
+	debugWindows_.windowSwitcher = loadWindowVisible("windowSwitcher", debugWindows_.windowSwitcher);
+	debugWindows_.sceneView = loadWindowVisible("sceneView", debugWindows_.sceneView);
+	debugWindows_.objectView = loadWindowVisible("objectView", debugWindows_.objectView);
+	debugWindows_.particleView = loadWindowVisible("particleView", debugWindows_.particleView);
+	debugWindows_.statisticsView = loadWindowVisible("statisticsView", debugWindows_.statisticsView);
+	debugWindows_.offscreenSettings = loadWindowVisible("offscreenSettings", debugWindows_.offscreenSettings);
+	debugWindows_.lightSettings = loadWindowVisible("lightSettings", debugWindows_.lightSettings);
+	debugWindows_.gizmo = loadWindowVisible("gizmo", debugWindows_.gizmo);
+	debugWindows_.objectManager = loadWindowVisible("objectManager", debugWindows_.objectManager);
+	debugWindows_.motionEditor = loadWindowVisible("motionEditor", debugWindows_.motionEditor);
+	debugWindows_.spriteManager = loadWindowVisible("spriteManager", debugWindows_.spriteManager);
+	debugWindows_.colliderTagManager = loadWindowVisible("colliderTagManager", debugWindows_.colliderTagManager);
+	debugWindows_.audio = loadWindowVisible("audio", debugWindows_.audio);
+	debugWindows_.keyInputDebug = loadWindowVisible("keyInputDebug", debugWindows_.keyInputDebug);
+	debugWindows_.sceneSettings = loadWindowVisible("sceneSettings", debugWindows_.sceneSettings);
+	debugWindows_.sceneSpecificDebug = loadWindowVisible("sceneSpecificDebug", debugWindows_.sceneSpecificDebug);
+	debugWindows_.objectSettings = loadWindowVisible("objectSettings", debugWindows_.objectSettings);
 
 	GameAudioCache::SetMasterVolume(UILayoutIO::GetFloat(tuning, "audio.master", GameAudioCache::GetMasterVolume()));
 	for (const auto& [key, fallback] : kAudioTuningDefaults) {
@@ -479,8 +510,6 @@ void DirectXGameScene::LoadDebugTuning()
 	particleTuning_.enemyHitSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyHitSparkCount", static_cast<float>(particleTuning_.enemyHitSparkCount)));
 	particleTuning_.enemyDeathSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathSparkCount", static_cast<float>(particleTuning_.enemyDeathSparkCount)));
 	particleTuning_.enemyDeathSmokeCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathSmokeCount", static_cast<float>(particleTuning_.enemyDeathSmokeCount)));
-	particleTuning_.enemyDeathRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathRippleCount", static_cast<float>(particleTuning_.enemyDeathRippleCount)));
-	particleTuning_.expRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.expRippleCount", static_cast<float>(particleTuning_.expRippleCount)));
 	particleTuning_.expSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.expSparkCount", static_cast<float>(particleTuning_.expSparkCount)));
 	particleTuning_.lightningSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.lightningSparkCount", static_cast<float>(particleTuning_.lightningSparkCount)));
 	particleTuning_.lightningRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.lightningRippleCount", static_cast<float>(particleTuning_.lightningRippleCount)));
@@ -547,8 +576,6 @@ void DirectXGameScene::SaveDebugTuning() const
 		{ "particle.enemyHitSparkCount", { static_cast<float>(particleTuning_.enemyHitSparkCount) } },
 		{ "particle.enemyDeathSparkCount", { static_cast<float>(particleTuning_.enemyDeathSparkCount) } },
 		{ "particle.enemyDeathSmokeCount", { static_cast<float>(particleTuning_.enemyDeathSmokeCount) } },
-		{ "particle.enemyDeathRippleCount", { static_cast<float>(particleTuning_.enemyDeathRippleCount) } },
-		{ "particle.expRippleCount", { static_cast<float>(particleTuning_.expRippleCount) } },
 		{ "particle.expSparkCount", { static_cast<float>(particleTuning_.expSparkCount) } },
 		{ "particle.lightningSparkCount", { static_cast<float>(particleTuning_.lightningSparkCount) } },
 		{ "particle.lightningRippleCount", { static_cast<float>(particleTuning_.lightningRippleCount) } },
@@ -570,6 +597,26 @@ void DirectXGameScene::SaveDebugTuning() const
 	for (const auto& [key, fallback] : kAudioTuningDefaults) {
 		entries.push_back({ std::string("audio.") + key, { GameAudioCache::GetTunedVolume(key, fallback) } });
 	}
+	auto saveWindowVisible = [&entries](const char* key, bool visible) {
+		entries.push_back({ std::string("debugWindow.") + key, { visible ? 1.0f : 0.0f } });
+	};
+	saveWindowVisible("windowSwitcher", debugWindows_.windowSwitcher);
+	saveWindowVisible("sceneView", debugWindows_.sceneView);
+	saveWindowVisible("objectView", debugWindows_.objectView);
+	saveWindowVisible("particleView", debugWindows_.particleView);
+	saveWindowVisible("statisticsView", debugWindows_.statisticsView);
+	saveWindowVisible("offscreenSettings", debugWindows_.offscreenSettings);
+	saveWindowVisible("lightSettings", debugWindows_.lightSettings);
+	saveWindowVisible("gizmo", debugWindows_.gizmo);
+	saveWindowVisible("objectManager", debugWindows_.objectManager);
+	saveWindowVisible("motionEditor", debugWindows_.motionEditor);
+	saveWindowVisible("spriteManager", debugWindows_.spriteManager);
+	saveWindowVisible("colliderTagManager", debugWindows_.colliderTagManager);
+	saveWindowVisible("audio", debugWindows_.audio);
+	saveWindowVisible("keyInputDebug", debugWindows_.keyInputDebug);
+	saveWindowVisible("sceneSettings", debugWindows_.sceneSettings);
+	saveWindowVisible("sceneSpecificDebug", debugWindows_.sceneSpecificDebug);
+	saveWindowVisible("objectSettings", debugWindows_.objectSettings);
 	if (player_) {
 		entries.push_back({ "camera.height", { player_->GetCameraHeight() } });
 		entries.push_back({ "camera.distance", { player_->GetCameraDistance() } });
@@ -756,7 +803,6 @@ void DirectXGameScene::UpdateEffects()
 		for (const Vector3& deathPosition : enemyManager_->GetRecentDeathEffectPositions()) {
 			particleManager->Emit("DirectXGame.EnemyHitSpark", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount)));
 			particleManager->Emit("DirectXGame.DeathSmoke", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount)));
-			particleManager->Emit("DirectXGame.Ripple", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathRippleCount)));
 		}
 		enemyManager_->ClearRecentEffectPositions();
 	}
@@ -776,7 +822,6 @@ void DirectXGameScene::UpdateEffects()
 
 	const int32_t totalExp = playerManager_->GetTotalEXP();
 	if (totalExp > previousEffectTotalExp_) {
-		particleManager->Emit("DirectXGame.Ripple", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.expRippleCount)));
 		particleManager->Emit("DirectXGame.ExpSpark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.expSparkCount)));
 	}
 	previousEffectTotalExp_ = totalExp;
@@ -827,6 +872,9 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 	expGauge_.Update();
 	if (gameState_ == GameState::Playing) {
 		keyUI_.Update(Engine::InputSystem::Input::GetInstance());
+	}
+	if (gameState_ == GameState::Playing && player_ && enemyManager_) {
+		gameplayMiniMap_.Update(player_.get(), *enemyManager_);
 	}
 	if (gameState_ == GameState::Paused && player_ && enemyManager_) {
 		miniMap_.Update(player_.get(), *enemyManager_);
@@ -935,6 +983,7 @@ void DirectXGameScene::DrawUi()
 	hpGauge_.Draw();
 	expGauge_.Draw();
 	if (gameState_ == GameState::Playing) {
+		gameplayMiniMap_.Draw();
 		keyUI_.Draw();
 	}
 
@@ -1240,7 +1289,10 @@ int32_t DirectXGameScene::GetHoveredPauseMenuIndex() const
 		return -1;
 	}
 
-	const Vector2 mousePosition = input->GetMousePos();
+	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+		return -1;
+	}
+	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 	for (int32_t index = 0; index < static_cast<int32_t>(pauseMenuLayout_.hitboxPositions.size()); ++index) {
 		if (IsPointInRect(mousePosition, pauseMenuLayout_.hitboxPositions[static_cast<size_t>(index)], pauseMenuLayout_.hitboxSize)) {
 			return index;
@@ -1262,7 +1314,10 @@ int32_t DirectXGameScene::GetHoveredLevelUpChoiceIndex() const
 		return -1;
 	}
 
-	const Vector2 mousePosition = input->GetMousePos();
+	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+		return -1;
+	}
+	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 	const int32_t choiceCount = static_cast<int32_t>(levelUpChoices_.size());
 	for (int32_t index = 0; index < choiceCount; ++index) {
 		const Vector2 rectPosition{
@@ -1314,7 +1369,7 @@ void DirectXGameScene::QueueDebugDraw()
 	Engine::LineSystem::Line line;
 	const Vector3 playerPosition = player_->GetWorldPosition();
 	if (debugDrawEnabled_) {
-		line.DrawSphere(playerPosition, 1.35f, { 0.25f, 0.95f, 1.0f, 1.0f });
+		line.DrawSphere(playerPosition, player_->GetCollisionRadius(), { 0.25f, 0.95f, 1.0f, 1.0f });
 		line.DrawSphere(playerPosition, 50.0f, { 0.25f, 0.55f, 1.0f, 0.45f });
 
 		if (enemyManager_) {
@@ -1322,7 +1377,7 @@ void DirectXGameScene::QueueDebugDraw()
 				if (!enemy || !enemy->IsActive()) {
 					continue;
 				}
-				line.DrawSphere(enemy->GetPosition(), 1.55f, { 1.0f, 0.2f, 0.18f, 1.0f });
+				line.DrawSphere(enemy->GetPosition(), enemy->GetCollisionRadius(), { 1.0f, 0.2f, 0.18f, 1.0f });
 			}
 		}
 	}
@@ -1461,6 +1516,10 @@ void DirectXGameScene::UpdateDebugUi()
 {
 #ifdef _DEBUG
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	if (input->TriggerKey(DIK_F5)) {
+		LoadDebugTuning();
+		ApplyParticleBehaviorTuning();
+	}
 	if (input->TriggerKey(DIK_F6) && playerManager_) {
 		playerManager_->ForceDebugDeath();
 	}
@@ -1480,27 +1539,100 @@ void DirectXGameScene::UpdateDebugUi()
 		return;
 	}
 
-	ImGui::SetNextWindowPos(ImVec2(288.0f, 12.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(430.0f, 420.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Gameplay Monitor");
-	ImGui::Text("Stage 17.1 particle tuning scene");
-	ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
-	ImGui::Text("WASD / Left Stick: Move");
-	ImGui::Text("Mouse / Right Stick: Aim");
-	ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
-	ImGui::Text("Pause: %s", GameInputBindings::GetPauseLabel(navigationInputDevice_));
-	ImGui::Text("Cancel / Title on Start: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
-	ImGui::Text("Debug: F6 Death / F8 EXP / F9 Max Weapons / F10 Result / F11 Time-up Result");
+	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
+		{ "Scene", &debugWindows_.sceneView },
+		{ "オブジェクトビュー", &debugWindows_.objectView },
+		{ "パーティクルビュー", &debugWindows_.particleView },
+		{ "統計", &debugWindows_.statisticsView },
+		{ "オフスクリーン設定", &debugWindows_.offscreenSettings },
+		{ "ライト設定", &debugWindows_.lightSettings },
+		{ "ギズモ", &debugWindows_.gizmo },
+		{ "オブジェクトマネージャ", &debugWindows_.objectManager },
+		{ "モーションエディター", &debugWindows_.motionEditor },
+		{ "スプライトマネージャ", &debugWindows_.spriteManager },
+		{ "コライダー/タグ管理", &debugWindows_.colliderTagManager },
+		{ "オーディオ", &debugWindows_.audio },
+		{ "キー操作デバッグ", &debugWindows_.keyInputDebug },
+		{ "シーン設定", &debugWindows_.sceneSettings },
+		{ "シーン固有デバッグ", &debugWindows_.sceneSpecificDebug },
+		{ "オブジェクト設定", &debugWindows_.objectSettings },
+	};
+	const Engine::Editor::DebugEditorMenuItem editItems[] = {
+		{ "ギズモ", &debugWindows_.gizmo },
+		{ "オブジェクト設定", &debugWindows_.objectSettings },
+		{ "モーションエディター", &debugWindows_.motionEditor },
+	};
+	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
+		{ "オブジェクトマネージャ", &debugWindows_.objectManager },
+		{ "オブジェクト設定", &debugWindows_.objectSettings },
+		{ "コライダー/タグ管理", &debugWindows_.colliderTagManager },
+	};
+	Engine::Editor::DebugEditorManager::DrawMainMenu({
+		windowItems,
+		std::size(windowItems),
+		editItems,
+		std::size(editItems),
+		objectItems,
+		std::size(objectItems),
+		"デバッグ設定を保存",
+		[this]() { SaveDebugTuning(); },
+		"デバッグ設定を復元",
+		[this]() { LoadDebugTuning(); ApplyParticleBehaviorTuning(); },
+		"Debug: F5 Reload / F6 Death / F8 EXP / F9 Max Weapons / F10 Result / F11 Time-up",
+		[this]() { Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kTitle); },
+		{},
+		[this]() { RequestResultScene(); },
+		&debugWindows_.windowSwitcher,
+	});
+	if (debugWindows_.windowSwitcher) {
+		ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_FirstUseEver);
+		Engine::Editor::DebugEditorManager::DrawWindowSwitcher(
+			"ウィンドウ表示切り替え",
+			&debugWindows_.windowSwitcher,
+			windowItems,
+			std::size(windowItems),
+			{ 260.0f, 440.0f },
+			[this]() {
+				if (ImGui::Button("表示状態を保存")) {
+					SaveDebugTuning();
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("復元")) {
+					LoadDebugTuning();
+					ApplyParticleBehaviorTuning();
+				}
+			});
+	}
+
+	if (debugWindows_.sceneView) {
+		const Engine::Editor::DebugSceneViewportState sceneViewport =
+			Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugWindows_.sceneView);
+		ScreenUtil::SetDebugSceneInputActive(sceneViewport.inputActive);
+		if (sceneViewport.drawn) {
+			ScreenUtil::SetDebugSceneViewport(sceneViewport.min, sceneViewport.size);
+		} else {
+			ScreenUtil::ClearDebugSceneViewport();
+		}
+	} else {
+		ScreenUtil::ClearDebugSceneViewport();
+	}
+
+	if (debugWindows_.sceneSettings) {
 	ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(260.0f, 92.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Gameplay Control");
+	ImGui::Begin("シーン設定", &debugWindows_.sceneSettings);
 	if (ImGui::Button(debugFreezeGameplay_ ? "Resume Gameplay" : "Freeze Gameplay", ImVec2(-1.0f, 32.0f))) {
 		debugFreezeGameplay_ = !debugFreezeGameplay_;
 	}
 	ImGui::Text("Freeze: %s", BoolText(debugFreezeGameplay_));
 	ImGui::Text("State: %s", GetGameStateName());
 	ImGui::End();
+	}
 
+	if (debugWindows_.keyInputDebug) {
+	ImGui::SetNextWindowPos(ImVec2(288.0f, 330.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(430.0f, 300.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("キー操作デバッグ", &debugWindows_.keyInputDebug);
 	if (ImGui::CollapsingHeader("Input / State Debug", ImGuiTreeNodeFlags_DefaultOpen)) {
 		const Vector2 keyboardMove = GetKeyboardMoveDebug(input);
 		const Vector2 gamepadMove = GetGamepadMoveDebug(input);
@@ -1539,19 +1671,13 @@ void DirectXGameScene::UpdateDebugUi()
 			modelDiagnostics.skippedNonTriangleFaceCount,
 			modelDiagnostics.meshFallbackCount);
 	}
-	float masterVolume = GameAudioCache::GetMasterVolume();
-	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
-		GameAudioCache::SetMasterVolume(masterVolume);
+	ImGui::End();
 	}
-	if (ImGui::Button("Save Debug Tuning")) {
-		SaveDebugTuning();
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Reload Debug Tuning")) {
-		LoadDebugTuning();
-		ApplyParticleBehaviorTuning();
-	}
-	if (ImGui::CollapsingHeader("Lighting / Debug Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+	if (debugWindows_.lightSettings) {
+	ImGui::SetNextWindowPos(ImVec2(730.0f, 12.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(380.0f, 420.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("ライト設定", &debugWindows_.lightSettings);
 		bool debugCameraEnabled = debugCameraEnabled_;
 		if (ImGui::Checkbox("Use Debug Camera", &debugCameraEnabled)) {
 			debugCameraEnabled_ = debugCameraEnabled;
@@ -1659,6 +1785,24 @@ void DirectXGameScene::UpdateDebugUi()
 			UpdatePlayerLight();
 			ApplyLightSettingsToWorld();
 		}
+	ImGui::End();
+	}
+
+	if (debugWindows_.audio) {
+	ImGui::SetNextWindowPos(ImVec2(1125.0f, 12.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("オーディオ", &debugWindows_.audio);
+	float masterVolume = GameAudioCache::GetMasterVolume();
+	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
+		GameAudioCache::SetMasterVolume(masterVolume);
+	}
+	if (ImGui::Button("Save Debug Tuning")) {
+		SaveDebugTuning();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Reload Debug Tuning")) {
+		LoadDebugTuning();
+		ApplyParticleBehaviorTuning();
 	}
 	if (ImGui::CollapsingHeader("Audio Balance")) {
 		auto tuneVolume = [](const char* label, const char* key, float fallback) {
@@ -1681,12 +1825,13 @@ void DirectXGameScene::UpdateDebugUi()
 		tuneVolume("EXP Pickup", "combat.expPickup", 1.0f);
 		tuneVolume("Result Finish", "result.finish", 1.0f);
 	}
-	if (sessionContext_) {
-		ImGui::Separator();
-		ImGui::Text("Run Count: %u", sessionContext_->GetRunCount());
-		ImGui::Text("Frame Count: %u", sessionContext_->GetGameFrameCount());
+	ImGui::End();
 	}
-	if (ImGui::CollapsingHeader("Gameplay Dashboard", ImGuiTreeNodeFlags_DefaultOpen)) {
+
+	if (debugWindows_.statisticsView) {
+	ImGui::SetNextWindowPos(ImVec2(12.0f, 330.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(520.0f, 420.0f), ImGuiCond_FirstUseEver);
+	ImGui::Begin("統計", &debugWindows_.statisticsView);
 		const size_t enemyCount = enemyManager_ ? enemyManager_->GetActiveEnemyCount() : 0;
 		const size_t orbCount = enemyManager_ ? enemyManager_->GetExpOrbCount() : 0;
 		const size_t normalBulletCount = playerManager_ ? playerManager_->GetNormalBullets().size() : 0;
@@ -1716,6 +1861,16 @@ void DirectXGameScene::UpdateDebugUi()
 
 		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
 		ImGui::Text("State: %s", GetGameStateName());
+		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+		static std::array<float, 120> fpsHistory{};
+		static int32_t fpsHistoryOffset = 0;
+		fpsHistory[fpsHistoryOffset] = ImGui::GetIO().Framerate;
+		fpsHistoryOffset = (fpsHistoryOffset + 1) % static_cast<int32_t>(fpsHistory.size());
+		if (ImPlot::BeginPlot("FPS History", ImVec2(-1.0f, 140.0f), ImPlotFlags_NoLegend)) {
+			ImPlot::SetupAxes("Frame", "FPS");
+			ImPlot::PlotLine("FPS", fpsHistory.data(), static_cast<int>(fpsHistory.size()));
+			ImPlot::EndPlot();
+		}
 		ImGui::Text("Enemies: %zu  EXP Orbs: %zu / %zu  Kills: %d", enemyCount, orbCount, EnemyManager::kMaxExpOrbs, enemyManager_ ? enemyManager_->GetTotalKillCount() : 0);
 		ImGui::Text("EXP Orb Peak: %zu  Pruned: %zu",
 			enemyManager_ ? enemyManager_->GetPeakExpOrbCount() : 0,
@@ -1846,12 +2001,18 @@ void DirectXGameScene::UpdateDebugUi()
 				playerManager_->GetLightningStrikeCount(),
 				playerManager_->GetLightningRadius());
 		}
-	}
 	ImGui::End();
+	}
 
-	ImGui::SetNextWindowPos(ImVec2(730.0f, 12.0f), ImGuiCond_FirstUseEver);
+	if (debugWindows_.objectView || debugWindows_.objectSettings) {
+	ImGui::SetNextWindowPos(ImVec2(1125.0f, 390.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Player Debug");
+	bool objectWindowOpen = debugWindows_.objectView || debugWindows_.objectSettings;
+	ImGui::Begin("オブジェクトビュー / オブジェクト設定", &objectWindowOpen);
+	if (!objectWindowOpen) {
+		debugWindows_.objectView = false;
+		debugWindows_.objectSettings = false;
+	}
 	if (player_) {
 		const Vector3& position = player_->GetWorldPosition();
 		ImGui::Separator();
@@ -1928,10 +2089,17 @@ void DirectXGameScene::UpdateDebugUi()
 		}
 	}
 	ImGui::End();
+	}
 
-	ImGui::SetNextWindowPos(ImVec2(288.0f, 445.0f), ImGuiCond_FirstUseEver);
+	if (debugWindows_.particleView || debugWindows_.spriteManager) {
+	ImGui::SetNextWindowPos(ImVec2(548.0f, 330.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(430.0f, 420.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Visual Tuning");
+	bool visualWindowOpen = debugWindows_.particleView || debugWindows_.spriteManager;
+	ImGui::Begin("パーティクルビュー / スプライトマネージャ", &visualWindowOpen);
+	if (!visualWindowOpen) {
+		debugWindows_.particleView = false;
+		debugWindows_.spriteManager = false;
+	}
 	if (uiInitialized_) {
 		ImGui::Separator();
 		ImGui::Checkbox("DebugDraw collision / spawn range", &debugDrawEnabled_);
@@ -1942,8 +2110,6 @@ void DirectXGameScene::UpdateDebugUi()
 			ImGui::SliderInt("Enemy Hit Spark Count", &particleTuning_.enemyHitSparkCount, 0, 80);
 			ImGui::SliderInt("Enemy Death Spark Count", &particleTuning_.enemyDeathSparkCount, 0, 120);
 			ImGui::SliderInt("Enemy Death Smoke Count", &particleTuning_.enemyDeathSmokeCount, 0, 80);
-			ImGui::SliderInt("Enemy Death Ripple Count", &particleTuning_.enemyDeathRippleCount, 0, 12);
-			ImGui::SliderInt("EXP Ripple Count", &particleTuning_.expRippleCount, 0, 12);
 			ImGui::SliderInt("EXP Spark Count", &particleTuning_.expSparkCount, 0, 80);
 			ImGui::SliderInt("Lightning Spark Count", &particleTuning_.lightningSparkCount, 0, 100);
 			ImGui::SliderInt("Lightning Ripple Count", &particleTuning_.lightningRippleCount, 0, 12);
@@ -2030,10 +2196,12 @@ void DirectXGameScene::UpdateDebugUi()
 		}
 	}
 	ImGui::End();
+	}
 
-	ImGui::SetNextWindowPos(ImVec2(730.0f, 385.0f), ImGuiCond_FirstUseEver);
+	if (debugWindows_.sceneSpecificDebug) {
+	ImGui::SetNextWindowPos(ImVec2(12.0f, 120.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Scene Actions");
+	ImGui::Begin("シーン固有デバッグ", &debugWindows_.sceneSpecificDebug);
 	if (enemyManager_) {
 		ImGui::Separator();
 		ImGui::Text("Enemies: %zu / %zu", enemyManager_->GetActiveEnemyCount(), enemyManager_->GetEnemies().size());
@@ -2062,6 +2230,189 @@ void DirectXGameScene::UpdateDebugUi()
 		return;
 	}
 	ImGui::End();
+	}
+
+	if (debugWindows_.offscreenSettings) {
+		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
+			offscreen->DrawImGui();
+		}
+	}
+	if (debugWindows_.gizmo) {
+		ImGui::SetNextWindowPos(ImVec2(920.0f, 300.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 240.0f), ImGuiCond_FirstUseEver);
+		ImGui::Begin("ギズモ", &debugWindows_.gizmo);
+		constexpr const char* kGizmoTargetLabels[] = { "Player", "Point Light" };
+		int32_t gizmoTarget = static_cast<int32_t>(debugGizmoTarget_);
+		if (ImGui::Combo("Target", &gizmoTarget, kGizmoTargetLabels, static_cast<int32_t>(std::size(kGizmoTargetLabels)))) {
+			debugGizmoTarget_ = static_cast<DebugGizmoTarget>(gizmoTarget);
+		}
+		constexpr const char* kGizmoOperationLabels[] = { "Translate", "Rotate", "Scale" };
+		int32_t gizmoOperation = static_cast<int32_t>(debugGizmoOperation_);
+		if (ImGui::Combo("Operation", &gizmoOperation, kGizmoOperationLabels, static_cast<int32_t>(std::size(kGizmoOperationLabels)))) {
+			debugGizmoOperation_ = static_cast<Engine::Editor::ImGuizmoManager::Operation>(gizmoOperation);
+		}
+		ImGui::Text("Using: %s", BoolText(Engine::Editor::ImGuizmoManager::IsUsing()));
+		Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
+		if (!activeCamera) {
+			ImGui::TextUnformatted("Active camera is not available.");
+		} else {
+			Vector3 targetPosition{};
+			float targetRotationY = 0.0f;
+			bool canEditTarget = false;
+			if (debugGizmoTarget_ == DebugGizmoTarget::Player && player_) {
+				targetPosition = player_->GetWorldPosition();
+				targetRotationY = player_->GetWorldRotationY();
+				canEditTarget = true;
+			} else if (debugGizmoTarget_ == DebugGizmoTarget::PointLight) {
+				const PointLight& point = lightSettings_.GetPointLight();
+				targetPosition = point.position;
+				canEditTarget = true;
+			}
+			if (canEditTarget) {
+				float translation[3]{ targetPosition.x, targetPosition.y, targetPosition.z };
+				float rotation[3]{ 0.0f, targetRotationY * 180.0f / 3.14159265f, 0.0f };
+				float scale[3]{ 1.0f, 1.0f, 1.0f };
+				Matrix4x4 objectMatrix = MyMath::MakeAffineMatrix(
+					Vector3{ scale[0], scale[1], scale[2] },
+					Vector3{ 0.0f, targetRotationY, 0.0f },
+					targetPosition);
+				ImGui::DragFloat3("Position", translation, 0.25f, -160.0f, 160.0f);
+				if (debugGizmoTarget_ == DebugGizmoTarget::Player) {
+					ImGui::DragFloat("Rotation Y", &rotation[1], 1.0f, -180.0f, 180.0f);
+				}
+				Engine::Editor::ImGuizmoManager::RecomposeMatrixFromComponents(
+					translation,
+					rotation,
+					scale,
+					&objectMatrix.m[0][0]);
+				const ImGuiViewport* viewport = ImGui::GetMainViewport();
+				Engine::Editor::ImGuizmoManager::SetRect(
+					viewport->Pos.x,
+					viewport->Pos.y,
+					viewport->Size.x,
+					viewport->Size.y);
+				const bool manipulated = Engine::Editor::ImGuizmoManager::Manipulate(
+					&activeCamera->GetViewMatrix().m[0][0],
+					&activeCamera->GetProjectionMatrix().m[0][0],
+					&objectMatrix.m[0][0],
+					debugGizmoOperation_,
+					Engine::Editor::ImGuizmoManager::Mode::World);
+				if (manipulated) {
+					Engine::Editor::ImGuizmoManager::DecomposeMatrixToComponents(
+						&objectMatrix.m[0][0],
+						translation,
+						rotation,
+						scale);
+				}
+				const Vector3 editedPosition{ translation[0], translation[1], translation[2] };
+				if (debugGizmoTarget_ == DebugGizmoTarget::Player && player_) {
+					player_->SetDebugWorldPosition(editedPosition);
+					player_->SetDebugWorldRotationY(rotation[1] * 3.14159265f / 180.0f);
+				} else if (debugGizmoTarget_ == DebugGizmoTarget::PointLight) {
+					PointLight point = lightSettings_.GetPointLight();
+					point.position = editedPosition;
+					lightSettings_.SetPointLight(point);
+					playerLightFollowsPlayer_ = false;
+					ApplyLightSettingsToWorld();
+				}
+			} else {
+				ImGui::TextUnformatted("Selected target is not available.");
+			}
+		}
+		ImGui::End();
+	}
+	if (debugWindows_.objectManager) {
+		ImGui::SetNextWindowPos(ImVec2(920.0f, 460.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 260.0f), ImGuiCond_FirstUseEver);
+		ImGui::Begin("オブジェクトマネージャ", &debugWindows_.objectManager);
+		if (ImGui::TreeNode("Scene Objects")) {
+			ImGui::BulletText("Player: %s", player_ ? "loaded" : "none");
+			ImGui::BulletText("PlayerManager: %s", playerManager_ ? "loaded" : "none");
+			ImGui::BulletText("EnemyManager: %s", enemyManager_ ? "loaded" : "none");
+			ImGui::BulletText("GridPlane: %s", gridPlane_ ? "loaded" : "none");
+			ImGui::BulletText("SkyDome: %s", skyDome_ ? "loaded" : "none");
+			ImGui::BulletText("CurtainTransition: %s", curtain_ ? "loaded" : "none");
+			ImGui::TreePop();
+		}
+		if (enemyManager_ && ImGui::TreeNode("Enemies")) {
+			const auto& enemies = enemyManager_->GetEnemies();
+			ImGui::Text("Active: %zu / %zu", enemyManager_->GetActiveEnemyCount(), enemies.size());
+			const size_t previewCount = (std::min)(enemies.size(), size_t{ 12 });
+			for (size_t index = 0; index < previewCount; ++index) {
+				const Enemy* enemy = enemies[index].get();
+				if (!enemy) {
+					continue;
+				}
+				const Vector3& position = enemy->GetPosition();
+				ImGui::Text(
+					"#%zu %s HP:%d Pos: %.1f, %.1f, %.1f",
+					index,
+					enemy->IsActive() ? "Active" : "Inactive",
+					enemy->GetHP(),
+					position.x,
+					position.y,
+					position.z);
+			}
+			if (enemies.size() > previewCount) {
+				ImGui::Text("... %zu more", enemies.size() - previewCount);
+			}
+			ImGui::TreePop();
+		}
+		if (enemyManager_ && ImGui::TreeNode("EXP Orbs")) {
+			ImGui::Text("Active: %zu / %zu", enemyManager_->GetExpOrbCount(), EnemyManager::kMaxExpOrbs);
+			ImGui::Text("Peak: %zu  Pruned: %zu", enemyManager_->GetPeakExpOrbCount(), enemyManager_->GetExpOrbPruneCount());
+			if (ImGui::Button("Reset Orb Telemetry")) {
+				enemyManager_->ResetExpOrbTelemetry();
+			}
+			ImGui::TreePop();
+		}
+		ImGui::End();
+	}
+	if (debugWindows_.motionEditor) {
+		ImGui::SetNextWindowPos(ImVec2(1255.0f, 120.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(320.0f, 140.0f), ImGuiCond_FirstUseEver);
+		ImGui::Begin("モーションエディター", &debugWindows_.motionEditor);
+		ImGui::TextUnformatted("モーション編集ビューです。");
+		ax::NodeEditor::Begin("MotionGraph");
+		ax::NodeEditor::BeginNode(1);
+		ImGui::TextUnformatted("Start");
+		ax::NodeEditor::BeginPin(11, ax::NodeEditor::PinKind::Output);
+		ImGui::TextUnformatted("Out");
+		ax::NodeEditor::EndPin();
+		ax::NodeEditor::EndNode();
+		ax::NodeEditor::BeginNode(2);
+		ax::NodeEditor::BeginPin(21, ax::NodeEditor::PinKind::Input);
+		ImGui::TextUnformatted("In");
+		ax::NodeEditor::EndPin();
+		ImGui::TextUnformatted("Death Camera");
+		ax::NodeEditor::EndNode();
+		ax::NodeEditor::Link(100, 11, 21);
+		ax::NodeEditor::End();
+		ImGui::End();
+	}
+	if (debugWindows_.colliderTagManager) {
+		ImGui::SetNextWindowPos(ImVec2(1255.0f, 280.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
+		ImGui::Begin("コライダー/タグ管理", &debugWindows_.colliderTagManager);
+		ImGui::Checkbox("DebugDraw collision / spawn range", &debugDrawEnabled_);
+		ImGui::SeparatorText("Runtime Tags");
+		ImGui::BulletText("Player");
+		ImGui::BulletText("Enemy");
+		ImGui::BulletText("PlayerBullet");
+		ImGui::BulletText("ExpOrb");
+		ImGui::SeparatorText("Collision State");
+		if (enemyManager_) {
+			ImGui::Text("Enemies: %zu active", enemyManager_->GetActiveEnemyCount());
+			ImGui::Text("EXP Orbs: %zu active", enemyManager_->GetExpOrbCount());
+			ImGui::Text("Recent Hit Effects: %zu", enemyManager_->GetRecentHitEffectPositions().size());
+			ImGui::Text("Recent Death Effects: %zu", enemyManager_->GetRecentDeathEffectPositions().size());
+		}
+		if (playerManager_) {
+			ImGui::Text("Normal Bullets: %zu", playerManager_->GetNormalBullets().size());
+			ImGui::Text("Orbit Bullets: %zu", playerManager_->GetOrbitBullets().size());
+		}
+		ImGui::End();
+	}
 #endif
 }
 

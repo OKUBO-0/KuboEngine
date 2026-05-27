@@ -2,11 +2,13 @@
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
 #include "TextureManager.h"
+#include <algorithm>
 #include <cmath>
 
 namespace {
 
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
+constexpr float kOrbitBulletFallbackCollisionRadius = 0.85f;
 
 }
 
@@ -67,6 +69,11 @@ void OrbitBullet::Draw()
 	if (active_ && object_) {
 		object_->Draw();
 	}
+}
+
+float OrbitBullet::GetCollisionRadius() const
+{
+	return object_ ? object_->GetScaledModelBoundingRadius(kOrbitBulletFallbackCollisionRadius) : kOrbitBulletFallbackCollisionRadius;
 }
 
 bool OrbitBullet::CanHitEnemy(void* enemyPtr)

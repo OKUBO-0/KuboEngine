@@ -28,6 +28,9 @@ public:
 
 	const Vector3& GetWorldPosition() const { return position_; }
 	float GetWorldRotationY() const { return rotationY_; }
+	float GetCollisionRadius() const;
+	void SetDebugWorldPosition(const Vector3& position) { position_ = position; ApplyTransforms(); }
+	void SetDebugWorldRotationY(float rotationY) { rotationY_ = rotationY; ApplyTransforms(); }
 	Engine::CameraSystem::Camera& GetCamera() { return *camera_; }
 	float GetMoveSpeed() const { return moveSpeedPerSecond_; }
 	void SetMoveSpeed(float moveSpeedPerSecond) { moveSpeedPerSecond_ = moveSpeedPerSecond; }

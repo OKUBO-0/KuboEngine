@@ -373,7 +373,9 @@ void EnemyManager::ResolveEnemySeparation()
 		if (!a || !a->IsActive()) {
 			continue;
 		}
-		CollectNearbyEnemies(spatialMap, a->GetPosition(), kEnemySeparationDistance, nearbyEnemies);
+		nearbyEnemies.clear();
+		const float radiusA = a->GetCollisionRadius();
+		CollectNearbyEnemies(spatialMap, a->GetPosition(), radiusA + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* b : nearbyEnemies) {
 			if (!b || !b->IsActive() || a >= b) {
 				continue;
@@ -383,12 +385,13 @@ void EnemyManager::ResolveEnemySeparation()
 			const float dx = posB.x - posA.x;
 			const float dz = posB.z - posA.z;
 			const float distanceSq = dx * dx + dz * dz;
-			if (distanceSq >= kEnemySeparationDistance * kEnemySeparationDistance || distanceSq <= 0.0001f) {
+			const float contactDistance = radiusA + b->GetCollisionRadius();
+			if (distanceSq >= contactDistance * contactDistance || distanceSq <= 0.0001f) {
 				continue;
 			}
 
 			const float distance = std::sqrt(distanceSq);
-			const float overlap = kEnemySeparationDistance - distance;
+			const float overlap = contactDistance - distance;
 			const float nx = dx / distance;
 			const float nz = dz / distance;
 			posA.x -= nx * overlap * kEnemySeparationStrength;
@@ -453,7 +456,9 @@ void EnemyManager::CheckNormalBulletCollisions(PlayerManager& playerManager, con
 			continue;
 		}
 		const Vector3 bulletPosition = bullet->GetPosition();
-		CollectNearbyEnemies(spatialMap, bulletPosition, std::sqrt(kNormalBulletHitDistanceSq), nearbyEnemies);
+		const float bulletRadius = bullet->GetCollisionRadius();
+		nearbyEnemies.clear();
+		CollectNearbyEnemies(spatialMap, bulletPosition, bulletRadius + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* enemy : nearbyEnemies) {
 			if (!enemy || !enemy->IsActive()) {
 				continue;
@@ -461,7 +466,8 @@ void EnemyManager::CheckNormalBulletCollisions(PlayerManager& playerManager, con
 			const Vector3 enemyPosition = enemy->GetPosition();
 			const float dx = bulletPosition.x - enemyPosition.x;
 			const float dz = bulletPosition.z - enemyPosition.z;
-			if (dx * dx + dz * dz >= kNormalBulletHitDistanceSq) {
+			const float hitDistance = bulletRadius + enemy->GetCollisionRadius();
+			if (dx * dx + dz * dz >= hitDistance * hitDistance) {
 				continue;
 			}
 			if (!bullet->CanHitEnemy(enemy)) {
@@ -486,7 +492,9 @@ void EnemyManager::CheckOrbitBulletCollisions(PlayerManager& playerManager, cons
 			continue;
 		}
 		const Vector3 orbitPosition = orbitBullet->GetPosition();
-		CollectNearbyEnemies(spatialMap, orbitPosition, std::sqrt(kOrbitBulletHitDistanceSq), nearbyEnemies);
+		const float orbitRadius = orbitBullet->GetCollisionRadius();
+		nearbyEnemies.clear();
+		CollectNearbyEnemies(spatialMap, orbitPosition, orbitRadius + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* enemy : nearbyEnemies) {
 			if (!enemy || !enemy->IsActive()) {
 				continue;
@@ -494,7 +502,8 @@ void EnemyManager::CheckOrbitBulletCollisions(PlayerManager& playerManager, cons
 			const Vector3 enemyPosition = enemy->GetPosition();
 			const float dx = orbitPosition.x - enemyPosition.x;
 			const float dz = orbitPosition.z - enemyPosition.z;
-			if (dx * dx + dz * dz >= kOrbitBulletHitDistanceSq) {
+			const float hitDistance = orbitRadius + enemy->GetCollisionRadius();
+			if (dx * dx + dz * dz >= hitDistance * hitDistance) {
 				continue;
 			}
 			if (!orbitBullet->CanHitEnemy(enemy)) {
@@ -520,7 +529,9 @@ void EnemyManager::CheckDroneBulletCollisions(PlayerManager& playerManager, cons
 			continue;
 		}
 		const Vector3 bulletPosition = bullet->GetPosition();
-		CollectNearbyEnemies(spatialMap, bulletPosition, std::sqrt(kNormalBulletHitDistanceSq), nearbyEnemies);
+		const float bulletRadius = bullet->GetCollisionRadius();
+		nearbyEnemies.clear();
+		CollectNearbyEnemies(spatialMap, bulletPosition, bulletRadius + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* enemy : nearbyEnemies) {
 			if (!enemy || !enemy->IsActive()) {
 				continue;
@@ -528,7 +539,8 @@ void EnemyManager::CheckDroneBulletCollisions(PlayerManager& playerManager, cons
 			const Vector3 enemyPosition = enemy->GetPosition();
 			const float dx = bulletPosition.x - enemyPosition.x;
 			const float dz = bulletPosition.z - enemyPosition.z;
-			if (dx * dx + dz * dz >= kNormalBulletHitDistanceSq) {
+			const float hitDistance = bulletRadius + enemy->GetCollisionRadius();
+			if (dx * dx + dz * dz >= hitDistance * hitDistance) {
 				continue;
 			}
 			if (!bullet->CanHitEnemy(enemy)) {
@@ -547,8 +559,9 @@ void EnemyManager::CheckDroneBulletCollisions(PlayerManager& playerManager, cons
 void EnemyManager::CheckPlayerCollisions(Player& player, PlayerManager& playerManager, const EnemyCellMap& spatialMap)
 {
 	const Vector3 playerPosition = player.GetWorldPosition();
+	const float playerRadius = player.GetCollisionRadius();
 	std::vector<Enemy*> nearbyEnemies;
-	CollectNearbyEnemies(spatialMap, playerPosition, kPlayerContactDistance, nearbyEnemies);
+	CollectNearbyEnemies(spatialMap, playerPosition, playerRadius + kEnemyQueryPadding, nearbyEnemies);
 	for (Enemy* enemy : nearbyEnemies) {
 		if (!enemy || !enemy->IsActive()) {
 			continue;
@@ -558,12 +571,13 @@ void EnemyManager::CheckPlayerCollisions(Player& player, PlayerManager& playerMa
 		const float dx = enemyPosition.x - playerPosition.x;
 		const float dz = enemyPosition.z - playerPosition.z;
 		const float distanceSq = dx * dx + dz * dz;
-		if (distanceSq >= kPlayerContactDistanceSq || distanceSq <= 0.0001f) {
+		const float contactDistance = playerRadius + enemy->GetCollisionRadius();
+		if (distanceSq >= contactDistance * contactDistance || distanceSq <= 0.0001f) {
 			continue;
 		}
 
 		const float distance = std::sqrt(distanceSq);
-		const float overlap = kPlayerContactDistance - distance;
+		const float overlap = contactDistance - distance;
 		const float nx = dx / distance;
 		const float nz = dz / distance;
 		enemyPosition.x += nx * overlap;

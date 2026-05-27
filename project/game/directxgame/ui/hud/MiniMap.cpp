@@ -47,6 +47,61 @@ void MiniMap::Initialize()
 	ApplyLayout();
 }
 
+void MiniMap::ConfigureLayout(
+	const Vector2& backgroundPosition,
+	const Vector2& backgroundSize,
+	const Vector2& center,
+	float radius,
+	float scale,
+	float playerIconSize,
+	float enemyIconSize,
+	float orbIconSize,
+	bool visible)
+{
+	layoutSettings_.backgroundPosition = backgroundPosition;
+	layoutSettings_.backgroundSize = backgroundSize;
+	layoutSettings_.center = center;
+	layoutSettings_.radius = radius;
+	layoutSettings_.scale = scale;
+	layoutSettings_.playerIconSize = playerIconSize;
+	layoutSettings_.enemyIconSize = enemyIconSize;
+	layoutSettings_.orbIconSize = orbIconSize;
+	layoutSettings_.visible = visible;
+	ApplyLayout();
+}
+
+void MiniMap::ConfigureAsScaledCopy(const MiniMap& source, float scale, const Vector2& backgroundPosition, bool visible)
+{
+	const LayoutSettings& sourceLayout = source.layoutSettings_;
+	const Vector2 sourceOffset{
+		sourceLayout.center.x - sourceLayout.backgroundPosition.x,
+		sourceLayout.center.y - sourceLayout.backgroundPosition.y,
+	};
+	ConfigureLayout(
+		backgroundPosition,
+		{
+			sourceLayout.backgroundSize.x * scale,
+			sourceLayout.backgroundSize.y * scale,
+		},
+		{
+			backgroundPosition.x + sourceOffset.x * scale,
+			backgroundPosition.y + sourceOffset.y * scale,
+		},
+		sourceLayout.radius * scale,
+		sourceLayout.scale * scale,
+		sourceLayout.playerIconSize * scale,
+		sourceLayout.enemyIconSize * scale,
+		sourceLayout.orbIconSize * scale,
+		visible);
+}
+
+void MiniMap::SetIconSizeMultiplier(float multiplier)
+{
+	layoutSettings_.playerIconSize *= multiplier;
+	layoutSettings_.enemyIconSize *= multiplier;
+	layoutSettings_.orbIconSize *= multiplier;
+}
+
 void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 {
 	enemyIconPositions_.clear();

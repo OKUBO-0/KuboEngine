@@ -56,10 +56,23 @@ private:
 		bool debugEnabled = false;
 	};
 
+	struct DebugWindowVisibility {
+		bool windowSwitcher = false;
+		bool titleView = true;
+		bool statisticsView = true;
+		bool titleSettings = true;
+		bool offscreenSettings = false;
+		bool lightSettings = false;
+		bool audio = false;
+		bool keyInputDebug = true;
+	};
+
 	void InitializeResources();
 	void InitializeCameraAndObjects();
 	void InitializeLighting();
 	void ApplyLayout();
+	void ReloadDebugData();
+	void SaveLayout() const;
 	void UpdateCurtain();
 	void UpdateGuide();
 	void UpdateNavigation();
@@ -105,6 +118,7 @@ private:
 	DirectXGame::GameInputBindings::NavigationInputDevice navigationInputDevice_ =
 		DirectXGame::GameInputBindings::NavigationInputDevice::Mouse;
 	LayoutSettings layoutSettings_{};
+	DebugWindowVisibility debugWindows_{};
 };
 
 }

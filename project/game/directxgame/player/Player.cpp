@@ -17,6 +17,10 @@ constexpr float kFixedDeltaTime = 1.0f / 60.0f;
 constexpr char kGameCameraName[] = "directxgame_player";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr float kPlayerModelScale = 1.0f;
+constexpr float kPlayerFallbackCollisionRadius = 1.0f;
+constexpr float kPresentationCameraDistance = 24.0f;
+constexpr float kPresentationCameraHeight = 24.0f;
+constexpr float kPresentationCameraPitch = 0.72f;
 
 float NormalizeAngle(float angle)
 {
@@ -94,6 +98,11 @@ void Player::InitializeCamera()
 
 	Engine::CameraSystem::CameraManager::GetInstance()->AddCamera(kGameCameraName, camera_.get());
 	Engine::CameraSystem::CameraManager::GetInstance()->SetActiveCamera(kGameCameraName);
+}
+
+float Player::GetCollisionRadius() const
+{
+	return playerObject_ ? playerObject_->GetScaledModelBoundingRadius(kPlayerFallbackCollisionRadius) : kPlayerFallbackCollisionRadius;
 }
 
 void Player::InitializeObjects()
@@ -184,9 +193,9 @@ void Player::UpdateIntroPresentation(float elapsedTime, float duration)
 	}
 
 	if (camera_) {
-		const float distance = LerpFloat(18.0f, cameraDistance_, progress);
-		const float height = LerpFloat(28.0f, cameraHeight_, progress);
-		const float pitch = LerpFloat(0.72f, cameraPitch_, progress);
+		const float distance = LerpFloat(kPresentationCameraDistance, cameraDistance_, progress);
+		const float height = LerpFloat(kPresentationCameraHeight, cameraHeight_, progress);
+		const float pitch = LerpFloat(kPresentationCameraPitch, cameraPitch_, progress);
 		camera_->SetTranslate({ position_.x, height, position_.z - distance });
 		camera_->SetRotate({ pitch, 0.0f, 0.0f });
 		camera_->SetFarClip(500.0f);
@@ -221,9 +230,9 @@ void Player::UpdateDeathPresentation(float elapsedTime, float duration)
 	ApplyDeathPose(progress);
 
 	if (camera_) {
-		const float distance = LerpFloat(deathStartCameraDistance_, 18.0f, progress);
-		const float height = LerpFloat(deathStartCameraHeight_, 28.0f, progress);
-		const float pitch = LerpFloat(deathStartCameraPitch_, 0.72f, progress);
+		const float distance = LerpFloat(deathStartCameraDistance_, kPresentationCameraDistance, progress);
+		const float height = LerpFloat(deathStartCameraHeight_, kPresentationCameraHeight, progress);
+		const float pitch = LerpFloat(deathStartCameraPitch_, kPresentationCameraPitch, progress);
 		camera_->SetTranslate({ position_.x, height, position_.z - distance });
 		camera_->SetRotate({ pitch, 0.0f, 0.0f });
 		camera_->SetFarClip(500.0f);
@@ -290,7 +299,10 @@ void Player::UpdateAim(float deltaTime)
 		return;
 	}
 
-	const Vector2 mousePosition = input->GetMousePos();
+	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+		return;
+	}
+	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 	const Matrix4x4& viewProjection = camera_->GetViewProjectionMatrix();
 
 	Vector2 playerScreen{};

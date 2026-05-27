@@ -7,6 +7,8 @@
 #include "TextureManager.h"
 #include "ModelManager.h"
 #include "CameraManager.h"
+#include <algorithm>
+#include <cmath>
 #include <numbers>
 
 namespace {
@@ -148,6 +150,20 @@ void Object3D::SetModel(const std::string& filepath)
 void Object3D::SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath)
 {
 	model_ = ModelManager::GetInstance()->FindModelFromResourceRoot(resourceRoot, filepath);
+}
+
+float Object3D::GetScaledModelBoundingRadius(float fallback) const
+{
+	if (!model_ || !model_->HasBounds()) {
+		return fallback;
+	}
+
+	const float maxScale = (std::max)({
+		std::abs(transform.scale.x),
+		std::abs(transform.scale.y),
+		std::abs(transform.scale.z),
+	});
+	return model_->GetLocalBoundingRadius() * (std::max)(0.01f, maxScale);
 }
 
 void Object3D::InitializeTransformResources()

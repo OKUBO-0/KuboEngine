@@ -27,6 +27,7 @@ public:
 private:
 	void InitializeUi();
 	void ApplyLayout();
+	void ReloadDebugData();
 	void SaveLayout() const;
 	void UpdateCountUp(float deltaTime);
 	void UpdateFinishUiPulse();
@@ -41,6 +42,15 @@ private:
 	void FinishCountUp();
 	void RequestSceneChange(const char* sceneId);
 	void UpdateCurtain(float deltaTime);
+
+	struct DebugWindowVisibility {
+		bool windowSwitcher = false;
+		bool sceneView = true;
+		bool statisticsView = true;
+		bool sceneSettings = true;
+		bool audio = false;
+		bool keyInputDebug = true;
+	};
 
 	std::shared_ptr<DirectXGameSessionContext> sessionContext_;
 	UILabel background_;
@@ -76,6 +86,7 @@ private:
 	bool layoutDebugEnabled_ = false;
 	bool countUpFinished_ = false;
 	bool finishSePlayed_ = false;
+	DebugWindowVisibility debugWindows_{};
 };
 
 }

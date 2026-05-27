@@ -64,6 +64,11 @@ public:
 	void SetScenePostEffectType(PostEffectType type);
 
 	void DrawImGui();
+	void CreateImGuiSceneTextureSrv(
+		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
+		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle);
+	D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSceneTextureHandle() const { return imGuiSceneTextureGpuHandle_; }
+	bool HasImGuiSceneTexture() const { return imGuiSceneTextureReady_; }
 private:
 	static OffscreenRenderManager* instance_;
 
@@ -75,8 +80,11 @@ private:
 	DirectX::TexMetadata renderTargetMetadata_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> renderTargetTextureResource;//レンダーテクスチャ
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetTextureHandle;//レンダーテクスチャのハンドル
-	inline static const Vector4 kClearColor = { 0.1f,0.25f,0.5f,1.0f };
+	inline static const Vector4 kClearColor = { 0.0f,0.0f,0.0f,1.0f };
 	uint32_t srvIndex = 0;
+	D3D12_CPU_DESCRIPTOR_HANDLE imGuiSceneTextureCpuHandle{};
+	D3D12_GPU_DESCRIPTOR_HANDLE imGuiSceneTextureGpuHandle_{};
+	bool imGuiSceneTextureReady_ = false;
 
 	PostEffectType currentEffectType_ = PostEffectType::Fullscreen;
 	PostEffectType sceneEffectType_ = PostEffectType::Fullscreen;

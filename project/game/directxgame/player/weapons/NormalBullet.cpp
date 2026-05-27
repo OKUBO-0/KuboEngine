@@ -11,6 +11,7 @@ namespace {
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kShotSePath[] = "audio/se/se_shot.wav";
 constexpr char kAudioShot[] = "combat.shot";
+constexpr float kBulletFallbackCollisionRadius = 0.75f;
 
 Vector3 NormalizeOrForward(const Vector3& vector)
 {
@@ -101,6 +102,11 @@ void NormalBullet::Draw()
 	if (active_ && object_) {
 		object_->Draw();
 	}
+}
+
+float NormalBullet::GetCollisionRadius() const
+{
+	return object_ ? object_->GetScaledModelBoundingRadius(kBulletFallbackCollisionRadius) : kBulletFallbackCollisionRadius;
 }
 
 bool NormalBullet::CanHitEnemy(void* enemyPtr)

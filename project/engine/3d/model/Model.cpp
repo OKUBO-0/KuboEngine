@@ -7,6 +7,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -300,6 +301,7 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
         LoadIndicesFromMesh(mesh, modelData);
         LoadSkinClusterDataFromMesh(mesh, modelData);
     }
+    CalculateBounds(modelData);
 
     // 先頭のディフューズテクスチャをモデル側の代表マテリアルとして採用する
     // マテリアル解析
@@ -348,6 +350,52 @@ void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
         modelData.vertices[vertexIndex].normal = { -normal.x, normal.y, normal.z };
         modelData.vertices[vertexIndex].texcoord = { texcoord.x, texcoord.y };
     }
+}
+
+void Model::CalculateBounds(ModelData& modelData)
+{
+    if (modelData.vertices.empty()) {
+        modelData.localAabbMin = { 0.0f, 0.0f, 0.0f };
+        modelData.localAabbMax = { 0.0f, 0.0f, 0.0f };
+        modelData.localAabbCenter = { 0.0f, 0.0f, 0.0f };
+        modelData.localBoundingRadius = 1.0f;
+        modelData.hasBounds = false;
+        return;
+    }
+
+    Vector3 min{
+        modelData.vertices.front().position.x,
+        modelData.vertices.front().position.y,
+        modelData.vertices.front().position.z,
+    };
+    Vector3 max = min;
+    for (const VertexData& vertex : modelData.vertices) {
+        min.x = (std::min)(min.x, vertex.position.x);
+        min.y = (std::min)(min.y, vertex.position.y);
+        min.z = (std::min)(min.z, vertex.position.z);
+        max.x = (std::max)(max.x, vertex.position.x);
+        max.y = (std::max)(max.y, vertex.position.y);
+        max.z = (std::max)(max.z, vertex.position.z);
+    }
+
+    const Vector3 center{
+        (min.x + max.x) * 0.5f,
+        (min.y + max.y) * 0.5f,
+        (min.z + max.z) * 0.5f,
+    };
+    float radiusSq = 0.0f;
+    for (const VertexData& vertex : modelData.vertices) {
+        const float dx = vertex.position.x - center.x;
+        const float dy = vertex.position.y - center.y;
+        const float dz = vertex.position.z - center.z;
+        radiusSq = (std::max)(radiusSq, dx * dx + dy * dy + dz * dz);
+    }
+
+    modelData.localAabbMin = min;
+    modelData.localAabbMax = max;
+    modelData.localAabbCenter = center;
+    modelData.localBoundingRadius = std::sqrt(radiusSq);
+    modelData.hasBounds = true;
 }
 
 void Model::LoadIndicesFromMesh(aiMesh* mesh, ModelData& modelData)

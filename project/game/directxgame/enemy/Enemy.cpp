@@ -3,6 +3,7 @@
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
 #include "TextureManager.h"
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -10,6 +11,7 @@ namespace {
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kDeathSePath[] = "audio/se/se_death.wav";
 constexpr char kAudioEnemyDeath[] = "combat.enemyDeath";
+constexpr float kEnemyFallbackCollisionRadius = 1.35f;
 
 float ScalePerFrameDecay(float decayPerFrame, float deltaTime)
 {
@@ -83,11 +85,24 @@ void Enemy::Draw()
 void Enemy::SetPosition(const Vector3& position)
 {
 	position_ = position;
+	ApplyTransform();
+	if (object_) {
+		object_->Update();
+	}
 }
 
 void Enemy::SetRotationY(float rotationY)
 {
 	rotationY_ = rotationY;
+	ApplyTransform();
+	if (object_) {
+		object_->Update();
+	}
+}
+
+float Enemy::GetCollisionRadius() const
+{
+	return object_ ? object_->GetScaledModelBoundingRadius(kEnemyFallbackCollisionRadius) : kEnemyFallbackCollisionRadius;
 }
 
 void Enemy::SetModelByType(int32_t type)

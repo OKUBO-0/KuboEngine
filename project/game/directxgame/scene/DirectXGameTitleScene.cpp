@@ -6,6 +6,7 @@
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameInputBindings.h"
 #include "game/directxgame/core/GameModelCache.h"
+#include "game/directxgame/core/ScreenUtil.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/effects/CurtainTransition.h"
 #include "Camera.h"
@@ -20,8 +21,12 @@
 #include <Windows.h>
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <string>
+#include <string_view>
 #ifdef _DEBUG
+#include "DebugEditorManager.h"
+#include "IconsFontAwesome5.h"
 #include <imgui.h>
 #endif
 
@@ -99,6 +104,7 @@ void DirectXGameTitleScene::Update()
 				GameAudioCache::Stop(titleBgmHandle_);
 			}
 			Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kGame);
+			DrawDebugUi();
 			return;
 		}
 		DrawDebugUi();
@@ -184,6 +190,19 @@ void DirectXGameTitleScene::InitializeResources()
 	layoutSettings_.cameraPitch = UILayoutIO::GetFloat(titleLayout, "cameraPitch", layoutSettings_.cameraPitch);
 	layoutSettings_.cameraYaw = UILayoutIO::GetFloat(titleLayout, "cameraYaw", layoutSettings_.cameraYaw);
 	layoutSettings_.cameraOrbitSpeed = UILayoutIO::GetFloat(titleLayout, "cameraOrbitSpeed", layoutSettings_.cameraOrbitSpeed);
+#ifdef _DEBUG
+	auto loadWindowVisible = [&titleLayout](std::string_view key, bool fallback) {
+		return UILayoutIO::GetFloat(titleLayout, key, fallback ? 1.0f : 0.0f) != 0.0f;
+	};
+	debugWindows_.windowSwitcher = loadWindowVisible("debug.windowSwitcher", debugWindows_.windowSwitcher);
+	debugWindows_.titleView = loadWindowVisible("debug.titleView", debugWindows_.titleView);
+	debugWindows_.statisticsView = loadWindowVisible("debug.statisticsView", debugWindows_.statisticsView);
+	debugWindows_.titleSettings = loadWindowVisible("debug.titleSettings", debugWindows_.titleSettings);
+	debugWindows_.offscreenSettings = loadWindowVisible("debug.offscreenSettings", debugWindows_.offscreenSettings);
+	debugWindows_.lightSettings = loadWindowVisible("debug.lightSettings", debugWindows_.lightSettings);
+	debugWindows_.audio = loadWindowVisible("debug.audio", debugWindows_.audio);
+	debugWindows_.keyInputDebug = loadWindowVisible("debug.keyInputDebug", debugWindows_.keyInputDebug);
+#endif
 
 	titleSprite_.Initialize(kTitleTexturePath, layoutSettings_.titlePosition);
 	cursorSprite_.Initialize(kCursorTexturePath, layoutSettings_.cursorBasePosition);
@@ -348,17 +367,20 @@ void DirectXGameTitleScene::UpdateGuide()
 void DirectXGameTitleScene::UpdateNavigation()
 {
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	const Vector2 mousePosition = input->GetMousePos();
+	const bool mouseInsideScene = ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos());
+	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 
 	int32_t hoveredMenuIndex = -1;
-	for (int32_t index = 0; index < 3; ++index) {
-		const Vector2 rectPosition{
-			layoutSettings_.menuHitboxPosition.x,
-			layoutSettings_.menuHitboxPosition.y + layoutSettings_.menuHitboxStepY * static_cast<float>(index),
-		};
-		if (IsPointInRect(mousePosition, rectPosition, layoutSettings_.menuHitboxSize)) {
-			hoveredMenuIndex = index;
-			break;
+	if (mouseInsideScene) {
+		for (int32_t index = 0; index < 3; ++index) {
+			const Vector2 rectPosition{
+				layoutSettings_.menuHitboxPosition.x,
+				layoutSettings_.menuHitboxPosition.y + layoutSettings_.menuHitboxStepY * static_cast<float>(index),
+			};
+			if (IsPointInRect(mousePosition, rectPosition, layoutSettings_.menuHitboxSize)) {
+				hoveredMenuIndex = index;
+				break;
+			}
 		}
 	}
 
@@ -509,39 +531,103 @@ void DirectXGameTitleScene::UpdateCameraAnimation()
 void DirectXGameTitleScene::DrawDebugUi()
 {
 #ifdef _DEBUG
-	ImGui::Begin("DirectXGame Title");
-	ImGui::Text("Stage 6 title scene");
-	ImGui::Text("Play / Guide / Quit");
-	ImGui::Text("Menu Index: %d", menuIndex_);
-	ImGui::Text("Guide Active: %s", guideActive_ ? "true" : "false");
-	ImGui::Text("Curtain: %s", curtainStarted_ ? "closing" : (curtainOpening_ ? "opening" : "idle"));
-	ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
-	ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
-	ImGui::Text("Cancel: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
-	float masterVolume = GameAudioCache::GetMasterVolume();
-	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
-		GameAudioCache::SetMasterVolume(masterVolume);
-	}
-	if (ImGui::CollapsingHeader("Audio Balance")) {
-		float titleBgm = GameAudioCache::GetTunedVolume(kAudioTitleBgm, 0.1f);
-		if (ImGui::SliderFloat("Title BGM", &titleBgm, 0.0f, 1.0f)) {
-			GameAudioCache::SetTunedVolume(kAudioTitleBgm, titleBgm);
-			if (titleBgmHandle_ != 0) {
-				GameAudioCache::SetVolumeFromTuning(titleBgmHandle_, kAudioTitleBgm, 0.1f);
-			}
-		}
-		float selectSe = GameAudioCache::GetTunedVolume(kAudioTitleSelect, 1.0f);
-		if (ImGui::SliderFloat("Title Select", &selectSe, 0.0f, 1.0f)) {
-			GameAudioCache::SetTunedVolume(kAudioTitleSelect, selectSe);
-		}
-		float decideSe = GameAudioCache::GetTunedVolume(kAudioTitleDecide, 1.0f);
-		if (ImGui::SliderFloat("Title Decide", &decideSe, 0.0f, 1.0f)) {
-			GameAudioCache::SetTunedVolume(kAudioTitleDecide, decideSe);
-		}
+	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	if (input && input->TriggerKey(DIK_F5)) {
+		ReloadDebugData();
 	}
 
+	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
+		{ "Scene", &debugWindows_.titleView },
+		{ "統計", &debugWindows_.statisticsView },
+		{ "シーン設定", &debugWindows_.titleSettings },
+		{ "オフスクリーン設定", &debugWindows_.offscreenSettings },
+		{ "ライト設定", &debugWindows_.lightSettings },
+		{ "オーディオ", &debugWindows_.audio },
+		{ "キー操作デバッグ", &debugWindows_.keyInputDebug },
+	};
+	const Engine::Editor::DebugEditorMenuItem editItems[] = {
+		{ "シーン設定", &debugWindows_.titleSettings },
+		{ "ライト設定", &debugWindows_.lightSettings },
+	};
+	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
+		{ "Scene", &debugWindows_.titleView },
+		{ "シーン設定", &debugWindows_.titleSettings },
+	};
+	Engine::Editor::DebugEditorManager::DrawMainMenu({
+		windowItems,
+		std::size(windowItems),
+		editItems,
+		std::size(editItems),
+		objectItems,
+		std::size(objectItems),
+		"タイトルレイアウトを保存",
+		[this]() { SaveLayout(); },
+		"タイトル設定を再読み込み",
+		[this]() { ReloadDebugData(); },
+		"Title Debug UI",
+		{},
+		[this]() { StartGameTransition(); },
+		{},
+		&debugWindows_.windowSwitcher,
+	});
+
+	if (debugWindows_.windowSwitcher) {
+		Engine::Editor::DebugEditorManager::DrawWindowSwitcher(
+			"ウィンドウ表示切り替え",
+			&debugWindows_.windowSwitcher,
+			windowItems,
+			std::size(windowItems),
+			{ 260.0f, 220.0f });
+	}
+	if (debugWindows_.offscreenSettings) {
+		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
+			offscreen->DrawImGui();
+		}
+	}
+	if (debugWindows_.titleView) {
+	const Engine::Editor::DebugSceneViewportState sceneViewport =
+		Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugWindows_.titleView);
+	ScreenUtil::SetDebugSceneInputActive(sceneViewport.inputActive);
+	if (sceneViewport.drawn) {
+		ScreenUtil::SetDebugSceneViewport(sceneViewport.min, sceneViewport.size);
+	} else {
+		ScreenUtil::ClearDebugSceneViewport();
+	}
+	} else {
+		ScreenUtil::ClearDebugSceneViewport();
+	}
+
+	if (debugWindows_.audio) {
+	ImGui::Begin("オーディオ", &debugWindows_.audio);
+	if (debugWindows_.audio) {
+		float masterVolume = GameAudioCache::GetMasterVolume();
+		if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
+			GameAudioCache::SetMasterVolume(masterVolume);
+		}
+		if (ImGui::CollapsingHeader("Audio Balance")) {
+			float titleBgm = GameAudioCache::GetTunedVolume(kAudioTitleBgm, 0.1f);
+			if (ImGui::SliderFloat("Title BGM", &titleBgm, 0.0f, 1.0f)) {
+				GameAudioCache::SetTunedVolume(kAudioTitleBgm, titleBgm);
+				if (titleBgmHandle_ != 0) {
+					GameAudioCache::SetVolumeFromTuning(titleBgmHandle_, kAudioTitleBgm, 0.1f);
+				}
+			}
+			float selectSe = GameAudioCache::GetTunedVolume(kAudioTitleSelect, 1.0f);
+			if (ImGui::SliderFloat("Title Select", &selectSe, 0.0f, 1.0f)) {
+				GameAudioCache::SetTunedVolume(kAudioTitleSelect, selectSe);
+			}
+			float decideSe = GameAudioCache::GetTunedVolume(kAudioTitleDecide, 1.0f);
+			if (ImGui::SliderFloat("Title Decide", &decideSe, 0.0f, 1.0f)) {
+				GameAudioCache::SetTunedVolume(kAudioTitleDecide, decideSe);
+			}
+		}
+	}
+	ImGui::End();
+	}
+
+	if (debugWindows_.statisticsView) {
+	ImGui::Begin("統計", &debugWindows_.statisticsView);
 	const DirectXGameResourceProbeStatus& probeStatus = DirectXGameResourceProbe::Verify();
-	ImGui::Separator();
 	ImGui::Text("Texture Probe: %s", probeStatus.textureLoaded ? "OK" : "NG");
 	ImGui::Text("Model Probe: %s", probeStatus.modelLoaded ? "OK" : "NG");
 	ImGui::Text("CSV Probe: %s", probeStatus.csvOpened ? "OK" : "NG");
@@ -555,8 +641,11 @@ void DirectXGameTitleScene::DrawDebugUi()
 		}
 		ImGui::TreePop();
 	}
+	ImGui::End();
+	}
 
-	ImGui::Separator();
+	if (debugWindows_.titleSettings) {
+	ImGui::Begin("シーン設定", &debugWindows_.titleSettings);
 	ImGui::Checkbox("Enable Title Debug", &layoutSettings_.debugEnabled);
 	if (layoutSettings_.debugEnabled) {
 		float titlePosition[2]{ layoutSettings_.titlePosition.x, layoutSettings_.titlePosition.y };
@@ -697,32 +786,97 @@ void DirectXGameTitleScene::DrawDebugUi()
 		ImGui::DragFloat("Camera Orbit Speed", &layoutSettings_.cameraOrbitSpeed, 0.01f, -1.0f, 1.0f);
 
 		if (ImGui::Button("Save Title Layout")) {
-			UILayoutIO::Save(DataPaths::kTitleLayout,
-				{
-					{ "titlePosition", { layoutSettings_.titlePosition.x, layoutSettings_.titlePosition.y } },
-					{ "titleSize", { layoutSettings_.titleSize.x, layoutSettings_.titleSize.y } },
-					{ "cursorBasePosition", { layoutSettings_.cursorBasePosition.x, layoutSettings_.cursorBasePosition.y } },
-					{ "cursorSize", { layoutSettings_.cursorSize.x, layoutSettings_.cursorSize.y } },
-					{ "cursorStepY", { layoutSettings_.cursorStepY } },
-					{ "menuHitboxPosition", { layoutSettings_.menuHitboxPosition.x, layoutSettings_.menuHitboxPosition.y } },
-					{ "menuHitboxSize", { layoutSettings_.menuHitboxSize.x, layoutSettings_.menuHitboxSize.y } },
-					{ "menuHitboxStepY", { layoutSettings_.menuHitboxStepY } },
-					{ "guidePosition", { layoutSettings_.guidePosition.x, layoutSettings_.guidePosition.y } },
-					{ "guideSize", { layoutSettings_.guideSize.x, layoutSettings_.guideSize.y } },
-					{ "modelBasePosition", { layoutSettings_.modelBasePosition.x, layoutSettings_.modelBasePosition.y, layoutSettings_.modelBasePosition.z } },
-					{ "modelScale", { layoutSettings_.modelScale.x, layoutSettings_.modelScale.y, layoutSettings_.modelScale.z } },
-					{ "cameraTarget", { layoutSettings_.cameraTarget.x, layoutSettings_.cameraTarget.y, layoutSettings_.cameraTarget.z } },
-					{ "cameraDistance", { layoutSettings_.cameraDistance } },
-					{ "cameraHeight", { layoutSettings_.cameraHeight } },
-					{ "cameraPitch", { layoutSettings_.cameraPitch } },
-					{ "cameraYaw", { layoutSettings_.cameraYaw } },
-					{ "cameraOrbitSpeed", { layoutSettings_.cameraOrbitSpeed } },
-				});
+			SaveLayout();
 		}
 	}
-
 	ImGui::End();
+	}
+
+	if (debugWindows_.keyInputDebug) {
+	ImGui::Begin("キー操作デバッグ", &debugWindows_.keyInputDebug);
+	ImGui::TextUnformatted("タイトルシーン入力");
+	ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
+	ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
+	ImGui::Text("Cancel: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
+	ImGui::Text("Menu Index: %d", menuIndex_);
+	ImGui::Text("Guide Active: %s", guideActive_ ? "true" : "false");
+	ImGui::End();
+	}
 #endif
+}
+
+void DirectXGameTitleScene::SaveLayout() const
+{
+	UILayoutIO::Save(DataPaths::kTitleLayout,
+		{
+			{ "titlePosition", { layoutSettings_.titlePosition.x, layoutSettings_.titlePosition.y } },
+			{ "titleSize", { layoutSettings_.titleSize.x, layoutSettings_.titleSize.y } },
+			{ "cursorBasePosition", { layoutSettings_.cursorBasePosition.x, layoutSettings_.cursorBasePosition.y } },
+			{ "cursorSize", { layoutSettings_.cursorSize.x, layoutSettings_.cursorSize.y } },
+			{ "cursorStepY", { layoutSettings_.cursorStepY } },
+			{ "menuHitboxPosition", { layoutSettings_.menuHitboxPosition.x, layoutSettings_.menuHitboxPosition.y } },
+			{ "menuHitboxSize", { layoutSettings_.menuHitboxSize.x, layoutSettings_.menuHitboxSize.y } },
+			{ "menuHitboxStepY", { layoutSettings_.menuHitboxStepY } },
+			{ "guidePosition", { layoutSettings_.guidePosition.x, layoutSettings_.guidePosition.y } },
+			{ "guideSize", { layoutSettings_.guideSize.x, layoutSettings_.guideSize.y } },
+			{ "modelBasePosition", { layoutSettings_.modelBasePosition.x, layoutSettings_.modelBasePosition.y, layoutSettings_.modelBasePosition.z } },
+			{ "modelScale", { layoutSettings_.modelScale.x, layoutSettings_.modelScale.y, layoutSettings_.modelScale.z } },
+			{ "cameraTarget", { layoutSettings_.cameraTarget.x, layoutSettings_.cameraTarget.y, layoutSettings_.cameraTarget.z } },
+			{ "cameraDistance", { layoutSettings_.cameraDistance } },
+			{ "cameraHeight", { layoutSettings_.cameraHeight } },
+			{ "cameraPitch", { layoutSettings_.cameraPitch } },
+			{ "cameraYaw", { layoutSettings_.cameraYaw } },
+			{ "cameraOrbitSpeed", { layoutSettings_.cameraOrbitSpeed } },
+#ifdef _DEBUG
+			{ "debug.windowSwitcher", { debugWindows_.windowSwitcher ? 1.0f : 0.0f } },
+			{ "debug.titleView", { debugWindows_.titleView ? 1.0f : 0.0f } },
+			{ "debug.statisticsView", { debugWindows_.statisticsView ? 1.0f : 0.0f } },
+			{ "debug.titleSettings", { debugWindows_.titleSettings ? 1.0f : 0.0f } },
+			{ "debug.offscreenSettings", { debugWindows_.offscreenSettings ? 1.0f : 0.0f } },
+			{ "debug.lightSettings", { debugWindows_.lightSettings ? 1.0f : 0.0f } },
+			{ "debug.audio", { debugWindows_.audio ? 1.0f : 0.0f } },
+			{ "debug.keyInputDebug", { debugWindows_.keyInputDebug ? 1.0f : 0.0f } },
+#endif
+		});
+}
+
+void DirectXGameTitleScene::ReloadDebugData()
+{
+	const UILayoutIO::LayoutMap titleLayout = UILayoutIO::LoadOrDefault(DataPaths::kTitleLayout, {});
+	layoutSettings_.titlePosition = UILayoutIO::GetVector2(titleLayout, "titlePosition", layoutSettings_.titlePosition);
+	layoutSettings_.titleSize = UILayoutIO::GetVector2(titleLayout, "titleSize", layoutSettings_.titleSize);
+	layoutSettings_.cursorBasePosition = UILayoutIO::GetVector2(titleLayout, "cursorBasePosition", layoutSettings_.cursorBasePosition);
+	layoutSettings_.cursorSize = UILayoutIO::GetVector2(titleLayout, "cursorSize", layoutSettings_.cursorSize);
+	layoutSettings_.cursorStepY = UILayoutIO::GetFloat(titleLayout, "cursorStepY", layoutSettings_.cursorStepY);
+	layoutSettings_.menuHitboxPosition = UILayoutIO::GetVector2(titleLayout, "menuHitboxPosition", layoutSettings_.menuHitboxPosition);
+	layoutSettings_.menuHitboxSize = UILayoutIO::GetVector2(titleLayout, "menuHitboxSize", layoutSettings_.menuHitboxSize);
+	layoutSettings_.menuHitboxStepY = UILayoutIO::GetFloat(titleLayout, "menuHitboxStepY", layoutSettings_.menuHitboxStepY);
+	layoutSettings_.guidePosition = UILayoutIO::GetVector2(titleLayout, "guidePosition", layoutSettings_.guidePosition);
+	layoutSettings_.guideSize = UILayoutIO::GetVector2(titleLayout, "guideSize", layoutSettings_.guideSize);
+	layoutSettings_.modelBasePosition = UILayoutIO::GetVector3(titleLayout, "modelBasePosition", layoutSettings_.modelBasePosition);
+	layoutSettings_.modelScale = UILayoutIO::GetVector3(titleLayout, "modelScale", layoutSettings_.modelScale);
+	layoutSettings_.cameraTarget = UILayoutIO::GetVector3(titleLayout, "cameraTarget", layoutSettings_.cameraTarget);
+	layoutSettings_.cameraDistance = UILayoutIO::GetFloat(titleLayout, "cameraDistance", layoutSettings_.cameraDistance);
+	layoutSettings_.cameraHeight = UILayoutIO::GetFloat(titleLayout, "cameraHeight", layoutSettings_.cameraHeight);
+	layoutSettings_.cameraPitch = UILayoutIO::GetFloat(titleLayout, "cameraPitch", layoutSettings_.cameraPitch);
+	layoutSettings_.cameraYaw = UILayoutIO::GetFloat(titleLayout, "cameraYaw", layoutSettings_.cameraYaw);
+	layoutSettings_.cameraOrbitSpeed = UILayoutIO::GetFloat(titleLayout, "cameraOrbitSpeed", layoutSettings_.cameraOrbitSpeed);
+#ifdef _DEBUG
+	auto loadWindowVisible = [&titleLayout](std::string_view key, bool fallback) {
+		return UILayoutIO::GetFloat(titleLayout, key, fallback ? 1.0f : 0.0f) != 0.0f;
+	};
+	debugWindows_.windowSwitcher = loadWindowVisible("debug.windowSwitcher", debugWindows_.windowSwitcher);
+	debugWindows_.titleView = loadWindowVisible("debug.titleView", debugWindows_.titleView);
+	debugWindows_.statisticsView = loadWindowVisible("debug.statisticsView", debugWindows_.statisticsView);
+	debugWindows_.titleSettings = loadWindowVisible("debug.titleSettings", debugWindows_.titleSettings);
+	debugWindows_.offscreenSettings = loadWindowVisible("debug.offscreenSettings", debugWindows_.offscreenSettings);
+	debugWindows_.lightSettings = loadWindowVisible("debug.lightSettings", debugWindows_.lightSettings);
+	debugWindows_.audio = loadWindowVisible("debug.audio", debugWindows_.audio);
+	debugWindows_.keyInputDebug = loadWindowVisible("debug.keyInputDebug", debugWindows_.keyInputDebug);
+#endif
+	InitializeLighting();
+	ApplyLayout();
+	UpdatePlayerLight();
 }
 
 bool DirectXGameTitleScene::IsMouseMenuConfirm(int32_t hoveredMenuIndex) const

@@ -66,13 +66,9 @@ private:
 	static constexpr float kDefaultMinSpawnInterval = 0.85f;
 	static constexpr float kDefaultBaseSpawnInterval = 1.9f;
 	static constexpr float kDefaultSpawnAcceleration = 0.0075f;
-	static constexpr float kEnemySeparationDistance = 3.2f;
 	static constexpr float kEnemySeparationStrength = 1.1f;
 	static constexpr float kSpatialCellSize = 8.0f;
-	static constexpr float kNormalBulletHitDistanceSq = 4.0f;
-	static constexpr float kOrbitBulletHitDistanceSq = 25.0f;
-	static constexpr float kPlayerContactDistance = 2.5f;
-	static constexpr float kPlayerContactDistanceSq = kPlayerContactDistance * kPlayerContactDistance;
+	static constexpr float kEnemyQueryPadding = 2.0f;
 
 	void UpdateSpawnState(float deltaTime);
 	void SpawnEnemies();
