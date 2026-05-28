@@ -1,6 +1,10 @@
 #include "SpriteCommon.h"
+#include "DirectXCommon.h"
+#include "GraphicsPipeline.h"
 
 namespace Engine::Graphics2D {
+
+SpriteCommon::~SpriteCommon() = default;
 
 SpriteCommon* SpriteCommon::GetInstance()
 {
