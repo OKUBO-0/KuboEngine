@@ -65,7 +65,7 @@ public:
     /// @brief 音声データを再生する
     /// @param soundData 再生する音声データ
     /// @return なし
-    void SoundPlayWave(const SoundData& soundData, bool loop = false);
+    void SoundPlayWave(const SoundData& soundData);
     /// @brief すべての音声再生を停止する
     /// @param なし
     /// @return なし

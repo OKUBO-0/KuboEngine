@@ -1,21 +1,23 @@
 #pragma once
+#include "DirectXCommon.h"
+#include "GraphicsPipeline.h"
+#include "SrvManager.h"
+
+#include "Vector2.h"
 #include "Vector3.h"
 #include "Vector4.h"
 #include "Matrix4x4.h"
-#include <d3d12.h>
-#include <wrl.h>
+#include "RenderingData.h"
+
+#include <assert.h>
+#include <cmath>
+#include <stdio.h>
 #include <array>
-#include <cstdint>
-#include <memory>
+#include <string>
+#include <wrl/client.h>
+#include <d3d12.h>
+#include <Camera.h>
 #include <vector>
-
-namespace Engine::Base {
-class DirectXCommon;
-class GraphicsPipeline;
-class SrvManager;
-}
-
-namespace Engine::LineSystem {
 
 struct VertexDataLine
 {
@@ -86,7 +88,7 @@ public:
 
 private:
 	LineCommon() = default;
-	~LineCommon();
+	~LineCommon() = default;
 	LineCommon(const LineCommon&) = delete;
 	LineCommon& operator=(const LineCommon&) = delete;
 	void InitializePipeline();
@@ -128,4 +130,3 @@ private:
 
 };
 
-}

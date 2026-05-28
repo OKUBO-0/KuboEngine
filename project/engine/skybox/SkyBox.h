@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 #include "RenderingData.h"
-#include "DirectXCommon.h"
-#include "SrvManager.h"
+#include "engine/base/DirectXCommon.h"
+#include "engine/base/SrvManager.h"
 #include "SkyBoxCommon.h"
 
 /// @brief キューブマップを使ったスカイボックス描画クラス

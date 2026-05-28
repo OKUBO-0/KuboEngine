@@ -1,13 +1,6 @@
 #include "LineCommon.h"
-#include "DirectXCommon.h"
-#include "GraphicsPipeline.h"
 #include "MyMath.h"
-#include "SrvManager.h"
 #include <CameraManager.h>
-
-namespace Engine::LineSystem {
-
-LineCommon::~LineCommon() = default;
 
 const Vector3 LineCommon::kDefaultLineStart_{ 0.0f, 0.0f, 0.0f };
 const Vector3 LineCommon::kDefaultLineEnd_{ 0.0f, 1.0f, 1.0f };
@@ -60,12 +53,8 @@ void LineCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base:
 
 void LineCommon::UpdateCameraBuffer()
 {
-	Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-	if (!activeCamera) {
-		return;
-	}
-	camerabuffer->projection = activeCamera->GetProjectionMatrix();
-	camerabuffer->view = activeCamera->GetViewMatrix();
+	camerabuffer->projection = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()->GetProjectionMatrix();
+	camerabuffer->view = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()->GetViewMatrix();
 }
 
 void LineCommon::EnsureInstanceResourceCapacity(size_t instanceSize)
@@ -149,7 +138,7 @@ void LineCommon::Draw()
 	dxCommon_->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView_);
 	// RootParameter[0] → b0：カメラ（CBV）
 	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(0, cameraResource->GetGPUVirtualAddress());
-	srvManager_->SetGraphicsRootDescriptorTable(1, instanceSrvIndex_);
+	srvManager_->SetGraficsRootDescriptorTable(1, instanceSrvIndex_);
 	dxCommon_->GetCommandList()->DrawInstanced(2, static_cast<UINT>(instances_.size()), 0, 0);
 
 	instances_.clear(); // ← 正しい変数名
@@ -163,7 +152,5 @@ void LineCommon::DrawLine(const Vector3& start, const Vector3& end, const Vector
 {
 	instances_.push_back({ start, end, color });
 
-
-}
 
 }

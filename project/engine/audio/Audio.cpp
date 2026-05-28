@@ -1,10 +1,4 @@
 #include "Audio.h"
-#include <Windows.h>
-#include <algorithm>
-#include <cstdlib>
-#include <cstring>
-#include <sstream>
-#include <string>
 #include <wrl.h>
 
 namespace Engine::AudioSystem {
@@ -14,100 +8,53 @@ constexpr char kRiffChunkId[] = "RIFF";
 constexpr char kWaveChunkId[] = "WAVE";
 constexpr char kFormatChunkId[] = "fmt ";
 constexpr char kDataChunkId[] = "data";
+constexpr char kJunkChunkId[] = "JUNK";
+constexpr char kListChunkId[] = "LIST";
 constexpr size_t kChunkIdLength = 4;
 
-std::string ChunkIdToString(const char* id)
-{
-    return std::string(id, id + kChunkIdLength);
-}
-
-void FailWaveLoad(const std::string& filename, const std::string& reason)
-{
-    std::ostringstream message;
-    message << "[Audio::SoundLoadWave] " << reason
-        << " filePath=\"" << filename << "\"\n";
-    OutputDebugStringA(message.str().c_str());
-    assert(false && "Audio::SoundLoadWave failed; see OutputDebugString for file path and chunk details");
-    std::abort();
-}
-
-RiffHeader ReadRiffHeader(std::ifstream& file, const std::string& filename)
+RiffHeader ReadRiffHeader(std::ifstream& file)
 {
     RiffHeader riff{};
     file.read(reinterpret_cast<char*>(&riff), sizeof(riff));
-    if (!file) {
-        FailWaveLoad(filename, "failed to read RIFF header");
-    }
-    if (strncmp(riff.chunk.id, kRiffChunkId, kChunkIdLength) != 0) {
-        FailWaveLoad(filename, "invalid RIFF chunk id: actual=\"" + ChunkIdToString(riff.chunk.id) + "\" expected=\"RIFF\"");
-    }
-    if (strncmp(riff.type, kWaveChunkId, kChunkIdLength) != 0) {
-        FailWaveLoad(filename, "invalid WAVE type id: actual=\"" + ChunkIdToString(riff.type) + "\" expected=\"WAVE\"");
-    }
+    assert(strncmp(riff.chunk.id, kRiffChunkId, kChunkIdLength) == 0);
+    assert(strncmp(riff.type, kWaveChunkId, kChunkIdLength) == 0);
     return riff;
 }
 
-void SkipChunk(std::ifstream& file, int32_t size)
-{
-    file.seekg(size, std::ios_base::cur);
-    if ((size & 1) != 0) {
-        file.seekg(1, std::ios_base::cur);
-    }
-}
-
-FormatChunk ReadFormatChunkPayload(std::ifstream& file, const ChunkHeader& header)
+FormatChunk ReadFormatChunk(std::ifstream& file)
 {
     FormatChunk format{};
-    format.chunk = header;
-    const std::streamsize readSize = (std::min)(
-        static_cast<std::streamsize>(header.size),
-        static_cast<std::streamsize>(sizeof(format.fmt)));
-    file.read(reinterpret_cast<char*>(&format.fmt), readSize);
-    if (header.size > readSize) {
-        SkipChunk(file, header.size - static_cast<int32_t>(readSize));
-    } else if ((header.size & 1) != 0) {
-        file.seekg(1, std::ios_base::cur);
-    }
+    file.read(reinterpret_cast<char*>(&format), sizeof(ChunkHeader));
+    assert(strncmp(format.chunk.id, kFormatChunkId, kChunkIdLength) == 0);
+    assert(format.chunk.size <= sizeof(format.fmt));
+    file.read(reinterpret_cast<char*>(&format.fmt), format.chunk.size);
     return format;
 }
 
-FormatChunk FindFormatChunk(std::ifstream& file, const std::string& filename)
+bool IsSkippableChunk(const ChunkHeader& chunk)
 {
-    ChunkHeader chunk{};
-    while (file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))) {
-        if (strncmp(chunk.id, kFormatChunkId, kChunkIdLength) == 0) {
-            return ReadFormatChunkPayload(file, chunk);
-        }
-        SkipChunk(file, chunk.size);
-    }
-
-    FailWaveLoad(filename, "fmt chunk not found: expected chunk id=\"fmt \"");
-    return {};
+    return strncmp(chunk.id, kJunkChunkId, kChunkIdLength) == 0 ||
+        strncmp(chunk.id, kListChunkId, kChunkIdLength) == 0;
 }
 
-ChunkHeader ReadDataChunk(std::ifstream& file, const std::string& filename)
+ChunkHeader ReadDataChunk(std::ifstream& file)
 {
     ChunkHeader data{};
-    while (file.read(reinterpret_cast<char*>(&data), sizeof(data))) {
-        if (strncmp(data.id, kDataChunkId, kChunkIdLength) == 0) {
-            return data;
-        }
-        SkipChunk(file, data.size);
+    file.read(reinterpret_cast<char*>(&data), sizeof(data));
+    while (IsSkippableChunk(data)) {
+        file.seekg(data.size, std::ios_base::cur);
+        file.read(reinterpret_cast<char*>(&data), sizeof(data));
     }
 
-    FailWaveLoad(filename, "data chunk not found: expected chunk id=\"data\"");
-    return {};
+    assert(strncmp(data.id, kDataChunkId, kChunkIdLength) == 0);
+    return data;
 }
 
-SoundData ReadSoundData(std::ifstream& file, const FormatChunk& format, const ChunkHeader& data, const std::string& filename)
+SoundData ReadSoundData(std::ifstream& file, const FormatChunk& format, const ChunkHeader& data)
 {
     SoundData soundData{};
     soundData.buffer.resize(data.size);
     file.read(reinterpret_cast<char*>(soundData.buffer.data()), data.size);
-    if (!file) {
-        FailWaveLoad(filename, "failed to read data chunk payload: chunk id=\"" + ChunkIdToString(data.id) +
-            "\" size=" + std::to_string(data.size));
-    }
     soundData.wfex = format.fmt;
     soundData.bufferSize = data.size;
     return soundData;
@@ -148,21 +95,14 @@ void Audio::Finalize()
 
 SoundData Audio::SoundLoadWave(const char* filename)
 {
-    const std::string path = filename != nullptr ? filename : "<null>";
-    if (filename == nullptr) {
-        FailWaveLoad(path, "filename is null");
-    }
-
     std::ifstream file(filename, std::ios_base::binary);
-    if (!file.is_open()) {
-        FailWaveLoad(path, "failed to open wave file");
-    }
+    assert(file.is_open());
 
-    // RIFF 内のチャンクは fmt/data の間に JUNK/LIST/fact などが入ることがあるため、ID で探す
-    ReadRiffHeader(file, path);
-    FormatChunk format = FindFormatChunk(file, path);
-    ChunkHeader data = ReadDataChunk(file, path);
-    SoundData soundData = ReadSoundData(file, format, data, path);
+    // RIFF -> fmt -> data の順で抽出し、補助チャンクはヘルパー側で読み飛ばす
+    ReadRiffHeader(file);
+    FormatChunk format = ReadFormatChunk(file);
+    ChunkHeader data = ReadDataChunk(file);
+    SoundData soundData = ReadSoundData(file, format, data);
     file.close();
 
     return soundData;
@@ -176,7 +116,7 @@ void Audio::SoundUnload(SoundData* soundData)
     soundData->wfex = {};
 }
 
-void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
+void Audio::SoundPlayWave(const SoundData& soundData)
 {
     HRESULT hr;
 
@@ -192,7 +132,6 @@ void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
     buf.pAudioData = soundData.buffer.data();
     buf.AudioBytes = soundData.bufferSize;
     buf.Flags = XAUDIO2_END_OF_STREAM;
-    buf.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
 
     hr = newVoice->SubmitSourceBuffer(&buf);
     hr = newVoice->Start();

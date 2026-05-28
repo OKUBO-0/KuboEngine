@@ -1,10 +1,6 @@
 #pragma once
-#include <memory>
-
-namespace Engine::Base {
-class DirectXCommon;
-class GraphicsPipeline;
-}
+#include "DirectXCommon.h"
+#include "GraphicsPipeline.h"
 
 namespace Engine::Graphics2D {
 
@@ -34,11 +30,6 @@ public:
     Engine::Base::DirectXCommon* GetDxCommon() const { return dxCommon_; }
 
 private:
-    SpriteCommon() = default;
-    ~SpriteCommon();
-    SpriteCommon(const SpriteCommon&) = delete;
-    SpriteCommon& operator=(const SpriteCommon&) = delete;
-
     Engine::Base::DirectXCommon* dxCommon_ = nullptr; // DX共通クラス参照
     std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_; // グラフィックスパイプライン
 };

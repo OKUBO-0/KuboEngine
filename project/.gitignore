@@ -12,18 +12,12 @@
 *.tmp
 *.cache
 imgui.ini
-.debug_editor_windows.ini
 .env
 .env.example
 
 # Local Codex/work notes
-.codex/
-.playwright-mcp/
 docs/
 scripts/
-
-# DirectXGame debug runtime logs
-Resources/DirectXGame/data/soft_cap_telemetry.csv
 
 # Build output
 [Dd]ebug/

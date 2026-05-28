@@ -1,5 +1,4 @@
 #include "Sprite.h"
-#include "DirectXCommon.h"
 #include "SpriteCommon.h"
 #include "TextureManager.h"
 #include "Matrix4x4.h"
@@ -96,7 +95,7 @@ void Sprite::InitializeTransformationData()
 
 void Sprite::InitializeCameraData()
 {
-    cameraResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(CameraForGpu));
+    cameraResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(CaMeraForGpu));
     cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraForGpu));
     cameraForGpu->worldPosition = { 0.0f,0.0f,0.0f };
 }
