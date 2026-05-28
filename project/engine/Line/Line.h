@@ -7,6 +7,8 @@
 /// @brief デバッグ用ラインプリミティブを発行するユーティリティクラス
 /// @details 単線、AABB、グリッド、球、スケルトンなどをライン群へ変換し、
 ///          LineCommon に描画要求を送る役割を持つ。
+namespace Engine::LineSystem {
+
 class LineCommon;
 class Line
 {
@@ -24,6 +26,7 @@ public:
 	/// @param color ライン色
 	/// @return なし
 	void DrawAABB(const Vector3& min, const Vector3& max, const Vector4& color);
+	void DrawOBB(const Engine::Math::OBB& obb, const Vector4& color);
 
 	/// @brief 中心と半径から AABB を描画する
 	/// @param center 中心座標
@@ -56,6 +59,7 @@ public:
 
 private:
 	std::array<Vector3, 8> CreateAabbVertices(const Vector3& min, const Vector3& max) const;
+	std::array<Vector3, 8> CreateObbVertices(const Engine::Math::OBB& obb) const;
 	void DrawAabbEdges(const std::array<Vector3, 8>& vertices, const Vector4& color);
 	void DrawGridLinesAlongZ(const Vector3& center, float start, float end, float step, uint32_t subdivision);
 	void DrawGridLinesAlongX(const Vector3& center, float start, float end, float step, uint32_t subdivision);
@@ -65,3 +69,4 @@ private:
 
 };
 
+}

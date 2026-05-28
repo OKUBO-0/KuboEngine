@@ -1,4 +1,5 @@
 #include "SkyBox.h"
+#include "MyMath.h"
 #include "TextureManager.h"
 #include "CameraManager.h"
 #include <imgui.h>
@@ -144,7 +145,7 @@ void SkyBox::Draw()
 	//トランスフォームをセット
 	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
 	//テクスチャをセット
-	SkyBoxCommon::GetInstance()->GetSrvManager()->SetGraficsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_));
+	SkyBoxCommon::GetInstance()->GetSrvManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_));
 	//インデックスバッファビューをセット
 	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
 	//描画

@@ -1,9 +1,11 @@
 #pragma once
-#include "DirectXCommon.h"
-#include "SrvManager.h"
-#include "Camera.h"
-#include "GraphicsPipeline.h"
 #include <memory>
+
+namespace Engine::Base {
+class DirectXCommon;
+class GraphicsPipeline;
+class SrvManager;
+}
 
 /// @brief スカイボックス描画の共通設定を管理するクラス
 /// @details スカイボックス用パイプラインと DirectX 依存を保持し、
@@ -20,9 +22,9 @@ public:
 	
 	/// @brief スカイボックス共通描画資源を初期化する
 	/// @param dxCommon DirectX 共通管理クラス
-	/// @param srvmanager SRV 管理クラス
+	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager*srvmanager);
+	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief 共通管理インスタンスを解放する
 	/// @param なし
@@ -41,6 +43,11 @@ public:
 	Engine::Base::SrvManager* GetSrvManager()const { return srvManager_; }
 
 private:
+	SkyBoxCommon() = default;
+	~SkyBoxCommon();
+	SkyBoxCommon(const SkyBoxCommon&) = delete;
+	SkyBoxCommon& operator=(const SkyBoxCommon&) = delete;
+
 	// DirectX共通
 	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
 	// シェーダーリソースマネージャー

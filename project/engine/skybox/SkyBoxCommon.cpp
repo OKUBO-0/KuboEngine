@@ -1,6 +1,10 @@
 #include "SkyBoxCommon.h"
+#include "DirectXCommon.h"
+#include "GraphicsPipeline.h"
 
 namespace Engine::Skybox {
+
+SkyBoxCommon::~SkyBoxCommon() = default;
 
 SkyBoxCommon* SkyBoxCommon::GetInstance()
 {
@@ -8,10 +12,10 @@ SkyBoxCommon* SkyBoxCommon::GetInstance()
 	return &instance;
 }
 
-void SkyBoxCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvmanager) {
+void SkyBoxCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager) {
 
 	dxCommon_ = dxCommon;
-	srvManager_ = srvmanager;
+	srvManager_ = srvManager;
 
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
 	graphicsPipeline_->Initialize(dxCommon_);

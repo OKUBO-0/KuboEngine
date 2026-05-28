@@ -1,5 +1,6 @@
 #include "Line.h"
 #include "LineCommon.h"
+#include <cassert>
 #include <numbers>
 #include <utility>
 #include "Vector3.h"
@@ -9,6 +10,8 @@ namespace {
 const Vector4 kDefaultGridLineColor = { 0.5f, 0.5f, 0.5f, 1.0f };
 
 }
+
+namespace Engine::LineSystem {
 
 std::array<Vector3, 8> Line::CreateAabbVertices(const Vector3& min, const Vector3& max) const
 {
@@ -21,6 +24,23 @@ std::array<Vector3, 8> Line::CreateAabbVertices(const Vector3& min, const Vector
 		Vector3{ max.x, min.y, max.z },
 		Vector3{ max.x, max.y, max.z },
 		Vector3{ min.x, max.y, max.z }
+	};
+}
+
+std::array<Vector3, 8> Line::CreateObbVertices(const Engine::Math::OBB& obb) const
+{
+	const Vector3 axisX = obb.orientations[0] * obb.size.x;
+	const Vector3 axisY = obb.orientations[1] * obb.size.y;
+	const Vector3 axisZ = obb.orientations[2] * obb.size.z;
+	return {
+		obb.center - axisX - axisY - axisZ,
+		obb.center + axisX - axisY - axisZ,
+		obb.center + axisX + axisY - axisZ,
+		obb.center - axisX + axisY - axisZ,
+		obb.center - axisX - axisY + axisZ,
+		obb.center + axisX - axisY + axisZ,
+		obb.center + axisX + axisY + axisZ,
+		obb.center - axisX + axisY + axisZ,
 	};
 }
 
@@ -46,6 +66,12 @@ void Line::Draw(const Vector3& start, const Vector3& end, const Vector4& color)
 void Line::DrawAABB(const Vector3& min, const Vector3& max, const Vector4& color)
 {
 	const std::array<Vector3, 8> vertices = CreateAabbVertices(min, max);
+	DrawAabbEdges(vertices, color);
+}
+
+void Line::DrawOBB(const Engine::Math::OBB& obb, const Vector4& color)
+{
+	const std::array<Vector3, 8> vertices = CreateObbVertices(obb);
 	DrawAabbEdges(vertices, color);
 }
 
@@ -138,4 +164,6 @@ void Line::DrawSkeleton(const Skeleton& skeleton, const std::vector<Matrix4x4>& 
 		DrawSphere(jointPosition, 0.005f, color);
 		DrawJointToParent(joint, jointPosition, skeletonPose, worldMatrix, color);
 	}
+}
+
 }
