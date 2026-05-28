@@ -5,9 +5,6 @@
 #include "Matrix4x4.h"
 #include "RenderingData.h"
 
-#include <assert.h>
-#include <cmath>
-#include <stdio.h>
 #include <string>
 #include <wrl/client.h>
 #include <d3d12.h>
@@ -65,8 +62,13 @@ public:
     const Vector2& GetTextureSize() const { return textureSize_; }
     void SetTextureSize(const Vector2& textureSize) { textureSize_ = textureSize; }
 
+    // デバッグ表示名
+    void SetDebugName(const std::string& debugName) { debugName_ = debugName; }
+    const std::string& GetDebugName() const { return debugName_; }
+
 private:
     std::string textureFilePath_;
+    std::string debugName_;
 
     /// テクスチャサイズを画像に合わせる
     void AdjustTextureSize();
@@ -122,7 +124,7 @@ private:
 
     // カメラ関連
     Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource; // GPU送信用カメラリソース
-    CaMeraForGpu* cameraForGpu = nullptr;                  // GPU送信用カメラ構造体
+    CameraForGpu* cameraForGpu = nullptr;                  // GPU送信用カメラ構造体
 };
 
 }
