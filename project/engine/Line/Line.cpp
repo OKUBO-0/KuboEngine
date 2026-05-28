@@ -27,6 +27,23 @@ std::array<Vector3, 8> Line::CreateAabbVertices(const Vector3& min, const Vector
 	};
 }
 
+std::array<Vector3, 8> Line::CreateObbVertices(const Engine::Math::OBB& obb) const
+{
+	const Vector3 axisX = obb.orientations[0] * obb.size.x;
+	const Vector3 axisY = obb.orientations[1] * obb.size.y;
+	const Vector3 axisZ = obb.orientations[2] * obb.size.z;
+	return {
+		obb.center - axisX - axisY - axisZ,
+		obb.center + axisX - axisY - axisZ,
+		obb.center + axisX + axisY - axisZ,
+		obb.center - axisX + axisY - axisZ,
+		obb.center - axisX - axisY + axisZ,
+		obb.center + axisX - axisY + axisZ,
+		obb.center + axisX + axisY + axisZ,
+		obb.center - axisX + axisY + axisZ,
+	};
+}
+
 void Line::DrawAabbEdges(const std::array<Vector3, 8>& vertices, const Vector4& color)
 {
 	static constexpr std::array<std::pair<uint32_t, uint32_t>, 12> kAabbEdges = {{
@@ -49,6 +66,12 @@ void Line::Draw(const Vector3& start, const Vector3& end, const Vector4& color)
 void Line::DrawAABB(const Vector3& min, const Vector3& max, const Vector4& color)
 {
 	const std::array<Vector3, 8> vertices = CreateAabbVertices(min, max);
+	DrawAabbEdges(vertices, color);
+}
+
+void Line::DrawOBB(const Engine::Math::OBB& obb, const Vector4& color)
+{
+	const std::array<Vector3, 8> vertices = CreateObbVertices(obb);
 	DrawAabbEdges(vertices, color);
 }
 

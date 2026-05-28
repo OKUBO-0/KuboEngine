@@ -535,6 +535,19 @@ void DirectXGameTitleScene::DrawDebugUi()
 	if (input && input->TriggerKey(DIK_F5)) {
 		ReloadDebugData();
 	}
+	const DebugWindowVisibility previousDebugWindows = debugWindows_;
+	const auto saveWindowVisibilityIfChanged = [this](const DebugWindowVisibility& previous) {
+		if (previous.windowSwitcher != debugWindows_.windowSwitcher ||
+			previous.titleView != debugWindows_.titleView ||
+			previous.statisticsView != debugWindows_.statisticsView ||
+			previous.titleSettings != debugWindows_.titleSettings ||
+			previous.offscreenSettings != debugWindows_.offscreenSettings ||
+			previous.lightSettings != debugWindows_.lightSettings ||
+			previous.audio != debugWindows_.audio ||
+			previous.keyInputDebug != debugWindows_.keyInputDebug) {
+			SaveLayout();
+		}
+	};
 
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &debugWindows_.titleView },
@@ -577,7 +590,10 @@ void DirectXGameTitleScene::DrawDebugUi()
 			&debugWindows_.windowSwitcher,
 			windowItems,
 			std::size(windowItems),
-			{ 260.0f, 220.0f });
+			{ 260.0f, 220.0f },
+			[this]() {
+				Engine::Editor::DebugEditorManager::DrawHotReloadButton();
+			});
 	}
 	if (debugWindows_.offscreenSettings) {
 		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
@@ -802,6 +818,8 @@ void DirectXGameTitleScene::DrawDebugUi()
 	ImGui::Text("Guide Active: %s", guideActive_ ? "true" : "false");
 	ImGui::End();
 	}
+	Engine::Editor::DebugEditorManager::SaveWindowItems(windowItems, std::size(windowItems));
+	saveWindowVisibilityIfChanged(previousDebugWindows);
 #endif
 }
 

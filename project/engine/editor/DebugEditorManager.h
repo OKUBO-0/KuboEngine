@@ -40,6 +40,9 @@ class DebugEditorManager {
 public:
 	static void BuildDefaultDockLayout(unsigned int dockspaceId);
 	static void DrawMainMenu(const DebugEditorMenuConfig& config);
+	static void DrawHotReloadButton();
+	static void RequestPseudoHotReload();
+	static void SaveWindowItems(const DebugEditorMenuItem* items, size_t itemCount);
 	static void DrawWindowSwitcher(
 		const char* title,
 		bool* open,

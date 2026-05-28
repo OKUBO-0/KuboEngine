@@ -12,6 +12,7 @@
 *.tmp
 *.cache
 imgui.ini
+.debug_editor_windows.ini
 .env
 .env.example
 

@@ -4,7 +4,10 @@
 #include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/PlayerManager.h"
+#include "MyMath.h"
 #include <algorithm>
+#include <array>
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 
@@ -31,6 +34,81 @@ int32_t ToIntOr(const std::string& value, int32_t fallback)
 	} catch (...) {
 		return fallback;
 	}
+}
+
+std::array<Vector3, 4> GetObbCornersXZ(const Engine::Math::OBB& obb)
+{
+	const Vector3 center{ obb.center.x, 0.0f, obb.center.z };
+	const Vector3 axisX{ obb.orientations[0].x * obb.size.x, 0.0f, obb.orientations[0].z * obb.size.x };
+	const Vector3 axisZ{ obb.orientations[2].x * obb.size.z, 0.0f, obb.orientations[2].z * obb.size.z };
+	return {
+		center - axisX - axisZ,
+		center + axisX - axisZ,
+		center + axisX + axisZ,
+		center - axisX + axisZ,
+	};
+}
+
+bool NormalizeAxisXZ(Vector3& axis)
+{
+	axis.y = 0.0f;
+	const float length = std::sqrt(axis.x * axis.x + axis.z * axis.z);
+	if (length <= 0.0001f) {
+		return false;
+	}
+	axis.x /= length;
+	axis.z /= length;
+	return true;
+}
+
+void ProjectCorners(const std::array<Vector3, 4>& corners, const Vector3& axis, float& outMin, float& outMax)
+{
+	outMin = Engine::Math::MyMath::Dot(corners[0], axis);
+	outMax = outMin;
+	for (size_t index = 1; index < corners.size(); ++index) {
+		const float projected = Engine::Math::MyMath::Dot(corners[index], axis);
+		outMin = (std::min)(outMin, projected);
+		outMax = (std::max)(outMax, projected);
+	}
+}
+
+bool TryGetObbSeparationXZ(const Engine::Math::OBB& a, const Engine::Math::OBB& b, Vector3& outAxis, float& outOverlap)
+{
+	const std::array<Vector3, 4> cornersA = GetObbCornersXZ(a);
+	const std::array<Vector3, 4> cornersB = GetObbCornersXZ(b);
+	std::array<Vector3, 4> axes{
+		a.orientations[0],
+		a.orientations[2],
+		b.orientations[0],
+		b.orientations[2],
+	};
+
+	outOverlap = FLT_MAX;
+	outAxis = { 1.0f, 0.0f, 0.0f };
+	for (Vector3 axis : axes) {
+		if (!NormalizeAxisXZ(axis)) {
+			continue;
+		}
+		float minA = 0.0f;
+		float maxA = 0.0f;
+		float minB = 0.0f;
+		float maxB = 0.0f;
+		ProjectCorners(cornersA, axis, minA, maxA);
+		ProjectCorners(cornersB, axis, minB, maxB);
+		const float overlap = (std::min)(maxA, maxB) - (std::max)(minA, minB);
+		if (overlap <= 0.0f) {
+			return false;
+		}
+		if (overlap < outOverlap) {
+			const Vector3 centerDiff{ b.center.x - a.center.x, 0.0f, b.center.z - a.center.z };
+			if (Engine::Math::MyMath::Dot(centerDiff, axis) < 0.0f) {
+				axis *= -1.0f;
+			}
+			outOverlap = overlap;
+			outAxis = axis;
+		}
+	}
+	return outOverlap < FLT_MAX;
 }
 
 }
@@ -380,24 +458,25 @@ void EnemyManager::ResolveEnemySeparation()
 			if (!b || !b->IsActive() || a >= b) {
 				continue;
 			}
-			Vector3 posA = a->GetPosition();
-			Vector3 posB = b->GetPosition();
-			const float dx = posB.x - posA.x;
-			const float dz = posB.z - posA.z;
-			const float distanceSq = dx * dx + dz * dz;
-			const float contactDistance = radiusA + b->GetCollisionRadius();
-			if (distanceSq >= contactDistance * contactDistance || distanceSq <= 0.0001f) {
+			const Engine::Math::OBB obbA = a->GetCollisionObb();
+			const Engine::Math::OBB obbB = b->GetCollisionObb();
+			if (!Engine::Math::MyMath::IsCollision(obbA, obbB)) {
 				continue;
 			}
 
-			const float distance = std::sqrt(distanceSq);
-			const float overlap = contactDistance - distance;
-			const float nx = dx / distance;
-			const float nz = dz / distance;
-			posA.x -= nx * overlap * kEnemySeparationStrength;
-			posA.z -= nz * overlap * kEnemySeparationStrength;
-			posB.x += nx * overlap * kEnemySeparationStrength;
-			posB.z += nz * overlap * kEnemySeparationStrength;
+			Vector3 separationAxis{};
+			float overlap = 0.0f;
+			if (!TryGetObbSeparationXZ(obbA, obbB, separationAxis, overlap)) {
+				continue;
+			}
+
+			Vector3 posA = a->GetPosition();
+			Vector3 posB = b->GetPosition();
+			const float push = overlap * 0.5f * kEnemySeparationStrength;
+			posA.x -= separationAxis.x * push;
+			posA.z -= separationAxis.z * push;
+			posB.x += separationAxis.x * push;
+			posB.z += separationAxis.z * push;
 			a->SetPosition(posA);
 			b->SetPosition(posB);
 		}
@@ -457,17 +536,14 @@ void EnemyManager::CheckNormalBulletCollisions(PlayerManager& playerManager, con
 		}
 		const Vector3 bulletPosition = bullet->GetPosition();
 		const float bulletRadius = bullet->GetCollisionRadius();
+		const Engine::Math::OBB bulletObb = bullet->GetCollisionObb();
 		nearbyEnemies.clear();
 		CollectNearbyEnemies(spatialMap, bulletPosition, bulletRadius + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* enemy : nearbyEnemies) {
 			if (!enemy || !enemy->IsActive()) {
 				continue;
 			}
-			const Vector3 enemyPosition = enemy->GetPosition();
-			const float dx = bulletPosition.x - enemyPosition.x;
-			const float dz = bulletPosition.z - enemyPosition.z;
-			const float hitDistance = bulletRadius + enemy->GetCollisionRadius();
-			if (dx * dx + dz * dz >= hitDistance * hitDistance) {
+			if (!Engine::Math::MyMath::IsCollision(bulletObb, enemy->GetCollisionObb())) {
 				continue;
 			}
 			if (!bullet->CanHitEnemy(enemy)) {
@@ -493,17 +569,14 @@ void EnemyManager::CheckOrbitBulletCollisions(PlayerManager& playerManager, cons
 		}
 		const Vector3 orbitPosition = orbitBullet->GetPosition();
 		const float orbitRadius = orbitBullet->GetCollisionRadius();
+		const Engine::Math::OBB orbitObb = orbitBullet->GetCollisionObb();
 		nearbyEnemies.clear();
 		CollectNearbyEnemies(spatialMap, orbitPosition, orbitRadius + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* enemy : nearbyEnemies) {
 			if (!enemy || !enemy->IsActive()) {
 				continue;
 			}
-			const Vector3 enemyPosition = enemy->GetPosition();
-			const float dx = orbitPosition.x - enemyPosition.x;
-			const float dz = orbitPosition.z - enemyPosition.z;
-			const float hitDistance = orbitRadius + enemy->GetCollisionRadius();
-			if (dx * dx + dz * dz >= hitDistance * hitDistance) {
+			if (!Engine::Math::MyMath::IsCollision(orbitObb, enemy->GetCollisionObb())) {
 				continue;
 			}
 			if (!orbitBullet->CanHitEnemy(enemy)) {
@@ -530,17 +603,14 @@ void EnemyManager::CheckDroneBulletCollisions(PlayerManager& playerManager, cons
 		}
 		const Vector3 bulletPosition = bullet->GetPosition();
 		const float bulletRadius = bullet->GetCollisionRadius();
+		const Engine::Math::OBB bulletObb = bullet->GetCollisionObb();
 		nearbyEnemies.clear();
 		CollectNearbyEnemies(spatialMap, bulletPosition, bulletRadius + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* enemy : nearbyEnemies) {
 			if (!enemy || !enemy->IsActive()) {
 				continue;
 			}
-			const Vector3 enemyPosition = enemy->GetPosition();
-			const float dx = bulletPosition.x - enemyPosition.x;
-			const float dz = bulletPosition.z - enemyPosition.z;
-			const float hitDistance = bulletRadius + enemy->GetCollisionRadius();
-			if (dx * dx + dz * dz >= hitDistance * hitDistance) {
+			if (!Engine::Math::MyMath::IsCollision(bulletObb, enemy->GetCollisionObb())) {
 				continue;
 			}
 			if (!bullet->CanHitEnemy(enemy)) {
@@ -560,29 +630,27 @@ void EnemyManager::CheckPlayerCollisions(Player& player, PlayerManager& playerMa
 {
 	const Vector3 playerPosition = player.GetWorldPosition();
 	const float playerRadius = player.GetCollisionRadius();
+	const Engine::Math::OBB playerObb = player.GetCollisionObb();
 	std::vector<Enemy*> nearbyEnemies;
 	CollectNearbyEnemies(spatialMap, playerPosition, playerRadius + kEnemyQueryPadding, nearbyEnemies);
 	for (Enemy* enemy : nearbyEnemies) {
 		if (!enemy || !enemy->IsActive()) {
 			continue;
 		}
-
-		Vector3 enemyPosition = enemy->GetPosition();
-		const float dx = enemyPosition.x - playerPosition.x;
-		const float dz = enemyPosition.z - playerPosition.z;
-		const float distanceSq = dx * dx + dz * dz;
-		const float contactDistance = playerRadius + enemy->GetCollisionRadius();
-		if (distanceSq >= contactDistance * contactDistance || distanceSq <= 0.0001f) {
+		const Engine::Math::OBB enemyObb = enemy->GetCollisionObb();
+		if (!Engine::Math::MyMath::IsCollision(playerObb, enemyObb)) {
 			continue;
 		}
 
-		const float distance = std::sqrt(distanceSq);
-		const float overlap = contactDistance - distance;
-		const float nx = dx / distance;
-		const float nz = dz / distance;
-		enemyPosition.x += nx * overlap;
-		enemyPosition.z += nz * overlap;
-		enemy->SetPosition(enemyPosition);
+		Vector3 enemyPosition = enemy->GetPosition();
+		Vector3 separationAxis{};
+		float overlap = 0.0f;
+		if (TryGetObbSeparationXZ(playerObb, enemyObb, separationAxis, overlap)) {
+			const float push = overlap * kEnemySeparationStrength;
+			enemyPosition.x += separationAxis.x * push;
+			enemyPosition.z += separationAxis.z * push;
+			enemy->SetPosition(enemyPosition);
+		}
 
 		if (!playerManager.IsInvincible()) {
 			playerManager.TakeDamage();

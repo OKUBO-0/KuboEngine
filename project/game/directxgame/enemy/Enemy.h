@@ -27,6 +27,8 @@ public:
 
 	const Vector3& GetPosition() const { return position_; }
 	float GetCollisionRadius() const;
+	Engine::Math::AABB GetCollisionAabb() const;
+	Engine::Math::OBB GetCollisionObb() const;
 	Player* GetPlayer() const { return player_; }
 	bool IsActive() const { return active_; }
 	void Deactivate() { active_ = false; }

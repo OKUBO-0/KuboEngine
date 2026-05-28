@@ -4,18 +4,133 @@
 #include "OffscreenRenderManager.h"
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <Windows.h>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace Engine::Editor {
 
 namespace {
 
+std::string g_hotReloadStatus;
+std::unordered_map<std::string, bool> g_windowVisibility;
+std::unordered_set<const bool*> g_appliedWindowPointers;
+bool g_windowVisibilityLoaded = false;
+
+std::filesystem::path GetWindowVisibilityPath()
+{
+	return std::filesystem::current_path() / ".debug_editor_windows.ini";
+}
+
+void EnsureWindowVisibilityLoaded()
+{
+	if (g_windowVisibilityLoaded) {
+		return;
+	}
+	g_windowVisibilityLoaded = true;
+	std::ifstream file(GetWindowVisibilityPath());
+	std::string line;
+	while (std::getline(file, line)) {
+		const size_t separator = line.find('=');
+		if (separator == std::string::npos) {
+			continue;
+		}
+		g_windowVisibility[line.substr(0, separator)] = line.substr(separator + 1) == "1";
+	}
+}
+
+void SaveWindowVisibilityFile()
+{
+	std::ofstream file(GetWindowVisibilityPath(), std::ios::trunc);
+	for (const auto& [label, open] : g_windowVisibility) {
+		file << label << '=' << (open ? '1' : '0') << '\n';
+	}
+}
+
+void SaveWindowOpen(const char* label, bool open)
+{
+	EnsureWindowVisibilityLoaded();
+	const std::string key = label ? label : "";
+	if (const auto it = g_windowVisibility.find(key); it != g_windowVisibility.end() && it->second == open) {
+		return;
+	}
+	g_windowVisibility[key] = open;
+	SaveWindowVisibilityFile();
+}
+
+void ApplyPersistedWindowItems(const DebugEditorMenuItem* items, size_t count)
+{
+	EnsureWindowVisibilityLoaded();
+	for (size_t index = 0; index < count; ++index) {
+		if (!items[index].label || !items[index].open ||
+			g_appliedWindowPointers.find(items[index].open) != g_appliedWindowPointers.end()) {
+			continue;
+		}
+		if (const auto it = g_windowVisibility.find(items[index].label); it != g_windowVisibility.end()) {
+			*items[index].open = it->second;
+		}
+		g_appliedWindowPointers.insert(items[index].open);
+	}
+}
+
 void DrawMenuItems(const DebugEditorMenuItem* items, size_t count)
 {
 	for (size_t index = 0; index < count; ++index) {
 		if (items[index].open) {
-			ImGui::MenuItem(items[index].label, nullptr, items[index].open);
+			if (ImGui::MenuItem(items[index].label, nullptr, items[index].open)) {
+				SaveWindowOpen(items[index].label, *items[index].open);
+			}
 		}
 	}
+}
+
+std::wstring QuotePowerShellString(const std::wstring& text)
+{
+	std::wstring quoted = L"'";
+	for (wchar_t character : text) {
+		if (character == L'\'') {
+			quoted += L"''";
+		} else {
+			quoted += character;
+		}
+	}
+	quoted += L"'";
+	return quoted;
+}
+
+std::wstring BuildPseudoHotReloadCommand()
+{
+	wchar_t modulePathBuffer[MAX_PATH]{};
+	GetModuleFileNameW(nullptr, modulePathBuffer, MAX_PATH);
+
+	const std::filesystem::path exePath = modulePathBuffer;
+	const std::filesystem::path configuration = exePath.parent_path().filename();
+	const std::filesystem::path generatedRoot = exePath.parent_path().parent_path().parent_path();
+	const std::filesystem::path workspaceRoot = generatedRoot.parent_path();
+	const std::filesystem::path projectRoot = workspaceRoot / L"project";
+	const std::filesystem::path solutionPath = projectRoot / L"KuboEngine.sln";
+	const std::filesystem::path buildOutputDir = generatedRoot / L"outputs" / configuration;
+	const std::filesystem::path runDir = generatedRoot / L"hotreload" / configuration;
+	const std::filesystem::path restartExePath = runDir / L"KuboEngine.exe";
+	const std::filesystem::path msbuildPath =
+		L"C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe";
+
+	const DWORD pid = GetCurrentProcessId();
+	std::wstring command = L"$pidToWait=" + std::to_wstring(pid) + L";";
+	command += L"Wait-Process -Id $pidToWait -ErrorAction SilentlyContinue;";
+	command += L"& " + QuotePowerShellString(msbuildPath.wstring()) + L" " + QuotePowerShellString(solutionPath.wstring()) +
+		L" /p:Configuration=" + configuration.wstring() + L" /p:Platform=x64;";
+	command += L"if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE };";
+	command += L"New-Item -ItemType Directory -Path " + QuotePowerShellString(runDir.wstring()) + L" -Force | Out-Null;";
+	command += L"robocopy " + QuotePowerShellString(buildOutputDir.wstring()) + L" " + QuotePowerShellString(runDir.wstring()) +
+		L" /MIR /NFL /NDL /NJH /NJS /NP | Out-Null;";
+	command += L"if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE };";
+	command += L"Start-Process -FilePath " + QuotePowerShellString(restartExePath.wstring()) +
+		L" -WorkingDirectory " + QuotePowerShellString(runDir.wstring()) + L";";
+	return command;
 }
 
 } // namespace
@@ -53,6 +168,9 @@ void DebugEditorManager::BuildDefaultDockLayout(unsigned int dockspaceId)
 
 void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 {
+	ApplyPersistedWindowItems(config.windowItems, config.windowItemCount);
+	ApplyPersistedWindowItems(config.editItems, config.editItemCount);
+	ApplyPersistedWindowItems(config.objectItems, config.objectItemCount);
 	if (!ImGui::BeginMainMenuBar()) {
 		return;
 	}
@@ -63,6 +181,9 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 		}
 		if (config.restoreLabel && config.onRestore && ImGui::MenuItem(config.restoreLabel)) {
 			config.onRestore();
+		}
+		if (ImGui::MenuItem("疑似ホットリロード")) {
+			RequestPseudoHotReload();
 		}
 		ImGui::EndMenu();
 	}
@@ -104,6 +225,54 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 	}
 
 	ImGui::EndMainMenuBar();
+}
+
+void DebugEditorManager::SaveWindowItems(const DebugEditorMenuItem* items, size_t itemCount)
+{
+	for (size_t index = 0; index < itemCount; ++index) {
+		if (items[index].label && items[index].open) {
+			SaveWindowOpen(items[index].label, *items[index].open);
+		}
+	}
+}
+
+void DebugEditorManager::DrawHotReloadButton()
+{
+	if (ImGui::Button("疑似ホットリロード")) {
+		RequestPseudoHotReload();
+	}
+	if (!g_hotReloadStatus.empty()) {
+		ImGui::TextUnformatted(g_hotReloadStatus.c_str());
+	}
+}
+
+void DebugEditorManager::RequestPseudoHotReload()
+{
+	const std::wstring command = BuildPseudoHotReloadCommand();
+	std::wstring commandLine = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command " + QuotePowerShellString(command);
+
+	STARTUPINFOW startupInfo{};
+	startupInfo.cb = sizeof(startupInfo);
+	PROCESS_INFORMATION processInfo{};
+	if (!CreateProcessW(
+		nullptr,
+		commandLine.data(),
+		nullptr,
+		nullptr,
+		FALSE,
+		CREATE_NO_WINDOW,
+		nullptr,
+		nullptr,
+		&startupInfo,
+		&processInfo)) {
+		g_hotReloadStatus = "Failed to start pseudo hot reload.";
+		return;
+	}
+
+	CloseHandle(processInfo.hThread);
+	CloseHandle(processInfo.hProcess);
+	g_hotReloadStatus = "Pseudo hot reload started. This instance will close.";
+	PostQuitMessage(0);
 }
 
 void DebugEditorManager::DrawWindowSwitcher(

@@ -1,6 +1,7 @@
 #define NOMINMAX 
 #include "MyMath.h"
 #include <algorithm>
+#include <cmath>
 #include <imgui.h>
 #include <numbers>
 
@@ -496,6 +497,65 @@ bool MyMath::IsCollision(const AABB& aabb, const Segment& segment)
 	float tmin = std::max(std::max(tNear.x, tNear.y), tNear.z);
 	float tmax = std::min(std::min(tFar.x, tFar.y), tFar.z);
 	return tmin <= tmax && tmin * tmax < 0.0f;
+}
+
+bool MyMath::IsCollision(const OBB& obb1, const OBB& obb2)
+{
+	constexpr float kEpsilon = 0.0001f;
+	float rotation[3][3]{};
+	float absRotation[3][3]{};
+
+	for (int i = 0; i < 3; ++i) {
+		for (int j = 0; j < 3; ++j) {
+			rotation[i][j] = Dot(obb1.orientations[i], obb2.orientations[j]);
+			absRotation[i][j] = std::abs(rotation[i][j]) + kEpsilon;
+		}
+	}
+
+	const Vector3 centerDiff = obb2.center - obb1.center;
+	const float translation[3]{
+		Dot(centerDiff, obb1.orientations[0]),
+		Dot(centerDiff, obb1.orientations[1]),
+		Dot(centerDiff, obb1.orientations[2]),
+	};
+	const float a[3]{ obb1.size.x, obb1.size.y, obb1.size.z };
+	const float b[3]{ obb2.size.x, obb2.size.y, obb2.size.z };
+
+	for (int i = 0; i < 3; ++i) {
+		const float ra = a[i];
+		const float rb = b[0] * absRotation[i][0] + b[1] * absRotation[i][1] + b[2] * absRotation[i][2];
+		if (std::abs(translation[i]) > ra + rb) {
+			return false;
+		}
+	}
+
+	for (int j = 0; j < 3; ++j) {
+		const float ra = a[0] * absRotation[0][j] + a[1] * absRotation[1][j] + a[2] * absRotation[2][j];
+		const float rb = b[j];
+		const float projectedTranslation =
+			translation[0] * rotation[0][j] + translation[1] * rotation[1][j] + translation[2] * rotation[2][j];
+		if (std::abs(projectedTranslation) > ra + rb) {
+			return false;
+		}
+	}
+
+	for (int i = 0; i < 3; ++i) {
+		for (int j = 0; j < 3; ++j) {
+			const int i1 = (i + 1) % 3;
+			const int i2 = (i + 2) % 3;
+			const int j1 = (j + 1) % 3;
+			const int j2 = (j + 2) % 3;
+			const float ra = a[i1] * absRotation[i2][j] + a[i2] * absRotation[i1][j];
+			const float rb = b[j1] * absRotation[i][j2] + b[j2] * absRotation[i][j1];
+			const float projectedTranslation =
+				translation[i2] * rotation[i1][j] - translation[i1] * rotation[i2][j];
+			if (std::abs(projectedTranslation) > ra + rb) {
+				return false;
+			}
+		}
+	}
+
+	return true;
 }
 
 Matrix4x4 MyMath::MakeRotateAxisAngle(const Vector3& axis, float angle)

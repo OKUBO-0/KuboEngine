@@ -105,6 +105,23 @@ float Enemy::GetCollisionRadius() const
 	return object_ ? object_->GetScaledModelBoundingRadius(kEnemyFallbackCollisionRadius) : kEnemyFallbackCollisionRadius;
 }
 
+Engine::Math::AABB Enemy::GetCollisionAabb() const
+{
+	return object_ ? object_->GetScaledModelAabb(kEnemyFallbackCollisionRadius) : Engine::Math::AABB{
+		{ position_.x - kEnemyFallbackCollisionRadius, position_.y - kEnemyFallbackCollisionRadius, position_.z - kEnemyFallbackCollisionRadius },
+		{ position_.x + kEnemyFallbackCollisionRadius, position_.y + kEnemyFallbackCollisionRadius, position_.z + kEnemyFallbackCollisionRadius },
+	};
+}
+
+Engine::Math::OBB Enemy::GetCollisionObb() const
+{
+	return object_ ? object_->GetScaledModelObb(kEnemyFallbackCollisionRadius) : Engine::Math::OBB{
+		position_,
+		{ Vector3{ 1.0f, 0.0f, 0.0f }, Vector3{ 0.0f, 1.0f, 0.0f }, Vector3{ 0.0f, 0.0f, 1.0f } },
+		Vector3{ kEnemyFallbackCollisionRadius, kEnemyFallbackCollisionRadius, kEnemyFallbackCollisionRadius },
+	};
+}
+
 void Enemy::SetModelByType(int32_t type)
 {
 	const char* modelName = "octopus.obj";

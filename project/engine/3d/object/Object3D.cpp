@@ -166,6 +166,87 @@ float Object3D::GetScaledModelBoundingRadius(float fallback) const
 	return model_->GetLocalBoundingRadius() * (std::max)(0.01f, maxScale);
 }
 
+Engine::Math::AABB Object3D::GetScaledModelAabb(float fallbackRadius) const
+{
+	if (!model_ || !model_->HasBounds()) {
+		const Vector3 extent{ fallbackRadius, fallbackRadius, fallbackRadius };
+		return {
+			{
+				transform.translate.x - extent.x,
+				transform.translate.y - extent.y,
+				transform.translate.z - extent.z,
+			},
+			{
+				transform.translate.x + extent.x,
+				transform.translate.y + extent.y,
+				transform.translate.z + extent.z,
+			},
+		};
+	}
+
+	const ModelData& modelData = model_->GetModelData();
+	const Vector3 scaledMin{
+		modelData.localAabbMin.x * transform.scale.x,
+		modelData.localAabbMin.y * transform.scale.y,
+		modelData.localAabbMin.z * transform.scale.z,
+	};
+	const Vector3 scaledMax{
+		modelData.localAabbMax.x * transform.scale.x,
+		modelData.localAabbMax.y * transform.scale.y,
+		modelData.localAabbMax.z * transform.scale.z,
+	};
+
+	return {
+		{
+			transform.translate.x + (std::min)(scaledMin.x, scaledMax.x),
+			transform.translate.y + (std::min)(scaledMin.y, scaledMax.y),
+			transform.translate.z + (std::min)(scaledMin.z, scaledMax.z),
+		},
+		{
+			transform.translate.x + (std::max)(scaledMin.x, scaledMax.x),
+			transform.translate.y + (std::max)(scaledMin.y, scaledMax.y),
+			transform.translate.z + (std::max)(scaledMin.z, scaledMax.z),
+		},
+	};
+}
+
+Engine::Math::OBB Object3D::GetScaledModelObb(float fallbackRadius) const
+{
+	const Matrix4x4 rotation = MyMath::MakeRotateMatrix(transform.rotate);
+	Engine::Math::OBB obb{};
+	obb.orientations[0] = MyMath::Normalize(Vector3{ rotation.m[0][0], rotation.m[0][1], rotation.m[0][2] });
+	obb.orientations[1] = MyMath::Normalize(Vector3{ rotation.m[1][0], rotation.m[1][1], rotation.m[1][2] });
+	obb.orientations[2] = MyMath::Normalize(Vector3{ rotation.m[2][0], rotation.m[2][1], rotation.m[2][2] });
+
+	if (!model_ || !model_->HasBounds()) {
+		obb.center = transform.translate;
+		obb.size = { fallbackRadius, fallbackRadius, fallbackRadius };
+		return obb;
+	}
+
+	const ModelData& modelData = model_->GetModelData();
+	const Vector3 localCenter = modelData.localAabbCenter;
+	const Vector3 localSize{
+		(modelData.localAabbMax.x - modelData.localAabbMin.x) * 0.5f,
+		(modelData.localAabbMax.y - modelData.localAabbMin.y) * 0.5f,
+		(modelData.localAabbMax.z - modelData.localAabbMin.z) * 0.5f,
+	};
+	obb.center = MyMath::Transform(
+		{
+			localCenter.x * transform.scale.x,
+			localCenter.y * transform.scale.y,
+			localCenter.z * transform.scale.z,
+		},
+		rotation);
+	obb.center += transform.translate;
+	obb.size = {
+		std::abs(localSize.x * transform.scale.x),
+		std::abs(localSize.y * transform.scale.y),
+		std::abs(localSize.z * transform.scale.z),
+	};
+	return obb;
+}
+
 void Object3D::InitializeTransformResources()
 {
 	transformationMatrixResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrix));

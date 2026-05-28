@@ -1,4 +1,5 @@
 #pragma once
+#include "MyMath.h"
 #include "RenderingData.h"
 #include <d3d12.h>
 #include <wrl.h>
@@ -50,6 +51,8 @@ public:
 	void SetModel(const std::string& filepath);
 	void SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath);
 	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;
+	Engine::Math::AABB GetScaledModelAabb(float fallbackRadius = 1.0f) const;
+	Engine::Math::OBB GetScaledModelObb(float fallbackRadius = 1.0f) const;
 
 	//環境マップ
 	void SetSkyboxFilePath(const std::string& filepath) { skyboxFilePath_ = filepath; }

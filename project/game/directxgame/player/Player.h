@@ -29,6 +29,8 @@ public:
 	const Vector3& GetWorldPosition() const { return position_; }
 	float GetWorldRotationY() const { return rotationY_; }
 	float GetCollisionRadius() const;
+	Engine::Math::AABB GetCollisionAabb() const;
+	Engine::Math::OBB GetCollisionObb() const;
 	void SetDebugWorldPosition(const Vector3& position) { position_ = position; ApplyTransforms(); }
 	void SetDebugWorldRotationY(float rotationY) { rotationY_ = rotationY; ApplyTransforms(); }
 	Engine::CameraSystem::Camera& GetCamera() { return *camera_; }

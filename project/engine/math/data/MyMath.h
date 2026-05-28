@@ -45,6 +45,12 @@ struct AABB {
 	Vector3 max;
 };
 
+struct OBB {
+	Vector3 center;
+	Vector3 orientations[3];
+	Vector3 size;
+};
+
 
 
 namespace MyMath {
@@ -111,6 +117,7 @@ namespace MyMath {
 	bool IsCollision(const AABB& aabb1, const AABB& aabb2);
 	bool IsCollision(const AABB& aabb, const Sphere& sphere);
 	bool IsCollision(const AABB& aabb, const Segment& segment);
+	bool IsCollision(const OBB& obb1, const OBB& obb2);
 
 	//ベクトルを求める関数
 	Matrix4x4 MakeRotateAxisAngle(const Vector3& axis, float angle);

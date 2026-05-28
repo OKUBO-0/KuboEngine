@@ -1369,7 +1369,7 @@ void DirectXGameScene::QueueDebugDraw()
 	Engine::LineSystem::Line line;
 	const Vector3 playerPosition = player_->GetWorldPosition();
 	if (debugDrawEnabled_) {
-		line.DrawSphere(playerPosition, player_->GetCollisionRadius(), { 0.25f, 0.95f, 1.0f, 1.0f });
+		line.DrawOBB(player_->GetCollisionObb(), { 0.25f, 0.95f, 1.0f, 1.0f });
 		line.DrawSphere(playerPosition, 50.0f, { 0.25f, 0.55f, 1.0f, 0.45f });
 
 		if (enemyManager_) {
@@ -1377,7 +1377,7 @@ void DirectXGameScene::QueueDebugDraw()
 				if (!enemy || !enemy->IsActive()) {
 					continue;
 				}
-				line.DrawSphere(enemy->GetPosition(), enemy->GetCollisionRadius(), { 1.0f, 0.2f, 0.18f, 1.0f });
+				line.DrawOBB(enemy->GetCollisionObb(), { 1.0f, 0.2f, 0.18f, 1.0f });
 			}
 		}
 	}
@@ -1520,6 +1520,28 @@ void DirectXGameScene::UpdateDebugUi()
 		LoadDebugTuning();
 		ApplyParticleBehaviorTuning();
 	}
+	const DebugWindowVisibility previousDebugWindows = debugWindows_;
+	const auto saveWindowVisibilityIfChanged = [this](const DebugWindowVisibility& previous) {
+		if (previous.windowSwitcher != debugWindows_.windowSwitcher ||
+			previous.sceneView != debugWindows_.sceneView ||
+			previous.objectView != debugWindows_.objectView ||
+			previous.particleView != debugWindows_.particleView ||
+			previous.statisticsView != debugWindows_.statisticsView ||
+			previous.offscreenSettings != debugWindows_.offscreenSettings ||
+			previous.lightSettings != debugWindows_.lightSettings ||
+			previous.gizmo != debugWindows_.gizmo ||
+			previous.objectManager != debugWindows_.objectManager ||
+			previous.motionEditor != debugWindows_.motionEditor ||
+			previous.spriteManager != debugWindows_.spriteManager ||
+			previous.colliderTagManager != debugWindows_.colliderTagManager ||
+			previous.audio != debugWindows_.audio ||
+			previous.keyInputDebug != debugWindows_.keyInputDebug ||
+			previous.sceneSettings != debugWindows_.sceneSettings ||
+			previous.sceneSpecificDebug != debugWindows_.sceneSpecificDebug ||
+			previous.objectSettings != debugWindows_.objectSettings) {
+			SaveDebugTuning();
+		}
+	};
 	if (input->TriggerKey(DIK_F6) && playerManager_) {
 		playerManager_->ForceDebugDeath();
 	}
@@ -1601,6 +1623,7 @@ void DirectXGameScene::UpdateDebugUi()
 					LoadDebugTuning();
 					ApplyParticleBehaviorTuning();
 				}
+				Engine::Editor::DebugEditorManager::DrawHotReloadButton();
 			});
 	}
 
@@ -2413,6 +2436,8 @@ void DirectXGameScene::UpdateDebugUi()
 		}
 		ImGui::End();
 	}
+	Engine::Editor::DebugEditorManager::SaveWindowItems(windowItems, std::size(windowItems));
+	saveWindowVisibilityIfChanged(previousDebugWindows);
 #endif
 }
 

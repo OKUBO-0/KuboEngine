@@ -76,6 +76,23 @@ float OrbitBullet::GetCollisionRadius() const
 	return object_ ? object_->GetScaledModelBoundingRadius(kOrbitBulletFallbackCollisionRadius) : kOrbitBulletFallbackCollisionRadius;
 }
 
+Engine::Math::AABB OrbitBullet::GetCollisionAabb() const
+{
+	return object_ ? object_->GetScaledModelAabb(kOrbitBulletFallbackCollisionRadius) : Engine::Math::AABB{
+		{ position_.x - kOrbitBulletFallbackCollisionRadius, position_.y - kOrbitBulletFallbackCollisionRadius, position_.z - kOrbitBulletFallbackCollisionRadius },
+		{ position_.x + kOrbitBulletFallbackCollisionRadius, position_.y + kOrbitBulletFallbackCollisionRadius, position_.z + kOrbitBulletFallbackCollisionRadius },
+	};
+}
+
+Engine::Math::OBB OrbitBullet::GetCollisionObb() const
+{
+	return object_ ? object_->GetScaledModelObb(kOrbitBulletFallbackCollisionRadius) : Engine::Math::OBB{
+		position_,
+		{ Vector3{ 1.0f, 0.0f, 0.0f }, Vector3{ 0.0f, 1.0f, 0.0f }, Vector3{ 0.0f, 0.0f, 1.0f } },
+		Vector3{ kOrbitBulletFallbackCollisionRadius, kOrbitBulletFallbackCollisionRadius, kOrbitBulletFallbackCollisionRadius },
+	};
+}
+
 bool OrbitBullet::CanHitEnemy(void* enemyPtr)
 {
 	const auto it = hitCooldowns_.find(enemyPtr);

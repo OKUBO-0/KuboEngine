@@ -17,6 +17,8 @@ public:
 	bool IsActive() const { return active_; }
 	const Vector3& GetPosition() const { return position_; }
 	float GetCollisionRadius() const;
+	Engine::Math::AABB GetCollisionAabb() const;
+	Engine::Math::OBB GetCollisionObb() const;
 	bool CanHitEnemy(void* enemyPtr);
 	void RegisterHit(void* enemyPtr);
 	void SetLightSettings(const GameLightSettings& lightSettings);

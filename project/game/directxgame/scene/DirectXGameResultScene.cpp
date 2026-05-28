@@ -95,6 +95,17 @@ void DirectXGameResultScene::Update()
 	if (input && input->TriggerKey(DIK_F5)) {
 		ReloadDebugData();
 	}
+	const DebugWindowVisibility previousDebugWindows = debugWindows_;
+	const auto saveWindowVisibilityIfChanged = [this](const DebugWindowVisibility& previous) {
+		if (previous.windowSwitcher != debugWindows_.windowSwitcher ||
+			previous.sceneView != debugWindows_.sceneView ||
+			previous.statisticsView != debugWindows_.statisticsView ||
+			previous.sceneSettings != debugWindows_.sceneSettings ||
+			previous.audio != debugWindows_.audio ||
+			previous.keyInputDebug != debugWindows_.keyInputDebug) {
+			SaveLayout();
+		}
+	};
 
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &debugWindows_.sceneView },
@@ -134,7 +145,10 @@ void DirectXGameResultScene::Update()
 			&debugWindows_.windowSwitcher,
 			windowItems,
 			std::size(windowItems),
-			{ 260.0f, 180.0f });
+			{ 260.0f, 180.0f },
+			[this]() {
+				Engine::Editor::DebugEditorManager::DrawHotReloadButton();
+			});
 	}
 
 	if (debugWindows_.sceneView) {
@@ -265,6 +279,8 @@ void DirectXGameResultScene::Update()
 		ImGui::Text("Pending Scene: %s", pendingSceneId_.empty() ? "none" : pendingSceneId_.c_str());
 		ImGui::End();
 	}
+	Engine::Editor::DebugEditorManager::SaveWindowItems(windowItems, std::size(windowItems));
+	saveWindowVisibilityIfChanged(previousDebugWindows);
 #endif
 }
 

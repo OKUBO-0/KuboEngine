@@ -105,6 +105,23 @@ float Player::GetCollisionRadius() const
 	return playerObject_ ? playerObject_->GetScaledModelBoundingRadius(kPlayerFallbackCollisionRadius) : kPlayerFallbackCollisionRadius;
 }
 
+Engine::Math::AABB Player::GetCollisionAabb() const
+{
+	return playerObject_ ? playerObject_->GetScaledModelAabb(kPlayerFallbackCollisionRadius) : Engine::Math::AABB{
+		{ position_.x - kPlayerFallbackCollisionRadius, position_.y - kPlayerFallbackCollisionRadius, position_.z - kPlayerFallbackCollisionRadius },
+		{ position_.x + kPlayerFallbackCollisionRadius, position_.y + kPlayerFallbackCollisionRadius, position_.z + kPlayerFallbackCollisionRadius },
+	};
+}
+
+Engine::Math::OBB Player::GetCollisionObb() const
+{
+	return playerObject_ ? playerObject_->GetScaledModelObb(kPlayerFallbackCollisionRadius) : Engine::Math::OBB{
+		position_,
+		{ Vector3{ 1.0f, 0.0f, 0.0f }, Vector3{ 0.0f, 1.0f, 0.0f }, Vector3{ 0.0f, 0.0f, 1.0f } },
+		Vector3{ kPlayerFallbackCollisionRadius, kPlayerFallbackCollisionRadius, kPlayerFallbackCollisionRadius },
+	};
+}
+
 void Player::InitializeObjects()
 {
 	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);

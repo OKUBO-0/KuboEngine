@@ -109,6 +109,23 @@ float NormalBullet::GetCollisionRadius() const
 	return object_ ? object_->GetScaledModelBoundingRadius(kBulletFallbackCollisionRadius) : kBulletFallbackCollisionRadius;
 }
 
+Engine::Math::AABB NormalBullet::GetCollisionAabb() const
+{
+	return object_ ? object_->GetScaledModelAabb(kBulletFallbackCollisionRadius) : Engine::Math::AABB{
+		{ position_.x - kBulletFallbackCollisionRadius, position_.y - kBulletFallbackCollisionRadius, position_.z - kBulletFallbackCollisionRadius },
+		{ position_.x + kBulletFallbackCollisionRadius, position_.y + kBulletFallbackCollisionRadius, position_.z + kBulletFallbackCollisionRadius },
+	};
+}
+
+Engine::Math::OBB NormalBullet::GetCollisionObb() const
+{
+	return object_ ? object_->GetScaledModelObb(kBulletFallbackCollisionRadius) : Engine::Math::OBB{
+		position_,
+		{ Vector3{ 1.0f, 0.0f, 0.0f }, Vector3{ 0.0f, 1.0f, 0.0f }, Vector3{ 0.0f, 0.0f, 1.0f } },
+		Vector3{ kBulletFallbackCollisionRadius, kBulletFallbackCollisionRadius, kBulletFallbackCollisionRadius },
+	};
+}
+
 bool NormalBullet::CanHitEnemy(void* enemyPtr)
 {
 	const auto it = hitCooldowns_.find(enemyPtr);
