@@ -83,6 +83,7 @@
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
@@ -98,6 +99,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
     </ClCompile>
     <Link>
@@ -113,6 +115,7 @@
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -130,17 +133,19 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <Optimization>MinSpace</Optimization>
+      <DebugInformationFormat>None</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>
       </SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -151,8 +156,28 @@
     <ClCompile Include="imgui_impl_win32.cpp" />
     <ClCompile Include="imgui_tables.cpp" />
     <ClCompile Include="imgui_widgets.cpp" />
+    <ClCompile Include="..\ImGuizmo\ImGuizmo.cpp" />
+    <ClCompile Include="..\implot\implot.cpp" />
+    <ClCompile Include="..\implot\implot_items.cpp" />
+    <ClCompile Include="..\imgui_node_editor\crude_json.cpp" />
+    <ClCompile Include="..\imgui_node_editor\imgui_canvas.cpp" />
+    <ClCompile Include="..\imgui_node_editor\imgui_node_editor.cpp" />
+    <ClCompile Include="..\imgui_node_editor\imgui_node_editor_api.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\IconFontCppHeaders\IconsFontAwesome5.h" />
+    <ClInclude Include="..\ImGuizmo\ImGuizmo.h" />
+    <ClInclude Include="..\implot\implot.h" />
+    <ClInclude Include="..\implot\implot_internal.h" />
+    <ClInclude Include="..\imgui_node_editor\crude_json.h" />
+    <ClInclude Include="..\imgui_node_editor\imgui_bezier_math.h" />
+    <ClInclude Include="..\imgui_node_editor\imgui_bezier_math.inl" />
+    <ClInclude Include="..\imgui_node_editor\imgui_canvas.h" />
+    <ClInclude Include="..\imgui_node_editor\imgui_extra_math.h" />
+    <ClInclude Include="..\imgui_node_editor\imgui_extra_math.inl" />
+    <ClInclude Include="..\imgui_node_editor\imgui_node_editor.h" />
+    <ClInclude Include="..\imgui_node_editor\imgui_node_editor_internal.h" />
+    <ClInclude Include="..\imgui_node_editor\imgui_node_editor_internal.inl" />
     <ClInclude Include="imconfig.h" />
     <ClInclude Include="imgui.h" />
     <ClInclude Include="imgui_impl_dx12.h" />
