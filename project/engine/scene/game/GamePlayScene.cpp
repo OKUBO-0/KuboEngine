@@ -196,6 +196,7 @@ void GamePlayScene::UpdateSceneObjects()
 
 void GamePlayScene::DrawDebugUi()
 {
+    ImGui::Begin("シーン固有デバッグ");
     ImGui::Text("number %d", number);
     ImGui::Text("Control State: %s", controlState_ ? controlState_->GetName() : "None");
 
@@ -205,6 +206,8 @@ void GamePlayScene::DrawDebugUi()
     DrawSpriteControlUi();
     DrawLightControlUi();
     DrawParticleControlUi();
+    ImGui::End();
+
     skyBox->DrawImGuiDebug();
     DrawEnvironmentMapUi();
 }
