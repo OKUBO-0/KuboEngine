@@ -36,7 +36,13 @@ public:
 	void Draw() override;
 
 private:
+	void DrawDebugEditorShell();
+
 	std::string initialSceneName_;
+	bool debugSceneViewOpen_ = true;
+	bool debugStatsOpen_ = true;
+	bool debugSceneSettingsOpen_ = true;
+	bool debugWindowSwitcherOpen_ = false;
 };
 
 }

@@ -1,6 +1,8 @@
 #include "Game.h"
 #include "Framework.h"
 #include "D3DResourceLeakChecker.h"
+#include <Windows.h>
+#include <memory>
 
 namespace {
 
