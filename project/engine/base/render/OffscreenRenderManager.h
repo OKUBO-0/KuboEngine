@@ -63,7 +63,7 @@ public:
 	}
 	void SetScenePostEffectType(PostEffectType type);
 
-	void DrawImGui();
+	void DrawImGui(bool* open = nullptr);
 	void CreateImGuiSceneTextureSrv(
 		D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle,
 		D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle);
