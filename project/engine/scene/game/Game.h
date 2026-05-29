@@ -1,4 +1,10 @@
 #include "Framework.h"
+#include <memory>
+#include <string>
+
+namespace Engine::Scene {
+class AbstractSceneFactory;
+}
 
 /// @brief アプリケーション固有のシーン制御と描画順を定義するクラス
 /// @details Framework を継承し、シーン生成とオフスクリーン描画の流れを構築する。
@@ -6,6 +12,12 @@ namespace Engine::Scene {
 
 class Game : public Engine::Base::Framework {
 public:
+	Game();
+	explicit Game(std::unique_ptr<AbstractSceneFactory> sceneFactory, std::string initialSceneName = "GAMEPLAY");
+
+	void SetSceneFactory(std::unique_ptr<AbstractSceneFactory> sceneFactory);
+	void SetInitialSceneName(std::string sceneName);
+
 	/// @brief ゲーム固有の初期化を行う
 	/// @param なし
 	/// @return なし
@@ -22,6 +34,9 @@ public:
 	/// @param なし
 	/// @return なし
 	void Draw() override;
+
+private:
+	std::string initialSceneName_;
 };
 
 }
