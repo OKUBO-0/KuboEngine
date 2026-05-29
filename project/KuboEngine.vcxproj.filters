@@ -216,6 +216,9 @@
     <ClCompile Include="game\directxgame\core\DirectXGameSessionContext.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\core\DirectXGameSceneFactory.cpp">
+      <Filter>game\directxgame\core</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\core\GameAudioCache.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
@@ -474,6 +477,9 @@
       <Filter>engine\2d</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\DirectXGameSceneId.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\core\DirectXGameSceneFactory.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\GameAudioCache.h">

@@ -162,6 +162,7 @@ exit /B 0</Command>
     <ClCompile Include="engine\particle\core\ParticleEmitter.cpp" />
     <ClCompile Include="engine\particle\core\ParticleManager.cpp" />
     <ClCompile Include="engine\base\render\OffscreenRenderManager.cpp" />
+    <ClCompile Include="game\directxgame\core\DirectXGameSceneFactory.cpp" />
     <ClCompile Include="game\directxgame\core\GameAudioCache.cpp" />
     <ClCompile Include="game\directxgame\core\CsvReader.cpp" />
     <ClCompile Include="game\directxgame\effects\CurtainTransition.cpp" />
@@ -361,6 +362,7 @@ exit /B 0</Command>
     <ClInclude Include="engine\particle\core\ParticleManager.h" />
     <ClInclude Include="engine\scene\states\PlayerControlState.h" />
     <ClInclude Include="engine\base\render\OffscreenRenderManager.h" />
+    <ClInclude Include="game\directxgame\core\DirectXGameSceneFactory.h" />
     <ClInclude Include="game\directxgame\core\GameAudioCache.h" />
     <ClInclude Include="game\directxgame\core\CsvReader.h" />
     <ClInclude Include="game\directxgame\core\DirectXGameDataPaths.h" />
