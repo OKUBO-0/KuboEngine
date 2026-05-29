@@ -158,19 +158,11 @@ void SkyBox::DrawImGuiDebug()
 
 	// ImGuiのデバッグウィンドウを表示
 	if (ImGui::Begin("SkyBox Debug")) {
-
 		//transformの調整
 		ImGui::Text("SkyBox Transform");
 		ImGui::DragFloat3("Scale", &transform.scale.x, 0.01f, 0.0f, 10.0f);
-
-
-
-
-		ImGui::End();
 	}
-
-
-
+	ImGui::End();
 
 #endif // _DEBUG
 }
