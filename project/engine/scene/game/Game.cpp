@@ -6,7 +6,9 @@
 #include "SrvManager.h"
 #include "DirectXCommon.h"
 #ifdef _DEBUG
+#include "Audio.h"
 #include "DebugEditorManager.h"
+#include "Input.h"
 #include <imgui.h>
 #endif // _DEBUG
 #include <utility>
@@ -78,6 +80,10 @@ void Game::DrawDebugEditorShell()
 		{ "Scene", &debugSceneViewOpen_ },
 		{ "統計", &debugStatsOpen_ },
 		{ "シーン設定", &debugSceneSettingsOpen_ },
+		{ "キー操作デバッグ", &debugKeyInputOpen_ },
+		{ "オフスクリーン設定", &debugOffscreenOpen_ },
+		{ "オーディオ", &debugAudioOpen_ },
+		{ "ライト設定", &debugLightOpen_ },
 	};
 	constexpr size_t windowItemCount = sizeof(windowItems) / sizeof(windowItems[0]);
 
@@ -111,6 +117,51 @@ void Game::DrawDebugEditorShell()
 		ImGui::Begin("シーン設定", &debugSceneSettingsOpen_);
 		ImGui::TextUnformatted("Engine sample scene settings");
 		Engine::Editor::DebugEditorManager::DrawHotReloadButton();
+		ImGui::End();
+	}
+
+	if (debugKeyInputOpen_) {
+		ImGui::Begin("キー操作デバッグ", &debugKeyInputOpen_);
+		Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+		ImGui::Text("W: %s", input->PushKey(DIK_W) ? "down" : "up");
+		ImGui::Text("A: %s", input->PushKey(DIK_A) ? "down" : "up");
+		ImGui::Text("S: %s", input->PushKey(DIK_S) ? "down" : "up");
+		ImGui::Text("D: %s", input->PushKey(DIK_D) ? "down" : "up");
+		ImGui::Separator();
+		ImGui::Text("Space: %s", input->PushKey(DIK_SPACE) ? "down" : "up");
+		ImGui::Text("Left Mouse: %s", input->PushMouse(0) ? "down" : "up");
+		ImGui::Text("Right Mouse: %s", input->PushMouse(1) ? "down" : "up");
+		ImGui::End();
+	}
+
+	if (debugOffscreenOpen_) {
+		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
+			offscreen->DrawImGui(&debugOffscreenOpen_);
+		}
+	}
+
+	if (debugAudioOpen_) {
+		ImGui::Begin("オーディオ", &debugAudioOpen_);
+		if (ImGui::SliderFloat("Master Volume", &debugMasterVolume_, 0.0f, 1.0f)) {
+			Engine::AudioSystem::Audio::GetInstance()->SetVolume(debugMasterVolume_);
+		}
+		if (ImGui::Button("Stop All")) {
+			Engine::AudioSystem::Audio::GetInstance()->StopAudio();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Pause All")) {
+			Engine::AudioSystem::Audio::GetInstance()->PauseAudio();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Resume All")) {
+			Engine::AudioSystem::Audio::GetInstance()->ResumeAudio();
+		}
+		ImGui::End();
+	}
+
+	if (debugLightOpen_) {
+		ImGui::Begin("ライト設定", &debugLightOpen_);
+		ImGui::TextUnformatted("Scene-specific light controls can be registered here.");
 		ImGui::End();
 	}
 #endif // _DEBUG

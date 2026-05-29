@@ -189,9 +189,17 @@ Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTarge
 	return resource;
 }
 
-void OffscreenRenderManager::DrawImGui()
+void OffscreenRenderManager::DrawImGui(bool* open)
 {
-	ImGui::Begin("OffscreenRenderManager");
+	if (open && !*open) {
+		return;
+	}
+
+	if (!ImGui::Begin("オフスクリーン設定", open)) {
+		ImGui::End();
+		return;
+	}
+
 	const char* items[] = {
 	   "Fullscreen",
 	   "Grayscale",

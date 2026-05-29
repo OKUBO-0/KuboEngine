@@ -42,7 +42,12 @@ private:
 	bool debugSceneViewOpen_ = true;
 	bool debugStatsOpen_ = true;
 	bool debugSceneSettingsOpen_ = true;
+	bool debugKeyInputOpen_ = true;
+	bool debugOffscreenOpen_ = true;
+	bool debugAudioOpen_ = false;
+	bool debugLightOpen_ = false;
 	bool debugWindowSwitcherOpen_ = false;
+	float debugMasterVolume_ = 1.0f;
 };
 
 }
