@@ -86,8 +86,9 @@ void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* win
 	iconConfig.MergeMode = true;
 	iconConfig.PixelSnapH = true;
 	iconConfig.GlyphMinAdvanceX = 16.0f;
+	iconConfig.Flags |= ImFontFlags_NoLoadError;
 	io.Fonts->AddFontFromFileTTF(
-		"Resources/DirectXGame/fonts/fa-solid-900.ttf",
+		"externals/IconFontCppHeaders/fa-solid-900.ttf",
 		16.0f,
 		&iconConfig,
 		iconRanges);

@@ -1,25 +1,42 @@
 #include "Game.h"
 #include "SceneFactory.h"
-#include "game/directxgame/core/DirectXGameSceneId.h"
 #include "SceneManager.h"
 #include "ImGuiManager.h"
 #include "OffscreenRenderManager.h"
 #include "SrvManager.h"
 #include "DirectXCommon.h"
+#include <utility>
 
 namespace Engine::Scene {
 
-namespace {
+Game::Game()
+	: initialSceneName_("GAMEPLAY")
+{
+}
 
-constexpr bool kBootDirectXGameMigration = true;
+Game::Game(std::unique_ptr<AbstractSceneFactory> sceneFactory, std::string initialSceneName)
+	: initialSceneName_(std::move(initialSceneName))
+{
+	SetSceneFactory(std::move(sceneFactory));
+}
 
+void Game::SetSceneFactory(std::unique_ptr<AbstractSceneFactory> sceneFactory)
+{
+	this->sceneFactory = std::move(sceneFactory);
+}
+
+void Game::SetInitialSceneName(std::string sceneName)
+{
+	initialSceneName_ = std::move(sceneName);
 }
 
 void Game::Initialize()
 {
 	// 初期化
 	Engine::Base::Framework::Initialize();
-	sceneFactory = std::make_unique<SceneFactory>();
+	if (!sceneFactory) {
+		sceneFactory = std::make_unique<SceneFactory>();
+	}
 	SceneManager::GetInstance()->SetSceneFactory(sceneFactory.get());
 
 	// シーンの変更
@@ -27,8 +44,7 @@ void Game::Initialize()
 	// "GAMEPLAY"
 	// "GAMEOVER"
 	// "GAMECLEAR"
-	const char* initialSceneName = kBootDirectXGameMigration ? DirectXGame::SceneId::kTitle : "GAMEPLAY";
-	SceneManager::GetInstance()->ChangeScene(initialSceneName);
+	SceneManager::GetInstance()->ChangeScene(initialSceneName_);
 }
 
 void Game::Finalize()
