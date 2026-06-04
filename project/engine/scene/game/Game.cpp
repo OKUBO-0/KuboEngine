@@ -23,6 +23,7 @@ Game::Game()
 Game::Game(std::unique_ptr<AbstractSceneFactory> sceneFactory, std::string initialSceneName)
 	: initialSceneName_(std::move(initialSceneName))
 {
+	debugEditorShellEnabled_ = false;
 	SetSceneFactory(std::move(sceneFactory));
 }
 
@@ -76,6 +77,10 @@ void Game::Update()
 void Game::DrawDebugEditorShell()
 {
 #ifdef _DEBUG
+	if (!debugEditorShellEnabled_) {
+		return;
+	}
+
 	Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &debugSceneViewOpen_ },
 		{ "統計", &debugStatsOpen_ },

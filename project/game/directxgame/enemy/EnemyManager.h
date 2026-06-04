@@ -46,6 +46,11 @@ public:
 	bool FindNearestEnemyPosition(const Vector3& origin, float maxDistance, Vector3& outPosition) const;
 	std::vector<Vector3> PickLightningTargets(int32_t count) const;
 	void ApplyLightningDamage(const Vector3& center, float radius, int32_t damage);
+	void StartBossPhase();
+	bool IsBossPhase() const { return bossPhase_; }
+	bool IsBossDefeated() const { return bossDefeated_; }
+	bool GetBossPresentationPosition(Vector3& outPosition) const;
+	void UpdateBossDeathPresentation(float elapsedTime, float duration);
 
 private:
 	using EnemyCellMap = std::unordered_map<int64_t, std::vector<Enemy*>>;
@@ -112,6 +117,9 @@ private:
 	size_t expOrbPruneCount_ = 0;
 	std::vector<Vector3> recentHitEffectPositions_;
 	std::vector<Vector3> recentDeathEffectPositions_;
+	Enemy* bossEnemy_ = nullptr;
+	bool bossPhase_ = false;
+	bool bossDefeated_ = false;
 };
 
 } // namespace DirectXGame

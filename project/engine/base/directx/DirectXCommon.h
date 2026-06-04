@@ -187,6 +187,13 @@ public:
 	/// @return なし
 	void CommandKick();
 
+	bool IsFrameRateLimitEnabled() const { return frameRateLimitEnabled_; }
+	void SetFrameRateLimitEnabled(bool enabled);
+	float GetTargetFrameRate() const { return targetFrameRate_; }
+	void SetTargetFrameRate(float frameRate);
+	bool IsVSyncEnabled() const { return vSyncEnabled_; }
+	void SetVSyncEnabled(bool enabled) { vSyncEnabled_ = enabled; }
+
 	/// @brief リソースの状態遷移バリアを発行する
 	/// @param resource 遷移対象リソース
 	/// @param before 遷移前の状態
@@ -246,6 +253,9 @@ private:
 	D3D12_RESOURCE_BARRIER barrier{};
 	// FPS 固定用の基準時刻
 	std::chrono::steady_clock::time_point reference_;
+	bool frameRateLimitEnabled_ = true;
+	bool vSyncEnabled_ = true;
+	float targetFrameRate_ = 60.0f;
 
 	
 

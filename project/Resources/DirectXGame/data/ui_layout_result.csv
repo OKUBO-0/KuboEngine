@@ -7,9 +7,15 @@ resultSize,1280,720
 totalScoreScale,1.55
 resultUIPosition,0,0
 finishUIPosition,640,690
+digitSize,24,32
+debug.sceneSettings,1
 finishUISize,320,48
 expPosition,720,252
 killPosition,720,484
+debug.keyInputDebug,0
 totalScorePosition,825,581
-digitSize,24,32
 scoreScale,1.55
+debug.windowSwitcher,0
+debug.sceneView,1
+debug.statisticsView,1
+debug.audio,1

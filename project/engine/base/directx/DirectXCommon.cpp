@@ -1,5 +1,6 @@
 #include "DirectXCommon.h"
 #include "WinApp.h"
+#include <algorithm>
 #include <cassert>
 #include <format>
 #pragma comment(lib,"d3d12.lib")
@@ -9,9 +10,9 @@
 
 namespace {
 
-constexpr float kTargetFrameRate = 60.0f;
-constexpr float kFrameCheckMarginRate = 65.0f;
 constexpr float kMicrosecondsPerSecond = 1000000.0f;
+constexpr float kMinTargetFrameRate = 15.0f;
+constexpr float kMaxTargetFrameRate = 1000.0f;
 constexpr float kDefaultClearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
 
 }
@@ -413,7 +414,7 @@ void DirectXCommon::FinalizeFrameTransition()
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 	commandList->ResourceBarrier(1, &barrier);
 	CloseAndExecuteCommandList();
-	swapChain->Present(1, 0);
+	swapChain->Present(vSyncEnabled_ ? 1 : 0, 0);
 }
 
 void DirectXCommon::CloseAndExecuteCommandList()
@@ -512,30 +513,33 @@ void DirectXCommon::InitializeFixFPS()
 
 void DirectXCommon::UpdateFixFPS()
 {
-	//1/60秒ピッタリの時間
-	const std::chrono::microseconds kMinTime(
-		uint64_t(kMicrosecondsPerSecond / kTargetFrameRate));
-	//1/60秒よりわずかに短い時間
-	const std::chrono::microseconds kMinCheckTime(
-		uint64_t(kMicrosecondsPerSecond / kFrameCheckMarginRate));
-
-	//現在時間を取得する
-	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-	//前回記録からの経過時間を取得する
-	std::chrono::microseconds elapsed =
-		std::chrono::duration_cast<std::chrono::microseconds>(now - reference_);
-
-	//1/60秒(よりわずかに短い時間)経っていない場合
-	if (elapsed < kMinCheckTime) {
-		//1/60秒経過するまで微小なスリープを繰り返す
-		while (std::chrono::steady_clock::now() - reference_ < kMinTime) {
-
-			//1マイクロ秒スリープ
-			std::this_thread::sleep_for(std::chrono::microseconds(1));
-
-		}
+	if (!frameRateLimitEnabled_ || targetFrameRate_ <= 0.0f) {
+		reference_ = std::chrono::steady_clock::now();
+		return;
 	}
-	//現在の時間を記録をする
+
+	const std::chrono::microseconds targetFrameTime(
+		uint64_t(kMicrosecondsPerSecond / targetFrameRate_));
+	const auto nextFrameTime = reference_ + targetFrameTime;
+	std::this_thread::sleep_until(nextFrameTime);
+
+	const auto now = std::chrono::steady_clock::now();
+	if (now > nextFrameTime + targetFrameTime) {
+		reference_ = now;
+	} else {
+		reference_ = nextFrameTime;
+	}
+}
+
+void DirectXCommon::SetFrameRateLimitEnabled(bool enabled)
+{
+	frameRateLimitEnabled_ = enabled;
+	reference_ = std::chrono::steady_clock::now();
+}
+
+void DirectXCommon::SetTargetFrameRate(float frameRate)
+{
+	targetFrameRate_ = std::clamp(frameRate, kMinTargetFrameRate, kMaxTargetFrameRate);
 	reference_ = std::chrono::steady_clock::now();
 }
 

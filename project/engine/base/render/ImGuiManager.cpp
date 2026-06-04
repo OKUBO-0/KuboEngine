@@ -11,6 +11,7 @@
 #include <imgui_impl_dx12.h>
 #include <implot.h>
 #include <imgui_node_editor.h>
+#include <filesystem>
 
 namespace Engine::Base {
 
@@ -127,7 +128,7 @@ void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* win
 	srvDescriptorSize_ = dxCommon_->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	nextSrvDescriptorIndex_ = kImGuiFirstDynamicSrvIndex;
 	freeSrvDescriptorIndices_.clear();
-	defaultDockLayoutBuilt_ = false;
+	defaultDockLayoutBuilt_ = io.IniFilename != nullptr && std::filesystem::exists(io.IniFilename);
 
 	ImGui_ImplDX12_InitInfo initInfo{};
 	initInfo.Device = dxCommon_->GetDevice();

@@ -204,6 +204,44 @@ private:
 	float rushCooldown_ = 1.6f;
 };
 
+class FloatingDiveEnemyBehavior final : public IEnemyBehavior {
+public:
+	void Update(Enemy& enemy, float deltaTime) override
+	{
+		Player* player = enemy.GetPlayer();
+		if (!player) {
+			return;
+		}
+
+		phaseTimer_ += deltaTime;
+		const Vector3 position = enemy.GetPosition();
+		const Vector3 playerPosition = player->GetWorldPosition();
+		Vector3 toPlayer = NormalizeXZ({ playerPosition.x - position.x, 0.0f, playerPosition.z - position.z });
+		if (toPlayer.x == 0.0f && toPlayer.z == 0.0f) {
+			toPlayer = { 0.0f, 0.0f, 1.0f };
+		}
+
+		Vector3 nextPosition = position;
+		const float distance = std::sqrt(
+			(playerPosition.x - position.x) * (playerPosition.x - position.x) +
+			(playerPosition.z - position.z) * (playerPosition.z - position.z));
+		const bool diving = std::fmod(phaseTimer_, 4.2f) > 2.75f || distance < 9.0f;
+		const float targetHeight = diving ? 0.65f : 5.5f + std::sin(phaseTimer_ * 2.6f) * 1.2f;
+		nextPosition.y += (targetHeight - nextPosition.y) * (diving ? 0.18f : 0.07f);
+		nextPosition.x += toPlayer.x * ToFrameScaledSpeed(enemy.GetSpeed() * (diving ? 1.95f : 0.85f), deltaTime);
+		nextPosition.z += toPlayer.z * ToFrameScaledSpeed(enemy.GetSpeed() * (diving ? 1.95f : 0.85f), deltaTime);
+
+		enemy.SetPosition(nextPosition);
+		enemy.SetRotationY(std::atan2(toPlayer.x, toPlayer.z));
+		enemy.SetBehaviorVisual(
+			diving ? Vector4{ 1.0f, 0.35f, 0.85f, 1.0f } : Vector4{ 0.7f, 0.9f, 1.0f, 1.0f },
+			diving ? 1.35f : 1.55f);
+	}
+
+private:
+	float phaseTimer_ = 0.0f;
+};
+
 } // namespace
 
 std::unique_ptr<IEnemyBehavior> CreateEnemyBehaviorByType(int32_t type)
@@ -216,6 +254,9 @@ std::unique_ptr<IEnemyBehavior> CreateEnemyBehaviorByType(int32_t type)
 	}
 	if (type == 3) {
 		return std::make_unique<KeepDistanceRushEnemyBehavior>();
+	}
+	if (type == 4) {
+		return std::make_unique<FloatingDiveEnemyBehavior>();
 	}
 	return std::make_unique<ChaseEnemyBehavior>();
 }

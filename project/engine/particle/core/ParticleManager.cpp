@@ -260,17 +260,32 @@ void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGr
 void ParticleManager::Emit(const std::string& name, const Vector3& position, uint32_t count)
 {
 	assert(particleGroups.contains(name));
-	if (!particleGroups.at(name).behavior) {
+	ParticleGroup& particleGroup = particleGroups.at(name);
+	if (!particleGroup.behavior) {
 		return;
 	}
 
-	// 振る舞いオブジェクトに生成を委譲して、必要数だけパーティクルを積む
-	for (uint32_t i = 0; i < count; ++i) {
-		particleGroups.at(name).particles.push_back(particleGroups.at(name).behavior->Create(randomEngine, position));
+	const size_t activeCount = particleGroup.particles.size();
+	const uint32_t availableCount = activeCount < particleGroup.maxInstanceCount
+		? particleGroup.maxInstanceCount - static_cast<uint32_t>(activeCount)
+		: 0u;
+	const uint32_t emitCount = (std::min)(count, availableCount);
+	if (emitCount == 0) {
+		particleGroup.instanceCount = (std::min)(
+			static_cast<uint32_t>(particleGroup.particles.size()),
+			particleGroup.maxInstanceCount);
+		return;
+	}
+
+	particleGroup.particles.reserve(activeCount + emitCount);
+	for (uint32_t i = 0; i < emitCount; ++i) {
+		particleGroup.particles.push_back(particleGroup.behavior->Create(randomEngine, position));
 	}
 
 	// 次の Update までの暫定描画数として今回追加分を記録する
-	particleGroups.at(name).instanceCount = (std::min)(count, particleGroups.at(name).maxInstanceCount);
+	particleGroup.instanceCount = (std::min)(
+		static_cast<uint32_t>(particleGroup.particles.size()),
+		particleGroup.maxInstanceCount);
 }
 
 void ParticleManager::SetModel(const std::string& filepath)

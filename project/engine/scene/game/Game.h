@@ -47,6 +47,7 @@ private:
 	bool debugAudioOpen_ = false;
 	bool debugLightOpen_ = false;
 	bool debugWindowSwitcherOpen_ = false;
+	bool debugEditorShellEnabled_ = true;
 	float debugMasterVolume_ = 1.0f;
 };
 

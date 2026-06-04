@@ -22,6 +22,16 @@ void Sprite::Initialize(SpriteCommon* spriteCommon, const std::string& textureFi
     AdjustTextureSize();
 }
 
+void Sprite::SetTexture(const std::string& textureFilePath)
+{
+    textureFilePath_ = textureFilePath;
+    Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_);
+    textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_);
+    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
+    textureLeftTop_ = { 0.0f, 0.0f };
+    textureSize_ = { static_cast<float>(metadata.width), static_cast<float>(metadata.height) };
+}
+
 void Sprite::Update()
 {
     UpdateCameraData();

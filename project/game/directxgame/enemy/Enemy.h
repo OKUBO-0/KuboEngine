@@ -17,6 +17,8 @@ public:
 	void Initialize();
 	void Update(float deltaTime);
 	void Draw();
+	void StartDeathPresentation();
+	void UpdateDeathPresentation(float elapsedTime, float duration);
 
 	void SetPosition(const Vector3& position);
 	void SetRotationY(float rotationY);
@@ -31,6 +33,7 @@ public:
 	Engine::Math::OBB GetCollisionObb() const;
 	Player* GetPlayer() const { return player_; }
 	bool IsActive() const { return active_; }
+	bool IsDeathPresentationActive() const { return deathPresentationActive_; }
 	void Deactivate() { active_ = false; }
 
 	void SetHP(int32_t hp) { hp_ = hp; }
@@ -49,6 +52,7 @@ public:
 
 private:
 	void ApplyTransform();
+	void ApplyDeathPose(float progress);
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	float rotationY_ = 0.0f;
@@ -57,6 +61,7 @@ private:
 	int32_t exp_ = 0;
 	bool active_ = true;
 	bool justDied_ = false;
+	bool deathPresentationActive_ = false;
 
 	Player* player_ = nullptr;
 	std::unique_ptr<IEnemyBehavior> behavior_;

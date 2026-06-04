@@ -22,6 +22,23 @@ void UILabel::Initialize(TextureHandle textureHandle, const Vector2& position)
 	OnVisualChanged();
 }
 
+void UILabel::SetTexture(const std::string& relativePath)
+{
+	SetTexture(DirectXGame::GameTextureCache::Load(relativePath));
+}
+
+void UILabel::SetTexture(TextureHandle textureHandle)
+{
+	if (!sprite_) {
+		Initialize(textureHandle, position_);
+		return;
+	}
+
+	sprite_->SetTexture(DirectXGame::GameTextureCache::GetPath(textureHandle));
+	OnTransformChanged();
+	OnVisualChanged();
+}
+
 void UILabel::SetColor(const Vector4& color)
 {
 	color_ = color;

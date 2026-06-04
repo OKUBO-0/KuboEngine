@@ -19,6 +19,7 @@ class Sprite
 public:
     /// 初期化処理（共通設定とテクスチャ読み込み）
     void Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath);
+    void SetTexture(const std::string& textureFilePath);
 
     /// 毎フレーム更新（座標・回転・UVなど）
     void Update();

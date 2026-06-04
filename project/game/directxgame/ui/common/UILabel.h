@@ -13,6 +13,8 @@ class UILabel : public UIElement {
 public:
 	void Initialize(const std::string& relativePath, const Vector2& position);
 	void Initialize(TextureHandle textureHandle, const Vector2& position);
+	void SetTexture(const std::string& relativePath);
+	void SetTexture(TextureHandle textureHandle);
 	void SetColor(const Vector4& color);
 	void Draw() override;
 

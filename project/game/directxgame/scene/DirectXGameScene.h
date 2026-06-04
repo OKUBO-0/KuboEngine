@@ -60,6 +60,10 @@ private:
 	void SavePauseBuildLayout() const;
 	void EnterPlaying();
 	void TogglePause();
+	void StartBossPhase();
+	void StartBossDefeatPresentation();
+	void UpdateBossDefeatPresentation(float deltaTime);
+	void UpdateBossDeathCamera(float progress);
 	void RequestLevelUp();
 	void RequestSceneChange(const char* sceneId);
 	void RequestResultScene();
@@ -86,6 +90,8 @@ private:
 	enum class GameState {
 		Start,
 		Playing,
+		Boss,
+		BossDefeated,
 		Paused,
 		LevelUp,
 		Dead,
@@ -229,6 +235,10 @@ private:
 	int32_t previousEffectTotalExp_ = 0;
 	float hitFlashTimer_ = 0.0f;
 	float deathTimer_ = 0.0f;
+	float bossDeathTimer_ = 0.0f;
+	Vector3 bossDeathFocusPosition_{ 0.0f, 0.0f, 0.0f };
+	Vector3 bossDeathStartCameraPosition_{ 0.0f, 0.0f, 0.0f };
+	Vector3 bossDeathStartCameraRotation_{ 0.0f, 0.0f, 0.0f };
 	float startIntroTimer_ = 0.0f;
 	float previousLightningEffectTimer_ = 0.0f;
 	uint32_t debugSoftCapTelemetryStartFrame_ = 0;
@@ -251,7 +261,10 @@ private:
 	bool gameOverSePlayed_ = false;
 	bool deathEffectEmitted_ = false;
 	bool deathCurtainStarted_ = false;
+	bool bossDeathCurtainStarted_ = false;
+	bool bossDeathEffectEmitted_ = false;
 	bool startIntroFinished_ = false;
+	bool pauseReturnToBoss_ = false;
 	bool debugDrawEnabled_ = false;
 	DebugWindowVisibility debugWindows_{};
 	DebugGizmoTarget debugGizmoTarget_ = DebugGizmoTarget::Player;

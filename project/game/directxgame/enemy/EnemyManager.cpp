@@ -119,6 +119,9 @@ void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player,
 {
 	player_ = player;
 	playerManager_ = playerManager;
+	bossEnemy_ = nullptr;
+	bossPhase_ = false;
+	bossDefeated_ = false;
 	if (playerManager_) {
 		playerManager_->SetEnemyManager(this);
 	}
@@ -178,7 +181,7 @@ void EnemyManager::Update(float deltaTime)
 void EnemyManager::Draw()
 {
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
-		if (enemy && enemy->IsActive()) {
+		if (enemy && (enemy->IsActive() || enemy->IsDeathPresentationActive())) {
 			enemy->Draw();
 		}
 	}
@@ -313,8 +316,64 @@ void EnemyManager::ApplyLightningDamage(const Vector3& center, float radius, int
 	}
 }
 
+void EnemyManager::StartBossPhase()
+{
+	if (bossPhase_ || !player_) {
+		return;
+	}
+
+	bossPhase_ = true;
+	bossDefeated_ = false;
+	enemies_.clear();
+
+	EnemyTypeData bossData{};
+	if (!enemyTypes_.empty()) {
+		bossData = enemyTypes_.back();
+	}
+	bossData.type = 4;
+	bossData.baseHP = (std::max)(bossData.baseHP, 140);
+	bossData.baseSpeed = (std::max)(bossData.baseSpeed, 0.18f);
+	bossData.baseEXP = (std::max)(bossData.baseEXP, 80);
+	bossData.spawnCount = 1;
+
+	const Vector3 playerPosition = player_->GetWorldPosition();
+	const Vector3 position{ playerPosition.x, 4.0f, playerPosition.z + 34.0f };
+
+	auto enemy = std::make_unique<Enemy>();
+	enemy->SetLightSettings(lightSettings_);
+	enemy->Initialize();
+	enemy->SetPlayer(player_);
+	enemy->SetPosition(position);
+	enemy->SetModelByType(bossData.type);
+	enemy->SetBehaviorByType(bossData.type);
+	enemy->SetHP(bossData.baseHP);
+	enemy->SetEXP(bossData.baseEXP);
+	enemy->SetSpeed(bossData.baseSpeed);
+	bossEnemy_ = enemy.get();
+	enemies_.push_back(std::move(enemy));
+}
+
+bool EnemyManager::GetBossPresentationPosition(Vector3& outPosition) const
+{
+	if (!bossEnemy_) {
+		return false;
+	}
+	outPosition = bossEnemy_->GetPosition();
+	return true;
+}
+
+void EnemyManager::UpdateBossDeathPresentation(float elapsedTime, float duration)
+{
+	if (bossEnemy_ && bossEnemy_->IsDeathPresentationActive()) {
+		bossEnemy_->UpdateDeathPresentation(elapsedTime, duration);
+	}
+}
+
 void EnemyManager::UpdateSpawnState(float deltaTime)
 {
+	if (bossPhase_) {
+		return;
+	}
 	elapsedTime_ += deltaTime;
 	spawnTimer_ += deltaTime;
 	spawnInterval_ = (std::max)(minSpawnInterval_, baseSpawnInterval_ - elapsedTime_ * spawnAcceleration_);
@@ -377,6 +436,10 @@ void EnemyManager::UpdateEnemies(float deltaTime)
 		if (enemy->IsActive()) {
 			enemy->Update(deltaTime);
 		} else if (enemy->GetHP() <= 0 && enemy->JustDied()) {
+			if (enemy.get() == bossEnemy_) {
+				bossDefeated_ = true;
+				enemy->StartDeathPresentation();
+			}
 			SpawnDeathDrop(*enemy);
 			enemy->ResetJustDied();
 		}
@@ -387,7 +450,7 @@ void EnemyManager::RemoveInactiveEnemies()
 {
 	enemies_.erase(
 		std::remove_if(enemies_.begin(), enemies_.end(), [](const std::unique_ptr<Enemy>& enemy) {
-			return enemy && !enemy->IsActive() && !enemy->JustDied();
+			return enemy && !enemy->IsActive() && !enemy->JustDied() && !enemy->IsDeathPresentationActive();
 		}),
 		enemies_.end());
 }
@@ -402,6 +465,9 @@ void EnemyManager::RelocateFarEnemies()
 	const float respawnDistanceSq = respawnDistance_ * respawnDistance_;
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
 		if (!enemy || !enemy->IsActive()) {
+			continue;
+		}
+		if (bossPhase_ && enemy.get() == bossEnemy_) {
 			continue;
 		}
 		const Vector3 enemyPosition = enemy->GetPosition();

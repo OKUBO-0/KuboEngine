@@ -1,6 +1,7 @@
 #include "game/directxgame/scene/DirectXGameScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/GameMenuController.h"
+#include "game/directxgame/core/GameTextureCache.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/ScreenUtil.h"
@@ -9,6 +10,7 @@
 #include "ImGuizmoManager.h"
 #include "CameraManager.h"
 #include "Input.h"
+#include "DirectXCommon.h"
 #include "Line.h"
 #include "LineCommon.h"
 #include "Model.h"
@@ -53,6 +55,11 @@ constexpr float kStartIntroDuration = 1.2f;
 constexpr float kDeathPresentationDuration = 1.35f;
 constexpr float kDeathCurtainStartTime = 1.55f;
 constexpr float kDeathOverlayDelay = 1.25f;
+constexpr float kBossDeathPresentationDuration = 1.45f;
+constexpr float kBossDeathCurtainStartTime = 1.55f;
+constexpr float kBossDeathCameraDistance = 30.0f;
+constexpr float kBossDeathCameraHeight = 22.0f;
+constexpr float kBossDeathCameraPitch = 0.68f;
 constexpr std::array<std::pair<const char*, float>, 13> kAudioTuningDefaults{ {
 	{ "title.bgm", 0.1f },
 	{ "title.select", 1.0f },
@@ -113,6 +120,39 @@ Vector2 GetGamepadMoveDebug(Engine::InputSystem::Input* input)
 std::string WeaponLevelTexturePath(const char* weaponDirectory, int32_t nextLevel)
 {
 	return std::string("ui/game/") + weaponDirectory + "/lv" + std::to_string(nextLevel) + ".png";
+}
+
+void PreloadLevelUpTextures()
+{
+	const std::array<const char*, 17> staticTextures{
+		"ui/game/lvup_attack.png",
+		"ui/game/lvup_attack_icon.png",
+		"ui/game/lvup_maxhp.png",
+		"ui/game/lvup_maxhp_icon.png",
+		"ui/game/lvup_speed.png",
+		"ui/game/lvup_speed_icon.png",
+		"ui/game/lvup_heal.png",
+		"ui/game/lvup_heal_icon.png",
+		"ui/game/normal/icon.png",
+		"ui/game/orbit/icon.png",
+		"ui/game/orbit/add.png",
+		"ui/game/drone/icon.png",
+		"ui/game/drone/add.png",
+		"ui/game/lightning/icon.png",
+		"ui/game/lightning/add.png",
+		"ui/game/levelup.png",
+		"ui/game/pause_arrow.png",
+	};
+	for (const char* texture : staticTextures) {
+		DirectXGame::GameTextureCache::Load(texture);
+	}
+
+	const std::array<const char*, 4> weaponDirectories{ "normal", "orbit", "drone", "lightning" };
+	for (const char* weaponDirectory : weaponDirectories) {
+		for (int32_t level = 2; level <= 8; ++level) {
+			DirectXGame::GameTextureCache::Load(WeaponLevelTexturePath(weaponDirectory, level));
+		}
+	}
 }
 
 bool IsPointInRect(const Vector2& point, const Vector2& rectPosition, const Vector2& rectSize)
@@ -190,14 +230,16 @@ void DirectXGameScene::Update()
 
 	if (gameState_ == GameState::Playing && !gameplayFrozen) {
 		if (timer_.GetTime() >= kGameTimeLimitSeconds) {
-			RequestResultScene();
-			ApplyPostEffect();
-			UpdateDebugUi();
-			QueueDebugDraw();
-			QueueEffectDraw();
-			return;
+			StartBossPhase();
 		}
 		UpdateGamePlay(kFixedDeltaTime);
+	} else if (gameState_ == GameState::Boss && !gameplayFrozen) {
+		UpdateGamePlay(kFixedDeltaTime);
+		if (enemyManager_ && enemyManager_->IsBossDefeated()) {
+			StartBossDefeatPresentation();
+		}
+	} else if (gameState_ == GameState::BossDefeated) {
+		UpdateBossDefeatPresentation(kFixedDeltaTime);
 	} else if (gameState_ == GameState::Start) {
 		startIntroTimer_ = (std::min)(startIntroTimer_ + kFixedDeltaTime, kStartIntroDuration);
 		startIntroFinished_ = startIntroTimer_ >= kStartIntroDuration;
@@ -216,7 +258,7 @@ void DirectXGameScene::Update()
 	}
 	UpdateDebugCamera();
 
-	if (sessionContext_ && gameState_ == GameState::Playing && !gameplayFrozen) {
+	if (sessionContext_ && (gameState_ == GameState::Playing || gameState_ == GameState::Boss) && !gameplayFrozen) {
 		sessionContext_->AdvanceGameFrame();
 	}
 
@@ -328,6 +370,7 @@ void DirectXGameScene::InitializeWorld()
 
 void DirectXGameScene::InitializeUi()
 {
+	PreloadLevelUpTextures();
 	timer_.Initialize();
 	hpGauge_.Initialize();
 	expGauge_.Initialize();
@@ -770,7 +813,7 @@ void DirectXGameScene::UpdateGamePlay(float deltaTime)
 		enemyManager_->Update(deltaTime);
 		enemyManager_->CheckCollisions(player_.get(), playerManager_.get());
 	}
-	if (playerManager_ && playerManager_->IsLevelUpRequested()) {
+	if (gameState_ == GameState::Playing && playerManager_ && playerManager_->IsLevelUpRequested()) {
 		RequestLevelUp();
 	}
 	if (playerManager_ && playerManager_->IsDead()) {
@@ -870,10 +913,10 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 	}
 	hpGauge_.Update();
 	expGauge_.Update();
-	if (gameState_ == GameState::Playing) {
+	if (gameState_ == GameState::Playing || gameState_ == GameState::Boss || gameState_ == GameState::BossDefeated) {
 		keyUI_.Update(Engine::InputSystem::Input::GetInstance());
 	}
-	if (gameState_ == GameState::Playing && player_ && enemyManager_) {
+	if ((gameState_ == GameState::Playing || gameState_ == GameState::Boss || gameState_ == GameState::BossDefeated) && player_ && enemyManager_) {
 		gameplayMiniMap_.Update(player_.get(), *enemyManager_);
 	}
 	if (gameState_ == GameState::Paused && player_ && enemyManager_) {
@@ -968,7 +1011,7 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 		return;
 	}
 
-	if (gameState_ == GameState::Playing && menuInput.pause) {
+	if ((gameState_ == GameState::Playing || gameState_ == GameState::Boss) && menuInput.pause) {
 		TogglePause();
 	}
 }
@@ -982,7 +1025,7 @@ void DirectXGameScene::DrawUi()
 	timer_.Draw();
 	hpGauge_.Draw();
 	expGauge_.Draw();
-	if (gameState_ == GameState::Playing) {
+	if (gameState_ == GameState::Playing || gameState_ == GameState::Boss || gameState_ == GameState::BossDefeated) {
 		gameplayMiniMap_.Draw();
 		keyUI_.Draw();
 	}
@@ -1100,16 +1143,21 @@ void DirectXGameScene::EnterPlaying()
 	}
 	startIntroFinished_ = true;
 	startIntroTimer_ = kStartIntroDuration;
-	gameState_ = GameState::Playing;
+	gameState_ = pauseReturnToBoss_ ? GameState::Boss : GameState::Playing;
+	pauseReturnToBoss_ = false;
 	deathTimer_ = 0.0f;
+	bossDeathTimer_ = 0.0f;
 	deathEffectEmitted_ = false;
 	deathCurtainStarted_ = false;
+	bossDeathCurtainStarted_ = false;
+	bossDeathEffectEmitted_ = false;
 	menuSelection_ = 0;
 }
 
 void DirectXGameScene::TogglePause()
 {
-	if (gameState_ == GameState::Playing) {
+	if (gameState_ == GameState::Playing || gameState_ == GameState::Boss) {
+		pauseReturnToBoss_ = gameState_ == GameState::Boss;
 		gameState_ = GameState::Paused;
 		menuSelection_ = 0;
 		if (pauseSeHandle_ != 0) {
@@ -1123,6 +1171,102 @@ void DirectXGameScene::TogglePause()
 		}
 		EnterPlaying();
 	}
+}
+
+void DirectXGameScene::StartBossPhase()
+{
+	if (gameState_ != GameState::Playing) {
+		return;
+	}
+	if (!enemyManager_) {
+		return;
+	}
+	enemyManager_->StartBossPhase();
+	gameState_ = GameState::Boss;
+	bossDeathTimer_ = 0.0f;
+	bossDeathCurtainStarted_ = false;
+	bossDeathEffectEmitted_ = false;
+	menuSelection_ = 0;
+}
+
+void DirectXGameScene::StartBossDefeatPresentation()
+{
+	if (gameState_ != GameState::Boss) {
+		return;
+	}
+
+	gameState_ = GameState::BossDefeated;
+	bossDeathTimer_ = 0.0f;
+	bossDeathCurtainStarted_ = false;
+	bossDeathEffectEmitted_ = false;
+	menuSelection_ = 0;
+	if (enemyManager_) {
+		enemyManager_->GetBossPresentationPosition(bossDeathFocusPosition_);
+		enemyManager_->UpdateBossDeathPresentation(0.0f, kBossDeathPresentationDuration);
+	}
+	if (Engine::CameraSystem::Camera* activeCamera =
+		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) {
+		bossDeathStartCameraPosition_ = activeCamera->GetTransform().translate;
+		bossDeathStartCameraRotation_ = activeCamera->GetTransform().rotate;
+	}
+	RecordResultSummary();
+}
+
+void DirectXGameScene::UpdateBossDefeatPresentation(float deltaTime)
+{
+	bossDeathTimer_ += deltaTime;
+	RecordResultSummary();
+	if (enemyManager_) {
+		Vector3 bossPosition{};
+		if (enemyManager_->GetBossPresentationPosition(bossPosition)) {
+			bossDeathFocusPosition_ = bossPosition;
+		}
+		enemyManager_->UpdateBossDeathPresentation(bossDeathTimer_, kBossDeathPresentationDuration);
+	}
+	if (!bossDeathEffectEmitted_) {
+		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
+		particleManager->Emit("DirectXGame.EnemyHitSpark", bossDeathFocusPosition_, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount * 2)));
+		particleManager->Emit("DirectXGame.DeathSmoke", bossDeathFocusPosition_, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount * 2)));
+		particleManager->Emit("DirectXGame.Ripple", bossDeathFocusPosition_, 2);
+		bossDeathEffectEmitted_ = true;
+	}
+
+	const float cameraProgress = Clamp01(bossDeathTimer_ / kBossDeathPresentationDuration);
+	UpdateBossDeathCamera(cameraProgress);
+
+	if (!bossDeathCurtainStarted_ && bossDeathTimer_ >= kBossDeathCurtainStartTime) {
+		bossDeathCurtainStarted_ = true;
+		RequestResultScene();
+	}
+}
+
+void DirectXGameScene::UpdateBossDeathCamera(float progress)
+{
+	Engine::CameraSystem::Camera* activeCamera =
+		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
+	if (!activeCamera) {
+		return;
+	}
+
+	const float eased = progress * progress * (3.0f - 2.0f * progress);
+	const Vector3 targetPosition{
+		bossDeathFocusPosition_.x,
+		bossDeathFocusPosition_.y + kBossDeathCameraHeight,
+		bossDeathFocusPosition_.z - kBossDeathCameraDistance,
+	};
+	const Vector3 targetRotation{ kBossDeathCameraPitch, 0.0f, 0.0f };
+	activeCamera->SetTranslate({
+		bossDeathStartCameraPosition_.x + (targetPosition.x - bossDeathStartCameraPosition_.x) * eased,
+		bossDeathStartCameraPosition_.y + (targetPosition.y - bossDeathStartCameraPosition_.y) * eased,
+		bossDeathStartCameraPosition_.z + (targetPosition.z - bossDeathStartCameraPosition_.z) * eased,
+		});
+	activeCamera->SetRotate({
+		bossDeathStartCameraRotation_.x + (targetRotation.x - bossDeathStartCameraRotation_.x) * eased,
+		bossDeathStartCameraRotation_.y + (targetRotation.y - bossDeathStartCameraRotation_.y) * eased,
+		bossDeathStartCameraRotation_.z + (targetRotation.z - bossDeathStartCameraRotation_.z) * eased,
+		});
+	activeCamera->SetFarClip(500.0f);
+	activeCamera->Update();
 }
 
 void DirectXGameScene::RequestLevelUp()
@@ -1240,13 +1384,10 @@ void DirectXGameScene::BuildLevelUpChoices()
 
 	for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
 		const std::string path = index < levelUpChoices_.size() ? levelUpChoices_[index].texturePath : "ui/game/lvup_attack.png";
-		levelUpChoiceSprites_[index].Initialize(path, { 0.0f, levelUpChoiceStepY_ * static_cast<float>(index) });
+		levelUpChoiceSprites_[index].SetTexture(path);
 		levelUpChoiceSprites_[index].SetSize(levelUpChoiceSize_);
 		const std::string iconPath = index < levelUpChoices_.size() ? levelUpChoices_[index].iconPath : "ui/game/lvup_attack_icon.png";
-		levelUpChoiceIcons_[index].Initialize(iconPath, {
-			0.0f,
-			levelUpChoiceStepY_ * static_cast<float>(index),
-		});
+		levelUpChoiceIcons_[index].SetTexture(iconPath);
 		levelUpChoiceIcons_[index].SetSize(levelUpChoiceSize_);
 		levelUpChoiceIcons_[index].SetVisible(index < levelUpChoices_.size());
 	}
@@ -1557,7 +1698,7 @@ void DirectXGameScene::UpdateDebugUi()
 	}
 	if (input->TriggerKey(DIK_F11)) {
 		timer_.SetTime(kGameTimeLimitSeconds);
-		RequestResultScene();
+		StartBossPhase();
 		return;
 	}
 
@@ -1600,7 +1741,7 @@ void DirectXGameScene::UpdateDebugUi()
 		[this]() { SaveDebugTuning(); },
 		"デバッグ設定を復元",
 		[this]() { LoadDebugTuning(); ApplyParticleBehaviorTuning(); },
-		"Debug: F5 Reload / F6 Death / F8 EXP / F9 Max Weapons / F10 Result / F11 Time-up",
+		"Debug: F5 Reload / F6 Death / F8 EXP / F9 Max Weapons / F10 Result / F11 Boss",
 		[this]() { Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kTitle); },
 		{},
 		[this]() { RequestResultScene(); },
@@ -1678,7 +1819,7 @@ void DirectXGameScene::UpdateDebugUi()
 			gamepadAim.x,
 			gamepadAim.y);
 
-		const bool gameplayUpdateRuns = gameState_ == GameState::Playing && pendingSceneId_.empty() && !debugFreezeGameplay_;
+		const bool gameplayUpdateRuns = (gameState_ == GameState::Playing || gameState_ == GameState::Boss) && pendingSceneId_.empty() && !debugFreezeGameplay_;
 		ImGui::Separator();
 		ImGui::Text("Scene State: %s  Pending Scene: %s",
 			GetGameStateName(),
@@ -1883,8 +2024,28 @@ void DirectXGameScene::UpdateDebugUi()
 		const float droneBulletPrunesPerMinute = static_cast<float>(droneBulletPrunes) / pruneRateDivisor;
 
 		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
+		Engine::Base::DirectXCommon* dxCommon = Engine::Graphics2D::SpriteCommon::GetInstance()->GetDxCommon();
 		ImGui::Text("State: %s", GetGameStateName());
 		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+		if (dxCommon && ImGui::CollapsingHeader("FPS Limit", ImGuiTreeNodeFlags_DefaultOpen)) {
+			bool frameLimitEnabled = dxCommon->IsFrameRateLimitEnabled();
+			if (ImGui::Checkbox("Frame Rate Limit", &frameLimitEnabled)) {
+				dxCommon->SetFrameRateLimitEnabled(frameLimitEnabled);
+			}
+
+			float targetFrameRate = dxCommon->GetTargetFrameRate();
+			if (ImGui::SliderFloat("Target FPS", &targetFrameRate, 15.0f, 240.0f, "%.0f")) {
+				dxCommon->SetTargetFrameRate(targetFrameRate);
+			}
+
+			bool vSyncEnabled = dxCommon->IsVSyncEnabled();
+			if (ImGui::Checkbox("VSync", &vSyncEnabled)) {
+				dxCommon->SetVSyncEnabled(vSyncEnabled);
+			}
+			ImGui::Text("Effective cap: %s%s",
+				frameLimitEnabled ? "Target FPS" : "Unlimited",
+				vSyncEnabled ? " + VSync" : "");
+		}
 		static std::array<float, 120> fpsHistory{};
 		static int32_t fpsHistoryOffset = 0;
 		fpsHistory[fpsHistoryOffset] = ImGui::GetIO().Framerate;
@@ -2242,7 +2403,7 @@ void DirectXGameScene::UpdateDebugUi()
 	ImGui::SameLine();
 	if (ImGui::Button("Force Time Up")) {
 		timer_.SetTime(kGameTimeLimitSeconds);
-		RequestResultScene();
+		StartBossPhase();
 		ImGui::End();
 		return;
 	}
@@ -2461,6 +2622,8 @@ void DirectXGameScene::ApplyPostEffect() const
 		break;
 	case GameState::Start:
 	case GameState::Playing:
+	case GameState::Boss:
+	case GameState::BossDefeated:
 	default:
 		effect = PostEffectType::Fullscreen;
 		break;
@@ -2475,6 +2638,10 @@ const char* DirectXGameScene::GetGameStateName() const
 		return "Start";
 	case GameState::Playing:
 		return "Playing";
+	case GameState::Boss:
+		return "Boss";
+	case GameState::BossDefeated:
+		return "BossDefeated";
 	case GameState::Paused:
 		return "Paused";
 	case GameState::LevelUp:

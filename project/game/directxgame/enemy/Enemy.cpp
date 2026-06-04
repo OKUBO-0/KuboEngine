@@ -26,6 +26,7 @@ void Enemy::Initialize()
 {
 	active_ = true;
 	justDied_ = false;
+	deathPresentationActive_ = false;
 	hitFlashTimer_ = 0.0f;
 	knockbackTimer_ = 0.0f;
 	knockbackVelocity_ = { 0.0f, 0.0f, 0.0f };
@@ -77,9 +78,26 @@ void Enemy::Update(float deltaTime)
 
 void Enemy::Draw()
 {
-	if (active_ && object_) {
+	if ((active_ || deathPresentationActive_) && object_) {
 		object_->Draw();
 	}
+}
+
+void Enemy::StartDeathPresentation()
+{
+	deathPresentationActive_ = true;
+	ApplyDeathPose(0.0f);
+}
+
+void Enemy::UpdateDeathPresentation(float elapsedTime, float duration)
+{
+	if (!deathPresentationActive_) {
+		return;
+	}
+
+	const float rawProgress = duration > 0.0f ? elapsedTime / duration : 1.0f;
+	const float progress = std::clamp(rawProgress, 0.0f, 1.0f);
+	ApplyDeathPose(progress * progress * (3.0f - 2.0f * progress));
 }
 
 void Enemy::SetPosition(const Vector3& position)
@@ -130,6 +148,7 @@ void Enemy::SetModelByType(int32_t type)
 	case 1: modelName = "Enemy2.obj"; break;
 	case 2: modelName = "Enemy3.obj"; break;
 	case 3: modelName = "Enemy4.obj"; break;
+	case 4: modelName = "Enemy4.obj"; break;
 	default: break;
 	}
 
@@ -198,6 +217,29 @@ void Enemy::ApplyTransform()
 	object_->SetScale({ behaviorScaleMultiplier_, behaviorScaleMultiplier_, behaviorScaleMultiplier_ });
 	object_->SetRotate({ 0.0f, rotationY_, 0.0f });
 	object_->SetTranslate(position_);
+}
+
+void Enemy::ApplyDeathPose(float progress)
+{
+	if (!object_) {
+		return;
+	}
+
+	const float pulse = std::sin(progress * 3.14159265f);
+	const float scale = behaviorScaleMultiplier_ * (1.0f + pulse * 0.18f);
+	object_->SetScale({ scale, scale, scale });
+	object_->SetRotate({
+		progress * 1.32f,
+		rotationY_ + progress * 0.42f,
+		progress * -0.36f,
+		});
+	object_->SetTranslate({
+		position_.x,
+		position_.y - progress * 1.15f,
+		position_.z,
+		});
+	object_->SetColor(Vector4{ 1.0f + pulse * 2.0f, 0.32f + pulse * 0.35f, 0.22f, 1.0f });
+	object_->Update();
 }
 
 } // namespace DirectXGame
