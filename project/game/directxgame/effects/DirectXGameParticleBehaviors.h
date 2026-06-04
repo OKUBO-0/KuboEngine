@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IParticleBehavior.h"
+#include "Vector3.h"
 #include "Vector4.h"
 
 namespace DirectXGame {
@@ -81,11 +82,17 @@ private:
 class ConfettiParticleBehavior : public Engine::Particle::IParticleBehavior {
 public:
 	struct Settings {
-		float lifetimeMin = 0.85f;
-		float lifetimeMax = 1.45f;
+		float lifetimeMin = 1.1f;
+		float lifetimeMax = 1.8f;
 		float velocityScale = 1.0f;
 		float scaleMultiplier = 1.0f;
-		float gravity = 0.010f;
+		float gravity = 0.007f;
+		float horizontalOffsetRange = 5.5f;
+		float depthOffsetRange = 1.0f;
+		float yOffset = 0.0f;
+		Vector3 horizontalAxis{ 1.0f, 0.0f, 0.0f };
+		Vector3 verticalAxis{ 0.0f, 1.0f, 0.0f };
+		Vector3 depthAxis{ 0.0f, 0.0f, 1.0f };
 	};
 
 	explicit ConfettiParticleBehavior(const Settings& settings = Settings{});

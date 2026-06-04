@@ -372,6 +372,25 @@ void PlayerManager::MaxAllWeapons()
 	ClearLevelUpRequest();
 }
 
+#ifdef _DEBUG
+void PlayerManager::MakeDebugStrongest()
+{
+	MaxAllWeapons();
+	maxLifeStock_ = maxLifeStockCap_;
+	lifeStock_ = maxLifeStock_;
+	attackPower_ = (std::max)(attackPower_, 99);
+	moveSpeedLevel_ = moveSpeedUpgradeCap_;
+	if (player_) {
+		player_->SetMoveSpeed(moveSpeedMax_);
+		player_->SetVisible(true);
+	}
+	invincible_ = false;
+	invincibleTimer_ = 0.0f;
+	visible_ = true;
+	ClearLevelUpRequest();
+}
+#endif
+
 void PlayerManager::PlayLevelUpEffect()
 {
 	AddEXP(0);

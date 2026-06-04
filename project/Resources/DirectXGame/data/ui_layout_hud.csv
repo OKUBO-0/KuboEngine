@@ -1,9 +1,9 @@
 expFramePosition,0,0
 expGaugeSize,1260,30
-hpPosition,540,550
+hpPosition,440,660
 lvLabelPosition,1176,10
 expFrameSize,1280,50
-hpSize,200,25
+hpSize,400,18
 expGaugePosition,10,10
 lvLabelSize,55,36
 lvDigitsPosition,1227,10

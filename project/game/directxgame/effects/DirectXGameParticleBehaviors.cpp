@@ -1,6 +1,7 @@
 #include "game/directxgame/effects/DirectXGameParticleBehaviors.h"
 #include "ParticleManager.h"
 #include <array>
+#include <cmath>
 #include <numbers>
 
 namespace DirectXGame {
@@ -15,6 +16,24 @@ constexpr std::array<Vector4, 6> kConfettiColors{
 	Vector4{ 0.98f, 0.52f, 0.88f, 1.0f },
 	Vector4{ 1.0f, 1.0f, 1.0f, 1.0f },
 };
+
+Vector3 SafeNormalize(const Vector3& value, const Vector3& fallback)
+{
+	const float lengthSquared =
+		value.x * value.x +
+		value.y * value.y +
+		value.z * value.z;
+	if (lengthSquared <= 0.0001f) {
+		return fallback;
+	}
+
+	const float invLength = 1.0f / std::sqrt(lengthSquared);
+	return {
+		value.x * invLength,
+		value.y * invLength,
+		value.z * invLength,
+	};
+}
 
 }
 
@@ -126,15 +145,21 @@ ConfettiParticleBehavior::ConfettiParticleBehavior(const Settings& settings)
 
 Engine::Particle::Particle ConfettiParticleBehavior::Create(std::mt19937& rng, const Vector3& pos)
 {
-	std::uniform_real_distribution<float> offsetDist(-5.5f, 5.5f);
-	std::uniform_real_distribution<float> velocityXDist(-0.16f, 0.16f);
-	std::uniform_real_distribution<float> velocityYDist(0.18f, 0.34f);
-	std::uniform_real_distribution<float> velocityZDist(-0.12f, 0.12f);
-	std::uniform_real_distribution<float> scaleXDist(0.12f, 0.24f);
-	std::uniform_real_distribution<float> scaleYDist(0.28f, 0.52f);
-	std::uniform_real_distribution<float> rotateDist(-std::numbers::pi_v<float>, std::numbers::pi_v<float>);
+	std::uniform_real_distribution<float> horizontalOffsetDist(-settings_.horizontalOffsetRange, settings_.horizontalOffsetRange);
+	std::uniform_real_distribution<float> depthOffsetDist(-settings_.depthOffsetRange, settings_.depthOffsetRange);
+	std::uniform_real_distribution<float> sideVelocityDist(-0.10f, 0.10f);
+	std::uniform_real_distribution<float> upVelocityDist(0.24f, 0.46f);
+	std::uniform_real_distribution<float> depthVelocityDist(-0.04f, 0.04f);
+	std::uniform_real_distribution<float> scaleXDist(0.16f, 0.34f);
+	std::uniform_real_distribution<float> scaleYDist(0.34f, 0.68f);
+	std::uniform_real_distribution<float> tiltDist(-0.35f, 0.35f);
+	std::uniform_real_distribution<float> rotateZDist(-std::numbers::pi_v<float>, std::numbers::pi_v<float>);
 	std::uniform_real_distribution<float> lifetimeDist(settings_.lifetimeMin, settings_.lifetimeMax);
 	std::uniform_int_distribution<size_t> colorIndexDist(0, kConfettiColors.size() - 1);
+
+	const Vector3 horizontalAxis = SafeNormalize(settings_.horizontalAxis, { 1.0f, 0.0f, 0.0f });
+	const Vector3 verticalAxis = SafeNormalize(settings_.verticalAxis, { 0.0f, 1.0f, 0.0f });
+	const Vector3 depthAxis = SafeNormalize(settings_.depthAxis, { 0.0f, 0.0f, 1.0f });
 
 	Engine::Particle::Particle particle{};
 	particle.transform.scale = {
@@ -142,13 +167,17 @@ Engine::Particle::Particle ConfettiParticleBehavior::Create(std::mt19937& rng, c
 		scaleYDist(rng) * settings_.scaleMultiplier,
 		1.0f
 	};
-	particle.transform.rotate = { rotateDist(rng), rotateDist(rng), rotateDist(rng) };
-	particle.transform.translate = { pos.x + offsetDist(rng), pos.y + 1.2f, pos.z + offsetDist(rng) };
-	particle.Velocity = {
-		velocityXDist(rng) * settings_.velocityScale,
-		velocityYDist(rng) * settings_.velocityScale,
-		velocityZDist(rng) * settings_.velocityScale
-	};
+	particle.transform.rotate = { tiltDist(rng), tiltDist(rng), rotateZDist(rng) };
+	particle.transform.translate =
+		pos +
+		horizontalAxis * horizontalOffsetDist(rng) +
+		verticalAxis * settings_.yOffset +
+		depthAxis * depthOffsetDist(rng);
+	particle.Velocity =
+		(horizontalAxis * sideVelocityDist(rng) +
+			verticalAxis * upVelocityDist(rng) +
+			depthAxis * depthVelocityDist(rng)) *
+		settings_.velocityScale;
 	particle.color = kConfettiColors[colorIndexDist(rng)];
 	particle.lifetime = lifetimeDist(rng);
 	particle.currentTime = 0.0f;

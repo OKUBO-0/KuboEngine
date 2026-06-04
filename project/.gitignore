@@ -42,3 +42,5 @@ externals/assimp/lib/Debug/*
 !externals/assimp/lib/Release/
 externals/assimp/lib/Release/*
 !externals/assimp/lib/Release/assimp-vc143-mt.lib
+# Added by code-review-graph
+.code-review-graph/

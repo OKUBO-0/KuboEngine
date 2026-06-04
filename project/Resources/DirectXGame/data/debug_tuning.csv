@@ -31,7 +31,7 @@ debugWindow.keyInputDebug,0
 particle.rippleLifetime,0.42
 particle.lightningSparkCount,14
 particle.lightningRippleCount,1
-particle.levelUpConfettiCount,56
+particle.levelUpConfettiCount,72
 particle.sparkScaleMultiplier,1
 particle.playerDeathSparkCount,48
 particle.playerDeathSmokeCount,18
@@ -40,13 +40,13 @@ camera.height,80
 particle.sparkLifetime,0.35
 camera.distance,45
 light.pointPosition,0,40,22.5
-particle.confettiScaleMultiplier,1
+particle.confettiScaleMultiplier,1.25
 camera.followSmoothness,8
 particle.smokeScaleMultiplier,1
 particle.rippleExpandSpeed,4.5
 debugWindow.spriteManager,0
 camera.pitch,1
-particle.confettiVelocityScale,1
+particle.confettiVelocityScale,1.15
 debugCamera.enabled,0
 title.light.pointIntensity,2.02
 light.pointIntensity,1.015

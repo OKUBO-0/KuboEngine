@@ -111,7 +111,7 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 	}
 
 	const Vector3 playerPosition = player->GetWorldPosition();
-	auto addIcon = [this, &playerPosition](const Vector3& objectPosition, bool enemy) {
+	auto addIcon = [this, &playerPosition](const Vector3& objectPosition, bool enemy, float iconSize) {
 		const Vector2 relative{
 			(objectPosition.x - playerPosition.x) * layoutSettings_.scale,
 			-(objectPosition.z - playerPosition.z) * layoutSettings_.scale,
@@ -120,7 +120,8 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 			layoutSettings_.center.x + relative.x,
 			layoutSettings_.center.y + relative.y,
 		};
-		Vector2 position = ClampToCircle(layoutSettings_.center, unclamped, layoutSettings_.radius);
+		const float iconSafeRadius = (std::max)(0.0f, layoutSettings_.radius - iconSize * 0.5f);
+		Vector2 position = ClampToCircle(layoutSettings_.center, unclamped, iconSafeRadius);
 		if (enemy) {
 			enemyIconPositions_.push_back(position);
 		} else {
@@ -130,13 +131,13 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 
 	for (const std::unique_ptr<Enemy>& enemy : enemyManager.GetEnemies()) {
 		if (enemy && enemy->IsActive()) {
-			addIcon(enemy->GetPosition(), true);
+			addIcon(enemy->GetPosition(), true, layoutSettings_.enemyIconSize);
 		}
 	}
 
 	for (const std::unique_ptr<ExpOrb>& orb : enemyManager.GetExpOrbs()) {
 		if (orb && orb->IsActive()) {
-			addIcon(orb->GetPosition(), false);
+			addIcon(orb->GetPosition(), false, layoutSettings_.orbIconSize);
 		}
 	}
 }

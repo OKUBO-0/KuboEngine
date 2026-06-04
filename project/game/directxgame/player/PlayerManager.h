@@ -39,6 +39,7 @@ public:
 		invincible_ = false;
 		invincibleTimer_ = 0.0f;
 	}
+	void MakeDebugStrongest();
 #endif
 
 	void AddEXP(int32_t amount);

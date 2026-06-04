@@ -51,7 +51,9 @@ public:
 	void ClearBehaviorVisual();
 
 private:
+	void InitializeFloatingShadow();
 	void ApplyTransform();
+	void UpdateFloatingShadow();
 	void ApplyDeathPose(float progress);
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
@@ -66,6 +68,7 @@ private:
 	Player* player_ = nullptr;
 	std::unique_ptr<IEnemyBehavior> behavior_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> floatingShadowObject_;
 	GameLightSettings lightSettings_{};
 
 	Vector4 behaviorColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -73,6 +76,7 @@ private:
 	float hitFlashTimer_ = 0.0f;
 	Vector3 knockbackVelocity_{ 0.0f, 0.0f, 0.0f };
 	float knockbackTimer_ = 0.0f;
+	bool floatingVisualEnabled_ = false;
 
 	static constexpr float kHitFlashDuration = 0.12f;
 	static constexpr float kKnockbackDuration = 0.22f;

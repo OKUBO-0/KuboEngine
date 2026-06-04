@@ -163,6 +163,67 @@ bool IsPointInRect(const Vector2& point, const Vector2& rectPosition, const Vect
 		point.y <= rectPosition.y + rectSize.y;
 }
 
+struct LevelUpConfettiSpawnArea {
+	Vector3 center{};
+	Vector3 horizontalAxis{ 1.0f, 0.0f, 0.0f };
+	Vector3 verticalAxis{ 0.0f, 1.0f, 0.0f };
+	Vector3 depthAxis{ 0.0f, 0.0f, 1.0f };
+	float horizontalRange = 5.5f;
+};
+
+LevelUpConfettiSpawnArea CalculateLevelUpConfettiSpawnArea(const DirectXGame::Player& player)
+{
+	const Vector3 playerPosition = player.GetWorldPosition();
+	LevelUpConfettiSpawnArea spawnArea{};
+	spawnArea.center = playerPosition;
+
+	const Engine::CameraSystem::Camera* activeCamera =
+		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
+	if (!activeCamera) {
+		return spawnArea;
+	}
+
+	const Matrix4x4& cameraWorld = activeCamera->GetWorldMatrix();
+	const Matrix4x4& projection = activeCamera->GetProjectionMatrix();
+	const Vector3 cameraPosition = activeCamera->GetTransform().translate;
+	Vector3 cameraForward = MyMath::Normalize(Vector3{
+		cameraWorld.m[2][0],
+		cameraWorld.m[2][1],
+		cameraWorld.m[2][2],
+		});
+	const Vector3 cameraRight = MyMath::Normalize(Vector3{
+		cameraWorld.m[0][0],
+		cameraWorld.m[0][1],
+		cameraWorld.m[0][2],
+		});
+	const Vector3 cameraUp = MyMath::Normalize(Vector3{
+		cameraWorld.m[1][0],
+		cameraWorld.m[1][1],
+		cameraWorld.m[1][2],
+		});
+
+	float playerDepth = MyMath::Dot(playerPosition - cameraPosition, cameraForward);
+	if (playerDepth <= 0.1f) {
+		cameraForward = cameraForward * -1.0f;
+		playerDepth = MyMath::Dot(playerPosition - cameraPosition, cameraForward);
+	}
+	if (playerDepth <= 0.1f) {
+		playerDepth = 20.0f;
+	}
+
+	const float halfHeight = projection.m[1][1] != 0.0f ? playerDepth / projection.m[1][1] : std::tan(0.45f * 0.5f) * playerDepth;
+	const float halfWidth = projection.m[0][0] != 0.0f ? playerDepth / projection.m[0][0] : halfHeight * (16.0f / 9.0f);
+	constexpr float kBottomScreenOffsetRatio = 0.84f;
+	spawnArea.center = cameraPosition +
+		cameraForward * playerDepth +
+		cameraUp * (-halfHeight * kBottomScreenOffsetRatio);
+	spawnArea.horizontalAxis = cameraRight;
+	spawnArea.verticalAxis = cameraUp;
+	spawnArea.depthAxis = cameraForward;
+	spawnArea.horizontalRange = halfWidth * 0.98f;
+	return spawnArea;
+}
+
 }
 
 namespace DirectXGame {
@@ -1484,10 +1545,25 @@ void DirectXGameScene::SpawnLevelUpConfetti()
 		return;
 	}
 
-	Engine::Particle::ParticleManager::GetInstance()->Emit(
-		"DirectXGame.Confetti",
-		player_->GetWorldPosition(),
-		static_cast<uint32_t>((std::max)(0, particleTuning_.levelUpConfettiCount)));
+	const uint32_t confettiCount = static_cast<uint32_t>((std::max)(0, particleTuning_.levelUpConfettiCount));
+	if (confettiCount == 0) {
+		return;
+	}
+
+	const LevelUpConfettiSpawnArea spawnArea = CalculateLevelUpConfettiSpawnArea(*player_);
+	ConfettiParticleBehavior::Settings confettiSettings{};
+	confettiSettings.velocityScale = (std::max)(1.15f, particleTuning_.confettiVelocityScale);
+	confettiSettings.scaleMultiplier = (std::max)(1.25f, particleTuning_.confettiScaleMultiplier);
+	confettiSettings.horizontalAxis = spawnArea.horizontalAxis;
+	confettiSettings.verticalAxis = spawnArea.verticalAxis;
+	confettiSettings.depthAxis = spawnArea.depthAxis;
+	confettiSettings.horizontalOffsetRange = spawnArea.horizontalRange;
+	confettiSettings.depthOffsetRange = 0.6f;
+	confettiSettings.yOffset = -0.1f;
+
+	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
+	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>(confettiSettings));
+	particleManager->Emit("DirectXGame.Confetti", spawnArea.center, confettiCount);
 }
 
 void DirectXGameScene::MoveMenuSelection(int32_t delta)
@@ -1690,7 +1766,7 @@ void DirectXGameScene::UpdateDebugUi()
 		playerManager_->AddEXP(10);
 	}
 	if (input->TriggerKey(DIK_F9) && playerManager_) {
-		playerManager_->MaxAllWeapons();
+		playerManager_->MakeDebugStrongest();
 	}
 	if (input->TriggerKey(DIK_F10)) {
 		RequestResultScene();
@@ -2270,6 +2346,10 @@ void DirectXGameScene::UpdateDebugUi()
 		ImGui::SameLine();
 		if (ImGui::Button("Max Weapons")) {
 			playerManager_->MaxAllWeapons();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Strongest")) {
+			playerManager_->MakeDebugStrongest();
 		}
 	}
 	ImGui::End();

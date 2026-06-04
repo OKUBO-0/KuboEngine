@@ -12,6 +12,7 @@ constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kDeathSePath[] = "audio/se/se_death.wav";
 constexpr char kAudioEnemyDeath[] = "combat.enemyDeath";
 constexpr float kEnemyFallbackCollisionRadius = 1.35f;
+constexpr float kFloatingShadowGroundY = -1.84f;
 
 float ScalePerFrameDecay(float decayPerFrame, float deltaTime)
 {
@@ -30,6 +31,8 @@ void Enemy::Initialize()
 	hitFlashTimer_ = 0.0f;
 	knockbackTimer_ = 0.0f;
 	knockbackVelocity_ = { 0.0f, 0.0f, 0.0f };
+	floatingVisualEnabled_ = false;
+	floatingShadowObject_.reset();
 
 	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
@@ -74,11 +77,15 @@ void Enemy::Update(float deltaTime)
 		ApplyTransform();
 		object_->Update();
 	}
+	UpdateFloatingShadow();
 }
 
 void Enemy::Draw()
 {
 	if ((active_ || deathPresentationActive_) && object_) {
+		if (floatingVisualEnabled_ && floatingShadowObject_) {
+			floatingShadowObject_->Draw();
+		}
 		object_->Draw();
 	}
 }
@@ -107,6 +114,7 @@ void Enemy::SetPosition(const Vector3& position)
 	if (object_) {
 		object_->Update();
 	}
+	UpdateFloatingShadow();
 }
 
 void Enemy::SetRotationY(float rotationY)
@@ -161,6 +169,12 @@ void Enemy::SetModelByType(int32_t type)
 void Enemy::SetBehaviorByType(int32_t type)
 {
 	behavior_ = CreateEnemyBehaviorByType(type);
+	floatingVisualEnabled_ = type == 4;
+	if (floatingVisualEnabled_) {
+		InitializeFloatingShadow();
+	} else {
+		floatingShadowObject_.reset();
+	}
 }
 
 void Enemy::SetLightSettings(const GameLightSettings& lightSettings)
@@ -168,6 +182,10 @@ void Enemy::SetLightSettings(const GameLightSettings& lightSettings)
 	lightSettings_ = lightSettings;
 	if (object_) {
 		lightSettings_.ApplyTo(*object_);
+	}
+	if (floatingShadowObject_) {
+		lightSettings_.ApplyTo(*floatingShadowObject_);
+		floatingShadowObject_->SetLighting(false);
 	}
 }
 
@@ -209,6 +227,23 @@ void Enemy::ClearBehaviorVisual()
 	behaviorScaleMultiplier_ = 1.0f;
 }
 
+void Enemy::InitializeFloatingShadow()
+{
+	if (floatingShadowObject_) {
+		return;
+	}
+
+	floatingShadowObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
+	floatingShadowObject_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
+	const ModelHandle planeHandle = GameModelCache::Load("plane.obj");
+	GameModelCache::ApplyToObject(*floatingShadowObject_, planeHandle);
+	floatingShadowObject_->SetSkyboxFilePath(kEnvironmentTexturePath);
+	floatingShadowObject_->SetEnvironmentReflectionStrength(0.0f);
+	floatingShadowObject_->SetEnvironmentRoughness(1.0f);
+	floatingShadowObject_->SetLighting(false);
+	UpdateFloatingShadow();
+}
+
 void Enemy::ApplyTransform()
 {
 	if (!object_) {
@@ -217,6 +252,30 @@ void Enemy::ApplyTransform()
 	object_->SetScale({ behaviorScaleMultiplier_, behaviorScaleMultiplier_, behaviorScaleMultiplier_ });
 	object_->SetRotate({ 0.0f, rotationY_, 0.0f });
 	object_->SetTranslate(position_);
+}
+
+void Enemy::UpdateFloatingShadow()
+{
+	if (!floatingVisualEnabled_ || !floatingShadowObject_) {
+		return;
+	}
+
+	const float altitude = (std::max)(0.0f, position_.y - kFloatingShadowGroundY);
+	const float shadowScale = std::clamp(2.15f + altitude * 0.18f, 2.15f, 3.6f);
+	const float shadowAlpha = std::clamp(0.46f - altitude * 0.045f, 0.18f, 0.42f);
+	floatingShadowObject_->SetScale({
+		shadowScale * 1.35f,
+		1.0f,
+		shadowScale * 0.78f,
+		});
+	floatingShadowObject_->SetRotate({ 0.0f, rotationY_, 0.0f });
+	floatingShadowObject_->SetTranslate({
+		position_.x,
+		kFloatingShadowGroundY,
+		position_.z,
+		});
+	floatingShadowObject_->SetColor({ 0.02f, 0.025f, 0.035f, shadowAlpha });
+	floatingShadowObject_->Update();
 }
 
 void Enemy::ApplyDeathPose(float progress)
