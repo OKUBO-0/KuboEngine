@@ -193,6 +193,15 @@ void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 	);
 }
 
+void Model::DrawGeometry()
+{
+	D3D12_VERTEX_BUFFER_VIEW vertexView = vertexBufferView;
+	modelCommon_->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 1, &vertexView);
+	modelCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
+	modelCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(
+		static_cast<UINT>(modelData.indices.size()), 1, 0, 0, 0);
+}
+
 Node Model::ReadNode(aiNode* node)
 {
 	Node result;

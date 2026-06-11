@@ -25,9 +25,10 @@ void GridPlane::Initialize()
 		tile->SetSkyboxFilePath(kEnvironmentTexturePath);
 		tile->SetEnvironmentReflectionStrength(0.0f);
 		tile->SetEnvironmentRoughness(1.0f);
+		tile->SetTextureInfluence(0.12f);
 		tile->SetScale({ kGroundScale, 1.0f, kGroundScale });
 		tile->SetTranslate({ 0.0f, -2.0f, 0.0f });
-		tile->SetColor({ 0.72f, 0.86f, 0.78f, 1.0f });
+		tile->SetColor({ 0.43f, 0.44f, 0.47f, 1.0f });
 		lightSettings_.ApplyTo(*tile);
 	}
 }
@@ -51,12 +52,11 @@ void GridPlane::Update(const Vector3& focusPosition)
 				centerZ + static_cast<float>(z) * kTileSpan,
 				});
 			const float centerDistance = std::sqrt(static_cast<float>(x * x + z * z));
-			const float pulse = 0.5f + 0.5f * std::sin(animationTime_ * 0.7f + static_cast<float>(index));
-			const float edgeShade = std::clamp(1.0f - centerDistance * 0.08f, 0.78f, 1.0f);
+			const float edgeShade = std::clamp(1.0f - centerDistance * 0.035f, 0.88f, 1.0f);
 			tiles_[index]->SetColor({
-				(0.56f + pulse * 0.05f) * edgeShade,
-				(0.74f + pulse * 0.08f) * edgeShade,
-				(0.62f + pulse * 0.05f) * edgeShade,
+				0.43f * edgeShade,
+				0.44f * edgeShade,
+				0.47f * edgeShade,
 				1.0f,
 				});
 			tiles_[index]->Update();

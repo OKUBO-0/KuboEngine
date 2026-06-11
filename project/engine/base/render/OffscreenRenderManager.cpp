@@ -86,6 +86,18 @@ void OffscreenRenderManager::Begin()
 
 }
 
+void OffscreenRenderManager::BindRenderTarget()
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
+		dxCommon_->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
+	dxCommon_->GetCommandList()->OMSetRenderTargets(
+		1, &renderTargetTextureHandle, false, &dsvHandle);
+	const D3D12_VIEWPORT viewport = dxCommon_->GetViewport();
+	const D3D12_RECT scissorRect = dxCommon_->GetScissorRect();
+	dxCommon_->GetCommandList()->RSSetViewports(1, &viewport);
+	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissorRect);
+}
+
 void OffscreenRenderManager::End()
 {
 	if (currentState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {

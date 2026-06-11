@@ -47,6 +47,8 @@ public:
 	void CreateSkinning();//スキニング用
 	/// @brief スキニング用ルートシグネチャを生成する
 	void RootSignatureSkinningCreate();//スキニング用
+	void CreateShadowMap();
+	void RootSignatureShadowMapCreate();
 
 	/// @brief スカイボックス用PSOを生成する
 	void CreateSkybox();//Skybox用
@@ -77,6 +79,8 @@ public:
 	//スキニング用のPSO
 	ID3D12RootSignature* GetRootSignatureSkinning()const { return rootSignatureSkinning.Get(); }
 	ID3D12PipelineState* GetGraphicsPipelineStateSkinning()const { return graphicsPipelineStateSkinning.Get(); }
+	ID3D12RootSignature* GetRootSignatureShadowMap()const { return rootSignatureShadowMap.Get(); }
+	ID3D12PipelineState* GetGraphicsPipelineStateShadowMap()const { return graphicsPipelineStateShadowMap.Get(); }
 
 	//Skybox用のPSO
 	ID3D12RootSignature* GetRootSignatureSkybox()const { return rootSignatureSkybox.Get(); }
@@ -91,6 +95,8 @@ private:
 	//スキニング用のルートシグネチャとパイプラインステートオブジェクト
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignatureSkinning = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStateSkinning = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignatureShadowMap = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStateShadowMap = nullptr;
 
 	//パーティクル用のルートシグネチャ
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignatureParticle = nullptr;

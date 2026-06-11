@@ -92,55 +92,38 @@ void Object3D::SkinClusterUpdate(SkinCluster& skinCluster, const Skeleton& skele
 
 void Object3D::Draw()
 {
-
-
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
-	//平行光源Cbufferの場所を設定
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
-	//カメラのデータをセット
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
-	//ポイントライトのCBufferの場所を設定
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(5, pointLightResource->GetGPUVirtualAddress());
-	//スポットライトのCBufferの場所を設定
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, spotLightResource->GetGPUVirtualAddress());
-	//環境マップテクスチャ
-	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(7, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
-	//環境マップの反射率ぼかし
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(8, environmentReflectionSettingResource->GetGPUVirtualAddress());
-	//3Dモデルが割り当てられているなら描画する
+	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(5, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentReflectionSettingResource->GetGPUVirtualAddress());
+	object3DCommon_->BindSceneLighting();
 	if (model_) {
 		model_->Draw(materialResource_->GetGPUVirtualAddress());
 	}
-
-
 }
 
 void Object3D::DrawSkinning()
 {
-
-
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
-	//平行光源Cbufferの場所を設定
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
-	//カメラのデータをセット
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
-	//ポイントライトのCBufferの場所を設定
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(5, pointLightResource->GetGPUVirtualAddress());
-	//スポットライトのCBufferの場所を設定
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, spotLightResource->GetGPUVirtualAddress());
-	//skeletonのデータをセット
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(7, model_->GetSkinCluster().paletteSrvHandle.second);
-	//環境マップテクスチャ
-	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(8, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
-	//環境マップの反射率ぼかし
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(9, environmentReflectionSettingResource->GetGPUVirtualAddress());
-	//3Dモデルが割り当てられているなら描画する
+	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(5, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentReflectionSettingResource->GetGPUVirtualAddress());
+	object3DCommon_->BindSceneLighting(true);
 	if (model_) {
 		model_->Draw(materialResource_->GetGPUVirtualAddress());
 	}
-
 }
 
+void Object3D::DrawShadow()
+{
+	if (!model_ || !object3DCommon_->IsShadowPassActive()) {
+		return;
+	}
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(
+		0, transformationMatrixResource->GetGPUVirtualAddress());
+	model_->DrawGeometry();
+}
 
 void Object3D::SetModel(const std::string& filepath)
 {
@@ -297,6 +280,8 @@ void Object3D::InitializeEnvironmentResources()
 		0, nullptr, reinterpret_cast<void**>(&environmentReflectionSettingData));
 	environmentReflectionSettingData->reflectionStrength = kDefaultEnvironmentReflectionStrength;
 	environmentReflectionSettingData->roughness = kDefaultEnvironmentRoughness;
+	environmentReflectionSettingData->textureInfluence = 1.0f;
+	environmentReflectionSettingData->padding = 0.0f;
 }
 
 void Object3D::InitializeMaterialResources()

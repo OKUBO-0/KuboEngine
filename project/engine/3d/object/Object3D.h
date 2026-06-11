@@ -15,7 +15,8 @@ struct SkinCluster;
 struct EnvironmentReflectionSetting {
 	float reflectionStrength = 1.0f; // 反射の強さ（0 = 無効、1 = 最大）
 	float roughness = 0.0f;          // 反射のぼかし（0 = 鏡面、1 = ぼやけ）
-	float padding[2] = {};           // HLSLと同様に16バイト境界を守るためのパディング
+	float textureInfluence = 1.0f;
+	float padding = 0.0f;
 };
 
 /// @brief 3Dモデルの描画状態を保持し、更新と描画を担当するクラス
@@ -44,6 +45,7 @@ public:
 	/// @param なし
 	/// @return なし
 	void DrawSkinning();
+	void DrawShadow();
 
 
 
@@ -58,6 +60,7 @@ public:
 	void SetSkyboxFilePath(const std::string& filepath) { skyboxFilePath_ = filepath; }
 	void SetEnvironmentReflectionStrength(float reflectionStrength) { environmentReflectionSettingData->reflectionStrength = reflectionStrength; }
 	void SetEnvironmentRoughness(float roughness) { environmentReflectionSettingData->roughness = roughness; }
+	void SetTextureInfluence(float influence) { environmentReflectionSettingData->textureInfluence = influence; }
 	float GetEnvironmentReflectionStrength() { return environmentReflectionSettingData->reflectionStrength; }
 	float GetEnvironmentRoughness() { return environmentReflectionSettingData->roughness; }
 

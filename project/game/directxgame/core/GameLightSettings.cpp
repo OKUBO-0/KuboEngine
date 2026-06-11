@@ -33,9 +33,6 @@ GameLightSettings::GameLightSettings()
 void GameLightSettings::ApplyTo(Engine::Graphics3D::Object3D& object) const
 {
 	object.SetLighting(lightingEnabled_);
-	object.SetDirectionalLight(directionalLight_);
-	object.SetPointLight(pointLight_);
-	object.SetSpotLight(spotLight_);
 }
 
 }

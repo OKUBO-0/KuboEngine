@@ -25,6 +25,7 @@ public:
 	void Initialize();
 	void Update(float deltaTime);
 	void Draw();
+	void DrawShadow();
 
 	const Vector3& GetWorldPosition() const { return position_; }
 	float GetWorldRotationY() const { return rotationY_; }

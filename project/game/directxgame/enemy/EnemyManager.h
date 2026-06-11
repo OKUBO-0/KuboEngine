@@ -23,6 +23,7 @@ public:
 	void LoadSpawnSettings(const std::string& filePath);
 	void Update(float deltaTime);
 	void Draw();
+	void DrawShadow();
 	void SetLightSettings(const GameLightSettings& lightSettings);
 
 	const std::vector<std::unique_ptr<Enemy>>& GetEnemies() const { return enemies_; }

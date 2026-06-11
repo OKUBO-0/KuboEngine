@@ -84,7 +84,6 @@ private:
 	void MoveMenuSelection(int32_t delta);
 	void QueueDebugDraw();
 	void QueueEffectDraw();
-	void UpdatePlayerLight();
 	void ApplyLightSettingsToWorld();
 	void UpdateDebugCamera();
 	void UpdateDebugUi();
@@ -187,7 +186,6 @@ private:
 
 	enum class DebugGizmoTarget {
 		Player,
-		PointLight,
 	};
 
 	std::shared_ptr<DirectXGameSessionContext> sessionContext_;
@@ -204,10 +202,8 @@ private:
 	Engine::CameraSystem::Camera debugCamera_{};
 	Vector3 debugCameraPosition_{ 0.0f, 85.0f, -85.0f };
 	Vector3 debugCameraRotation_{ 0.82f, 0.0f, 0.0f };
-	Vector3 playerLightOffset_ = GameLightDefaults::kPlayerLightOffset;
 	bool debugCameraEnabled_ = false;
 	bool lightDebugDrawEnabled_ = false;
-	bool playerLightFollowsPlayer_ = true;
 
 	GameState gameState_ = GameState::Start;
 #ifdef _DEBUG

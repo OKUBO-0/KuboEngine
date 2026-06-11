@@ -190,6 +190,15 @@ void EnemyManager::Draw()
 	}
 }
 
+void EnemyManager::DrawShadow()
+{
+	for (std::unique_ptr<Enemy>& enemy : enemies_) {
+		if (enemy && (enemy->IsActive() || enemy->IsDeathPresentationActive())) {
+			enemy->DrawShadow();
+		}
+	}
+}
+
 void EnemyManager::SetLightSettings(const GameLightSettings& lightSettings)
 {
 	lightSettings_ = lightSettings;

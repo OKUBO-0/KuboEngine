@@ -17,6 +17,7 @@ public:
 	void Initialize();
 	void Update(float deltaTime);
 	void Draw();
+	void DrawShadow();
 	void StartDeathPresentation();
 	void UpdateDeathPresentation(float elapsedTime, float duration);
 

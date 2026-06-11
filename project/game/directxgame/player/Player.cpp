@@ -203,6 +203,13 @@ void Player::Draw()
 	}
 }
 
+void Player::DrawShadow()
+{
+	if (visible_ && playerObject_) {
+		playerObject_->DrawShadow();
+	}
+}
+
 void Player::SetLightSettings(const GameLightSettings& lightSettings)
 {
 	lightSettings_ = lightSettings;

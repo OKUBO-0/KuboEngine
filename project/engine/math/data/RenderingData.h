@@ -75,6 +75,22 @@ struct DirectionalLight {
 	int enable;
 };
 
+struct SceneLightData {
+	Vector4 color;
+	Vector3 direction;
+	float intensity;
+	Vector4 ambientColor;
+	float ambientIntensity;
+	float specularStrength;
+	int enable;
+	float padding;
+};
+
+struct ShadowMapData {
+	Matrix4x4 lightViewProjection;
+	Vector4 settings;
+};
+
 struct PointLight {
 	
 	Vector4 color;//ライトの色
@@ -210,7 +226,9 @@ using Engine::Math::Node;
 using Engine::Math::NodeAnimation;
 using Engine::Math::PointLight;
 using Engine::Math::QuaternionTransform;
+using Engine::Math::SceneLightData;
 using Engine::Math::Skeleton;
+using Engine::Math::ShadowMapData;
 using Engine::Math::SpotLight;
 using Engine::Math::TransformationMatrix;
 using Engine::Math::TransformationMatrixsprite;

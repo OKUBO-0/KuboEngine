@@ -37,6 +37,9 @@
     <FxCompile Include="Resources\Shaders\object\Object3d.VS.hlsl">
       <Filter>Resources\Shaders\object</Filter>
     </FxCompile>
+    <FxCompile Include="Resources\Shaders\object\ShadowMap.VS.hlsl">
+      <Filter>Resources\Shaders\object</Filter>
+    </FxCompile>
     <FxCompile Include="Resources\Shaders\particle\Particle.PS.hlsl">
       <Filter>Resources\Shaders\particle</Filter>
     </FxCompile>

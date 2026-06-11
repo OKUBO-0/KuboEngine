@@ -101,6 +101,13 @@ void Enemy::Draw()
 	}
 }
 
+void Enemy::DrawShadow()
+{
+	if (object_ && (active_ || deathPresentationActive_)) {
+		object_->DrawShadow();
+	}
+}
+
 void Enemy::StartDeathPresentation()
 {
 	deathPresentationActive_ = true;

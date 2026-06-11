@@ -318,7 +318,6 @@ void DirectXGameScene::Update()
 			player_->UpdateIntroPresentation(startIntroTimer_, kStartIntroDuration);
 		}
 	}
-	UpdatePlayerLight();
 	UpdateEffects();
 
 	if (gridPlane_ && player_) {
@@ -357,7 +356,18 @@ void DirectXGameScene::Update()
 
 void DirectXGameScene::Draw()
 {
-	Engine::Graphics3D::Object3DCommon::GetInstance()->CommonDraw();
+	Engine::Graphics3D::Object3DCommon* objectCommon =
+		Engine::Graphics3D::Object3DCommon::GetInstance();
+	if (player_) {
+		objectCommon->BeginShadowPass(player_->GetWorldPosition());
+		player_->DrawShadow();
+		if (enemyManager_) {
+			enemyManager_->DrawShadow();
+		}
+		objectCommon->EndShadowPass();
+	}
+
+	objectCommon->CommonDraw();
 	if (gridPlane_) {
 		gridPlane_->Draw();
 	}
@@ -386,21 +396,16 @@ void DirectXGameScene::Draw()
 
 void DirectXGameScene::InitializeLighting()
 {
-	DirectionalLight directional{};
-	directional.color = GameLightDefaults::kDirectionalColor;
-	directional.direction = GameLightDefaults::kDirectionalDirection;
-	directional.intensity = GameLightDefaults::kDirectionalIntensity;
-	directional.enable = true;
-	lightSettings_.SetDirectionalLight(directional);
-
-	PointLight point{};
-	point.color = GameLightDefaults::kPointColor;
-	point.position = playerLightOffset_;
-	point.intensity = GameLightDefaults::kPointIntensity;
-	point.radius = GameLightDefaults::kPointRadius;
-	point.decay = GameLightDefaults::kPointDecay;
-	point.enable = true;
-	lightSettings_.SetPointLight(point);
+	SceneLightData sceneLight{};
+	sceneLight.color = { 1.0f, 0.94f, 0.88f, 1.0f };
+	sceneLight.direction = MyMath::Normalize(Vector3{ -0.55f, -1.0f, -0.45f });
+	sceneLight.intensity = 0.9f;
+	sceneLight.ambientColor = { 0.48f, 0.52f, 0.62f, 1.0f };
+	sceneLight.ambientIntensity = 0.34f;
+	sceneLight.specularStrength = 0.16f;
+	sceneLight.enable = 1;
+	sceneLight.padding = 0.0f;
+	Engine::Graphics3D::Object3DCommon::GetInstance()->SetSceneLight(sceneLight);
 	lightSettings_.SetLightingEnabled(true);
 }
 
@@ -705,28 +710,35 @@ void DirectXGameScene::LoadDebugTuning()
 	debugCameraRotation_ = UILayoutIO::GetVector3(tuning, "debugCamera.rotation", debugCameraRotation_);
 	debugCameraEnabled_ = UILayoutIO::GetFloat(tuning, "debugCamera.enabled", debugCameraEnabled_ ? 1.0f : 0.0f) > 0.5f;
 	lightDebugDrawEnabled_ = UILayoutIO::GetFloat(tuning, "light.debugDrawEnabled", lightDebugDrawEnabled_ ? 1.0f : 0.0f) > 0.5f;
-	playerLightFollowsPlayer_ = UILayoutIO::GetFloat(tuning, "light.pointFollowsPlayer", playerLightFollowsPlayer_ ? 1.0f : 0.0f) > 0.5f;
-	playerLightOffset_ = UILayoutIO::GetVector3(tuning, "light.pointPlayerOffset", playerLightOffset_);
-
-	DirectionalLight directional = lightSettings_.GetDirectionalLight();
-	const Vector3 directionalColor = UILayoutIO::GetVector3(tuning, "light.directionalColor", { directional.color.x, directional.color.y, directional.color.z });
-	directional.color = { directionalColor.x, directionalColor.y, directionalColor.z, directional.color.w };
-	directional.direction = UILayoutIO::GetVector3(tuning, "light.directionalDirection", directional.direction);
-	directional.intensity = UILayoutIO::GetFloat(tuning, "light.directionalIntensity", directional.intensity);
-	directional.enable = UILayoutIO::GetFloat(tuning, "light.directionalEnabled", directional.enable ? 1.0f : 0.0f) > 0.5f;
-	lightSettings_.SetDirectionalLight(directional);
-
-	PointLight point = lightSettings_.GetPointLight();
-	const Vector3 pointColor = UILayoutIO::GetVector3(tuning, "light.pointColor", { point.color.x, point.color.y, point.color.z });
-	point.color = { pointColor.x, pointColor.y, pointColor.z, point.color.w };
-	point.position = UILayoutIO::GetVector3(tuning, "light.pointPosition", point.position);
-	point.intensity = UILayoutIO::GetFloat(tuning, "light.pointIntensity", point.intensity);
-	point.radius = UILayoutIO::GetFloat(tuning, "light.pointRadius", point.radius);
-	point.decay = UILayoutIO::GetFloat(tuning, "light.pointDecay", point.decay);
-	point.enable = UILayoutIO::GetFloat(tuning, "light.pointEnabled", point.enable ? 1.0f : 0.0f) > 0.5f;
-	lightSettings_.SetPointLight(point);
-	UpdatePlayerLight();
-	ApplyLightSettingsToWorld();
+	Engine::Graphics3D::Object3DCommon* objectCommon =
+		Engine::Graphics3D::Object3DCommon::GetInstance();
+	SceneLightData sceneLight = objectCommon->GetSceneLight();
+	const Vector3 lightColor = UILayoutIO::GetVector3(
+		tuning, "sun.color", { sceneLight.color.x, sceneLight.color.y, sceneLight.color.z });
+	sceneLight.color = { lightColor.x, lightColor.y, lightColor.z, 1.0f };
+	sceneLight.direction = UILayoutIO::GetVector3(tuning, "sun.direction", sceneLight.direction);
+	sceneLight.intensity = UILayoutIO::GetFloat(tuning, "sun.intensity", sceneLight.intensity);
+	const Vector3 ambientColor = UILayoutIO::GetVector3(
+		tuning, "sun.ambientColor",
+		{ sceneLight.ambientColor.x, sceneLight.ambientColor.y, sceneLight.ambientColor.z });
+	sceneLight.ambientColor = { ambientColor.x, ambientColor.y, ambientColor.z, 1.0f };
+	sceneLight.ambientIntensity =
+		UILayoutIO::GetFloat(tuning, "sun.ambientIntensity", sceneLight.ambientIntensity);
+	sceneLight.specularStrength =
+		UILayoutIO::GetFloat(tuning, "sun.specularStrength", sceneLight.specularStrength);
+	sceneLight.enable =
+		UILayoutIO::GetFloat(tuning, "sun.enabled", sceneLight.enable ? 1.0f : 0.0f) > 0.5f;
+	objectCommon->SetSceneLight(sceneLight);
+	objectCommon->SetShadowEnabled(
+		UILayoutIO::GetFloat(tuning, "shadow.enabled", 1.0f) > 0.5f);
+	objectCommon->SetShadowStrength(
+		UILayoutIO::GetFloat(tuning, "shadow.strength", objectCommon->GetShadowStrength()));
+	objectCommon->SetShadowSoftness(
+		UILayoutIO::GetFloat(tuning, "shadow.softness", objectCommon->GetShadowSoftness()));
+	objectCommon->SetShadowBias(
+		UILayoutIO::GetFloat(tuning, "shadow.bias", objectCommon->GetShadowBias()));
+	objectCommon->SetShadowArea(
+		UILayoutIO::GetFloat(tuning, "shadow.area", objectCommon->GetShadowArea()));
 }
 
 void DirectXGameScene::SaveDebugTuning() const
@@ -792,21 +804,22 @@ void DirectXGameScene::SaveDebugTuning() const
 	entries.push_back({ "debugCamera.rotation", { debugCameraRotation_.x, debugCameraRotation_.y, debugCameraRotation_.z } });
 	entries.push_back({ "light.debugDrawEnabled", { lightDebugDrawEnabled_ ? 1.0f : 0.0f } });
 
-	const DirectionalLight& directional = lightSettings_.GetDirectionalLight();
-	entries.push_back({ "light.directionalEnabled", { directional.enable ? 1.0f : 0.0f } });
-	entries.push_back({ "light.directionalColor", { directional.color.x, directional.color.y, directional.color.z } });
-	entries.push_back({ "light.directionalDirection", { directional.direction.x, directional.direction.y, directional.direction.z } });
-	entries.push_back({ "light.directionalIntensity", { directional.intensity } });
-
-	const PointLight& point = lightSettings_.GetPointLight();
-	entries.push_back({ "light.pointEnabled", { point.enable ? 1.0f : 0.0f } });
-	entries.push_back({ "light.pointColor", { point.color.x, point.color.y, point.color.z } });
-	entries.push_back({ "light.pointPosition", { point.position.x, point.position.y, point.position.z } });
-	entries.push_back({ "light.pointIntensity", { point.intensity } });
-	entries.push_back({ "light.pointRadius", { point.radius } });
-	entries.push_back({ "light.pointDecay", { point.decay } });
-	entries.push_back({ "light.pointFollowsPlayer", { playerLightFollowsPlayer_ ? 1.0f : 0.0f } });
-	entries.push_back({ "light.pointPlayerOffset", { playerLightOffset_.x, playerLightOffset_.y, playerLightOffset_.z } });
+	const Engine::Graphics3D::Object3DCommon* objectCommon =
+		Engine::Graphics3D::Object3DCommon::GetInstance();
+	const SceneLightData& sceneLight = objectCommon->GetSceneLight();
+	entries.push_back({ "sun.enabled", { sceneLight.enable ? 1.0f : 0.0f } });
+	entries.push_back({ "sun.color", { sceneLight.color.x, sceneLight.color.y, sceneLight.color.z } });
+	entries.push_back({ "sun.direction", { sceneLight.direction.x, sceneLight.direction.y, sceneLight.direction.z } });
+	entries.push_back({ "sun.intensity", { sceneLight.intensity } });
+	entries.push_back({ "sun.ambientColor", {
+		sceneLight.ambientColor.x, sceneLight.ambientColor.y, sceneLight.ambientColor.z } });
+	entries.push_back({ "sun.ambientIntensity", { sceneLight.ambientIntensity } });
+	entries.push_back({ "sun.specularStrength", { sceneLight.specularStrength } });
+	entries.push_back({ "shadow.enabled", { objectCommon->IsShadowEnabled() ? 1.0f : 0.0f } });
+	entries.push_back({ "shadow.strength", { objectCommon->GetShadowStrength() } });
+	entries.push_back({ "shadow.softness", { objectCommon->GetShadowSoftness() } });
+	entries.push_back({ "shadow.bias", { objectCommon->GetShadowBias() } });
+	entries.push_back({ "shadow.area", { objectCommon->GetShadowArea() } });
 	UILayoutIO::Save(DataPaths::kDebugTuning, entries);
 #endif
 }
@@ -1889,28 +1902,14 @@ void DirectXGameScene::QueueDebugDraw()
 	}
 
 	if (lightDebugDrawEnabled_) {
-		const PointLight& pointLight = lightSettings_.GetPointLight();
-		if (pointLight.enable) {
-			line.DrawSphere(pointLight.position, 2.0f, { 1.0f, 0.95f, 0.35f, 1.0f });
-			line.DrawSphere(pointLight.position, pointLight.radius, { 1.0f, 0.85f, 0.25f, 0.24f });
-			line.Draw({ pointLight.position.x - 4.0f, pointLight.position.y, pointLight.position.z },
-				{ pointLight.position.x + 4.0f, pointLight.position.y, pointLight.position.z },
-				{ 1.0f, 0.95f, 0.35f, 1.0f });
-			line.Draw({ pointLight.position.x, pointLight.position.y - 4.0f, pointLight.position.z },
-				{ pointLight.position.x, pointLight.position.y + 4.0f, pointLight.position.z },
-				{ 1.0f, 0.95f, 0.35f, 1.0f });
-			line.Draw({ pointLight.position.x, pointLight.position.y, pointLight.position.z - 4.0f },
-				{ pointLight.position.x, pointLight.position.y, pointLight.position.z + 4.0f },
-				{ 1.0f, 0.95f, 0.35f, 1.0f });
-		}
-
-		const DirectionalLight& directionalLight = lightSettings_.GetDirectionalLight();
-		if (directionalLight.enable) {
+		const SceneLightData& sceneLight =
+			Engine::Graphics3D::Object3DCommon::GetInstance()->GetSceneLight();
+		if (sceneLight.enable) {
 			const Vector3 start = playerPosition + Vector3{ 0.0f, 22.0f, 0.0f };
 			const Vector3 end = {
-				start.x + directionalLight.direction.x * 16.0f,
-				start.y + directionalLight.direction.y * 16.0f,
-				start.z + directionalLight.direction.z * 16.0f,
+				start.x + sceneLight.direction.x * 16.0f,
+				start.y + sceneLight.direction.y * 16.0f,
+				start.z + sceneLight.direction.z * 16.0f,
 			};
 			line.Draw(start, end, { 1.0f, 1.0f, 0.55f, 1.0f });
 			line.DrawSphere(start, 0.9f, { 1.0f, 1.0f, 0.55f, 1.0f });
@@ -1939,32 +1938,6 @@ void DirectXGameScene::ApplyLightSettingsToWorld()
 	if (skyDome_) {
 		skyDome_->SetLightSettings(lightSettings_);
 	}
-}
-
-void DirectXGameScene::UpdatePlayerLight()
-{
-	if (!playerLightFollowsPlayer_ || !player_) {
-		return;
-	}
-
-	PointLight point = lightSettings_.GetPointLight();
-	const Vector3 playerPosition = player_->GetWorldPosition();
-	const Vector3 nextPosition{
-		playerPosition.x + playerLightOffset_.x,
-		playerPosition.y + playerLightOffset_.y,
-		playerPosition.z + playerLightOffset_.z,
-	};
-
-	const float dx = point.position.x - nextPosition.x;
-	const float dy = point.position.y - nextPosition.y;
-	const float dz = point.position.z - nextPosition.z;
-	if (dx * dx + dy * dy + dz * dz <= 0.0001f) {
-		return;
-	}
-
-	point.position = nextPosition;
-	lightSettings_.SetPointLight(point);
-	ApplyLightSettingsToWorld();
 }
 
 void DirectXGameScene::UpdateDebugCamera()
@@ -2194,87 +2167,71 @@ void DirectXGameScene::UpdateDebugUi()
 			debugDrawEnabled_ = debugDrawEnabled_ || lightDebugDrawEnabled_;
 		}
 
+		Engine::Graphics3D::Object3DCommon* objectCommon =
+			Engine::Graphics3D::Object3DCommon::GetInstance();
+		SceneLightData sceneLight = objectCommon->GetSceneLight();
 		bool lightChanged = false;
-		DirectionalLight directional = lightSettings_.GetDirectionalLight();
-		bool directionalEnabled = directional.enable != 0;
-		if (ImGui::Checkbox("Directional Enabled", &directionalEnabled)) {
-			directional.enable = directionalEnabled;
+		bool sunEnabled = sceneLight.enable != 0;
+		if (ImGui::Checkbox("Sun Enabled", &sunEnabled)) {
+			sceneLight.enable = sunEnabled;
 			lightChanged = true;
 		}
-		float directionalColor[3]{ directional.color.x, directional.color.y, directional.color.z };
-		if (ImGui::ColorEdit3("Directional Color", directionalColor)) {
-			directional.color = { directionalColor[0], directionalColor[1], directionalColor[2], directional.color.w };
+		float sunColor[3]{ sceneLight.color.x, sceneLight.color.y, sceneLight.color.z };
+		if (ImGui::ColorEdit3("Sun Color", sunColor)) {
+			sceneLight.color = { sunColor[0], sunColor[1], sunColor[2], 1.0f };
 			lightChanged = true;
 		}
-		float directionalDirection[3]{ directional.direction.x, directional.direction.y, directional.direction.z };
-		if (ImGui::DragFloat3("Directional Direction", directionalDirection, 0.02f, -1.0f, 1.0f)) {
-			directional.direction = { directionalDirection[0], directionalDirection[1], directionalDirection[2] };
-			if (MyMath::Length(directional.direction) > 0.0001f) {
-				directional.direction = MyMath::Normalize(directional.direction);
-			}
+		float sunDirection[3]{
+			sceneLight.direction.x, sceneLight.direction.y, sceneLight.direction.z
+		};
+		if (ImGui::DragFloat3("Sun Direction", sunDirection, 0.02f, -1.0f, 1.0f)) {
+			sceneLight.direction = { sunDirection[0], sunDirection[1], sunDirection[2] };
 			lightChanged = true;
 		}
-		if (ImGui::SliderFloat("Directional Intensity", &directional.intensity, 0.0f, 4.0f)) {
+		if (ImGui::SliderFloat("Sun Intensity", &sceneLight.intensity, 0.0f, 3.0f)) {
 			lightChanged = true;
 		}
-
-		PointLight point = lightSettings_.GetPointLight();
-		ImGui::Separator();
-		ImGui::TextUnformatted("Player Light");
-		bool pointEnabled = point.enable != 0;
-		if (ImGui::Checkbox("Player Light Enabled", &pointEnabled)) {
-			point.enable = pointEnabled;
+		float ambientColor[3]{
+			sceneLight.ambientColor.x, sceneLight.ambientColor.y, sceneLight.ambientColor.z
+		};
+		if (ImGui::ColorEdit3("Ambient Color", ambientColor)) {
+			sceneLight.ambientColor = {
+				ambientColor[0], ambientColor[1], ambientColor[2], 1.0f
+			};
 			lightChanged = true;
 		}
-		if (ImGui::Checkbox("Follow Player", &playerLightFollowsPlayer_)) {
+		if (ImGui::SliderFloat(
+				"Ambient Intensity", &sceneLight.ambientIntensity, 0.0f, 1.0f)) {
 			lightChanged = true;
 		}
-		if (ImGui::SliderFloat("Light Height", &playerLightOffset_.y, -4.0f, 40.0f)) {
+		if (ImGui::SliderFloat(
+				"Specular Strength", &sceneLight.specularStrength, 0.0f, 1.0f)) {
 			lightChanged = true;
 		}
-		float playerLightOffsetXZ[2]{ playerLightOffset_.x, playerLightOffset_.z };
-		if (ImGui::DragFloat2("Light Offset XZ", playerLightOffsetXZ, 0.25f, -80.0f, 80.0f)) {
-			playerLightOffset_.x = playerLightOffsetXZ[0];
-			playerLightOffset_.z = playerLightOffsetXZ[1];
-			lightChanged = true;
-		}
-		float pointColor[3]{ point.color.x, point.color.y, point.color.z };
-		if (ImGui::ColorEdit3("Light Color", pointColor)) {
-			point.color = { pointColor[0], pointColor[1], pointColor[2], point.color.w };
-			lightChanged = true;
-		}
-		if (ImGui::SliderFloat("Light Intensity", &point.intensity, 0.0f, 12.0f)) {
-			lightChanged = true;
-		}
-		if (ImGui::DragFloat("Light Radius", &point.radius, 0.5f, 1.0f, 220.0f)) {
-			lightChanged = true;
-		}
-		if (ImGui::DragFloat("Light Decay", &point.decay, 0.05f, 0.1f, 8.0f)) {
-			lightChanged = true;
-		}
-		if (!playerLightFollowsPlayer_) {
-			float pointPosition[3]{ point.position.x, point.position.y, point.position.z };
-			if (ImGui::DragFloat3("Manual Light Position", pointPosition, 0.5f, -120.0f, 120.0f)) {
-				point.position = { pointPosition[0], pointPosition[1], pointPosition[2] };
-				lightChanged = true;
-			}
-		}
-		if (ImGui::Button("Apply Reference Light")) {
-			playerLightFollowsPlayer_ = true;
-			playerLightOffset_ = GameLightDefaults::kPlayerLightOffset;
-			point.color = GameLightDefaults::kPointColor;
-			point.intensity = GameLightDefaults::kPointIntensity;
-			point.radius = GameLightDefaults::kPointRadius;
-			point.decay = GameLightDefaults::kPointDecay;
-			point.enable = true;
-			lightChanged = true;
-		}
-
 		if (lightChanged) {
-			lightSettings_.SetDirectionalLight(directional);
-			lightSettings_.SetPointLight(point);
-			UpdatePlayerLight();
-			ApplyLightSettingsToWorld();
+			objectCommon->SetSceneLight(sceneLight);
+		}
+
+		ImGui::Separator();
+		bool shadowEnabled = objectCommon->IsShadowEnabled();
+		if (ImGui::Checkbox("Shadow Enabled", &shadowEnabled)) {
+			objectCommon->SetShadowEnabled(shadowEnabled);
+		}
+		float shadowStrength = objectCommon->GetShadowStrength();
+		if (ImGui::SliderFloat("Shadow Strength", &shadowStrength, 0.0f, 1.0f)) {
+			objectCommon->SetShadowStrength(shadowStrength);
+		}
+		float shadowSoftness = objectCommon->GetShadowSoftness();
+		if (ImGui::SliderFloat("Shadow Softness", &shadowSoftness, 0.5f, 4.0f)) {
+			objectCommon->SetShadowSoftness(shadowSoftness);
+		}
+		float shadowBias = objectCommon->GetShadowBias();
+		if (ImGui::SliderFloat("Shadow Bias", &shadowBias, 0.0f, 0.006f, "%.5f")) {
+			objectCommon->SetShadowBias(shadowBias);
+		}
+		float shadowArea = objectCommon->GetShadowArea();
+		if (ImGui::SliderFloat("Shadow Area", &shadowArea, 20.0f, 160.0f)) {
+			objectCommon->SetShadowArea(shadowArea);
 		}
 	ImGui::End();
 	}
@@ -2759,7 +2716,7 @@ void DirectXGameScene::UpdateDebugUi()
 		ImGui::SetNextWindowPos(ImVec2(920.0f, 300.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(ImVec2(360.0f, 240.0f), ImGuiCond_FirstUseEver);
 		ImGui::Begin("ギズモ", &debugWindows_.gizmo);
-		constexpr const char* kGizmoTargetLabels[] = { "Player", "Point Light" };
+		constexpr const char* kGizmoTargetLabels[] = { "Player" };
 		int32_t gizmoTarget = static_cast<int32_t>(debugGizmoTarget_);
 		if (ImGui::Combo("Target", &gizmoTarget, kGizmoTargetLabels, static_cast<int32_t>(std::size(kGizmoTargetLabels)))) {
 			debugGizmoTarget_ = static_cast<DebugGizmoTarget>(gizmoTarget);
@@ -2780,10 +2737,6 @@ void DirectXGameScene::UpdateDebugUi()
 			if (debugGizmoTarget_ == DebugGizmoTarget::Player && player_) {
 				targetPosition = player_->GetWorldPosition();
 				targetRotationY = player_->GetWorldRotationY();
-				canEditTarget = true;
-			} else if (debugGizmoTarget_ == DebugGizmoTarget::PointLight) {
-				const PointLight& point = lightSettings_.GetPointLight();
-				targetPosition = point.position;
 				canEditTarget = true;
 			}
 			if (canEditTarget) {
@@ -2826,12 +2779,6 @@ void DirectXGameScene::UpdateDebugUi()
 				if (debugGizmoTarget_ == DebugGizmoTarget::Player && player_) {
 					player_->SetDebugWorldPosition(editedPosition);
 					player_->SetDebugWorldRotationY(rotation[1] * 3.14159265f / 180.0f);
-				} else if (debugGizmoTarget_ == DebugGizmoTarget::PointLight) {
-					PointLight point = lightSettings_.GetPointLight();
-					point.position = editedPosition;
-					lightSettings_.SetPointLight(point);
-					playerLightFollowsPlayer_ = false;
-					ApplyLightSettingsToWorld();
 				}
 			} else {
 				ImGui::TextUnformatted("Selected target is not available.");

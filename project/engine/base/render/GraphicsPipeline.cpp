@@ -91,6 +91,21 @@ D3D12_STATIC_SAMPLER_DESC CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MO
 	return staticSampler;
 }
 
+D3D12_STATIC_SAMPLER_DESC CreateShadowComparisonSamplerDesc()
+{
+	D3D12_STATIC_SAMPLER_DESC sampler{};
+	sampler.Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
+	sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+	sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+	sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	sampler.MaxLOD = D3D12_FLOAT32_MAX;
+	sampler.ShaderRegister = 1;
+	sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	return sampler;
+}
+
 void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[3])
 {
 	inputElementDescs[0].SemanticName = "POSITION";
@@ -225,20 +240,21 @@ void CreateRootSignatureWithParameters(
 }
 
 std::array<D3D12_ROOT_PARAMETER, 9> CreateObjectRootParameters(
-	std::array<D3D12_DESCRIPTOR_RANGE, 2>& descriptorRanges)
+	std::array<D3D12_DESCRIPTOR_RANGE, 3>& descriptorRanges)
 {
 	descriptorRanges[0] = CreateSrvDescriptorRange(0);
 	descriptorRanges[1] = CreateSrvDescriptorRange(1);
+	descriptorRanges[2] = CreateSrvDescriptorRange(2);
 	return {
 		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
 		CreateDescriptorTableRootParameter(&descriptorRanges[0], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(2, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
 	};
 }
 
@@ -262,22 +278,23 @@ std::array<D3D12_ROOT_PARAMETER, 2> CreateLineRootParameters(D3D12_DESCRIPTOR_RA
 }
 
 std::array<D3D12_ROOT_PARAMETER, 10> CreateSkinningRootParameters(
-	std::array<D3D12_DESCRIPTOR_RANGE, 3>& descriptorRanges)
+	std::array<D3D12_DESCRIPTOR_RANGE, 4>& descriptorRanges)
 {
 	descriptorRanges[0] = CreateSrvDescriptorRange(0);
 	descriptorRanges[1] = CreateSrvDescriptorRange(1);
 	descriptorRanges[2] = CreateSrvDescriptorRange(2);
+	descriptorRanges[3] = CreateSrvDescriptorRange(3);
 	return {
 		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
 		CreateDescriptorTableRootParameter(&descriptorRanges[0], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(2, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_VERTEX),
 		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
 	};
 }
 
@@ -372,12 +389,14 @@ void GraphicsPipeline::Create()
 void GraphicsPipeline::RootSignatureCreate()
 {
 	// 3D オブジェクト描画で使う CBV/SRV の並びをここで固定する
-	std::array<D3D12_DESCRIPTOR_RANGE, 2> descriptorRanges{};
+	std::array<D3D12_DESCRIPTOR_RANGE, 3> descriptorRanges{};
 	const auto rootParameters = CreateObjectRootParameters(descriptorRanges);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+	const std::array<D3D12_STATIC_SAMPLER_DESC, 2> staticSamplers = {
+		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP),
+		CreateShadowComparisonSamplerDesc(),
+	};
 	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignature.GetAddressOf());
+		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignature.GetAddressOf());
 }
 
 
@@ -453,12 +472,56 @@ void GraphicsPipeline::RootSignatureLineCreate()
 
 void GraphicsPipeline::RootSignatureSkinningCreate()
 {
-	std::array<D3D12_DESCRIPTOR_RANGE, 3> descriptorRanges{};
+	std::array<D3D12_DESCRIPTOR_RANGE, 4> descriptorRanges{};
 	const auto rootParameters = CreateSkinningRootParameters(descriptorRanges);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+	const std::array<D3D12_STATIC_SAMPLER_DESC, 2> staticSamplers = {
+		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP),
+		CreateShadowComparisonSamplerDesc(),
+	};
 	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignatureSkinning.GetAddressOf());
+		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignatureSkinning.GetAddressOf());
+}
+
+void GraphicsPipeline::CreateShadowMap()
+{
+	RootSignatureShadowMapCreate();
+	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
+	SetupStandardInputElements(inputElementDescs);
+	const D3D12_INPUT_LAYOUT_DESC inputLayoutDesc =
+		CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
+	IDxcBlob* vertexShaderBlob =
+		dxCommon_->CompileShader(L"Resources/Shaders/object/ShadowMap.VS.hlsl", L"vs_6_0");
+	assert(vertexShaderBlob != nullptr);
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
+	pipelineDesc.pRootSignature = rootSignatureShadowMap.Get();
+	pipelineDesc.InputLayout = inputLayoutDesc;
+	pipelineDesc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
+	pipelineDesc.BlendState = CreateAlphaBlendDesc(D3D12_BLEND_ZERO);
+	pipelineDesc.RasterizerState = CreateSolidRasterizerDesc(D3D12_CULL_MODE_NONE);
+	pipelineDesc.RasterizerState.DepthBias = 180;
+	pipelineDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+	pipelineDesc.RasterizerState.DepthBiasClamp = 0.002f;
+	pipelineDesc.NumRenderTargets = 0;
+	pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	pipelineDesc.SampleDesc.Count = 1;
+	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
+	pipelineDesc.DepthStencilState = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
+	pipelineDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	const HRESULT hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
+		&pipelineDesc, IID_PPV_ARGS(graphicsPipelineStateShadowMap.GetAddressOf()));
+	assert(SUCCEEDED(hr));
+}
+
+void GraphicsPipeline::RootSignatureShadowMapCreate()
+{
+	const std::array<D3D12_ROOT_PARAMETER, 2> rootParameters = {
+		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_VERTEX),
+	};
+	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(),
+		static_cast<UINT>(rootParameters.size()), nullptr, 0,
+		rootSignatureShadowMap.GetAddressOf());
 }
 
 void GraphicsPipeline::CreateSkinning()

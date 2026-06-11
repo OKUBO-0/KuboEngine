@@ -40,6 +40,7 @@ public:
 	/// @param なし
 	/// @return なし
 	void Begin();
+	void BindRenderTarget();
 	/// @brief オフスクリーン描画の終了処理を行う
 	/// @param なし
 	/// @return なし

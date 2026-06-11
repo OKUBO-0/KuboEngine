@@ -1,5 +1,8 @@
 #pragma once
+#include "RenderingData.h"
+#include <d3d12.h>
 #include <memory>
+#include <wrl.h>
 
 namespace Engine::Base {
 class DirectXCommon;
@@ -43,6 +46,22 @@ public:
 	/// @param なし
 	/// @return なし
 	void SkinningCommonDraw();
+	void BeginShadowPass(const Vector3& focusPosition);
+	void EndShadowPass();
+	void BindSceneLighting(bool skinning = false);
+	bool IsShadowPassActive() const { return shadowPassActive_; }
+	void SetSceneLight(const SceneLightData& light);
+	const SceneLightData& GetSceneLight() const { return *sceneLightData_; }
+	void SetShadowEnabled(bool enabled);
+	bool IsShadowEnabled() const;
+	void SetShadowStrength(float strength);
+	float GetShadowStrength() const;
+	void SetShadowSoftness(float texels);
+	float GetShadowSoftness() const;
+	void SetShadowBias(float bias);
+	float GetShadowBias() const;
+	void SetShadowArea(float area);
+	float GetShadowArea() const { return shadowArea_; }
 
 	//DXCommon
 	Engine::Base::DirectXCommon* GetDxCommon()const { return dxCommon_; }
@@ -64,6 +83,19 @@ private:
 
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> skinningGraphicsPipeline_;
+	std::unique_ptr<Engine::Base::GraphicsPipeline> shadowGraphicsPipeline_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> sceneLightResource_;
+	SceneLightData* sceneLightData_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMapResource_;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shadowDsvHeap_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMapDataResource_;
+	ShadowMapData* shadowMapData_ = nullptr;
+	uint32_t shadowSrvIndex_ = 0;
+	D3D12_RESOURCE_STATES shadowMapState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	bool shadowPassActive_ = false;
+	bool shadowEnabled_ = true;
+	float shadowArea_ = 72.0f;
+	static constexpr uint32_t kShadowMapSize = 2048;
 };
 
 }
