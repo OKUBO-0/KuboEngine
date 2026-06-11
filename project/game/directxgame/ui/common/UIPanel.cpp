@@ -26,6 +26,12 @@ void UIPanel::SetRotation(float rotation)
 	OnTransformChanged();
 }
 
+void UIPanel::SetSkewX(float skewX)
+{
+	skewX_ = skewX;
+	OnTransformChanged();
+}
+
 void UIPanel::Draw()
 {
 	if (visible_ && sprite_) {
@@ -56,6 +62,7 @@ void UIPanel::OnTransformChanged()
 	}
 	sprite_->SetSize(scaledSize);
 	sprite_->SetRotation(rotation_);
+	sprite_->SetSkewX(skewX_);
 }
 
 void UIPanel::OnVisualChanged()

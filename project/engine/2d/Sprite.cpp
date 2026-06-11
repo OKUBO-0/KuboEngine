@@ -142,9 +142,9 @@ void Sprite::UpdateVertexData()
 
     vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData));
     vertexData[0].position = { left, bottom, 0.0f, 1.0f };
-    vertexData[1].position = { left, top, 0.0f, 1.0f };
+    vertexData[1].position = { left + skewX_, top, 0.0f, 1.0f };
     vertexData[2].position = { right, bottom, 0.0f, 1.0f };
-    vertexData[3].position = { right, top, 0.0f, 1.0f };
+    vertexData[3].position = { right + skewX_, top, 0.0f, 1.0f };
     vertexData[0].texcoord = { texLeft, texBottom };
     vertexData[1].texcoord = { texLeft, texTop };
     vertexData[2].texcoord = { texRight, texBottom };

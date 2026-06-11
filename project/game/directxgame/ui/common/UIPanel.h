@@ -12,6 +12,7 @@ public:
 	void Initialize();
 	void SetColor(const Vector4& color);
 	void SetRotation(float rotation);
+	void SetSkewX(float skewX);
 	void Draw() override;
 
 private:
@@ -20,6 +21,7 @@ private:
 
 	Vector4 color_{ 1.0f, 1.0f, 1.0f, 1.0f };
 	float rotation_ = 0.0f;
+	float skewX_ = 0.0f;
 	std::unique_ptr<Engine::Graphics2D::Sprite> sprite_;
 };
 

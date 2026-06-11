@@ -44,7 +44,7 @@ private:
 	UIBar glowBar_;
 	UIBar frameBar_;
 	UIBar gaugeBar_;
-	std::array<UIPanel, 2> lightSweeps_;
+	std::array<UIPanel, 4> lightSweeps_;
 	UILabel lvLabel_;
 	static constexpr int32_t kLvDigits = 2;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kLvDigits> sprite_;

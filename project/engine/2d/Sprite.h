@@ -39,6 +39,10 @@ public:
     float GetRotation() const { return rotation; }
     void SetRotation(float rotation) { this->rotation = rotation; }
 
+    // 上辺をスプライト幅に対する割合で横へずらす
+    float GetSkewX() const { return skewX_; }
+    void SetSkewX(float skewX) { skewX_ = skewX; }
+
     // 色（マテリアルカラー）
     const Vector4& GetColor() const { return materialData->color; }
     void SetColor(const Vector4& color) { materialData->color = color; }
@@ -108,6 +112,7 @@ private:
     Vector2 size = { 640.0f,360.0f };
     Vector2 position = { 0.0f,0.0f };
     float rotation = 0.0f;
+    float skewX_ = 0.0f;
     uint32_t textureIndex = 0;
 
     Vector2 anchorPoint_ = { 0.0f,0.0f }; // アンカーポイント

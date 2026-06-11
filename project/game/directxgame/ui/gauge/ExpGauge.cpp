@@ -69,7 +69,7 @@ void ExpGauge::Initialize()
 	for (UIPanel& sweep : lightSweeps_) {
 		sweep.Initialize();
 		sweep.SetColor({ 0.75f, 0.92f, 1.0f, 1.0f });
-		sweep.SetRotation(-0.34f);
+		sweep.SetSkewX(0.28f);
 		sweep.SetAlpha(0.0f);
 	}
 
@@ -120,18 +120,19 @@ void ExpGauge::Update()
 		});
 	if (levelUpSelectionActive_) {
 		const float filledWidth = layoutSettings_.gaugeSize.x * CalculateGaugeRate(displayedExp_, maxExp_);
-		const float sweepWidth = (std::min)(layoutSettings_.gaugeSize.x * 0.045f, filledWidth);
+		const float sweepWidth = (std::min)(layoutSettings_.gaugeSize.x * 0.055f, filledWidth);
 		for (size_t index = 0; index < lightSweeps_.size(); ++index) {
-			const float phaseOffset = static_cast<float>(index) * 0.34f;
+			const float phaseOffset =
+				static_cast<float>(index) / static_cast<float>(lightSweeps_.size());
 			const float sweepProgress = std::fmod(selectionPulseTime_ * 0.72f + phaseOffset, 1.0f);
 			const float sweepEdgeFade = std::sin(sweepProgress * 3.14159265f);
 			UIPanel& sweep = lightSweeps_[index];
 			sweep.SetPosition({
 				layoutSettings_.gaugePosition.x - sweepWidth +
 					(filledWidth + sweepWidth) * sweepProgress,
-				layoutSettings_.gaugePosition.y + 5.0f,
+				layoutSettings_.gaugePosition.y,
 				});
-			sweep.SetSize({ sweepWidth, (std::max)(2.0f, layoutSettings_.gaugeSize.y - 10.0f) });
+			sweep.SetSize({ sweepWidth, layoutSettings_.gaugeSize.y });
 			sweep.SetAlpha(filledWidth > 1.0f ? sweepEdgeFade * 0.62f : 0.0f);
 		}
 	} else {
