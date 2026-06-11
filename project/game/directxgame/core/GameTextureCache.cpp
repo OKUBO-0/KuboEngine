@@ -57,6 +57,20 @@ TextureHandle GameTextureCache::Load(const std::string& relativePath)
 	return handle;
 }
 
+void GameTextureCache::LoadBatch(const std::vector<std::string>& relativePaths)
+{
+	std::vector<std::string> fullPaths;
+	fullPaths.reserve(relativePaths.size());
+	for (const std::string& relativePath : relativePaths) {
+		fullPaths.push_back(ResourcePaths::MakePath(relativePath));
+	}
+
+	Engine::Base::TextureManager::GetInstance()->LoadTextures(fullPaths);
+	for (const std::string& relativePath : relativePaths) {
+		Load(relativePath);
+	}
+}
+
 const std::string& GameTextureCache::GetPath(TextureHandle handle)
 {
 	const auto& handleToPath = GetHandleToPath();

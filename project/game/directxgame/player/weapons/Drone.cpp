@@ -113,7 +113,13 @@ void Drone::FireForward(float angle, int32_t shotCount, float bulletSpeed, float
 		Vector3 shotDirection{ std::sin(shotAngle), 0.0f, std::cos(shotAngle) };
 		auto bullet = std::make_unique<NormalBullet>();
 		bullet->SetLightSettings(lightSettings_);
-		bullet->InitializeForward(position_, shotDirection, bulletSpeed, bulletRange, bulletPierceCount);
+		bullet->InitializeForward(
+			position_,
+			shotDirection,
+			bulletSpeed,
+			bulletRange,
+			bulletPierceCount,
+			{ 0.45f, 0.88f, 1.0f, 0.82f });
 		bullets_.push_back(std::move(bullet));
 		peakBulletCount_ = (std::max)(peakBulletCount_, bullets_.size());
 		if (bullets_.size() > Drone::kMaxActiveBullets) {

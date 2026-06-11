@@ -11,6 +11,7 @@ class UIPanel : public UIElement {
 public:
 	void Initialize();
 	void SetColor(const Vector4& color);
+	void SetRotation(float rotation);
 	void Draw() override;
 
 private:
@@ -18,6 +19,7 @@ private:
 	void OnVisualChanged() override;
 
 	Vector4 color_{ 1.0f, 1.0f, 1.0f, 1.0f };
+	float rotation_ = 0.0f;
 	std::unique_ptr<Engine::Graphics2D::Sprite> sprite_;
 };
 

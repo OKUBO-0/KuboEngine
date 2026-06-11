@@ -187,11 +187,106 @@ Engine::Particle::Particle ConfettiParticleBehavior::Create(std::mt19937& rng, c
 void ConfettiParticleBehavior::Update(Engine::Particle::Particle& particle, float dt, Engine::Math::Material* /*materialData*/)
 {
 	const float fixedStepScale = dt / (1.0f / 60.0f);
+	const Vector3 verticalAxis = SafeNormalize(settings_.verticalAxis, { 0.0f, 1.0f, 0.0f });
 	particle.transform.translate += particle.Velocity * fixedStepScale;
-	particle.Velocity.y -= settings_.gravity;
+	particle.Velocity =
+		particle.Velocity - verticalAxis * (settings_.gravity * fixedStepScale);
 	particle.transform.rotate.x += 0.13f * fixedStepScale;
 	particle.transform.rotate.y += 0.09f * fixedStepScale;
 	particle.transform.rotate.z += 0.17f * fixedStepScale;
+	particle.currentTime += dt;
+}
+
+TrailParticleBehavior::TrailParticleBehavior(const Vector4& color, const Settings& settings)
+	: color_(color)
+	, settings_(settings)
+{
+}
+
+Engine::Particle::Particle TrailParticleBehavior::Create(std::mt19937& rng, const Vector3& pos)
+{
+	std::uniform_real_distribution<float> scaleDist(settings_.scaleMin, settings_.scaleMax);
+	std::uniform_real_distribution<float> rotateDist(-std::numbers::pi_v<float>, std::numbers::pi_v<float>);
+
+	Engine::Particle::Particle particle{};
+	const float scale = scaleDist(rng);
+	particle.transform.scale = { scale, scale, scale };
+	particle.transform.rotate = { 0.0f, rotateDist(rng), rotateDist(rng) };
+	particle.transform.translate = { pos.x, pos.y + settings_.yOffset, pos.z };
+	particle.Velocity = { 0.0f, 0.0f, 0.0f };
+	particle.color = color_;
+	particle.lifetime = settings_.lifetime;
+	particle.currentTime = 0.0f;
+	return particle;
+}
+
+void TrailParticleBehavior::Update(Engine::Particle::Particle& particle, float dt, Engine::Math::Material* /*materialData*/)
+{
+	const float fixedStepScale = dt / (1.0f / 60.0f);
+	const float shrink = std::pow(settings_.shrinkRate, fixedStepScale);
+	particle.transform.scale.x *= shrink;
+	particle.currentTime += dt;
+
+	const float progress = std::clamp(particle.currentTime / particle.lifetime, 0.0f, 1.0f);
+	const float fadeIn = settings_.fadeInRatio > 0.0f
+		? std::clamp(progress / settings_.fadeInRatio, 0.0f, 1.0f)
+		: 1.0f;
+	const float remaining = 1.0f - progress;
+	const float additionalFadeOut = std::pow(remaining, (std::max)(0.0f, settings_.fadeOutPower - 1.0f));
+	particle.color.w = color_.w * fadeIn * additionalFadeOut;
+}
+
+LightningImpactParticleBehavior::LightningImpactParticleBehavior(
+	const Vector4& color,
+	const Settings& settings)
+	: color_(color)
+	, settings_(settings)
+{
+}
+
+Engine::Particle::Particle LightningImpactParticleBehavior::Create(std::mt19937& rng, const Vector3& pos)
+{
+	std::uniform_real_distribution<float> angleDist(0.0f, std::numbers::pi_v<float> * 2.0f);
+	std::uniform_real_distribution<float> horizontalDist(settings_.horizontalSpeedMin, settings_.horizontalSpeedMax);
+	std::uniform_real_distribution<float> verticalDist(settings_.verticalSpeedMin, settings_.verticalSpeedMax);
+	std::uniform_real_distribution<float> scaleDist(settings_.scaleMin, settings_.scaleMax);
+	std::uniform_real_distribution<float> colorMixDist(0.0f, 1.0f);
+
+	const float angle = angleDist(rng);
+	const float horizontalSpeed = horizontalDist(rng);
+	const float scale = scaleDist(rng);
+	const float whiteMix = colorMixDist(rng) * 0.55f;
+
+	Engine::Particle::Particle particle{};
+	particle.transform.scale = { scale * 0.45f, scale * 2.8f, scale * 0.45f };
+	particle.transform.rotate = { 0.0f, angle, angle };
+	particle.transform.translate = { pos.x, pos.y + 0.25f, pos.z };
+	particle.Velocity = {
+		std::cos(angle) * horizontalSpeed,
+		verticalDist(rng),
+		std::sin(angle) * horizontalSpeed,
+	};
+	particle.color = {
+		color_.x + (1.0f - color_.x) * whiteMix,
+		color_.y + (1.0f - color_.y) * whiteMix,
+		color_.z + (1.0f - color_.z) * whiteMix,
+		color_.w,
+	};
+	particle.lifetime = settings_.lifetime;
+	particle.currentTime = 0.0f;
+	return particle;
+}
+
+void LightningImpactParticleBehavior::Update(
+	Engine::Particle::Particle& particle,
+	float dt,
+	Engine::Math::Material* /*materialData*/)
+{
+	const float fixedStepScale = dt / (1.0f / 60.0f);
+	particle.transform.translate += particle.Velocity * fixedStepScale;
+	particle.Velocity.y -= settings_.gravity * fixedStepScale;
+	particle.transform.scale.x *= std::pow(0.9f, fixedStepScale);
+	particle.transform.scale.z = particle.transform.scale.x;
 	particle.currentTime += dt;
 }
 

@@ -114,7 +114,10 @@ void ParticleManager::UpdateParticleGroup(ParticleGroup& particleGroup, float de
 
 void ParticleManager::UpdateAliveParticle(Particle& particle, ParticleGroup& particleGroup, uint32_t& counter, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix)
 {
-	float alpha = 1.0f - (particle.currentTime / particle.lifetime);
+	const float lifetimeAlpha = std::clamp(
+		1.0f - (particle.currentTime / particle.lifetime),
+		0.0f,
+		1.0f);
 	Matrix4x4 rotateMatrix = MyMath::MakeRotateMatrix(particle.transform.rotate);
 	Matrix4x4 worldMatrix = MyMath::MakeScaleMatrix(particle.transform.scale) * rotateMatrix * MyMath::MakeTranslateMatrix(particle.transform.translate);
 	Matrix4x4 worldViewProjectionMatrix = worldMatrix * viewMatrix * projectionMatrix;
@@ -124,7 +127,7 @@ void ParticleManager::UpdateAliveParticle(Particle& particle, ParticleGroup& par
 		particleGroup.instanceData[counter].WVP = worldViewProjectionMatrix;
 		particleGroup.instanceData[counter].World = worldMatrix;
 		particleGroup.instanceData[counter].color = particle.color;
-		particleGroup.instanceData[counter].color.w = alpha;
+		particleGroup.instanceData[counter].color.w *= lifetimeAlpha;
 		++counter;
 	}
 }
@@ -283,6 +286,44 @@ void ParticleManager::Emit(const std::string& name, const Vector3& position, uin
 	}
 
 	// 次の Update までの暫定描画数として今回追加分を記録する
+	particleGroup.instanceCount = (std::min)(
+		static_cast<uint32_t>(particleGroup.particles.size()),
+		particleGroup.maxInstanceCount);
+}
+
+void ParticleManager::EmitTrailSegment(
+	const std::string& name,
+	const Vector3& start,
+	const Vector3& end,
+	float width)
+{
+	assert(particleGroups.contains(name));
+	ParticleGroup& particleGroup = particleGroups.at(name);
+	if (!particleGroup.behavior || particleGroup.particles.size() >= particleGroup.maxInstanceCount) {
+		return;
+	}
+
+	const Vector3 delta{ end.x - start.x, end.y - start.y, end.z - start.z };
+	const float horizontalLength = std::sqrt(delta.x * delta.x + delta.z * delta.z);
+	const float length = std::sqrt(horizontalLength * horizontalLength + delta.y * delta.y);
+	if (length <= 0.001f) {
+		return;
+	}
+
+	Particle particle = particleGroup.behavior->Create(
+		randomEngine,
+		{
+			(start.x + end.x) * 0.5f,
+			(start.y + end.y) * 0.5f,
+			(start.z + end.z) * 0.5f,
+		});
+	particle.transform.scale = { width, length, 1.0f };
+	particle.transform.rotate = {
+		std::numbers::pi_v<float> * 0.5f - std::atan2(delta.y, horizontalLength),
+		std::atan2(delta.x, delta.z),
+		0.0f,
+	};
+	particleGroup.particles.push_back(particle);
 	particleGroup.instanceCount = (std::min)(
 		static_cast<uint32_t>(particleGroup.particles.size()),
 		particleGroup.maxInstanceCount);

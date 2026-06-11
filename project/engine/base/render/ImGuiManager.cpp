@@ -65,7 +65,11 @@ void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* win
 	//imguiのコンテキストを生成
 	ImGui::CreateContext();
 	imPlotContext_ = ImPlot::CreateContext();
-	nodeEditorContext_ = ax::NodeEditor::CreateEditor();
+	ax::NodeEditor::Config nodeEditorConfig{};
+	// This editor is a runtime debug preview. Persisted camera values can become
+	// invalid and make NodeEditor::End iterate over an enormous canvas.
+	nodeEditorConfig.SettingsFile = nullptr;
+	nodeEditorContext_ = ax::NodeEditor::CreateEditor(&nodeEditorConfig);
 	ax::NodeEditor::SetCurrentEditor(nodeEditorContext_);
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;

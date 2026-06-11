@@ -145,6 +145,7 @@ public:
 
 private:
 	void InitializeTransformResources();
+	void InitializeMaterialResources();
 	void InitializeLightResources();
 	void InitializeEnvironmentResources();
 	void InitializeCameraResources();
@@ -162,6 +163,8 @@ private:
 	//データを書き込む
 
 	TransformationMatrix* transformationMatrixData_ = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource_;
+	Material* materialData_ = nullptr;
 
 
 	//平行光源

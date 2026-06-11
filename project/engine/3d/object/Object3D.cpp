@@ -23,6 +23,7 @@ void Object3D::Initialize(Object3DCommon* object3DCommon)
 {
 	object3DCommon_ = object3DCommon;
 	InitializeTransformResources();
+	InitializeMaterialResources();
 	InitializeLightResources();
 	InitializeEnvironmentResources();
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f} ,{0.0f,0.0f,0.0f} };
@@ -108,7 +109,7 @@ void Object3D::Draw()
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(8, environmentReflectionSettingResource->GetGPUVirtualAddress());
 	//3Dモデルが割り当てられているなら描画する
 	if (model_) {
-		model_->Draw();
+		model_->Draw(materialResource_->GetGPUVirtualAddress());
 	}
 
 
@@ -135,7 +136,7 @@ void Object3D::DrawSkinning()
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(9, environmentReflectionSettingResource->GetGPUVirtualAddress());
 	//3Dモデルが割り当てられているなら描画する
 	if (model_) {
-		model_->Draw();
+		model_->Draw(materialResource_->GetGPUVirtualAddress());
 	}
 
 }
@@ -298,6 +299,16 @@ void Object3D::InitializeEnvironmentResources()
 	environmentReflectionSettingData->roughness = kDefaultEnvironmentRoughness;
 }
 
+void Object3D::InitializeMaterialResources()
+{
+	materialResource_ = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(Material));
+	materialResource_->Map(0, nullptr, reinterpret_cast<void**>(&materialData_));
+	materialData_->color = color_;
+	materialData_->enableLighting = enableLighting;
+	materialData_->uvTransform = materialData_->uvTransform.MakeIdentity4x4();
+	materialData_->shininess = 60.0f;
+}
+
 void Object3D::InitializeCameraResources()
 {
 	cameraResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(CameraForGpu));
@@ -319,12 +330,12 @@ void Object3D::UpdateAnimationState()
 
 void Object3D::ApplyModelSettings()
 {
-	if (!model_) {
+	if (!materialData_) {
 		return;
 	}
 
-	model_->SetEnableLighting(enableLighting);
-	model_->SetColor(color_);
+	materialData_->enableLighting = enableLighting;
+	materialData_->color = color_;
 }
 
 void Object3D::UpdateTransformationMatrices()

@@ -31,10 +31,13 @@ void NormalBullet::InitializeForward(
 	const Vector3& forward,
 	float speed,
 	float range,
-	int32_t maxHits)
+	int32_t maxHits,
+	const Vector4& trailColor)
 {
 	position_ = startPosition;
+	previousPosition_ = startPosition;
 	direction_ = NormalizeOrForward(forward);
+	trailColor_ = trailColor;
 	rotationY_ = std::atan2(direction_.x, direction_.z);
 	speed_ = speed;
 	range_ = range;
@@ -71,6 +74,7 @@ void NormalBullet::Update(const Vector3&, float deltaTime)
 		return;
 	}
 
+	previousPosition_ = position_;
 	const float distance = speed_ * (deltaTime / 0.016f);
 	position_.x += direction_.x * distance;
 	position_.y += direction_.y * distance;

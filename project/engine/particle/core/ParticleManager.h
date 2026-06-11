@@ -141,6 +141,11 @@ public:
 	/// @param count 発生数
 	/// @return なし
 	void Emit(const std::string& name, const Vector3& position, uint32_t count);
+	void EmitTrailSegment(
+		const std::string& name,
+		const Vector3& start,
+		const Vector3& end,
+		float width);
 
 	/// @brief モデル参照を設定する
 	/// @param filepath 読み込むモデルパス

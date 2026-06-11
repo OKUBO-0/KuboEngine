@@ -6,6 +6,7 @@
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/ui/common/DigitSpriteUtil.h"
 #include <algorithm>
+#include <cmath>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -52,6 +53,11 @@ void ExpGauge::Initialize()
 	layoutSettings_.lvDigitSize = UILayoutIO::GetVector2(layout, "lvDigitSize", layoutSettings_.lvDigitSize);
 	layoutSettings_.lvScale = UILayoutIO::GetFloat(layout, "lvScale", layoutSettings_.lvScale);
 
+	glowBar_.Initialize();
+	glowBar_.SetColors({ 1.0f, 0.9f, 0.05f, 1.0f }, { 1.0f, 0.9f, 0.05f, 1.0f });
+	glowBar_.SetRate(1.0f);
+	glowBar_.SetAlpha(0.0f);
+
 	frameBar_.Initialize();
 	frameBar_.SetColors({ 1.0f, 1.0f, 0.0f, 1.0f }, { 1.0f, 1.0f, 0.0f, 1.0f });
 	frameBar_.SetRate(1.0f);
@@ -59,6 +65,13 @@ void ExpGauge::Initialize()
 	gaugeBar_.Initialize();
 	gaugeBar_.SetColors({ 0.0f, 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f, 1.0f });
 	gaugeBar_.SetRate(0.0f);
+
+	for (UIPanel& sweep : lightSweeps_) {
+		sweep.Initialize();
+		sweep.SetColor({ 0.75f, 0.92f, 1.0f, 1.0f });
+		sweep.SetRotation(-0.34f);
+		sweep.SetAlpha(0.0f);
+	}
 
 	lvLabel_.Initialize(kLvLabelPath, layoutSettings_.lvLabelPosition);
 	lvLabel_.SetSize(layoutSettings_.lvLabelSize);
@@ -77,12 +90,65 @@ void ExpGauge::Update()
 {
 	displayedExp_ = StepDisplayValue(displayedExp_, targetExp_);
 	gaugeBar_.SetRate(CalculateGaugeRate(displayedExp_, maxExp_));
+	feedbackPulseTimer_ = (std::max)(0.0f, feedbackPulseTimer_ - 1.0f / 60.0f);
+	const float feedbackPulse = std::clamp(feedbackPulseTimer_ / 0.24f, 0.0f, 1.0f);
+	selectionPulseTime_ += 1.0f / 60.0f;
+	const float selectionPulse = levelUpSelectionActive_
+		? 0.5f + 0.5f * std::sin(selectionPulseTime_ * 7.0f)
+		: 1.0f;
+	glowBar_.SetAlpha(0.0f);
+	glowBar_.SetScale(1.0f);
+	frameBar_.SetAlpha(1.0f);
+	gaugeBar_.SetAlpha(1.0f);
+	lvLabel_.SetAlpha(1.0f);
+	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : sprite_) {
+		if (digit) {
+			digit->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+	}
+	const float levelUpBrightness = levelUpSelectionActive_ ? selectionPulse * 0.75f : 0.0f;
+	frameBar_.SetColors(
+		{ 1.0f + levelUpBrightness, 1.0f + levelUpBrightness, levelUpBrightness * 0.35f, 1.0f },
+		{ 1.0f + levelUpBrightness, 1.0f + levelUpBrightness, levelUpBrightness * 0.35f, 1.0f });
+	gaugeBar_.SetColors(
+		{ 0.0f, 0.0f, 0.0f, 1.0f },
+		{
+			feedbackPulse * 0.25f + levelUpBrightness * 0.18f,
+			feedbackPulse * 0.45f + levelUpBrightness * 0.38f,
+			1.0f + levelUpBrightness,
+			1.0f,
+		});
+	if (levelUpSelectionActive_) {
+		const float filledWidth = layoutSettings_.gaugeSize.x * CalculateGaugeRate(displayedExp_, maxExp_);
+		const float sweepWidth = (std::min)(layoutSettings_.gaugeSize.x * 0.045f, filledWidth);
+		for (size_t index = 0; index < lightSweeps_.size(); ++index) {
+			const float phaseOffset = static_cast<float>(index) * 0.34f;
+			const float sweepProgress = std::fmod(selectionPulseTime_ * 0.72f + phaseOffset, 1.0f);
+			const float sweepEdgeFade = std::sin(sweepProgress * 3.14159265f);
+			UIPanel& sweep = lightSweeps_[index];
+			sweep.SetPosition({
+				layoutSettings_.gaugePosition.x - sweepWidth +
+					(filledWidth + sweepWidth) * sweepProgress,
+				layoutSettings_.gaugePosition.y + 5.0f,
+				});
+			sweep.SetSize({ sweepWidth, (std::max)(2.0f, layoutSettings_.gaugeSize.y - 10.0f) });
+			sweep.SetAlpha(filledWidth > 1.0f ? sweepEdgeFade * 0.62f : 0.0f);
+		}
+	} else {
+		for (UIPanel& sweep : lightSweeps_) {
+			sweep.SetAlpha(0.0f);
+		}
+	}
 }
 
 void ExpGauge::Draw()
 {
+	glowBar_.Draw();
 	frameBar_.Draw();
 	gaugeBar_.Draw();
+	for (UIPanel& sweep : lightSweeps_) {
+		sweep.Draw();
+	}
 	lvLabel_.Draw();
 	for (int32_t index = 0; index < kLvDigits; ++index) {
 		if (!sprite_[index]) {
@@ -95,13 +161,29 @@ void ExpGauge::Draw()
 
 void ExpGauge::SetEXP(int32_t current, int32_t max)
 {
+	if (current > targetExp_) {
+		feedbackPulseTimer_ = 0.24f;
+	}
 	targetExp_ = current;
 	maxExp_ = std::max<int32_t>(1, max);
 }
 
 void ExpGauge::SetLevel(int32_t level)
 {
+	if (level > level_) {
+		feedbackPulseTimer_ = 0.34f;
+		displayedExp_ = targetExp_;
+	}
+	level_ = level;
 	DigitSpriteUtil::SetNumberSprites(sprite_, kLvDigitTextureSize.x, kLvDigitTextureSize, level, 10);
+}
+
+void ExpGauge::SetLevelUpSelectionActive(bool active)
+{
+	if (active && !levelUpSelectionActive_) {
+		selectionPulseTime_ = 0.0f;
+	}
+	levelUpSelectionActive_ = active;
 }
 
 bool ExpGauge::IsFilled() const
@@ -197,6 +279,8 @@ void ExpGauge::SaveLayout() const
 
 void ExpGauge::ApplyLayout()
 {
+	glowBar_.SetPosition(layoutSettings_.framePosition);
+	glowBar_.SetSize(layoutSettings_.frameSize);
 	frameBar_.SetPosition(layoutSettings_.framePosition);
 	frameBar_.SetSize(layoutSettings_.frameSize);
 	gaugeBar_.SetPosition(layoutSettings_.gaugePosition);

@@ -330,7 +330,7 @@ void EnemyManager::StartBossPhase()
 	if (!enemyTypes_.empty()) {
 		bossData = enemyTypes_.back();
 	}
-	bossData.type = 4;
+	bossData.type = 5;
 	bossData.baseHP = (std::max)(bossData.baseHP, 140);
 	bossData.baseSpeed = (std::max)(bossData.baseSpeed, 0.18f);
 	bossData.baseEXP = (std::max)(bossData.baseEXP, 80);
@@ -346,11 +346,22 @@ void EnemyManager::StartBossPhase()
 	enemy->SetPosition(position);
 	enemy->SetModelByType(bossData.type);
 	enemy->SetBehaviorByType(bossData.type);
+	enemy->SetBoss(true);
 	enemy->SetHP(bossData.baseHP);
 	enemy->SetEXP(bossData.baseEXP);
 	enemy->SetSpeed(bossData.baseSpeed);
 	bossEnemy_ = enemy.get();
 	enemies_.push_back(std::move(enemy));
+}
+
+bool EnemyManager::ConsumeBossPhaseChanged(Vector3& outPosition, int32_t& outPhase)
+{
+	if (!bossEnemy_ || !bossEnemy_->ConsumeBossPhaseChanged()) {
+		return false;
+	}
+	outPosition = bossEnemy_->GetPosition();
+	outPhase = bossEnemy_->GetBossPhase();
+	return true;
 }
 
 bool EnemyManager::GetBossPresentationPosition(Vector3& outPosition) const
@@ -435,6 +446,9 @@ void EnemyManager::UpdateEnemies(float deltaTime)
 		}
 		if (enemy->IsActive()) {
 			enemy->Update(deltaTime);
+			if (enemy->ConsumeGroundImpact()) {
+				recentDeathEffectPositions_.push_back(enemy->GetPosition());
+			}
 		} else if (enemy->GetHP() <= 0 && enemy->JustDied()) {
 			if (enemy.get() == bossEnemy_) {
 				bossDefeated_ = true;
@@ -468,6 +482,9 @@ void EnemyManager::RelocateFarEnemies()
 			continue;
 		}
 		if (bossPhase_ && enemy.get() == bossEnemy_) {
+			continue;
+		}
+		if (enemy->IsSuicideType()) {
 			continue;
 		}
 		const Vector3 enemyPosition = enemy->GetPosition();
@@ -522,6 +539,9 @@ void EnemyManager::ResolveEnemySeparation()
 		CollectNearbyEnemies(spatialMap, a->GetPosition(), radiusA + kEnemyQueryPadding, nearbyEnemies);
 		for (Enemy* b : nearbyEnemies) {
 			if (!b || !b->IsActive() || a >= b) {
+				continue;
+			}
+			if (a->IsSuicideType() || b->IsSuicideType()) {
 				continue;
 			}
 			const Engine::Math::OBB obbA = a->GetCollisionObb();
@@ -708,6 +728,24 @@ void EnemyManager::CheckPlayerCollisions(Player& player, PlayerManager& playerMa
 			continue;
 		}
 
+		if (enemy->IsSuicideType()) {
+			const Vector3 impactPosition = enemy->GetPosition();
+			if (!player.IsDodging() && !playerManager.IsInvincible()) {
+				playerManager.TakeDamage();
+				static SoundHandle sharedPlayerDamageSeHandle = 0;
+				if (sharedPlayerDamageSeHandle == 0) {
+					sharedPlayerDamageSeHandle = GameAudioCache::LoadWave(kPlayerDamageSePath);
+				}
+				if (sharedPlayerDamageSeHandle != 0) {
+					GameAudioCache::Play(sharedPlayerDamageSeHandle);
+					GameAudioCache::SetVolumeFromTuning(sharedPlayerDamageSeHandle, kAudioPlayerDamage, 0.8f);
+				}
+			}
+			recentDeathEffectPositions_.push_back(impactPosition);
+			enemy->Deactivate();
+			continue;
+		}
+
 		Vector3 enemyPosition = enemy->GetPosition();
 		Vector3 separationAxis{};
 		float overlap = 0.0f;
@@ -718,7 +756,7 @@ void EnemyManager::CheckPlayerCollisions(Player& player, PlayerManager& playerMa
 			enemy->SetPosition(enemyPosition);
 		}
 
-		if (!playerManager.IsInvincible()) {
+		if (!player.IsDodging() && !playerManager.IsInvincible()) {
 			playerManager.TakeDamage();
 			static SoundHandle sharedPlayerDamageSeHandle = 0;
 			if (sharedPlayerDamageSeHandle == 0) {

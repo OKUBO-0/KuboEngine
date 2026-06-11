@@ -25,9 +25,11 @@ public:
 	void SetPlayer(Player* player) { player_ = player; }
 	void SetModelByType(int32_t type);
 	void SetBehaviorByType(int32_t type);
+	bool IsSuicideType() const { return type_ == 4; }
 	void SetLightSettings(const GameLightSettings& lightSettings);
 
 	const Vector3& GetPosition() const { return position_; }
+	const Vector3& GetPreviousPosition() const { return previousPosition_; }
 	float GetCollisionRadius() const;
 	Engine::Math::AABB GetCollisionAabb() const;
 	Engine::Math::OBB GetCollisionObb() const;
@@ -35,9 +37,13 @@ public:
 	bool IsActive() const { return active_; }
 	bool IsDeathPresentationActive() const { return deathPresentationActive_; }
 	void Deactivate() { active_ = false; }
+	void DeactivateOnGroundImpact() { active_ = false; groundImpactPending_ = true; }
+	bool ConsumeGroundImpact();
 
-	void SetHP(int32_t hp) { hp_ = hp; }
+	void SetHP(int32_t hp) { hp_ = hp; maxHp_ = hp; }
 	int32_t GetHP() const { return hp_; }
+	int32_t GetMaxHP() const { return maxHp_; }
+	float GetHpRatio() const;
 	void TakeDamage(int32_t damage, const Vector3& knockDirection = { 0.0f, 0.0f, 0.0f }, float strength = 0.0f);
 
 	void SetEXP(int32_t exp) { exp_ = exp; }
@@ -49,6 +55,10 @@ public:
 	float GetSpeed() const { return speed_; }
 	void SetBehaviorVisual(const Vector4& color, float scaleMultiplier = 1.0f);
 	void ClearBehaviorVisual();
+	void SetBoss(bool boss);
+	bool IsBoss() const { return boss_; }
+	int32_t GetBossPhase() const { return bossPhase_; }
+	bool ConsumeBossPhaseChanged();
 
 private:
 	void InitializeFloatingShadow();
@@ -57,10 +67,13 @@ private:
 	void ApplyDeathPose(float progress);
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
+	Vector3 previousPosition_{ 0.0f, 0.0f, 0.0f };
 	float rotationY_ = 0.0f;
 	float speed_ = 0.0f;
 	int32_t hp_ = 0;
+	int32_t maxHp_ = 0;
 	int32_t exp_ = 0;
+	int32_t type_ = 0;
 	bool active_ = true;
 	bool justDied_ = false;
 	bool deathPresentationActive_ = false;
@@ -76,10 +89,17 @@ private:
 	float hitFlashTimer_ = 0.0f;
 	Vector3 knockbackVelocity_{ 0.0f, 0.0f, 0.0f };
 	float knockbackTimer_ = 0.0f;
+	float knockbackCooldownTimer_ = 0.0f;
 	bool floatingVisualEnabled_ = false;
+	bool groundImpactPending_ = false;
+	bool boss_ = false;
+	int32_t bossPhase_ = 1;
+	bool bossPhaseChanged_ = false;
+	float bossPhaseTransitionTimer_ = 0.0f;
 
 	static constexpr float kHitFlashDuration = 0.12f;
 	static constexpr float kKnockbackDuration = 0.22f;
+	static constexpr float kKnockbackCooldown = 0.45f;
 };
 
 } // namespace DirectXGame

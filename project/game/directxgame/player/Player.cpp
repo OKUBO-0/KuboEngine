@@ -57,6 +57,30 @@ bool ProjectWorldToScreen(
 	return std::isfinite(outScreen.x) && std::isfinite(outScreen.y);
 }
 
+bool UnprojectMouseToGround(
+	const Vector2& mousePosition,
+	const Vector2& clientSize,
+	const Matrix4x4& viewProjection,
+	float groundY,
+	Vector3& outPosition)
+{
+	const float ndcX = mousePosition.x / clientSize.x * 2.0f - 1.0f;
+	const float ndcY = 1.0f - mousePosition.y / clientSize.y * 2.0f;
+	const Matrix4x4 inverseViewProjection = viewProjection.Inverse();
+	const Vector3 nearPoint = MyMath::Transform({ ndcX, ndcY, 0.0f }, inverseViewProjection);
+	const Vector3 farPoint = MyMath::Transform({ ndcX, ndcY, 1.0f }, inverseViewProjection);
+	const Vector3 ray = farPoint - nearPoint;
+	if (std::abs(ray.y) <= 0.0001f) {
+		return false;
+	}
+	const float distance = (groundY - nearPoint.y) / ray.y;
+	if (distance < 0.0f || !std::isfinite(distance)) {
+		return false;
+	}
+	outPosition = nearPoint + ray * distance;
+	return std::isfinite(outPosition.x) && std::isfinite(outPosition.z);
+}
+
 float LerpFloat(float start, float end, float progress)
 {
 	return start + (end - start) * progress;
@@ -143,7 +167,8 @@ void Player::InitializeObjects()
 	aimIndicatorObject_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	aimIndicatorObject_->SetEnvironmentReflectionStrength(0.0f);
 	aimIndicatorObject_->SetEnvironmentRoughness(1.0f);
-	aimIndicatorObject_->SetColor({ 1.0f, 1.0f, 1.0f, 0.9f });
+	aimIndicatorObject_->SetLighting(false);
+	aimIndicatorObject_->SetColor({ 0.15f, 1.0f, 1.0f, 1.0f });
 	lightSettings_.ApplyTo(*aimIndicatorObject_);
 }
 
@@ -267,10 +292,51 @@ void Player::UpdateMovement(float deltaTime)
 {
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
 	const Vector2 moveInput = GameInputBindings::GetMoveVector(input);
+	UpdateDodge(deltaTime, moveInput);
+	if (IsDodging()) {
+		position_.x += dodgeDirection_.x * kDodgeSpeed * deltaTime;
+		position_.z += dodgeDirection_.z * kDodgeSpeed * deltaTime;
+		return;
+	}
 	const float movePerFrame = moveSpeedPerSecond_ * deltaTime;
 
 	position_.x += moveInput.x * movePerFrame;
 	position_.z += moveInput.y * movePerFrame;
+}
+
+void Player::UpdateDodge(float deltaTime, const Vector2& moveInput)
+{
+	dodgeCooldownTimer_ = (std::max)(0.0f, dodgeCooldownTimer_ - deltaTime);
+	dodgeTimer_ = (std::max)(0.0f, dodgeTimer_ - deltaTime);
+
+	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	const bool dodgeTriggered =
+		input &&
+		!GameInputBindings::IsGameInputSuppressedByImGui() &&
+		(input->TriggerKey(DIK_SPACE) || input->TriggerGamePadButton(XINPUT_GAMEPAD_B));
+	if (suppressNextDodgeTrigger_) {
+		suppressNextDodgeTrigger_ = false;
+		return;
+	}
+	if (dodgeTriggered && dodgeCooldownTimer_ <= 0.0f) {
+		Vector3 direction{ moveInput.x, 0.0f, moveInput.y };
+		const float length = std::sqrt(direction.x * direction.x + direction.z * direction.z);
+		if (length > 0.001f) {
+			direction.x /= length;
+			direction.z /= length;
+		} else {
+			direction = { std::sin(rotationY_), 0.0f, std::cos(rotationY_) };
+		}
+		dodgeDirection_ = direction;
+		dodgeTimer_ = kDodgeDuration;
+		dodgeCooldownTimer_ = kDodgeCooldown;
+		rotationY_ = std::atan2(direction.x, direction.z);
+	}
+}
+
+float Player::GetDodgeCooldownRatio() const
+{
+	return std::clamp(dodgeCooldownTimer_ / kDodgeCooldown, 0.0f, 1.0f);
 }
 
 void Player::UpdateAim(float deltaTime)
@@ -289,6 +355,7 @@ void Player::UpdateAim(float deltaTime)
 	Vector2 padAim{};
 	if (GameInputBindings::GetAimVector(input, padAim)) {
 		aimInputDevice_ = AimInputDevice::Gamepad;
+		aimIndicatorTracksMouse_ = false;
 		const float targetAngle = std::atan2(padAim.x, padAim.y);
 		const float diff = NormalizeAngle(targetAngle - rotationY_);
 		const float rotateLerp = std::clamp(deltaTime * 30.0f, 0.0f, 1.0f);
@@ -298,6 +365,7 @@ void Player::UpdateAim(float deltaTime)
 
 	if (gamepadActive) {
 		aimInputDevice_ = AimInputDevice::Gamepad;
+		aimIndicatorTracksMouse_ = false;
 	}
 	if (keyboardMouseActive) {
 		aimInputDevice_ = AimInputDevice::KeyboardMouse;
@@ -321,7 +389,11 @@ void Player::UpdateAim(float deltaTime)
 	}
 	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 	const Matrix4x4& viewProjection = camera_->GetViewProjectionMatrix();
-
+	Vector3 mouseGroundPosition{};
+	if (UnprojectMouseToGround(mousePosition, clientSize, viewProjection, 2.3f, mouseGroundPosition)) {
+		aimIndicatorPosition_ = mouseGroundPosition;
+		aimIndicatorTracksMouse_ = true;
+	}
 	Vector2 playerScreen{};
 	Vector2 xAxisScreen{};
 	Vector2 zAxisScreen{};
@@ -365,6 +437,7 @@ void Player::UpdateAim(float deltaTime)
 	const float diff = NormalizeAngle(targetAngle - rotationY_);
 	const float rotateLerp = std::clamp(deltaTime * 30.0f, 0.0f, 1.0f);
 	rotationY_ = NormalizeAngle(rotationY_ + diff * rotateLerp);
+	aimIndicatorTracksMouse_ = true;
 }
 
 void Player::UpdateAimIndicator()
@@ -374,17 +447,12 @@ void Player::UpdateAimIndicator()
 	}
 
 	const Vector3 forward{ std::sin(rotationY_), 0.0f, std::cos(rotationY_) };
-	constexpr float kIndicatorLength = 2.0f;
-	constexpr float kIndicatorStartOffset = 5.75f;
-	constexpr float kIndicatorHalfLength = kIndicatorLength * 0.5f;
-
-	aimIndicatorObject_->SetRotate({ 0.0f, rotationY_, 0.0f });
-	aimIndicatorObject_->SetScale({ 0.28f, 0.08f, kIndicatorLength });
-	aimIndicatorObject_->SetTranslate({
-		position_.x + forward.x * (kIndicatorStartOffset + kIndicatorHalfLength),
-		-1.0f,
-		position_.z + forward.z * (kIndicatorStartOffset + kIndicatorHalfLength),
-		});
+	const Vector3 indicatorPosition = aimIndicatorTracksMouse_
+		? aimIndicatorPosition_
+		: Vector3{ position_.x + forward.x * 8.0f, 2.3f, position_.z + forward.z * 8.0f };
+	aimIndicatorObject_->SetRotate({ 0.0f, 0.0f, 0.0f });
+	aimIndicatorObject_->SetScale({ 0.48f, 0.48f, 0.48f });
+	aimIndicatorObject_->SetTranslate(indicatorPosition);
 }
 
 void Player::UpdateCamera(bool advanceFollow)
@@ -405,34 +473,51 @@ void Player::UpdateCamera(bool advanceFollow)
 		cameraFocusPosition_.y += (position_.y - cameraFocusPosition_.y) * followRate;
 		cameraFocusPosition_.z += (position_.z - cameraFocusPosition_.z) * followRate;
 	}
+	if (advanceFollow) {
+		const float zoomRate = 1.0f - std::exp(-3.6f * kFixedDeltaTime);
+		combatCameraDistance_ += (combatCameraTargetDistance_ - combatCameraDistance_) * zoomRate;
+		combatCameraHeight_ += (combatCameraTargetHeight_ - combatCameraHeight_) * zoomRate;
+		cameraShakeCooldownTimer_ = (std::max)(0.0f, cameraShakeCooldownTimer_ - kFixedDeltaTime);
+		cameraShakeTimer_ = (std::max)(0.0f, cameraShakeTimer_ - kFixedDeltaTime);
+		cameraShakePhase_ += 2.1f;
+	}
 
 	const Vector3 focus = cameraFocusPosition_;
 
 	auto applyCamera = [this, focus](Engine::CameraSystem::Camera& camera) {
+		const float effectiveDistance = combatCameraDistance_;
+		const float effectiveHeight = combatCameraHeight_;
 		switch (cameraMode_) {
 		case CameraMode::PlayerBack: {
 			const Vector3 forward{ std::sin(rotationY_), 0.0f, std::cos(rotationY_) };
 			camera.SetTranslate({
-				focus.x - forward.x * cameraDistance_,
-				cameraHeight_,
-				focus.z - forward.z * cameraDistance_,
+				focus.x - forward.x * effectiveDistance,
+				effectiveHeight,
+				focus.z - forward.z * effectiveDistance,
 				});
 			camera.SetRotate({ cameraPitch_, rotationY_, 0.0f });
 			break;
 		}
 		case CameraMode::WorldFront:
-			camera.SetTranslate({ focus.x, cameraHeight_, focus.z + cameraDistance_ });
+			camera.SetTranslate({ focus.x, effectiveHeight, focus.z + effectiveDistance });
 			camera.SetRotate({ cameraPitch_, 3.14159265f, 0.0f });
 			break;
 		case CameraMode::TopDown:
-			camera.SetTranslate({ focus.x, cameraHeight_, focus.z });
+			camera.SetTranslate({ focus.x, effectiveHeight, focus.z });
 			camera.SetRotate({ 1.57079633f, 0.0f, 0.0f });
 			break;
 		case CameraMode::WorldBack:
 		default:
-			camera.SetTranslate({ focus.x, cameraHeight_, focus.z - cameraDistance_ });
+			camera.SetTranslate({ focus.x, effectiveHeight, focus.z - effectiveDistance });
 			camera.SetRotate({ cameraPitch_, 0.0f, 0.0f });
 			break;
+		}
+		if (cameraShakeTimer_ > 0.0f && cameraShakeDuration_ > 0.0f) {
+			const float fade = cameraShakeTimer_ / cameraShakeDuration_;
+			Vector3 shakenPosition = camera.GetTransform().translate;
+			shakenPosition.x += std::sin(cameraShakePhase_ * 2.3f) * cameraShakeStrength_ * fade;
+			shakenPosition.y += std::cos(cameraShakePhase_ * 1.7f) * cameraShakeStrength_ * 0.38f * fade;
+			camera.SetTranslate(shakenPosition);
 		}
 		camera.SetFarClip(500.0f);
 		camera.Update();
@@ -446,6 +531,24 @@ void Player::UpdateCamera(bool advanceFollow)
 	}
 }
 
+void Player::RequestCameraShake(float duration, float strength)
+{
+	if (cameraShakeCooldownTimer_ > 0.0f) {
+		return;
+	}
+	cameraShakeDuration_ = std::clamp(duration, 0.0f, 0.16f);
+	cameraShakeTimer_ = cameraShakeDuration_;
+	cameraShakeStrength_ = std::clamp(strength, 0.0f, 0.85f);
+	cameraShakeCooldownTimer_ = 0.12f;
+	cameraShakePhase_ = 0.0f;
+}
+
+void Player::SetCombatCameraTarget(float distance, float height)
+{
+	combatCameraTargetDistance_ = std::clamp(distance, 30.0f, 62.0f);
+	combatCameraTargetHeight_ = std::clamp(height, 54.0f, 96.0f);
+}
+
 void Player::ApplyTransforms()
 {
 	if (playerObject_) {
@@ -454,6 +557,12 @@ void Player::ApplyTransforms()
 		} else {
 			playerObject_->SetRotate({ 0.0f, rotationY_, 0.0f });
 			playerObject_->SetTranslate(position_);
+			playerObject_->SetScale(IsDodging()
+				? Vector3{ kPlayerModelScale * 0.8f, kPlayerModelScale * 0.8f, kPlayerModelScale * 1.35f }
+				: Vector3{ kPlayerModelScale, kPlayerModelScale, kPlayerModelScale });
+			playerObject_->SetColor(IsDodging()
+				? Vector4{ 0.55f, 0.9f, 1.0f, 0.72f }
+				: Vector4{ 1.0f, 1.0f, 1.0f, 1.0f });
 		}
 	}
 	UpdateAimIndicator();

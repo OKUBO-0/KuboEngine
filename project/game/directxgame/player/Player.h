@@ -43,8 +43,18 @@ public:
 	CameraMode GetCameraMode() const { return cameraMode_; }
 	bool IsMouseAimEnabled() const { return mouseAimEnabled_; }
 	AimInputDevice GetAimInputDevice() const { return aimInputDevice_; }
-	void SetCameraHeight(float height) { cameraHeight_ = height; }
-	void SetCameraDistance(float distance) { cameraDistance_ = distance; }
+	void SetCameraHeight(float height)
+	{
+		cameraHeight_ = height;
+		combatCameraHeight_ = height;
+		combatCameraTargetHeight_ = height;
+	}
+	void SetCameraDistance(float distance)
+	{
+		cameraDistance_ = distance;
+		combatCameraDistance_ = distance;
+		combatCameraTargetDistance_ = distance;
+	}
 	void SetCameraPitch(float pitch) { cameraPitch_ = pitch; }
 	void SetCameraFollowSmoothness(float smoothness) { cameraFollowSmoothness_ = smoothness; }
 	void SetCameraMode(CameraMode mode) { cameraMode_ = mode; }
@@ -55,6 +65,11 @@ public:
 	void UpdateIntroPresentation(float elapsedTime, float duration);
 	void StartDeathPresentation();
 	void UpdateDeathPresentation(float elapsedTime, float duration);
+	bool IsDodging() const { return dodgeTimer_ > 0.0f; }
+	float GetDodgeCooldownRatio() const;
+	void RequestCameraShake(float duration, float strength);
+	void SetCombatCameraTarget(float distance, float height);
+	void SuppressNextDodgeTrigger() { suppressNextDodgeTrigger_ = true; }
 
 private:
 	void InitializeCamera();
@@ -65,6 +80,7 @@ private:
 	void UpdateCamera(bool advanceFollow);
 	void ApplyTransforms();
 	void ApplyDeathPose(float progress);
+	void UpdateDodge(float deltaTime, const Vector2& moveInput);
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	float rotationY_ = 0.0f;
@@ -74,6 +90,10 @@ private:
 	float cameraDistance_ = 45.0f;
 	float cameraPitch_ = 1.0f;
 	float cameraFollowSmoothness_ = 8.0f;
+	float combatCameraDistance_ = 45.0f;
+	float combatCameraHeight_ = 80.0f;
+	float combatCameraTargetDistance_ = 45.0f;
+	float combatCameraTargetHeight_ = 80.0f;
 	Vector3 cameraFocusPosition_{ 0.0f, 0.0f, 0.0f };
 	bool cameraFollowInitialized_ = false;
 	float deathStartCameraHeight_ = 80.0f;
@@ -84,6 +104,21 @@ private:
 	CameraMode cameraMode_ = CameraMode::WorldBack;
 	bool mouseAimEnabled_ = true;
 	AimInputDevice aimInputDevice_ = AimInputDevice::KeyboardMouse;
+	Vector3 aimIndicatorPosition_{ 0.0f, -1.0f, 6.0f };
+	bool aimIndicatorTracksMouse_ = false;
+	bool suppressNextDodgeTrigger_ = false;
+	Vector3 dodgeDirection_{ 0.0f, 0.0f, 1.0f };
+	float dodgeTimer_ = 0.0f;
+	float dodgeCooldownTimer_ = 0.0f;
+	float cameraShakeTimer_ = 0.0f;
+	float cameraShakeDuration_ = 0.0f;
+	float cameraShakeStrength_ = 0.0f;
+	float cameraShakeCooldownTimer_ = 0.0f;
+	float cameraShakePhase_ = 0.0f;
+
+	static constexpr float kDodgeDuration = 0.22f;
+	static constexpr float kDodgeCooldown = 0.8f;
+	static constexpr float kDodgeSpeed = 78.0f;
 
 	std::unique_ptr<Engine::CameraSystem::Camera> camera_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> playerObject_;

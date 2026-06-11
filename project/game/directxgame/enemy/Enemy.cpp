@@ -30,9 +30,15 @@ void Enemy::Initialize()
 	deathPresentationActive_ = false;
 	hitFlashTimer_ = 0.0f;
 	knockbackTimer_ = 0.0f;
+	knockbackCooldownTimer_ = 0.0f;
 	knockbackVelocity_ = { 0.0f, 0.0f, 0.0f };
 	floatingVisualEnabled_ = false;
+	groundImpactPending_ = false;
 	floatingShadowObject_.reset();
+	boss_ = false;
+	bossPhase_ = 1;
+	bossPhaseChanged_ = false;
+	bossPhaseTransitionTimer_ = 0.0f;
 
 	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
@@ -51,11 +57,14 @@ void Enemy::Update(float deltaTime)
 		return;
 	}
 
+	previousPosition_ = position_;
 	ClearBehaviorVisual();
 
 	if (hitFlashTimer_ > 0.0f) {
 		hitFlashTimer_ -= deltaTime;
 	}
+	knockbackCooldownTimer_ = (std::max)(0.0f, knockbackCooldownTimer_ - deltaTime);
+	bossPhaseTransitionTimer_ = (std::max)(0.0f, bossPhaseTransitionTimer_ - deltaTime);
 
 	if (knockbackTimer_ > 0.0f) {
 		const float velocityScale = deltaTime / 0.016f;
@@ -68,12 +77,14 @@ void Enemy::Update(float deltaTime)
 		if (knockbackTimer_ <= 0.0f) {
 			knockbackVelocity_ = { 0.0f, 0.0f, 0.0f };
 		}
-	} else if (behavior_) {
+	} else if (behavior_ && bossPhaseTransitionTimer_ <= 0.0f) {
 		behavior_->Update(*this, deltaTime);
 	}
 
 	if (object_) {
-		object_->SetColor(hitFlashTimer_ > 0.0f ? Vector4{ 8.0f, 8.0f, 8.0f, 1.0f } : behaviorColor_);
+		const bool phaseFlash = bossPhaseTransitionTimer_ > 0.0f &&
+			static_cast<int32_t>(bossPhaseTransitionTimer_ * 18.0f) % 2 == 0;
+		object_->SetColor((hitFlashTimer_ > 0.0f || phaseFlash) ? Vector4{ 8.0f, 8.0f, 8.0f, 1.0f } : behaviorColor_);
 		ApplyTransform();
 		object_->Update();
 	}
@@ -109,12 +120,22 @@ void Enemy::UpdateDeathPresentation(float elapsedTime, float duration)
 
 void Enemy::SetPosition(const Vector3& position)
 {
+	if (!active_) {
+		return;
+	}
 	position_ = position;
 	ApplyTransform();
 	if (object_) {
 		object_->Update();
 	}
 	UpdateFloatingShadow();
+}
+
+bool Enemy::ConsumeGroundImpact()
+{
+	const bool impacted = groundImpactPending_;
+	groundImpactPending_ = false;
+	return impacted;
 }
 
 void Enemy::SetRotationY(float rotationY)
@@ -157,6 +178,7 @@ void Enemy::SetModelByType(int32_t type)
 	case 2: modelName = "Enemy3.obj"; break;
 	case 3: modelName = "Enemy4.obj"; break;
 	case 4: modelName = "Enemy4.obj"; break;
+	case 5: modelName = "octopus.obj"; break;
 	default: break;
 	}
 
@@ -168,6 +190,7 @@ void Enemy::SetModelByType(int32_t type)
 
 void Enemy::SetBehaviorByType(int32_t type)
 {
+	type_ = type;
 	behavior_ = CreateEnemyBehaviorByType(type);
 	floatingVisualEnabled_ = type == 4;
 	if (floatingVisualEnabled_) {
@@ -175,6 +198,27 @@ void Enemy::SetBehaviorByType(int32_t type)
 	} else {
 		floatingShadowObject_.reset();
 	}
+}
+
+void Enemy::SetBoss(bool boss)
+{
+	boss_ = boss;
+	floatingVisualEnabled_ = false;
+	if (floatingShadowObject_) {
+		floatingShadowObject_.reset();
+	}
+}
+
+float Enemy::GetHpRatio() const
+{
+	return maxHp_ > 0 ? std::clamp(static_cast<float>(hp_) / static_cast<float>(maxHp_), 0.0f, 1.0f) : 0.0f;
+}
+
+bool Enemy::ConsumeBossPhaseChanged()
+{
+	const bool changed = bossPhaseChanged_;
+	bossPhaseChanged_ = false;
+	return changed;
 }
 
 void Enemy::SetLightSettings(const GameLightSettings& lightSettings)
@@ -207,11 +251,24 @@ void Enemy::TakeDamage(int32_t damage, const Vector3& knockDirection, float stre
 	}
 
 	hitFlashTimer_ = kHitFlashDuration;
+	if (boss_) {
+		const float hpRatio = GetHpRatio();
+		const int32_t nextPhase = hpRatio <= 0.33f ? 3 : (hpRatio <= 0.66f ? 2 : 1);
+		if (nextPhase != bossPhase_) {
+			bossPhase_ = nextPhase;
+			bossPhaseChanged_ = true;
+			bossPhaseTransitionTimer_ = 0.7f;
+			knockbackVelocity_ = { 0.0f, 0.0f, 0.0f };
+			knockbackTimer_ = 0.0f;
+		}
+	}
 	const float length = std::sqrt(knockDirection.x * knockDirection.x + knockDirection.z * knockDirection.z);
-	if (length > 0.001f && strength > 0.0f) {
-		knockbackVelocity_.x = (knockDirection.x / length) * strength;
-		knockbackVelocity_.z = (knockDirection.z / length) * strength;
+	if (length > 0.001f && strength > 0.0f && knockbackCooldownTimer_ <= 0.0f && bossPhaseTransitionTimer_ <= 0.0f) {
+		const float resistance = boss_ ? 0.18f : 1.0f;
+		knockbackVelocity_.x = (knockDirection.x / length) * strength * resistance;
+		knockbackVelocity_.z = (knockDirection.z / length) * strength * resistance;
 		knockbackTimer_ = kKnockbackDuration;
+		knockbackCooldownTimer_ = boss_ ? 0.8f : kKnockbackCooldown;
 	}
 }
 

@@ -70,7 +70,7 @@ public:
     /// @brief モデルを描画する
     /// @param なし
     /// @return なし
-    void Draw();
+    void Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0);
 
     /// @brief Assimp ノードを再帰的に読み込んで内部ノードへ変換する
     /// @param node 読み込み対象の Assimp ノード

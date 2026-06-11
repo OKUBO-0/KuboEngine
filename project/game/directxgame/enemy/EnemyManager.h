@@ -51,6 +51,7 @@ public:
 	bool IsBossDefeated() const { return bossDefeated_; }
 	bool GetBossPresentationPosition(Vector3& outPosition) const;
 	void UpdateBossDeathPresentation(float elapsedTime, float duration);
+	bool ConsumeBossPhaseChanged(Vector3& outPosition, int32_t& outPhase);
 
 private:
 	using EnemyCellMap = std::unordered_map<int64_t, std::vector<Enemy*>>;

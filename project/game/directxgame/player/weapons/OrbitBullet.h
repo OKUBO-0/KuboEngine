@@ -16,6 +16,7 @@ public:
 
 	bool IsActive() const { return active_; }
 	const Vector3& GetPosition() const { return position_; }
+	const Vector3& GetPreviousPosition() const { return previousPosition_; }
 	float GetCollisionRadius() const;
 	Engine::Math::AABB GetCollisionAabb() const;
 	Engine::Math::OBB GetCollisionObb() const;
@@ -27,6 +28,7 @@ private:
 	void ApplyTransform();
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
+	Vector3 previousPosition_{ 0.0f, 0.0f, 0.0f };
 	float orbitRadius_ = 10.0f;
 	float angle_ = 0.0f;
 	float angularSpeed_ = 0.05f;

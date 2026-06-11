@@ -22,6 +22,12 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	scale_ = scale;
 	hitInterval_ = hitInterval;
 	active_ = true;
+	position_ = {
+		center.x + std::cos(angle_) * orbitRadius_,
+		center.y,
+		center.z + std::sin(angle_) * orbitRadius_,
+	};
+	previousPosition_ = position_;
 
 	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	const ModelHandle bulletHandle = GameModelCache::Load("bullet.obj");
@@ -42,6 +48,7 @@ void OrbitBullet::Update(const Vector3& center, float deltaTime)
 		return;
 	}
 
+	previousPosition_ = position_;
 	angle_ += angularSpeed_ * (deltaTime / 0.016f);
 	position_ = {
 		center.x + std::cos(angle_) * orbitRadius_,

@@ -161,7 +161,7 @@ void Model::LoadMaterialTexture()
 	modelData.material.textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath);
 }
 
-void Model::Draw()
+void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 {
 	// 頂点バッファビュー（通常頂点 + スキンクラスター影響情報）
 	D3D12_VERTEX_BUFFER_VIEW vbvs[2] = {
@@ -176,7 +176,9 @@ void Model::Draw()
 	modelCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
 
 	// マテリアルCBV設定
-	modelCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+	modelCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(
+		0,
+		materialAddress != 0 ? materialAddress : materialResource->GetGPUVirtualAddress());
 
 	// テクスチャSRV設定
 	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath));

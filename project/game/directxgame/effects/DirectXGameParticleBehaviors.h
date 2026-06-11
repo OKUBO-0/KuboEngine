@@ -104,4 +104,53 @@ private:
 	Settings settings_{};
 };
 
+class TrailParticleBehavior : public Engine::Particle::IParticleBehavior {
+public:
+	struct Settings {
+		float lifetime = 0.16f;
+		float scaleMin = 0.20f;
+		float scaleMax = 0.34f;
+		float shrinkRate = 0.82f;
+		float yOffset = 0.15f;
+		float fadeInRatio = 0.12f;
+		float fadeOutPower = 1.8f;
+	};
+
+	explicit TrailParticleBehavior(
+		const Vector4& color,
+		const Settings& settings = Settings{});
+
+	Engine::Particle::Particle Create(std::mt19937& rng, const Vector3& pos) override;
+	void Update(Engine::Particle::Particle& particle, float dt, Engine::Math::Material* materialData) override;
+
+private:
+	Vector4 color_{};
+	Settings settings_{};
+};
+
+class LightningImpactParticleBehavior : public Engine::Particle::IParticleBehavior {
+public:
+	struct Settings {
+		float lifetime = 0.28f;
+		float horizontalSpeedMin = 0.08f;
+		float horizontalSpeedMax = 0.24f;
+		float verticalSpeedMin = 0.08f;
+		float verticalSpeedMax = 0.28f;
+		float scaleMin = 0.10f;
+		float scaleMax = 0.24f;
+		float gravity = 0.018f;
+	};
+
+	explicit LightningImpactParticleBehavior(
+		const Vector4& color = { 0.58f, 0.9f, 1.0f, 1.0f },
+		const Settings& settings = Settings{});
+
+	Engine::Particle::Particle Create(std::mt19937& rng, const Vector3& pos) override;
+	void Update(Engine::Particle::Particle& particle, float dt, Engine::Math::Material* materialData) override;
+
+private:
+	Vector4 color_{};
+	Settings settings_{};
+};
+
 } // namespace DirectXGame

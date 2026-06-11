@@ -213,33 +213,123 @@ public:
 			return;
 		}
 
-		phaseTimer_ += deltaTime;
+		const Vector3 playerPosition = player->GetWorldPosition();
+		if (!initialized_) {
+			startPosition_ = enemy.GetPosition();
+			startPosition_.y = kGroundY;
+			targetPosition_ = { playerPosition.x, kGroundY, playerPosition.z };
+			const float dx = targetPosition_.x - startPosition_.x;
+			const float dz = targetPosition_.z - startPosition_.z;
+			const float distance = std::sqrt(dx * dx + dz * dz);
+			flightDuration_ = std::clamp(distance / (enemy.GetSpeed() * 105.0f), 1.35f, 2.25f);
+			arcHeight_ = std::clamp(distance * 0.22f, 7.0f, 12.0f);
+			initialized_ = true;
+		}
+
+		elapsedTime_ += deltaTime;
+		const float t = std::clamp(elapsedTime_ / flightDuration_, 0.0f, 1.0f);
+		if (!targetLocked_) {
+			targetPosition_.x = playerPosition.x;
+			targetPosition_.z = playerPosition.z;
+			if (t >= kTargetLockProgress) {
+				targetLocked_ = true;
+			}
+		}
+
+		const float oneMinusT = 1.0f - t;
+		Vector3 nextPosition{
+			startPosition_.x * oneMinusT + targetPosition_.x * t,
+			kGroundY + 4.0f * arcHeight_ * t * oneMinusT,
+			startPosition_.z * oneMinusT + targetPosition_.z * t,
+		};
+		const Vector3 previousPosition = enemy.GetPosition();
+		const Vector3 movement = nextPosition - previousPosition;
+		enemy.SetPosition(nextPosition);
+		enemy.SetRotationY(std::atan2(movement.x, movement.z));
+		enemy.SetBehaviorVisual(
+			targetLocked_ ? Vector4{ 1.0f, 0.28f, 0.2f, 1.0f } : Vector4{ 1.0f, 0.62f, 0.18f, 1.0f },
+			0.62f + t * 0.12f);
+
+		if (t >= 1.0f && nextPosition.y <= kGroundY + 0.001f) {
+			enemy.DeactivateOnGroundImpact();
+		}
+	}
+
+private:
+	static constexpr float kGroundY = 0.0f;
+	static constexpr float kTargetLockProgress = 0.70f;
+
+	bool initialized_ = false;
+	bool targetLocked_ = false;
+	float elapsedTime_ = 0.0f;
+	float flightDuration_ = 1.6f;
+	float arcHeight_ = 9.0f;
+	Vector3 startPosition_{};
+	Vector3 targetPosition_{};
+};
+
+class BossEnemyBehavior final : public IEnemyBehavior {
+public:
+	void Update(Enemy& enemy, float deltaTime) override
+	{
+		Player* player = enemy.GetPlayer();
+		if (!player) {
+			return;
+		}
+
+		phaseTime_ += deltaTime;
+		actionTimer_ -= deltaTime;
+		const int32_t phase = enemy.GetBossPhase();
 		const Vector3 position = enemy.GetPosition();
 		const Vector3 playerPosition = player->GetWorldPosition();
-		Vector3 toPlayer = NormalizeXZ({ playerPosition.x - position.x, 0.0f, playerPosition.z - position.z });
+		Vector3 toPlayer{ playerPosition.x - position.x, 0.0f, playerPosition.z - position.z };
+		const float distance = std::sqrt(toPlayer.x * toPlayer.x + toPlayer.z * toPlayer.z);
+		toPlayer = NormalizeXZ(toPlayer);
 		if (toPlayer.x == 0.0f && toPlayer.z == 0.0f) {
 			toPlayer = { 0.0f, 0.0f, 1.0f };
 		}
 
-		Vector3 nextPosition = position;
-		const float distance = std::sqrt(
-			(playerPosition.x - position.x) * (playerPosition.x - position.x) +
-			(playerPosition.z - position.z) * (playerPosition.z - position.z));
-		const bool diving = std::fmod(phaseTimer_, 4.2f) > 2.75f || distance < 9.0f;
-		const float targetHeight = diving ? 0.65f : 5.5f + std::sin(phaseTimer_ * 2.6f) * 1.2f;
-		nextPosition.y += (targetHeight - nextPosition.y) * (diving ? 0.18f : 0.07f);
-		nextPosition.x += toPlayer.x * ToFrameScaledSpeed(enemy.GetSpeed() * (diving ? 1.95f : 0.85f), deltaTime);
-		nextPosition.z += toPlayer.z * ToFrameScaledSpeed(enemy.GetSpeed() * (diving ? 1.95f : 0.85f), deltaTime);
+		if (rushTimer_ > 0.0f) {
+			rushTimer_ -= deltaTime;
+			const float rushMultiplier = phase == 3 ? 4.2f : (phase == 2 ? 3.5f : 2.9f);
+			enemy.SetBehaviorVisual(
+				phase == 3 ? Vector4{ 1.0f, 0.12f, 0.12f, 1.0f } : Vector4{ 1.0f, 0.42f, 0.18f, 1.0f },
+				phase == 3 ? 2.8f : 2.55f);
+			MoveEnemy(enemy, rushDirection_, ToFrameScaledSpeed(enemy.GetSpeed() * rushMultiplier, deltaTime));
+			return;
+		}
 
-		enemy.SetPosition(nextPosition);
-		enemy.SetRotationY(std::atan2(toPlayer.x, toPlayer.z));
-		enemy.SetBehaviorVisual(
-			diving ? Vector4{ 1.0f, 0.35f, 0.85f, 1.0f } : Vector4{ 0.7f, 0.9f, 1.0f, 1.0f },
-			diving ? 1.35f : 1.55f);
+		if (actionTimer_ <= 0.0f) {
+			rushDirection_ = toPlayer;
+			rushTimer_ = phase == 3 ? 0.42f : 0.32f;
+			actionTimer_ = phase == 3 ? 0.75f : (phase == 2 ? 1.15f : 1.7f);
+			return;
+		}
+
+		const float strafeSign = std::sin(phaseTime_ * (phase == 3 ? 2.8f : 1.7f)) >= 0.0f ? 1.0f : -1.0f;
+		const Vector3 side{ -toPlayer.z * strafeSign, 0.0f, toPlayer.x * strafeSign };
+		float approach = distance > 18.0f ? 1.1f : (distance < 10.0f ? -0.85f : 0.15f);
+		if (phase == 3) {
+			approach += 0.35f;
+		}
+		Vector3 movement = NormalizeXZ({
+			toPlayer.x * approach + side.x,
+			0.0f,
+			toPlayer.z * approach + side.z,
+			});
+		const float moveMultiplier = phase == 3 ? 1.8f : (phase == 2 ? 1.45f : 1.1f);
+		const Vector4 color = phase == 3
+			? Vector4{ 1.0f, 0.18f, 0.22f, 1.0f }
+			: (phase == 2 ? Vector4{ 1.0f, 0.55f, 0.16f, 1.0f } : Vector4{ 0.58f, 0.3f, 1.0f, 1.0f });
+		enemy.SetBehaviorVisual(color, phase == 3 ? 2.6f : (phase == 2 ? 2.4f : 2.2f));
+		MoveEnemy(enemy, movement, ToFrameScaledSpeed(enemy.GetSpeed() * moveMultiplier, deltaTime));
 	}
 
 private:
-	float phaseTimer_ = 0.0f;
+	float phaseTime_ = 0.0f;
+	float actionTimer_ = 1.2f;
+	float rushTimer_ = 0.0f;
+	Vector3 rushDirection_{ 0.0f, 0.0f, 1.0f };
 };
 
 } // namespace
@@ -257,6 +347,9 @@ std::unique_ptr<IEnemyBehavior> CreateEnemyBehaviorByType(int32_t type)
 	}
 	if (type == 4) {
 		return std::make_unique<FloatingDiveEnemyBehavior>();
+	}
+	if (type == 5) {
+		return std::make_unique<BossEnemyBehavior>();
 	}
 	return std::make_unique<ChaseEnemyBehavior>();
 }

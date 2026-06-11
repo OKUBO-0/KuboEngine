@@ -4,6 +4,7 @@
 #include <d3d12.h>
 #include <wrl.h>
 #include <unordered_map>
+#include <vector>
 
 /// @brief テクスチャ資産の読込と SRV 管理を行うクラス
 /// @details テクスチャファイルを GPU リソースへ展開し、ファイルパス単位で
@@ -57,6 +58,7 @@ public:
 	/// @param filePath 読み込むテクスチャのファイルパス
 	/// @return なし
 	void LoadTexture(const std::string& filePath);
+	void LoadTextures(const std::vector<std::string>& filePaths);
 
 	/// @brief ファイルパスに対応するテクスチャの SRV インデックスを取得する
 	/// @param filePath 検索対象のファイルパス
@@ -76,6 +78,9 @@ private:
 	DirectX::ScratchImage LoadTextureImage(const std::string& filePath);
 	DirectX::ScratchImage CreateMipImages(DirectX::ScratchImage&& image);
 	void UploadTextureResource(TexturData& textureData, const DirectX::ScratchImage& mipImages);
+	Microsoft::WRL::ComPtr<ID3D12Resource> RecordTextureUpload(
+		TexturData& textureData, const DirectX::ScratchImage& mipImages);
+	void CreateTextureSrv(TexturData& textureData);
 
 	//テクスチャデータ
 	

@@ -46,21 +46,25 @@ private:
 	void InitializeUi();
 	void InitializePauseBuildUi();
 	void InitializeParticles();
+	void InitializeLightningEffects();
 	void LoadDebugTuning();
 	void SaveDebugTuning() const;
 	void SaveSoftCapTelemetrySnapshot() const;
 	void ApplyParticleBehaviorTuning();
 	void UpdateGamePlay(float deltaTime);
 	void UpdateEffects();
+	void UpdateLightningEffects();
 	void UpdateUi(float deltaTime);
 	void UpdatePauseBuildUi();
 	void UpdateLevelUpAnimation(float deltaTime);
 	void DrawUi();
+	void DrawLightningEffects();
 	void DrawPauseBuildUi();
 	void SavePauseBuildLayout() const;
 	void EnterPlaying();
 	void TogglePause();
 	void StartBossPhase();
+	void UpdateBossEntrance(float deltaTime);
 	void StartBossDefeatPresentation();
 	void UpdateBossDefeatPresentation(float deltaTime);
 	void UpdateBossDeathCamera(float progress);
@@ -90,6 +94,7 @@ private:
 	enum class GameState {
 		Start,
 		Playing,
+		BossIntro,
 		Boss,
 		BossDefeated,
 		Paused,
@@ -145,8 +150,7 @@ private:
 		int32_t enemyDeathSmokeCount = 10;
 		int32_t expSparkCount = 8;
 		int32_t lightningSparkCount = 14;
-		int32_t lightningRippleCount = 1;
-		int32_t levelUpConfettiCount = 22;
+		int32_t levelUpConfettiCount = 120;
 		int32_t playerDeathSparkCount = 48;
 		int32_t playerDeathSmokeCount = 18;
 		int32_t playerDeathRippleCount = 2;
@@ -193,13 +197,16 @@ private:
 	std::unique_ptr<GridPlane> gridPlane_;
 	std::unique_ptr<SkyDome> skyDome_;
 	std::unique_ptr<CurtainTransition> curtain_;
+	static constexpr size_t kLightningEffectSegmentCount = 6;
+	static constexpr size_t kLightningEffectMaxTargets = 4;
+	std::array<std::unique_ptr<Engine::Graphics3D::Object3D>, kLightningEffectSegmentCount * kLightningEffectMaxTargets> lightningEffectObjects_;
 	GameLightSettings lightSettings_{};
 	Engine::CameraSystem::Camera debugCamera_{};
 	Vector3 debugCameraPosition_{ 0.0f, 85.0f, -85.0f };
 	Vector3 debugCameraRotation_{ 0.82f, 0.0f, 0.0f };
 	Vector3 playerLightOffset_ = GameLightDefaults::kPlayerLightOffset;
 	bool debugCameraEnabled_ = false;
-	bool lightDebugDrawEnabled_ = true;
+	bool lightDebugDrawEnabled_ = false;
 	bool playerLightFollowsPlayer_ = true;
 
 	GameState gameState_ = GameState::Start;
@@ -236,7 +243,11 @@ private:
 	float hitFlashTimer_ = 0.0f;
 	float deathTimer_ = 0.0f;
 	float bossDeathTimer_ = 0.0f;
+	float bossIntroTimer_ = 0.0f;
 	Vector3 bossDeathFocusPosition_{ 0.0f, 0.0f, 0.0f };
+	Vector3 bossIntroFocusPosition_{ 0.0f, 0.0f, 0.0f };
+	Vector3 bossIntroStartCameraPosition_{ 0.0f, 0.0f, 0.0f };
+	Vector3 bossIntroStartCameraRotation_{ 0.0f, 0.0f, 0.0f };
 	Vector3 bossDeathStartCameraPosition_{ 0.0f, 0.0f, 0.0f };
 	Vector3 bossDeathStartCameraRotation_{ 0.0f, 0.0f, 0.0f };
 	float startIntroTimer_ = 0.0f;
@@ -263,6 +274,7 @@ private:
 	bool deathCurtainStarted_ = false;
 	bool bossDeathCurtainStarted_ = false;
 	bool bossDeathEffectEmitted_ = false;
+	bool bossIntroEffectEmitted_ = false;
 	bool startIntroFinished_ = false;
 	bool pauseReturnToBoss_ = false;
 	bool debugDrawEnabled_ = false;
