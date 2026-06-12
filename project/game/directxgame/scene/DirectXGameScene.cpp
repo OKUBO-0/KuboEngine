@@ -1,42 +1,36 @@
 #include "game/directxgame/scene/DirectXGameScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/GameAudioDebugPanel.h"
+#include "game/directxgame/core/GameAudioTuning.h"
+#include "game/directxgame/core/GameplayRuntimeDebugPanel.h"
+#include "game/directxgame/core/GameplaySceneDebugPanel.h"
+#include "game/directxgame/core/GameplayPlayerDebugPanel.h"
+#include "game/directxgame/core/GameplayInputDebugPanel.h"
+#include "game/directxgame/core/GameplayDebugEditorShell.h"
+#include "game/directxgame/core/GameplayDebugDraw.h"
+#include "game/directxgame/core/GameplayRenderingDebugPanel.h"
+#include "game/directxgame/core/GameplayVisualDebugPanel.h"
 #include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/GameModelCache.h"
-#include "game/directxgame/core/GameTextureCache.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/effects/DirectXGameParticleBehaviors.h"
-#include "ImGuizmoManager.h"
+#include "game/directxgame/core/SceneLighting.h"
 #include "CameraManager.h"
 #include "Input.h"
-#include "DirectXCommon.h"
-#include "Line.h"
 #include "LineCommon.h"
-#include "Model.h"
 #include "MyMath.h"
 #include "Object3DCommon.h"
 #include "OffscreenRenderManager.h"
 #include "ParticleManager.h"
 #include "SceneManager.h"
 #include "SpriteCommon.h"
-#include "SrvManager.h"
 #include <algorithm>
 #include <cmath>
-#include <fstream>
-#include <iterator>
-#include <optional>
-#include <random>
 #include <string>
 #include <utility>
-#include <vector>
 #ifdef _DEBUG
-#include "DebugEditorManager.h"
-#include "IconsFontAwesome5.h"
-#include <implot.h>
 #include <imgui.h>
-#include <imgui_node_editor.h>
 #endif
 
 namespace {
@@ -46,189 +40,9 @@ constexpr char kAudioStart[] = "game.start";
 constexpr char kAudioPauseToggle[] = "game.pauseToggle";
 constexpr char kAudioLevelUp[] = "game.levelUp";
 constexpr char kAudioDeath[] = "game.death";
-constexpr float kLevelUpSlideSpeed = 4200.0f;
-constexpr Vector2 kLevelUpChoiceSize{ 1280.0f, 720.0f };
-constexpr float kLevelUpChoiceStepY = 140.0f;
-constexpr Vector2 kLevelUpChoiceHitboxOffset{ 465.0f, 214.0f };
-constexpr Vector2 kLevelUpChoiceHitboxSize{ 435.0f, 68.0f };
-constexpr float kPauseCursorStepY = 168.0f;
-constexpr float kStartIntroDuration = 1.2f;
-constexpr float kDeathPresentationDuration = 1.35f;
-constexpr float kDeathCurtainStartTime = 1.55f;
-constexpr float kDeathOverlayDelay = 1.25f;
-constexpr float kBossDeathPresentationDuration = 1.45f;
-constexpr float kBossDeathCurtainStartTime = 1.55f;
-constexpr float kBossIntroDuration = 1.6f;
-constexpr float kBossDeathCameraDistance = 30.0f;
-constexpr float kBossDeathCameraHeight = 22.0f;
-constexpr float kBossDeathCameraPitch = 0.68f;
-constexpr std::array<std::pair<const char*, float>, 13> kAudioTuningDefaults{ {
-	{ "title.bgm", 0.1f },
-	{ "title.select", 1.0f },
-	{ "title.decide", 1.0f },
-	{ kAudioStart, 1.0f },
-	{ kAudioPauseToggle, 0.5f },
-	{ kAudioLevelUp, 1.0f },
-	{ kAudioDeath, 1.0f },
-	{ "combat.shot", 1.0f },
-	{ "combat.enemyHit", 0.5f },
-	{ "combat.enemyDeath", 1.0f },
-	{ "combat.playerDamage", 0.8f },
-	{ "combat.expPickup", 1.0f },
-	{ "result.finish", 1.0f },
-} };
-
 float Clamp01(float value)
 {
 	return std::clamp(value, 0.0f, 1.0f);
-}
-
-const char* BoolText(bool value)
-{
-	return value ? "true" : "false";
-}
-
-Vector2 GetKeyboardMoveDebug(Engine::InputSystem::Input* input)
-{
-	Vector2 move{ 0.0f, 0.0f };
-	if (!input) {
-		return move;
-	}
-
-	if (input->PushKey(DIK_W) || input->PushKey(DIK_UP)) { move.y += 1.0f; }
-	if (input->PushKey(DIK_S) || input->PushKey(DIK_DOWN)) { move.y -= 1.0f; }
-	if (input->PushKey(DIK_A) || input->PushKey(DIK_LEFT)) { move.x -= 1.0f; }
-	if (input->PushKey(DIK_D) || input->PushKey(DIK_RIGHT)) { move.x += 1.0f; }
-	return move;
-}
-
-Vector2 GetGamepadMoveDebug(Engine::InputSystem::Input* input)
-{
-	if (!input) {
-		return { 0.0f, 0.0f };
-	}
-
-	Vector2 move{
-		DirectXGame::GameInputBindings::ClampAxis(input->GetGamePadStickX()),
-		DirectXGame::GameInputBindings::ClampAxis(input->GetGamePadStickY()),
-	};
-	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_UP)) { move.y += 1.0f; }
-	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_DOWN)) { move.y -= 1.0f; }
-	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_LEFT)) { move.x -= 1.0f; }
-	if (input->PushGamePadButton(XINPUT_GAMEPAD_DPAD_RIGHT)) { move.x += 1.0f; }
-	return move;
-}
-
-std::string WeaponLevelTexturePath(const char* weaponDirectory, int32_t nextLevel)
-{
-	return std::string("ui/game/") + weaponDirectory + "/lv" + std::to_string(nextLevel) + ".png";
-}
-
-void PreloadLevelUpTextures()
-{
-	const std::array<const char*, 17> staticTextures{
-		"ui/game/lvup_attack.png",
-		"ui/game/lvup_attack_icon.png",
-		"ui/game/lvup_maxhp.png",
-		"ui/game/lvup_maxhp_icon.png",
-		"ui/game/lvup_speed.png",
-		"ui/game/lvup_speed_icon.png",
-		"ui/game/lvup_heal.png",
-		"ui/game/lvup_heal_icon.png",
-		"ui/game/normal/icon.png",
-		"ui/game/orbit/icon.png",
-		"ui/game/orbit/add.png",
-		"ui/game/drone/icon.png",
-		"ui/game/drone/add.png",
-		"ui/game/lightning/icon.png",
-		"ui/game/lightning/add.png",
-		"ui/game/levelup.png",
-		"ui/game/pause_arrow.png",
-	};
-
-	std::vector<std::string> texturePaths;
-	texturePaths.reserve(staticTextures.size() + 28);
-	for (const char* texture : staticTextures) {
-		texturePaths.emplace_back(texture);
-	}
-
-	const std::array<const char*, 4> weaponDirectories{ "normal", "orbit", "drone", "lightning" };
-	for (const char* weaponDirectory : weaponDirectories) {
-		for (int32_t level = 2; level <= 8; ++level) {
-			texturePaths.push_back(WeaponLevelTexturePath(weaponDirectory, level));
-		}
-	}
-
-	DirectXGame::GameTextureCache::LoadBatch(texturePaths);
-}
-
-bool IsPointInRect(const Vector2& point, const Vector2& rectPosition, const Vector2& rectSize)
-{
-	return point.x >= rectPosition.x &&
-		point.x <= rectPosition.x + rectSize.x &&
-		point.y >= rectPosition.y &&
-		point.y <= rectPosition.y + rectSize.y;
-}
-
-struct LevelUpConfettiSpawnArea {
-	Vector3 center{};
-	Vector3 horizontalAxis{ 1.0f, 0.0f, 0.0f };
-	Vector3 verticalAxis{ 0.0f, 1.0f, 0.0f };
-	Vector3 depthAxis{ 0.0f, 0.0f, 1.0f };
-	float horizontalRange = 5.5f;
-};
-
-LevelUpConfettiSpawnArea CalculateLevelUpConfettiSpawnArea(const DirectXGame::Player& player)
-{
-	const Vector3 playerPosition = player.GetWorldPosition();
-	LevelUpConfettiSpawnArea spawnArea{};
-	spawnArea.center = playerPosition;
-
-	const Engine::CameraSystem::Camera* activeCamera =
-		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-	if (!activeCamera) {
-		return spawnArea;
-	}
-
-	const Matrix4x4& cameraWorld = activeCamera->GetWorldMatrix();
-	const Matrix4x4& projection = activeCamera->GetProjectionMatrix();
-	const Vector3 cameraPosition = activeCamera->GetTransform().translate;
-	Vector3 cameraForward = MyMath::Normalize(Vector3{
-		cameraWorld.m[2][0],
-		cameraWorld.m[2][1],
-		cameraWorld.m[2][2],
-		});
-	const Vector3 cameraRight = MyMath::Normalize(Vector3{
-		cameraWorld.m[0][0],
-		cameraWorld.m[0][1],
-		cameraWorld.m[0][2],
-		});
-	const Vector3 cameraUp = MyMath::Normalize(Vector3{
-		cameraWorld.m[1][0],
-		cameraWorld.m[1][1],
-		cameraWorld.m[1][2],
-		});
-
-	float playerDepth = MyMath::Dot(playerPosition - cameraPosition, cameraForward);
-	if (playerDepth <= 0.1f) {
-		cameraForward = cameraForward * -1.0f;
-		playerDepth = MyMath::Dot(playerPosition - cameraPosition, cameraForward);
-	}
-	if (playerDepth <= 0.1f) {
-		playerDepth = 20.0f;
-	}
-
-	const float halfHeight = projection.m[1][1] != 0.0f ? playerDepth / projection.m[1][1] : std::tan(0.45f * 0.5f) * playerDepth;
-	const float halfWidth = projection.m[0][0] != 0.0f ? playerDepth / projection.m[0][0] : halfHeight * (16.0f / 9.0f);
-	constexpr float kBottomScreenOffsetRatio = 0.84f;
-	spawnArea.center = cameraPosition +
-		cameraForward * playerDepth +
-		cameraUp * (-halfHeight * kBottomScreenOffsetRatio);
-	spawnArea.horizontalAxis = cameraRight;
-	spawnArea.verticalAxis = cameraUp;
-	spawnArea.depthAxis = cameraForward;
-	spawnArea.horizontalRange = halfWidth * 0.98f;
-	return spawnArea;
 }
 
 }
@@ -242,6 +56,7 @@ DirectXGameScene::DirectXGameScene(std::shared_ptr<DirectXGameSessionContext> se
 
 void DirectXGameScene::Initialize()
 {
+	gameplayFlow_.Reset();
 	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 
 	if (sessionContext_) {
@@ -250,17 +65,18 @@ void DirectXGameScene::Initialize()
 
 	InitializeLighting();
 	InitializeWorld();
-	InitializeDebugCamera();
-	LoadDebugTuning();
+	debugContext_.InitializeCamera();
+	particleEffects_.Initialize();
+	debugContext_.Load(player_.get(), particleEffects_);
 	if (player_) {
 		player_->StartIntroPresentation();
 	}
 	InitializeUi();
-	InitializeParticles();
-	InitializeLightningEffects();
-	curtain_ = std::make_unique<CurtainTransition>();
-	curtain_->Initialize();
-	curtain_->StartOpen(20.0f);
+	combatEffectsPresentation_.Initialize();
+	if (playerManager_) {
+		combatEffectsPresentation_.Reset(*playerManager_);
+	}
+	sceneTransition_.Initialize();
 	ApplyPostEffect();
 }
 
@@ -271,7 +87,7 @@ void DirectXGameScene::Finalize()
 	if (levelUpSeHandle_ != 0) { GameAudioCache::Stop(levelUpSeHandle_); }
 	if (gameOverSeHandle_ != 0) { GameAudioCache::Stop(gameOverSeHandle_); }
 	Engine::CameraSystem::CameraManager::GetInstance()->RemoveCamera("directxgame_player");
-	Engine::CameraSystem::CameraManager::GetInstance()->RemoveCamera("directxgame_debug");
+	debugContext_.FinalizeCamera();
 }
 
 void DirectXGameScene::Update()
@@ -283,39 +99,42 @@ void DirectXGameScene::Update()
 		navigationInputDevice_);
 
 	UpdateUi(kFixedDeltaTime);
-	UpdateCurtain(kFixedDeltaTime);
-
-	if (!pendingSceneId_.empty()) {
+	if (sceneTransition_.Update(kFixedDeltaTime)) {
+		Engine::Scene::SceneManager::GetInstance()->ChangeScene(
+			sceneTransition_.GetPendingSceneId());
+	}
+	if (sceneTransition_.HasPendingScene()) {
 		ApplyPostEffect();
 		UpdateDebugUi();
 		return;
 	}
 
 #ifdef _DEBUG
-	const bool gameplayFrozen = debugFreezeGameplay_;
+	const bool gameplayFrozen = debugContext_.IsGameplayFrozen();
 #else
 	const bool gameplayFrozen = false;
 #endif
 
-	if (gameState_ == GameState::Playing && !gameplayFrozen) {
-		if (timer_.GetTime() >= kGameTimeLimitSeconds) {
+	if (gameplayFlow_.Is(GameplayState::Playing) && !gameplayFrozen) {
+		if (gameplayHud_.GetTimer().GetTime() >= kGameTimeLimitSeconds) {
 			StartBossPhase();
 		}
 		UpdateGamePlay(kFixedDeltaTime);
-	} else if (gameState_ == GameState::BossIntro && !gameplayFrozen) {
+	} else if (gameplayFlow_.Is(GameplayState::BossIntro) && !gameplayFrozen) {
 		UpdateBossEntrance(kFixedDeltaTime);
-	} else if (gameState_ == GameState::Boss && !gameplayFrozen) {
+	} else if (gameplayFlow_.Is(GameplayState::Boss) && !gameplayFrozen) {
 		UpdateGamePlay(kFixedDeltaTime);
 		if (enemyManager_ && enemyManager_->IsBossDefeated()) {
 			StartBossDefeatPresentation();
 		}
-	} else if (gameState_ == GameState::BossDefeated) {
+	} else if (gameplayFlow_.Is(GameplayState::BossDefeated)) {
 		UpdateBossDefeatPresentation(kFixedDeltaTime);
-	} else if (gameState_ == GameState::Start) {
-		startIntroTimer_ = (std::min)(startIntroTimer_ + kFixedDeltaTime, kStartIntroDuration);
-		startIntroFinished_ = startIntroTimer_ >= kStartIntroDuration;
+	} else if (gameplayFlow_.Is(GameplayState::Start)) {
+		gameplayFlow_.UpdateIntro(kFixedDeltaTime);
 		if (player_) {
-			player_->UpdateIntroPresentation(startIntroTimer_, kStartIntroDuration);
+			player_->UpdateIntroPresentation(
+				gameplayFlow_.GetIntroElapsed(),
+				GameplayFlowController::kIntroDuration);
 		}
 	}
 	UpdateEffects();
@@ -326,24 +145,23 @@ void DirectXGameScene::Update()
 	if (skyDome_) {
 		skyDome_->Update();
 	}
-	UpdateDebugCamera();
+	debugContext_.UpdateCamera();
 
-	if (sessionContext_ && (gameState_ == GameState::Playing || gameState_ == GameState::Boss) && !gameplayFrozen) {
+	if (sessionContext_ && gameplayFlow_.IsCombatActive() && !gameplayFrozen) {
 		sessionContext_->AdvanceGameFrame();
 	}
 
-	if (gameState_ == GameState::Dead) {
-		deathTimer_ += kFixedDeltaTime;
+	if (gameplayFlow_.Is(GameplayState::Dead)) {
 		RecordResultSummary();
-		if (player_) {
-			player_->UpdateDeathPresentation(deathTimer_, kDeathPresentationDuration);
-		}
 		const GameMenuInputState menuInput = GameMenuController::Update(
 			Engine::InputSystem::Input::GetInstance(),
 			navigationInputDevice_);
 		navigationInputDevice_ = menuInput.device;
-		if (!deathCurtainStarted_ && (deathTimer_ >= kDeathCurtainStartTime || menuInput.confirm)) {
-			deathCurtainStarted_ = true;
+		if (player_ &&
+			playerDeathPresentation_.Update(
+				*player_,
+				kFixedDeltaTime,
+				menuInput.confirm)) {
 			RequestResultScene();
 		}
 	}
@@ -351,7 +169,6 @@ void DirectXGameScene::Update()
 	ApplyPostEffect();
 	UpdateDebugUi();
 	QueueDebugDraw();
-	QueueEffectDraw();
 }
 
 void DirectXGameScene::Draw()
@@ -383,553 +200,62 @@ void DirectXGameScene::Draw()
 	if (playerManager_) {
 		playerManager_->Draw();
 	}
-	DrawLightningEffects();
+	combatEffectsPresentation_.Draw();
 	Engine::Particle::ParticleManager::GetInstance()->Draw();
 	Engine::LineSystem::LineCommon::GetInstance()->Draw();
 
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
 	DrawUi();
-	if (curtain_) {
-		curtain_->Draw();
-	}
+	sceneTransition_.Draw();
 }
 
 void DirectXGameScene::InitializeLighting()
 {
-	SceneLightData sceneLight{};
-	sceneLight.color = { 1.0f, 0.94f, 0.88f, 1.0f };
-	sceneLight.direction = MyMath::Normalize(Vector3{ -0.55f, -1.0f, -0.45f });
-	sceneLight.intensity = 0.9f;
-	sceneLight.ambientColor = { 0.48f, 0.52f, 0.62f, 1.0f };
-	sceneLight.ambientIntensity = 0.34f;
-	sceneLight.specularStrength = 0.16f;
-	sceneLight.enable = 1;
-	sceneLight.padding = 0.0f;
-	Engine::Graphics3D::Object3DCommon::GetInstance()->SetSceneLight(sceneLight);
-	lightSettings_.SetLightingEnabled(true);
-}
-
-void DirectXGameScene::InitializeDebugCamera()
-{
-	debugCamera_.SetTranslate(debugCameraPosition_);
-	debugCamera_.SetRotate(debugCameraRotation_);
-	debugCamera_.SetFarClip(500.0f);
-	debugCamera_.Update();
-	Engine::CameraSystem::CameraManager::GetInstance()->AddCamera("directxgame_debug", &debugCamera_);
+	SceneLighting::Defaults defaults{};
+	defaults.light.color = { 1.0f, 0.94f, 0.88f, 1.0f };
+	defaults.light.direction = MyMath::Normalize(Vector3{ -0.55f, -1.0f, -0.45f });
+	defaults.light.intensity = 0.9f;
+	defaults.light.ambientColor = { 0.48f, 0.52f, 0.62f, 1.0f };
+	defaults.light.ambientIntensity = 0.34f;
+	defaults.light.specularStrength = 0.16f;
+	defaults.light.enable = 1;
+	SceneLighting::ApplyDefaults(defaults);
 }
 
 void DirectXGameScene::InitializeWorld()
 {
 	player_ = std::make_unique<Player>();
 	player_->Initialize();
-	player_->SetLightSettings(lightSettings_);
 
 	playerManager_ = std::make_unique<PlayerManager>();
 	playerManager_->Initialize(player_.get());
-	playerManager_->SetLightSettings(lightSettings_);
 	playerManager_->LoadStatusFromCSV(DataPaths::kPlayerStatus);
 	playerManager_->LoadWeaponUpgradeSettings(DataPaths::kWeaponUpgradeSettings);
 
 	enemyManager_ = std::make_unique<EnemyManager>();
-	enemyManager_->SetLightSettings(lightSettings_);
 	enemyManager_->Initialize(DataPaths::Resolve(DataPaths::kEnemyTypes), player_.get(), playerManager_.get());
 
 	gridPlane_ = std::make_unique<GridPlane>();
 	gridPlane_->Initialize();
-	gridPlane_->SetLightSettings(lightSettings_);
 	gridPlane_->Update(player_->GetWorldPosition());
 
 	skyDome_ = std::make_unique<SkyDome>();
 	skyDome_->Initialize();
-	skyDome_->SetLightSettings(lightSettings_);
 	skyDome_->Update();
 }
 
 void DirectXGameScene::InitializeUi()
 {
-	PreloadLevelUpTextures();
-	timer_.Initialize();
-	hpGauge_.Initialize();
-	expGauge_.Initialize();
-	keyUI_.Initialize();
-	miniMap_.Initialize();
-	gameplayMiniMap_.Initialize();
-	gameplayMiniMap_.ConfigureAsScaledCopy(miniMap_, 0.28f, { 1062.0f, 506.0f }, true);
-	gameplayMiniMap_.SetIconSizeMultiplier(1.75f);
-
-	startOverlay_.Initialize("ui/game/start.png", { 0.0f, 0.0f });
-	startOverlay_.SetSize({ 1280.0f, 720.0f });
-	pauseOverlay_.Initialize("ui/game/pause.png", { 0.0f, 0.0f });
-	pauseOverlay_.SetSize({ 1280.0f, 720.0f });
-	pauseCursor_.Initialize("ui/game/pause_arrow.png", { 0.0f, 0.0f });
-	levelUpOverlay_.Initialize("ui/game/levelup.png", { 0.0f, 0.0f });
-	levelUpOverlay_.SetSize({ 1280.0f, 720.0f });
-	const UILayoutIO::LayoutMap levelUpLayout = UILayoutIO::LoadOrDefault(DataPaths::kLevelupLayout, {});
-	levelUpChoiceSize_ = UILayoutIO::GetVector2(levelUpLayout, "choiceSize", kLevelUpChoiceSize);
-	levelUpChoiceStepY_ = UILayoutIO::GetFloat(levelUpLayout, "choiceSpacingY", kLevelUpChoiceStepY);
-	levelUpChoiceHitboxOffset_ = UILayoutIO::GetVector2(levelUpLayout, "choiceHitboxOffset", kLevelUpChoiceHitboxOffset);
-	levelUpChoiceHitboxSize_ = UILayoutIO::GetVector2(levelUpLayout, "choiceHitboxSize", kLevelUpChoiceHitboxSize);
-	hitFlashOverlay_.Initialize("white1x1.png", { 0.0f, 0.0f });
-	hitFlashOverlay_.SetSize({ 1280.0f, 720.0f });
-	hitFlashOverlay_.SetColor({ 1.0f, 0.12f, 0.08f, 1.0f });
-	hitFlashOverlay_.SetAlpha(0.0f);
-	hitFlashOverlay_.SetVisible(false);
-	deathOverlay_.Initialize("ui/game/death.png", { 0.0f, 0.0f });
-	deathOverlay_.SetSize({ 1280.0f, 720.0f });
-	deathOverlay_.SetAlpha(0.0f);
-	deathOverlay_.SetVisible(false);
-
-	for (UILabel& choiceSprite : levelUpChoiceSprites_) {
-		choiceSprite.Initialize("ui/game/lvup_attack.png", { 0.0f, 0.0f });
-		choiceSprite.SetSize(levelUpChoiceSize_);
-	}
-	for (UILabel& choiceIcon : levelUpChoiceIcons_) {
-		choiceIcon.Initialize("ui/game/lvup_attack_icon.png", { 0.0f, 0.0f });
-		choiceIcon.SetSize(levelUpChoiceSize_);
-		choiceIcon.SetVisible(false);
-	}
-	InitializePauseBuildUi();
+	gameplayHud_.Initialize(playerManager_.get());
+	levelUpSelectionHud_.Initialize();
+	pauseBuildHud_.Initialize();
 
 	startSeHandle_ = GameAudioCache::LoadWave("audio/se/se_exp.wav");
 	pauseSeHandle_ = GameAudioCache::LoadWave("audio/se/se_pause.wav");
 	levelUpSeHandle_ = GameAudioCache::LoadWave("audio/se/se_exp.wav");
 	gameOverSeHandle_ = GameAudioCache::LoadWave("audio/se/se_death.wav");
 
-	hpGauge_.SetHP(playerManager_ ? playerManager_->GetHP() : 1, playerManager_ ? playerManager_->GetMaxHP() : 1);
-	expGauge_.SetEXP(playerManager_ ? playerManager_->GetEXP() : 0, playerManager_ ? playerManager_->GetNextLevelEXP() : 1);
-	expGauge_.SetLevel(playerManager_ ? playerManager_->GetLevel() : 1);
-	previousHp_ = playerManager_ ? playerManager_->GetHP() : 0;
-	previousEffectHp_ = previousHp_;
-	previousEffectTotalExp_ = playerManager_ ? playerManager_->GetTotalEXP() : 0;
 	uiInitialized_ = true;
-}
-
-void DirectXGameScene::InitializePauseBuildUi()
-{
-	const UILayoutIO::LayoutMap layout = UILayoutIO::LoadOrDefault(DataPaths::kPauseLayout, {});
-	pauseBuildLayout_.position = UILayoutIO::GetVector2(layout, "pauseBuildPosition", pauseBuildLayout_.position);
-	pauseBuildLayout_.stepX = UILayoutIO::GetFloat(layout, "pauseBuildStepX", pauseBuildLayout_.stepX);
-	pauseBuildLayout_.iconSize = UILayoutIO::GetVector2(layout, "pauseBuildIconSize", pauseBuildLayout_.iconSize);
-	pauseBuildLayout_.visible = UILayoutIO::GetFloat(layout, "pauseBuildVisible", pauseBuildLayout_.visible ? 1.0f : 0.0f) > 0.5f;
-	pauseMenuLayout_.hitboxPositions[0] = UILayoutIO::GetVector2(layout, "menuHitbox0", pauseMenuLayout_.hitboxPositions[0]);
-	pauseMenuLayout_.hitboxPositions[1] = UILayoutIO::GetVector2(layout, "menuHitbox1", pauseMenuLayout_.hitboxPositions[1]);
-	pauseMenuLayout_.hitboxSize = UILayoutIO::GetVector2(layout, "menuHitboxSize", pauseMenuLayout_.hitboxSize);
-
-	const std::array<const char*, 5> iconPaths{
-		"ui/game/normal/icon.png",
-		"ui/game/orbit/icon.png",
-		"ui/game/drone/icon.png",
-		"ui/game/lightning/icon.png",
-		"ui/game/lvup_attack_icon.png",
-	};
-
-	for (size_t index = 0; index < pauseBuildIcons_.size(); ++index) {
-		pauseBuildIcons_[index].Initialize(iconPaths[index], {
-			pauseBuildLayout_.position.x + pauseBuildLayout_.stepX * static_cast<float>(index),
-			pauseBuildLayout_.position.y,
-		});
-		pauseBuildIcons_[index].SetSize(pauseBuildLayout_.iconSize);
-		pauseBuildIcons_[index].SetVisible(false);
-	}
-}
-
-void DirectXGameScene::InitializeParticles()
-{
-	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-	particleManager->CreateParticleGroup(
-		"DirectXGame.Ripple",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Ring,
-		std::make_unique<RippleParticleBehavior>(),
-		192);
-	particleManager->SetBehavior("DirectXGame.Ripple", std::make_unique<RippleParticleBehavior>());
-	particleManager->CreateParticleGroup(
-		"DirectXGame.Spark",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(),
-		384);
-	particleManager->SetBehavior("DirectXGame.Spark", std::make_unique<SparkParticleBehavior>());
-	particleManager->CreateParticleGroup(
-		"DirectXGame.EnemyHitSpark",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }),
-		384);
-	particleManager->SetBehavior("DirectXGame.EnemyHitSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }));
-	particleManager->CreateParticleGroup(
-		"DirectXGame.ExpSpark",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }),
-		256);
-	particleManager->SetBehavior("DirectXGame.ExpSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }));
-	particleManager->CreateParticleGroup(
-		"DirectXGame.LightningImpact",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<LightningImpactParticleBehavior>(),
-		256);
-	particleManager->CreateParticleGroup(
-		"DirectXGame.PlayerDeathSpark",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }),
-		256);
-	particleManager->SetBehavior("DirectXGame.PlayerDeathSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }));
-	particleManager->CreateParticleGroup(
-		"DirectXGame.DeathSmoke",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<SmokeParticleBehavior>(),
-		256);
-	particleManager->SetBehavior("DirectXGame.DeathSmoke", std::make_unique<SmokeParticleBehavior>());
-	particleManager->CreateParticleGroup(
-		"DirectXGame.Confetti",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<ConfettiParticleBehavior>(),
-		384);
-	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>());
-	particleManager->CreateParticleGroup(
-		"DirectXGame.NormalTrail",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.16f, 0.9f }),
-		320);
-	particleManager->CreateParticleGroup(
-		"DirectXGame.DroneTrail",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(Vector4{ 0.3f, 0.84f, 1.0f, 0.9f }),
-		256);
-	TrailParticleBehavior::Settings orbitTrailSettings{};
-	orbitTrailSettings.lifetime = 0.22f;
-	orbitTrailSettings.scaleMin = 0.26f;
-	orbitTrailSettings.scaleMax = 0.42f;
-	particleManager->CreateParticleGroup(
-		"DirectXGame.OrbitTrail",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(Vector4{ 0.68f, 0.38f, 1.0f, 0.88f }, orbitTrailSettings),
-		256);
-	TrailParticleBehavior::Settings suicideTrailSettings{};
-	suicideTrailSettings.lifetime = 0.48f;
-	suicideTrailSettings.shrinkRate = 0.94f;
-	suicideTrailSettings.fadeInRatio = 0.04f;
-	suicideTrailSettings.fadeOutPower = 2.2f;
-	particleManager->CreateParticleGroup(
-		"DirectXGame.SuicideEnemyTrail",
-		"Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(
-			Vector4{ 0.82f, 0.78f, 0.76f, 0.62f },
-			suicideTrailSettings),
-		384);
-	ApplyParticleBehaviorTuning();
-}
-
-void DirectXGameScene::InitializeLightningEffects()
-{
-	const ModelHandle modelHandle = GameModelCache::Load("cube.obj");
-	for (std::unique_ptr<Engine::Graphics3D::Object3D>& object : lightningEffectObjects_) {
-		object = std::make_unique<Engine::Graphics3D::Object3D>();
-		object->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
-		GameModelCache::ApplyToObject(*object, modelHandle);
-		object->SetSkyboxFilePath("Resources/textures/skybox/test.dds");
-		object->SetEnvironmentReflectionStrength(0.0f);
-		object->SetEnvironmentRoughness(1.0f);
-		object->SetLighting(false);
-		object->SetColor({ 0.42f, 0.84f, 1.0f, 0.0f });
-	}
-}
-
-void DirectXGameScene::LoadDebugTuning()
-{
-	const UILayoutIO::LayoutMap tuning = UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {});
-	auto loadWindowVisible = [&tuning](const char* key, bool fallback) {
-		return UILayoutIO::GetFloat(tuning, std::string("debugWindow.") + key, fallback ? 1.0f : 0.0f) > 0.5f;
-	};
-
-	debugWindows_.windowSwitcher = loadWindowVisible("windowSwitcher", debugWindows_.windowSwitcher);
-	debugWindows_.sceneView = loadWindowVisible("sceneView", debugWindows_.sceneView);
-	debugWindows_.objectView = loadWindowVisible("objectView", debugWindows_.objectView);
-	debugWindows_.particleView = loadWindowVisible("particleView", debugWindows_.particleView);
-	debugWindows_.statisticsView = loadWindowVisible("statisticsView", debugWindows_.statisticsView);
-	debugWindows_.offscreenSettings = loadWindowVisible("offscreenSettings", debugWindows_.offscreenSettings);
-	debugWindows_.lightSettings = loadWindowVisible("lightSettings", debugWindows_.lightSettings);
-	debugWindows_.gizmo = loadWindowVisible("gizmo", debugWindows_.gizmo);
-	debugWindows_.objectManager = loadWindowVisible("objectManager", debugWindows_.objectManager);
-	debugWindows_.motionEditor = loadWindowVisible("motionEditor", debugWindows_.motionEditor);
-	debugWindows_.spriteManager = loadWindowVisible("spriteManager", debugWindows_.spriteManager);
-	debugWindows_.colliderTagManager = loadWindowVisible("colliderTagManager", debugWindows_.colliderTagManager);
-	debugWindows_.audio = loadWindowVisible("audio", debugWindows_.audio);
-	debugWindows_.keyInputDebug = loadWindowVisible("keyInputDebug", debugWindows_.keyInputDebug);
-	debugWindows_.sceneSettings = loadWindowVisible("sceneSettings", debugWindows_.sceneSettings);
-	debugWindows_.sceneSpecificDebug = loadWindowVisible("sceneSpecificDebug", debugWindows_.sceneSpecificDebug);
-	debugWindows_.objectSettings = loadWindowVisible("objectSettings", debugWindows_.objectSettings);
-
-	GameAudioCache::SetMasterVolume(UILayoutIO::GetFloat(tuning, "audio.master", GameAudioCache::GetMasterVolume()));
-	for (const auto& [key, fallback] : kAudioTuningDefaults) {
-		GameAudioCache::SetTunedVolume(key, UILayoutIO::GetFloat(tuning, std::string("audio.") + key, fallback));
-	}
-
-	particleTuning_.playerDamageSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDamageSparkCount", static_cast<float>(particleTuning_.playerDamageSparkCount)));
-	particleTuning_.playerDamageRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDamageRippleCount", static_cast<float>(particleTuning_.playerDamageRippleCount)));
-	particleTuning_.enemyHitSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyHitSparkCount", static_cast<float>(particleTuning_.enemyHitSparkCount)));
-	particleTuning_.enemyDeathSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathSparkCount", static_cast<float>(particleTuning_.enemyDeathSparkCount)));
-	particleTuning_.enemyDeathSmokeCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.enemyDeathSmokeCount", static_cast<float>(particleTuning_.enemyDeathSmokeCount)));
-	particleTuning_.expSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.expSparkCount", static_cast<float>(particleTuning_.expSparkCount)));
-	particleTuning_.lightningSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.lightningSparkCount", static_cast<float>(particleTuning_.lightningSparkCount)));
-	particleTuning_.levelUpConfettiCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.levelUpConfettiCount", static_cast<float>(particleTuning_.levelUpConfettiCount)));
-	particleTuning_.playerDeathSparkCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDeathSparkCount", static_cast<float>(particleTuning_.playerDeathSparkCount)));
-	particleTuning_.playerDeathSmokeCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDeathSmokeCount", static_cast<float>(particleTuning_.playerDeathSmokeCount)));
-	particleTuning_.playerDeathRippleCount = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "particle.playerDeathRippleCount", static_cast<float>(particleTuning_.playerDeathRippleCount)));
-	particleTuning_.sparkLifetime = UILayoutIO::GetFloat(tuning, "particle.sparkLifetime", particleTuning_.sparkLifetime);
-	particleTuning_.sparkVelocityScale = UILayoutIO::GetFloat(tuning, "particle.sparkVelocityScale", particleTuning_.sparkVelocityScale);
-	particleTuning_.sparkScaleMultiplier = UILayoutIO::GetFloat(tuning, "particle.sparkScaleMultiplier", particleTuning_.sparkScaleMultiplier);
-	particleTuning_.smokeLifetime = UILayoutIO::GetFloat(tuning, "particle.smokeLifetime", particleTuning_.smokeLifetime);
-	particleTuning_.smokeScaleMultiplier = UILayoutIO::GetFloat(tuning, "particle.smokeScaleMultiplier", particleTuning_.smokeScaleMultiplier);
-	particleTuning_.rippleLifetime = UILayoutIO::GetFloat(tuning, "particle.rippleLifetime", particleTuning_.rippleLifetime);
-	particleTuning_.rippleExpandSpeed = UILayoutIO::GetFloat(tuning, "particle.rippleExpandSpeed", particleTuning_.rippleExpandSpeed);
-	particleTuning_.confettiVelocityScale = UILayoutIO::GetFloat(tuning, "particle.confettiVelocityScale", particleTuning_.confettiVelocityScale);
-	particleTuning_.confettiScaleMultiplier = UILayoutIO::GetFloat(tuning, "particle.confettiScaleMultiplier", particleTuning_.confettiScaleMultiplier);
-
-	if (player_) {
-		player_->SetCameraHeight(UILayoutIO::GetFloat(tuning, "camera.height", player_->GetCameraHeight()));
-		player_->SetCameraDistance(UILayoutIO::GetFloat(tuning, "camera.distance", player_->GetCameraDistance()));
-		player_->SetCameraPitch(UILayoutIO::GetFloat(tuning, "camera.pitch", player_->GetCameraPitch()));
-		player_->SetCameraFollowSmoothness(UILayoutIO::GetFloat(tuning, "camera.followSmoothness", player_->GetCameraFollowSmoothness()));
-		player_->SetMouseAimEnabled(UILayoutIO::GetFloat(tuning, "camera.mouseAimEnabled", player_->IsMouseAimEnabled() ? 1.0f : 0.0f) > 0.5f);
-		const int32_t cameraMode = static_cast<int32_t>(UILayoutIO::GetFloat(tuning, "camera.mode", static_cast<float>(player_->GetCameraMode())));
-		if (cameraMode >= 0 && cameraMode <= static_cast<int32_t>(Player::CameraMode::TopDown)) {
-			player_->SetCameraMode(static_cast<Player::CameraMode>(cameraMode));
-		}
-	}
-	debugCameraPosition_ = UILayoutIO::GetVector3(tuning, "debugCamera.position", debugCameraPosition_);
-	debugCameraRotation_ = UILayoutIO::GetVector3(tuning, "debugCamera.rotation", debugCameraRotation_);
-	debugCameraEnabled_ = UILayoutIO::GetFloat(tuning, "debugCamera.enabled", debugCameraEnabled_ ? 1.0f : 0.0f) > 0.5f;
-	lightDebugDrawEnabled_ = UILayoutIO::GetFloat(tuning, "light.debugDrawEnabled", lightDebugDrawEnabled_ ? 1.0f : 0.0f) > 0.5f;
-	Engine::Graphics3D::Object3DCommon* objectCommon =
-		Engine::Graphics3D::Object3DCommon::GetInstance();
-	SceneLightData sceneLight = objectCommon->GetSceneLight();
-	const Vector3 lightColor = UILayoutIO::GetVector3(
-		tuning, "sun.color", { sceneLight.color.x, sceneLight.color.y, sceneLight.color.z });
-	sceneLight.color = { lightColor.x, lightColor.y, lightColor.z, 1.0f };
-	sceneLight.direction = UILayoutIO::GetVector3(tuning, "sun.direction", sceneLight.direction);
-	sceneLight.intensity = UILayoutIO::GetFloat(tuning, "sun.intensity", sceneLight.intensity);
-	const Vector3 ambientColor = UILayoutIO::GetVector3(
-		tuning, "sun.ambientColor",
-		{ sceneLight.ambientColor.x, sceneLight.ambientColor.y, sceneLight.ambientColor.z });
-	sceneLight.ambientColor = { ambientColor.x, ambientColor.y, ambientColor.z, 1.0f };
-	sceneLight.ambientIntensity =
-		UILayoutIO::GetFloat(tuning, "sun.ambientIntensity", sceneLight.ambientIntensity);
-	sceneLight.specularStrength =
-		UILayoutIO::GetFloat(tuning, "sun.specularStrength", sceneLight.specularStrength);
-	sceneLight.enable =
-		UILayoutIO::GetFloat(tuning, "sun.enabled", sceneLight.enable ? 1.0f : 0.0f) > 0.5f;
-	objectCommon->SetSceneLight(sceneLight);
-	objectCommon->SetShadowEnabled(
-		UILayoutIO::GetFloat(tuning, "shadow.enabled", 1.0f) > 0.5f);
-	objectCommon->SetShadowStrength(
-		UILayoutIO::GetFloat(tuning, "shadow.strength", objectCommon->GetShadowStrength()));
-	objectCommon->SetShadowSoftness(
-		UILayoutIO::GetFloat(tuning, "shadow.softness", objectCommon->GetShadowSoftness()));
-	objectCommon->SetShadowBias(
-		UILayoutIO::GetFloat(tuning, "shadow.bias", objectCommon->GetShadowBias()));
-	objectCommon->SetShadowArea(
-		UILayoutIO::GetFloat(tuning, "shadow.area", objectCommon->GetShadowArea()));
-}
-
-void DirectXGameScene::SaveDebugTuning() const
-{
-#ifdef _DEBUG
-	std::vector<UILayoutIO::Entry> entries{
-		{ "audio.master", { GameAudioCache::GetMasterVolume() } },
-		{ "particle.playerDamageSparkCount", { static_cast<float>(particleTuning_.playerDamageSparkCount) } },
-		{ "particle.playerDamageRippleCount", { static_cast<float>(particleTuning_.playerDamageRippleCount) } },
-		{ "particle.enemyHitSparkCount", { static_cast<float>(particleTuning_.enemyHitSparkCount) } },
-		{ "particle.enemyDeathSparkCount", { static_cast<float>(particleTuning_.enemyDeathSparkCount) } },
-		{ "particle.enemyDeathSmokeCount", { static_cast<float>(particleTuning_.enemyDeathSmokeCount) } },
-		{ "particle.expSparkCount", { static_cast<float>(particleTuning_.expSparkCount) } },
-		{ "particle.lightningSparkCount", { static_cast<float>(particleTuning_.lightningSparkCount) } },
-		{ "particle.levelUpConfettiCount", { static_cast<float>(particleTuning_.levelUpConfettiCount) } },
-		{ "particle.playerDeathSparkCount", { static_cast<float>(particleTuning_.playerDeathSparkCount) } },
-		{ "particle.playerDeathSmokeCount", { static_cast<float>(particleTuning_.playerDeathSmokeCount) } },
-		{ "particle.playerDeathRippleCount", { static_cast<float>(particleTuning_.playerDeathRippleCount) } },
-		{ "particle.sparkLifetime", { particleTuning_.sparkLifetime } },
-		{ "particle.sparkVelocityScale", { particleTuning_.sparkVelocityScale } },
-		{ "particle.sparkScaleMultiplier", { particleTuning_.sparkScaleMultiplier } },
-		{ "particle.smokeLifetime", { particleTuning_.smokeLifetime } },
-		{ "particle.smokeScaleMultiplier", { particleTuning_.smokeScaleMultiplier } },
-		{ "particle.rippleLifetime", { particleTuning_.rippleLifetime } },
-		{ "particle.rippleExpandSpeed", { particleTuning_.rippleExpandSpeed } },
-		{ "particle.confettiVelocityScale", { particleTuning_.confettiVelocityScale } },
-		{ "particle.confettiScaleMultiplier", { particleTuning_.confettiScaleMultiplier } },
-	};
-
-	for (const auto& [key, fallback] : kAudioTuningDefaults) {
-		entries.push_back({ std::string("audio.") + key, { GameAudioCache::GetTunedVolume(key, fallback) } });
-	}
-	auto saveWindowVisible = [&entries](const char* key, bool visible) {
-		entries.push_back({ std::string("debugWindow.") + key, { visible ? 1.0f : 0.0f } });
-	};
-	saveWindowVisible("windowSwitcher", debugWindows_.windowSwitcher);
-	saveWindowVisible("sceneView", debugWindows_.sceneView);
-	saveWindowVisible("objectView", debugWindows_.objectView);
-	saveWindowVisible("particleView", debugWindows_.particleView);
-	saveWindowVisible("statisticsView", debugWindows_.statisticsView);
-	saveWindowVisible("offscreenSettings", debugWindows_.offscreenSettings);
-	saveWindowVisible("lightSettings", debugWindows_.lightSettings);
-	saveWindowVisible("gizmo", debugWindows_.gizmo);
-	saveWindowVisible("objectManager", debugWindows_.objectManager);
-	saveWindowVisible("motionEditor", debugWindows_.motionEditor);
-	saveWindowVisible("spriteManager", debugWindows_.spriteManager);
-	saveWindowVisible("colliderTagManager", debugWindows_.colliderTagManager);
-	saveWindowVisible("audio", debugWindows_.audio);
-	saveWindowVisible("keyInputDebug", debugWindows_.keyInputDebug);
-	saveWindowVisible("sceneSettings", debugWindows_.sceneSettings);
-	saveWindowVisible("sceneSpecificDebug", debugWindows_.sceneSpecificDebug);
-	saveWindowVisible("objectSettings", debugWindows_.objectSettings);
-	if (player_) {
-		entries.push_back({ "camera.height", { player_->GetCameraHeight() } });
-		entries.push_back({ "camera.distance", { player_->GetCameraDistance() } });
-		entries.push_back({ "camera.pitch", { player_->GetCameraPitch() } });
-		entries.push_back({ "camera.followSmoothness", { player_->GetCameraFollowSmoothness() } });
-		entries.push_back({ "camera.mode", { static_cast<float>(player_->GetCameraMode()) } });
-		entries.push_back({ "camera.mouseAimEnabled", { player_->IsMouseAimEnabled() ? 1.0f : 0.0f } });
-	}
-	entries.push_back({ "debugCamera.enabled", { debugCameraEnabled_ ? 1.0f : 0.0f } });
-	entries.push_back({ "debugCamera.position", { debugCameraPosition_.x, debugCameraPosition_.y, debugCameraPosition_.z } });
-	entries.push_back({ "debugCamera.rotation", { debugCameraRotation_.x, debugCameraRotation_.y, debugCameraRotation_.z } });
-	entries.push_back({ "light.debugDrawEnabled", { lightDebugDrawEnabled_ ? 1.0f : 0.0f } });
-
-	const Engine::Graphics3D::Object3DCommon* objectCommon =
-		Engine::Graphics3D::Object3DCommon::GetInstance();
-	const SceneLightData& sceneLight = objectCommon->GetSceneLight();
-	entries.push_back({ "sun.enabled", { sceneLight.enable ? 1.0f : 0.0f } });
-	entries.push_back({ "sun.color", { sceneLight.color.x, sceneLight.color.y, sceneLight.color.z } });
-	entries.push_back({ "sun.direction", { sceneLight.direction.x, sceneLight.direction.y, sceneLight.direction.z } });
-	entries.push_back({ "sun.intensity", { sceneLight.intensity } });
-	entries.push_back({ "sun.ambientColor", {
-		sceneLight.ambientColor.x, sceneLight.ambientColor.y, sceneLight.ambientColor.z } });
-	entries.push_back({ "sun.ambientIntensity", { sceneLight.ambientIntensity } });
-	entries.push_back({ "sun.specularStrength", { sceneLight.specularStrength } });
-	entries.push_back({ "shadow.enabled", { objectCommon->IsShadowEnabled() ? 1.0f : 0.0f } });
-	entries.push_back({ "shadow.strength", { objectCommon->GetShadowStrength() } });
-	entries.push_back({ "shadow.softness", { objectCommon->GetShadowSoftness() } });
-	entries.push_back({ "shadow.bias", { objectCommon->GetShadowBias() } });
-	entries.push_back({ "shadow.area", { objectCommon->GetShadowArea() } });
-	UILayoutIO::Save(DataPaths::kDebugTuning, entries);
-#endif
-}
-
-void DirectXGameScene::SaveSoftCapTelemetrySnapshot() const
-{
-#ifdef _DEBUG
-	const std::string path = DataPaths::Resolve(DataPaths::kSoftCapTelemetry);
-	bool writeHeader = true;
-	{
-		std::ifstream existing(path);
-		writeHeader = !existing.good() || existing.peek() == std::ifstream::traits_type::eof();
-	}
-
-	std::ofstream file(path, std::ios::app);
-	if (!file.is_open()) {
-		return;
-	}
-
-	const uint32_t gameFrameCount = sessionContext_ ? sessionContext_->GetGameFrameCount() : 0u;
-	const uint32_t telemetryFrames = gameFrameCount >= debugSoftCapTelemetryStartFrame_ ?
-		gameFrameCount - debugSoftCapTelemetryStartFrame_ :
-		gameFrameCount;
-	const float telemetryMinutes = static_cast<float>(telemetryFrames) / (60.0f * 60.0f);
-	const float pruneRateDivisor = (std::max)(telemetryMinutes, 0.01f);
-
-	const size_t enemyCount = enemyManager_ ? enemyManager_->GetActiveEnemyCount() : 0;
-	const int32_t killCount = enemyManager_ ? enemyManager_->GetTotalKillCount() : 0;
-	const size_t expOrbCount = enemyManager_ ? enemyManager_->GetExpOrbCount() : 0;
-	const size_t expOrbPeak = enemyManager_ ? enemyManager_->GetPeakExpOrbCount() : 0;
-	const size_t expOrbPrunes = enemyManager_ ? enemyManager_->GetExpOrbPruneCount() : 0;
-	const size_t normalBulletCount = playerManager_ ? playerManager_->GetNormalBullets().size() : 0;
-	const size_t normalBulletPeak = playerManager_ ? playerManager_->GetPeakNormalBulletCount() : 0;
-	const size_t normalBulletPrunes = playerManager_ ? playerManager_->GetNormalBulletPruneCount() : 0;
-	size_t droneBulletCount = 0;
-	size_t droneBulletPeak = 0;
-	size_t droneBulletPrunes = 0;
-	if (playerManager_ && playerManager_->HasDrone() && playerManager_->GetDrone()) {
-		droneBulletCount = playerManager_->GetDrone()->GetBullets().size();
-		droneBulletPeak = playerManager_->GetDrone()->GetPeakBulletCount();
-		droneBulletPrunes = playerManager_->GetDrone()->GetBulletPruneCount();
-	}
-	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-	const size_t particleCount = particleManager ? particleManager->GetTotalActiveParticleCount() : 0;
-
-	if (writeHeader) {
-		file << "frame,telemetryFrames,telemetryMinutes,state,level,enemyCount,killCount,"
-			"expOrbCount,expOrbCap,expOrbPeak,expOrbPrunes,expOrbPrunesPerMinute,"
-			"normalBulletCount,normalBulletCap,normalBulletPeak,normalBulletPrunes,normalBulletPrunesPerMinute,"
-			"droneBulletCount,droneBulletCap,droneBulletPeak,droneBulletPrunes,droneBulletPrunesPerMinute,"
-			"particleCount\n";
-	}
-
-	file << gameFrameCount << ','
-		<< telemetryFrames << ','
-		<< telemetryMinutes << ','
-		<< GetGameStateName() << ','
-		<< (playerManager_ ? playerManager_->GetLevel() : 0) << ','
-		<< enemyCount << ','
-		<< killCount << ','
-		<< expOrbCount << ','
-		<< EnemyManager::kMaxExpOrbs << ','
-		<< expOrbPeak << ','
-		<< expOrbPrunes << ','
-		<< static_cast<float>(expOrbPrunes) / pruneRateDivisor << ','
-		<< normalBulletCount << ','
-		<< PlayerManager::kMaxActiveNormalBullets << ','
-		<< normalBulletPeak << ','
-		<< normalBulletPrunes << ','
-		<< static_cast<float>(normalBulletPrunes) / pruneRateDivisor << ','
-		<< droneBulletCount << ','
-		<< Drone::kMaxActiveBullets << ','
-		<< droneBulletPeak << ','
-		<< droneBulletPrunes << ','
-		<< static_cast<float>(droneBulletPrunes) / pruneRateDivisor << ','
-		<< particleCount << '\n';
-#endif
-}
-
-void DirectXGameScene::ApplyParticleBehaviorTuning()
-{
-	SparkParticleBehavior::Settings sparkSettings{};
-	sparkSettings.lifetime = particleTuning_.sparkLifetime;
-	sparkSettings.horizontalSpeed *= particleTuning_.sparkVelocityScale;
-	sparkSettings.verticalSpeedMin *= particleTuning_.sparkVelocityScale;
-	sparkSettings.verticalSpeedMax *= particleTuning_.sparkVelocityScale;
-	sparkSettings.scaleMin *= particleTuning_.sparkScaleMultiplier;
-	sparkSettings.scaleMax *= particleTuning_.sparkScaleMultiplier;
-
-	SmokeParticleBehavior::Settings smokeSettings{};
-	smokeSettings.lifetime = particleTuning_.smokeLifetime;
-	smokeSettings.scaleMin *= particleTuning_.smokeScaleMultiplier;
-	smokeSettings.scaleMax *= particleTuning_.smokeScaleMultiplier;
-
-	RippleParticleBehavior::Settings rippleSettings{};
-	rippleSettings.lifetime = particleTuning_.rippleLifetime;
-	rippleSettings.expandSpeed = particleTuning_.rippleExpandSpeed;
-
-	ConfettiParticleBehavior::Settings confettiSettings{};
-	confettiSettings.velocityScale = particleTuning_.confettiVelocityScale;
-	confettiSettings.scaleMultiplier = particleTuning_.confettiScaleMultiplier;
-
-	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-	particleManager->SetBehavior("DirectXGame.Ripple", std::make_unique<RippleParticleBehavior>(Vector4{ 0.45f, 0.75f, 1.0f, 1.0f }, rippleSettings));
-	particleManager->SetBehavior("DirectXGame.Spark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.35f, 0.25f, 1.0f }, sparkSettings));
-	particleManager->SetBehavior("DirectXGame.EnemyHitSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }, sparkSettings));
-	particleManager->SetBehavior("DirectXGame.ExpSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }, sparkSettings));
-	particleManager->SetBehavior("DirectXGame.PlayerDeathSpark", std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }, sparkSettings));
-	particleManager->SetBehavior("DirectXGame.DeathSmoke", std::make_unique<SmokeParticleBehavior>(Vector4{ 0.45f, 0.42f, 0.38f, 0.85f }, smokeSettings));
-	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>(confettiSettings));
 }
 
 void DirectXGameScene::UpdateGamePlay(float deltaTime)
@@ -956,7 +282,9 @@ void DirectXGameScene::UpdateGamePlay(float deltaTime)
 		enemyManager_->Update(deltaTime);
 		enemyManager_->CheckCollisions(player_.get(), playerManager_.get());
 	}
-	if (gameState_ == GameState::Playing && playerManager_ && playerManager_->IsLevelUpRequested()) {
+	if (gameplayFlow_.Is(GameplayState::Playing) &&
+		playerManager_ &&
+		playerManager_->IsLevelUpRequested()) {
 		RequestLevelUp();
 	}
 	if (playerManager_ && playerManager_->IsDead()) {
@@ -966,11 +294,9 @@ void DirectXGameScene::UpdateGamePlay(float deltaTime)
 			gameOverSePlayed_ = true;
 		}
 		if (player_) {
-			player_->StartDeathPresentation();
+			playerDeathPresentation_.Start(*player_, particleEffects_);
 		}
-		deathTimer_ = 0.0f;
-		deathCurtainStarted_ = false;
-		gameState_ = GameState::Dead;
+		gameplayFlow_.BeginDead();
 	}
 }
 
@@ -979,148 +305,12 @@ void DirectXGameScene::UpdateEffects()
 	if (!playerManager_ || !player_) {
 		return;
 	}
-
-	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-	const Vector3 playerPosition = player_->GetWorldPosition();
-	if (enemyManager_) {
-		const std::vector<Vector3>& hitPositions = enemyManager_->GetRecentHitEffectPositions();
-		for (const Vector3& hitPosition : hitPositions) {
-			particleManager->Emit("DirectXGame.EnemyHitSpark", hitPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyHitSparkCount)));
-		}
-		if (!hitPositions.empty()) {
-			const float hitStrength = (std::min)(0.78f, 0.34f + static_cast<float>(hitPositions.size()) * 0.08f);
-			player_->RequestCameraShake(0.105f, hitStrength);
-		}
-		for (const Vector3& deathPosition : enemyManager_->GetRecentDeathEffectPositions()) {
-			particleManager->Emit("DirectXGame.EnemyHitSpark", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount)));
-			particleManager->Emit("DirectXGame.DeathSmoke", deathPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount)));
-		}
-		enemyManager_->ClearRecentEffectPositions();
-		Vector3 phasePosition{};
-		int32_t phase = 0;
-		if (enemyManager_->ConsumeBossPhaseChanged(phasePosition, phase)) {
-			particleManager->Emit("DirectXGame.EnemyHitSpark", phasePosition, phase == 3 ? 64u : 42u);
-			particleManager->Emit("DirectXGame.DeathSmoke", phasePosition, phase == 3 ? 20u : 12u);
-			particleManager->Emit("DirectXGame.Ripple", phasePosition, phase == 3 ? 4u : 2u);
-			hitFlashTimer_ = 0.18f;
-		}
-		for (const std::unique_ptr<Enemy>& enemy : enemyManager_->GetEnemies()) {
-			if (!enemy || !enemy->IsActive() || !enemy->IsSuicideType()) {
-				continue;
-			}
-			particleManager->EmitTrailSegment(
-				"DirectXGame.SuicideEnemyTrail",
-				enemy->GetPreviousPosition(),
-				enemy->GetPosition(),
-				0.34f);
-		}
-	}
-
-	const int32_t hp = playerManager_->GetHP();
-	if (hp < previousEffectHp_) {
-		particleManager->Emit("DirectXGame.Spark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDamageSparkCount)));
-		particleManager->Emit("DirectXGame.Ripple", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDamageRippleCount)));
-	}
-	previousEffectHp_ = hp;
-	if (gameState_ == GameState::Dead && !deathEffectEmitted_) {
-		particleManager->Emit("DirectXGame.PlayerDeathSpark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSparkCount)));
-		particleManager->Emit("DirectXGame.DeathSmoke", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSmokeCount)));
-		particleManager->Emit("DirectXGame.Ripple", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathRippleCount)));
-		deathEffectEmitted_ = true;
-	}
-
-	const int32_t totalExp = playerManager_->GetTotalEXP();
-	if (totalExp > previousEffectTotalExp_) {
-		particleManager->Emit("DirectXGame.ExpSpark", playerPosition, static_cast<uint32_t>((std::max)(0, particleTuning_.expSparkCount)));
-	}
-	previousEffectTotalExp_ = totalExp;
-
-	const float lightningTimer = playerManager_->GetLightningEffectTimer();
-	if (lightningTimer > previousLightningEffectTimer_) {
-		for (const Vector3& target : playerManager_->GetLightningEffectTargets()) {
-			particleManager->Emit("DirectXGame.LightningImpact", target, static_cast<uint32_t>((std::max)(0, particleTuning_.lightningSparkCount)));
-		}
-	}
-	previousLightningEffectTimer_ = lightningTimer;
-	UpdateLightningEffects();
-
-	for (const std::unique_ptr<NormalBullet>& bullet : playerManager_->GetNormalBullets()) {
-		if (bullet && bullet->IsActive()) {
-			particleManager->EmitTrailSegment(
-				"DirectXGame.NormalTrail",
-				bullet->GetPreviousPosition(),
-				bullet->GetPosition(),
-				0.28f);
-		}
-	}
-	for (const std::unique_ptr<OrbitBullet>& bullet : playerManager_->GetOrbitBullets()) {
-		if (bullet && bullet->IsActive()) {
-			particleManager->EmitTrailSegment(
-				"DirectXGame.OrbitTrail",
-				bullet->GetPreviousPosition(),
-				bullet->GetPosition(),
-				0.42f);
-		}
-	}
-	if (playerManager_->HasDrone() && playerManager_->GetDrone()) {
-		for (const std::unique_ptr<NormalBullet>& bullet : playerManager_->GetDrone()->GetBullets()) {
-			if (bullet && bullet->IsActive()) {
-				particleManager->EmitTrailSegment(
-					"DirectXGame.DroneTrail",
-					bullet->GetPreviousPosition(),
-					bullet->GetPosition(),
-					0.24f);
-			}
-		}
-	}
-}
-
-void DirectXGameScene::UpdateLightningEffects()
-{
-	const float timer = playerManager_ ? playerManager_->GetLightningEffectTimer() : 0.0f;
-	const std::vector<Vector3>* targets = playerManager_ ? &playerManager_->GetLightningEffectTargets() : nullptr;
-	const float alpha = timer > 0.0f ? Clamp01(timer / 0.22f) : 0.0f;
-
-	for (size_t targetIndex = 0; targetIndex < kLightningEffectMaxTargets; ++targetIndex) {
-		const bool active = targets && targetIndex < targets->size() && alpha > 0.0f;
-		const Vector3 target = active ? (*targets)[targetIndex] : Vector3{};
-		for (size_t segmentIndex = 0; segmentIndex < kLightningEffectSegmentCount; ++segmentIndex) {
-			const size_t objectIndex = targetIndex * kLightningEffectSegmentCount + segmentIndex;
-			Engine::Graphics3D::Object3D* object = lightningEffectObjects_[objectIndex].get();
-			if (!object) {
-				continue;
-			}
-			if (!active) {
-				object->SetColor({ 0.42f, 0.84f, 1.0f, 0.0f });
-				object->Update();
-				continue;
-			}
-
-			const float segmentHeight = 3.1f;
-			const float side = segmentIndex % 2 == 0 ? -0.34f : 0.34f;
-			const float pulse = 0.82f + std::sin((timer * 110.0f) + static_cast<float>(segmentIndex)) * 0.18f;
-			object->SetScale({ 0.22f * pulse, segmentHeight * 0.58f, 0.22f * pulse });
-			object->SetRotate({ 0.0f, 0.0f, side * 0.14f });
-			object->SetTranslate({
-				target.x + side,
-				target.y + 1.0f + segmentHeight * (static_cast<float>(segmentIndex) + 0.5f),
-				target.z,
-			});
-			object->SetColor({ 0.48f + pulse * 0.18f, 0.82f, 1.0f, alpha });
-			object->Update();
-		}
-	}
-}
-
-void DirectXGameScene::DrawLightningEffects()
-{
-	if (!playerManager_ || playerManager_->GetLightningEffectTimer() <= 0.0f) {
-		return;
-	}
-	for (const std::unique_ptr<Engine::Graphics3D::Object3D>& object : lightningEffectObjects_) {
-		if (object && object->GetColor().w > 0.0f) {
-			object->Draw();
-		}
+	if (combatEffectsPresentation_.Update(
+		*player_,
+		*playerManager_,
+		enemyManager_.get(),
+		particleEffects_)) {
+		gameplayHud_.TriggerHitFlash(0.18f);
 	}
 }
 
@@ -1131,76 +321,35 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 	}
 
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	const bool cursorHiddenState =
-		gameState_ == GameState::Playing ||
-		gameState_ == GameState::BossIntro ||
-		gameState_ == GameState::Boss ||
-		gameState_ == GameState::BossDefeated;
+	const bool cursorHiddenState = gameplayFlow_.IsCursorHidden();
 	if (input && cursorHiddenState && ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
 		::SetCursor(nullptr);
 	} else if (!cursorHiddenState) {
 		::SetCursor(::LoadCursor(nullptr, IDC_ARROW));
 	}
 
-	uiAnimationTime_ += deltaTime;
-
-	if (playerManager_) {
-		const int32_t currentHp = playerManager_->GetHP();
-		if (currentHp < previousHp_) {
-			hitFlashTimer_ = 0.28f;
-		}
-		previousHp_ = currentHp;
-		hpGauge_.SetHP(playerManager_->GetHP(), playerManager_->GetMaxHP());
-		if (gameState_ == GameState::LevelUp) {
-			expGauge_.SetEXP(playerManager_->GetNextLevelEXP(), playerManager_->GetNextLevelEXP());
-			expGauge_.SetLevel((std::max)(1, playerManager_->GetLevel() - 1));
-		} else {
-			expGauge_.SetEXP(playerManager_->GetEXP(), playerManager_->GetNextLevelEXP());
-			expGauge_.SetLevel(playerManager_->GetLevel());
-		}
-	}
-	expGauge_.SetLevelUpSelectionActive(gameState_ == GameState::LevelUp);
-	if (hitFlashTimer_ > 0.0f) {
-		hitFlashTimer_ = (std::max)(0.0f, hitFlashTimer_ - deltaTime);
-		const float alpha = 0.36f * Clamp01(hitFlashTimer_ / 0.28f);
-		hitFlashOverlay_.SetVisible(true);
-		hitFlashOverlay_.SetAlpha(alpha);
-	} else {
-		hitFlashOverlay_.SetVisible(false);
-	}
-	if (gameState_ == GameState::Dead) {
-		deathOverlay_.SetVisible(true);
-		deathOverlay_.SetAlpha(0.65f * Clamp01((deathTimer_ - kDeathOverlayDelay) / 0.45f));
-	} else {
-		deathOverlay_.SetVisible(false);
-	}
-	hpGauge_.Update();
-	expGauge_.Update();
-	if (gameState_ == GameState::Playing || gameState_ == GameState::BossIntro || gameState_ == GameState::Boss || gameState_ == GameState::BossDefeated) {
-		keyUI_.Update(Engine::InputSystem::Input::GetInstance());
-	}
-	if ((gameState_ == GameState::Playing || gameState_ == GameState::BossIntro || gameState_ == GameState::Boss || gameState_ == GameState::BossDefeated) && player_ && enemyManager_) {
-		gameplayMiniMap_.Update(player_.get(), *enemyManager_);
-	}
-	if (gameState_ == GameState::Paused && player_ && enemyManager_) {
-		miniMap_.Update(player_.get(), *enemyManager_);
-		UpdatePauseBuildUi();
-	}
-	if (gameState_ == GameState::Playing
 #ifdef _DEBUG
-		&& !debugFreezeGameplay_
+	const bool gameplayFrozen = debugContext_.IsGameplayFrozen();
+#else
+	const bool gameplayFrozen = false;
 #endif
-	) {
-		timer_.Update(deltaTime);
-	}
+	gameplayHud_.Update(
+		deltaTime,
+		gameplayFrozen,
+		gameplayFlow_,
+		player_.get(),
+		playerManager_.get(),
+		enemyManager_.get(),
+		input,
+		playerDeathPresentation_.GetOverlayAlpha());
 
 	const GameMenuInputState menuInput = GameMenuController::Update(
 		Engine::InputSystem::Input::GetInstance(),
 		navigationInputDevice_);
 	navigationInputDevice_ = menuInput.device;
 
-	if (gameState_ == GameState::Start) {
-		if (startIntroFinished_ && menuInput.confirm) {
+	if (gameplayFlow_.Is(GameplayState::Start)) {
+		if (gameplayFlow_.IsIntroFinished() && menuInput.confirm) {
 			EnterPlaying();
 		}
 		if (menuInput.cancel) {
@@ -1209,72 +358,40 @@ void DirectXGameScene::UpdateUi(float deltaTime)
 		return;
 	}
 
-	if (gameState_ == GameState::Paused) {
-		const int32_t hoveredMenuIndex = GetHoveredPauseMenuIndex();
-		if (menuInput.moveDelta != 0) {
-			MoveMenuSelection(1);
+	if (gameplayFlow_.Is(GameplayState::Paused)) {
+		if (!playerManager_) {
+			return;
 		}
-		if (navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse &&
-			hoveredMenuIndex >= 0) {
-			menuSelection_ = hoveredMenuIndex;
+		const PauseMenuAction action = pauseBuildHud_.Update(
+			*playerManager_,
+			gameplayHud_.GetAnimationTime(),
+			menuInput.moveDelta,
+			menuInput.confirm,
+			menuInput.cancel,
+			navigationInputDevice_);
+		if (action == PauseMenuAction::Resume) {
+			EnterPlaying();
+		} else if (action == PauseMenuAction::BackToTitle) {
+			RequestSceneChange(SceneId::kTitle);
 		}
-		pauseCursor_.SetPosition({ 0.0f, menuSelection_ == 0 ? 0.0f : kPauseCursorStepY });
-		const float cursorPulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 8.0f);
-		pauseCursor_.SetScale(1.0f);
-		pauseCursor_.SetAlpha(0.72f + cursorPulse * 0.28f);
-		const bool confirmTriggered =
-			navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse
-			? IsMousePauseConfirm(hoveredMenuIndex)
-			: menuInput.confirm;
-		if (confirmTriggered) {
-			if (menuSelection_ == 0) {
-				EnterPlaying();
-			} else {
-				RequestSceneChange(SceneId::kTitle);
-			}
-		}
-		if (menuInput.cancel) {
+		return;
+	}
+
+	if (gameplayFlow_.Is(GameplayState::LevelUp)) {
+		if (playerManager_ &&
+			levelUpSelectionHud_.Update(
+				*playerManager_,
+				deltaTime,
+				gameplayHud_.GetAnimationTime(),
+				menuInput.moveDelta,
+				menuInput.confirm,
+				navigationInputDevice_)) {
 			EnterPlaying();
 		}
 		return;
 	}
 
-	if (gameState_ == GameState::LevelUp) {
-		UpdateLevelUpAnimation(deltaTime);
-		if (levelUpAnimationState_ != LevelUpAnimationState::Idle) {
-			return;
-		}
-		const int32_t hoveredChoiceIndex = GetHoveredLevelUpChoiceIndex();
-		if (menuInput.moveDelta != 0) {
-			MoveMenuSelection(menuInput.moveDelta);
-		}
-		if (navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse &&
-			hoveredChoiceIndex >= 0) {
-			menuSelection_ = hoveredChoiceIndex;
-		}
-		const float selectedPulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 7.2f);
-		for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
-			const bool selected = index == static_cast<size_t>(menuSelection_);
-			const Vector4 choiceColor = selected
-				? Vector4{ 1.08f + selectedPulse * 0.10f, 1.08f + selectedPulse * 0.10f, 0.74f + selectedPulse * 0.16f, 1.0f }
-				: Vector4{ 0.86f, 0.86f, 0.86f, 1.0f };
-			levelUpChoiceSprites_[index].SetColor(choiceColor);
-			levelUpChoiceIcons_[index].SetColor(choiceColor);
-			levelUpChoiceSprites_[index].SetAlpha(selected ? 1.0f : 0.78f);
-			levelUpChoiceIcons_[index].SetAlpha(selected ? 1.0f : 0.78f);
-		}
-		const bool confirmTriggered =
-			navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse
-			? IsMouseLevelUpConfirm(hoveredChoiceIndex)
-			: menuInput.confirm;
-		if (confirmTriggered) {
-			levelUpSelectionPending_ = true;
-			levelUpAnimationState_ = LevelUpAnimationState::Exiting;
-		}
-		return;
-	}
-
-	if ((gameState_ == GameState::Playing || gameState_ == GameState::Boss) && menuInput.pause) {
+	if (gameplayFlow_.IsCombatActive() && menuInput.pause) {
 		TogglePause();
 	}
 }
@@ -1285,122 +402,18 @@ void DirectXGameScene::DrawUi()
 		return;
 	}
 
-	timer_.Draw();
-	hpGauge_.Draw();
-	expGauge_.Draw();
-	if (gameState_ == GameState::Playing || gameState_ == GameState::Boss || gameState_ == GameState::BossDefeated) {
-		gameplayMiniMap_.Draw();
-		keyUI_.Draw();
+	gameplayHud_.Draw(gameplayFlow_);
+	if (gameplayFlow_.Is(GameplayState::Paused)) {
+		gameplayHud_.DrawPauseMap();
+		pauseBuildHud_.Draw();
+	} else if (gameplayFlow_.Is(GameplayState::LevelUp)) {
+		levelUpSelectionHud_.Draw();
 	}
-
-	if (gameState_ == GameState::Start && startIntroFinished_) {
-		startOverlay_.Draw();
-	} else if (gameState_ == GameState::Paused) {
-		pauseOverlay_.Draw();
-		miniMap_.Draw();
-		DrawPauseBuildUi();
-		pauseCursor_.Draw();
-	} else if (gameState_ == GameState::LevelUp) {
-		levelUpOverlay_.Draw();
-		for (UILabel& choiceSprite : levelUpChoiceSprites_) {
-			choiceSprite.Draw();
-		}
-		for (UILabel& choiceIcon : levelUpChoiceIcons_) {
-			choiceIcon.Draw();
-		}
-	}
-	hitFlashOverlay_.Draw();
-	deathOverlay_.Draw();
-}
-
-void DirectXGameScene::UpdatePauseBuildUi()
-{
-	if (!playerManager_) {
-		return;
-	}
-
-	const bool showBuildIcons = pauseBuildLayout_.visible && gameState_ == GameState::Paused;
-	const std::array<float, 5> alphas{
-		1.0f,
-		playerManager_->HasOrbitBullets() ? 1.0f : 0.25f,
-		playerManager_->HasDrone() ? 1.0f : 0.25f,
-		playerManager_->HasLightning() ? 1.0f : 0.25f,
-		playerManager_->GetAttackPower() > 1 ? 1.0f : 0.4f,
-	};
-
-	for (size_t index = 0; index < pauseBuildIcons_.size(); ++index) {
-		UILabel& icon = pauseBuildIcons_[index];
-		const float pulse = 0.5f + 0.5f * std::sin(uiAnimationTime_ * 3.8f + static_cast<float>(index) * 0.65f);
-		const bool enabled = alphas[index] >= 0.95f;
-		icon.SetPosition({
-			pauseBuildLayout_.position.x + pauseBuildLayout_.stepX * static_cast<float>(index),
-			pauseBuildLayout_.position.y,
-		});
-		icon.SetSize(pauseBuildLayout_.iconSize);
-		icon.SetVisible(showBuildIcons);
-		icon.SetScale(enabled ? 1.0f + pulse * 0.035f : 1.0f);
-		icon.SetColor({ 1.0f, 1.0f, 1.0f, alphas[index] });
-	}
-}
-
-void DirectXGameScene::UpdateLevelUpAnimation(float deltaTime)
-{
-	switch (levelUpAnimationState_) {
-	case LevelUpAnimationState::Entering:
-		levelUpSlideOffsetX_ = (std::max)(0.0f, levelUpSlideOffsetX_ - kLevelUpSlideSpeed * deltaTime);
-		if (levelUpSlideOffsetX_ <= 0.0f) {
-			levelUpSlideOffsetX_ = 0.0f;
-			levelUpAnimationState_ = LevelUpAnimationState::Idle;
-		}
-		ApplyLevelUpLayout();
-		break;
-	case LevelUpAnimationState::Exiting:
-		levelUpSlideOffsetX_ -= kLevelUpSlideSpeed * deltaTime;
-		ApplyLevelUpLayout();
-		if (levelUpSlideOffsetX_ <= -1280.0f) {
-			if (levelUpSelectionPending_) {
-				ApplySelectedLevelUpChoice();
-				levelUpSelectionPending_ = false;
-			}
-			levelUpAnimationState_ = LevelUpAnimationState::Hidden;
-			EnterPlaying();
-		}
-		break;
-	case LevelUpAnimationState::Idle:
-	case LevelUpAnimationState::Hidden:
-	default:
-		break;
-	}
-}
-
-void DirectXGameScene::DrawPauseBuildUi()
-{
-	if (!pauseBuildLayout_.visible) {
-		return;
-	}
-
-	for (UILabel& icon : pauseBuildIcons_) {
-		icon.Draw();
-	}
-}
-
-void DirectXGameScene::SavePauseBuildLayout() const
-{
-	UILayoutIO::Save(DataPaths::kPauseLayout,
-		{
-			{ "pauseBuildPosition", { pauseBuildLayout_.position.x, pauseBuildLayout_.position.y } },
-			{ "pauseBuildStepX", { pauseBuildLayout_.stepX } },
-			{ "pauseBuildIconSize", { pauseBuildLayout_.iconSize.x, pauseBuildLayout_.iconSize.y } },
-			{ "pauseBuildVisible", { pauseBuildLayout_.visible ? 1.0f : 0.0f } },
-			{ "menuHitbox0", { pauseMenuLayout_.hitboxPositions[0].x, pauseMenuLayout_.hitboxPositions[0].y } },
-			{ "menuHitbox1", { pauseMenuLayout_.hitboxPositions[1].x, pauseMenuLayout_.hitboxPositions[1].y } },
-			{ "menuHitboxSize", { pauseMenuLayout_.hitboxSize.x, pauseMenuLayout_.hitboxSize.y } },
-		});
 }
 
 void DirectXGameScene::EnterPlaying()
 {
-	const bool enteringFromStart = gameState_ == GameState::Start;
+	const bool enteringFromStart = gameplayFlow_.EnterPlaying();
 	if (enteringFromStart && startSeHandle_ != 0) {
 		GameAudioCache::Play(startSeHandle_);
 		GameAudioCache::SetVolumeFromTuning(startSeHandle_, kAudioStart, 1.0f);
@@ -1408,30 +421,19 @@ void DirectXGameScene::EnterPlaying()
 	if (enteringFromStart && player_) {
 		player_->SuppressNextDodgeTrigger();
 	}
-	startIntroFinished_ = true;
-	startIntroTimer_ = kStartIntroDuration;
-	gameState_ = pauseReturnToBoss_ ? GameState::Boss : GameState::Playing;
-	pauseReturnToBoss_ = false;
-	deathTimer_ = 0.0f;
-	bossDeathTimer_ = 0.0f;
-	deathEffectEmitted_ = false;
-	deathCurtainStarted_ = false;
-	bossDeathCurtainStarted_ = false;
-	bossDeathEffectEmitted_ = false;
-	menuSelection_ = 0;
+	playerDeathPresentation_.Reset();
+	bossPresentation_.Reset();
 }
 
 void DirectXGameScene::TogglePause()
 {
-	if (gameState_ == GameState::Playing || gameState_ == GameState::Boss) {
-		pauseReturnToBoss_ = gameState_ == GameState::Boss;
-		gameState_ = GameState::Paused;
-		menuSelection_ = 0;
+	if (gameplayFlow_.BeginPause()) {
+		pauseBuildHud_.Start();
 		if (pauseSeHandle_ != 0) {
 			GameAudioCache::Play(pauseSeHandle_);
 			GameAudioCache::SetVolumeFromTuning(pauseSeHandle_, kAudioPauseToggle, 0.5f);
 		}
-	} else if (gameState_ == GameState::Paused) {
+	} else if (gameplayFlow_.Is(GameplayState::Paused)) {
 		if (pauseSeHandle_ != 0) {
 			GameAudioCache::Play(pauseSeHandle_);
 			GameAudioCache::SetVolumeFromTuning(pauseSeHandle_, kAudioPauseToggle, 0.5f);
@@ -1442,150 +444,44 @@ void DirectXGameScene::TogglePause()
 
 void DirectXGameScene::StartBossPhase()
 {
-	if (gameState_ != GameState::Playing) {
+	if (!gameplayFlow_.BeginBossIntro()) {
 		return;
 	}
 	if (!enemyManager_) {
+		gameplayFlow_.EnterPlaying();
 		return;
 	}
-	enemyManager_->StartBossPhase();
-	gameState_ = GameState::BossIntro;
-	bossIntroTimer_ = 0.0f;
-	bossIntroEffectEmitted_ = false;
-	enemyManager_->GetBossPresentationPosition(bossIntroFocusPosition_);
-	if (Engine::CameraSystem::Camera* activeCamera =
-		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) {
-		bossIntroStartCameraPosition_ = activeCamera->GetTransform().translate;
-		bossIntroStartCameraRotation_ = activeCamera->GetTransform().rotate;
-	}
-	bossDeathTimer_ = 0.0f;
-	bossDeathCurtainStarted_ = false;
-	bossDeathEffectEmitted_ = false;
-	menuSelection_ = 0;
+	bossPresentation_.StartEntrance(*enemyManager_);
 }
 
 void DirectXGameScene::UpdateBossEntrance(float deltaTime)
 {
-	bossIntroTimer_ += deltaTime;
-	if (enemyManager_) {
-		enemyManager_->GetBossPresentationPosition(bossIntroFocusPosition_);
-	}
-
-	if (!bossIntroEffectEmitted_) {
-		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-		particleManager->Emit("DirectXGame.EnemyHitSpark", bossIntroFocusPosition_, 42);
-		particleManager->Emit("DirectXGame.DeathSmoke", bossIntroFocusPosition_, 18);
-		particleManager->Emit("DirectXGame.Ripple", bossIntroFocusPosition_, 3);
-		bossIntroEffectEmitted_ = true;
-	}
-
-	const float progress = Clamp01(bossIntroTimer_ / kBossIntroDuration);
-	const float eased = progress * progress * (3.0f - 2.0f * progress);
-	if (Engine::CameraSystem::Camera* activeCamera =
-		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) {
-		const Vector3 targetPosition{
-			bossIntroFocusPosition_.x,
-			bossIntroFocusPosition_.y + 18.0f,
-			bossIntroFocusPosition_.z - 24.0f,
-		};
-		const Vector3 targetRotation{ 0.62f, 0.0f, 0.0f };
-		const float cameraBlend = progress < 0.72f ? eased : Clamp01((1.0f - progress) / 0.28f);
-		activeCamera->SetTranslate({
-			bossIntroStartCameraPosition_.x + (targetPosition.x - bossIntroStartCameraPosition_.x) * cameraBlend,
-			bossIntroStartCameraPosition_.y + (targetPosition.y - bossIntroStartCameraPosition_.y) * cameraBlend,
-			bossIntroStartCameraPosition_.z + (targetPosition.z - bossIntroStartCameraPosition_.z) * cameraBlend,
-			});
-		activeCamera->SetRotate({
-			bossIntroStartCameraRotation_.x + (targetRotation.x - bossIntroStartCameraRotation_.x) * cameraBlend,
-			bossIntroStartCameraRotation_.y + (targetRotation.y - bossIntroStartCameraRotation_.y) * cameraBlend,
-			bossIntroStartCameraRotation_.z + (targetRotation.z - bossIntroStartCameraRotation_.z) * cameraBlend,
-			});
-		activeCamera->Update();
-	}
-
-	if (bossIntroTimer_ >= kBossIntroDuration) {
-		gameState_ = GameState::Boss;
+	if (enemyManager_ &&
+		bossPresentation_.UpdateEntrance(*enemyManager_, deltaTime)) {
+		gameplayFlow_.EnterBoss();
 	}
 }
 
 void DirectXGameScene::StartBossDefeatPresentation()
 {
-	if (gameState_ != GameState::Boss) {
+	if (!gameplayFlow_.BeginBossDefeated()) {
 		return;
 	}
 
-	gameState_ = GameState::BossDefeated;
-	bossDeathTimer_ = 0.0f;
-	bossDeathCurtainStarted_ = false;
-	bossDeathEffectEmitted_ = false;
-	menuSelection_ = 0;
 	if (enemyManager_) {
-		enemyManager_->GetBossPresentationPosition(bossDeathFocusPosition_);
-		enemyManager_->UpdateBossDeathPresentation(0.0f, kBossDeathPresentationDuration);
-	}
-	if (Engine::CameraSystem::Camera* activeCamera =
-		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) {
-		bossDeathStartCameraPosition_ = activeCamera->GetTransform().translate;
-		bossDeathStartCameraRotation_ = activeCamera->GetTransform().rotate;
+		bossPresentation_.StartDefeat(*enemyManager_);
 	}
 	RecordResultSummary();
 }
 
 void DirectXGameScene::UpdateBossDefeatPresentation(float deltaTime)
 {
-	bossDeathTimer_ += deltaTime;
 	RecordResultSummary();
-	if (enemyManager_) {
-		Vector3 bossPosition{};
-		if (enemyManager_->GetBossPresentationPosition(bossPosition)) {
-			bossDeathFocusPosition_ = bossPosition;
-		}
-		enemyManager_->UpdateBossDeathPresentation(bossDeathTimer_, kBossDeathPresentationDuration);
-	}
-	if (!bossDeathEffectEmitted_) {
-		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-		particleManager->Emit("DirectXGame.EnemyHitSpark", bossDeathFocusPosition_, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount * 2)));
-		particleManager->Emit("DirectXGame.DeathSmoke", bossDeathFocusPosition_, static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount * 2)));
-		particleManager->Emit("DirectXGame.Ripple", bossDeathFocusPosition_, 2);
-		bossDeathEffectEmitted_ = true;
-	}
-
-	const float cameraProgress = Clamp01(bossDeathTimer_ / kBossDeathPresentationDuration);
-	UpdateBossDeathCamera(cameraProgress);
-
-	if (!bossDeathCurtainStarted_ && bossDeathTimer_ >= kBossDeathCurtainStartTime) {
-		bossDeathCurtainStarted_ = true;
+	if (enemyManager_ &&
+		bossPresentation_.UpdateDefeat(
+			*enemyManager_, particleEffects_, deltaTime)) {
 		RequestResultScene();
 	}
-}
-
-void DirectXGameScene::UpdateBossDeathCamera(float progress)
-{
-	Engine::CameraSystem::Camera* activeCamera =
-		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-	if (!activeCamera) {
-		return;
-	}
-
-	const float eased = progress * progress * (3.0f - 2.0f * progress);
-	const Vector3 targetPosition{
-		bossDeathFocusPosition_.x,
-		bossDeathFocusPosition_.y + kBossDeathCameraHeight,
-		bossDeathFocusPosition_.z - kBossDeathCameraDistance,
-	};
-	const Vector3 targetRotation{ kBossDeathCameraPitch, 0.0f, 0.0f };
-	activeCamera->SetTranslate({
-		bossDeathStartCameraPosition_.x + (targetPosition.x - bossDeathStartCameraPosition_.x) * eased,
-		bossDeathStartCameraPosition_.y + (targetPosition.y - bossDeathStartCameraPosition_.y) * eased,
-		bossDeathStartCameraPosition_.z + (targetPosition.z - bossDeathStartCameraPosition_.z) * eased,
-		});
-	activeCamera->SetRotate({
-		bossDeathStartCameraRotation_.x + (targetRotation.x - bossDeathStartCameraRotation_.x) * eased,
-		bossDeathStartCameraRotation_.y + (targetRotation.y - bossDeathStartCameraRotation_.y) * eased,
-		bossDeathStartCameraRotation_.z + (targetRotation.z - bossDeathStartCameraRotation_.z) * eased,
-		});
-	activeCamera->SetFarClip(500.0f);
-	activeCamera->Update();
 }
 
 void DirectXGameScene::RequestLevelUp()
@@ -1594,14 +490,9 @@ void DirectXGameScene::RequestLevelUp()
 		return;
 	}
 	playerManager_->ClearLevelUpRequest();
-	BuildLevelUpChoices();
-	gameState_ = GameState::LevelUp;
-	menuSelection_ = 0;
-	levelUpSlideOffsetX_ = 1280.0f;
-	levelUpAnimationState_ = LevelUpAnimationState::Entering;
-	levelUpSelectionPending_ = false;
+	levelUpSelectionHud_.Start(*playerManager_);
+	gameplayFlow_.BeginLevelUp();
 	SpawnLevelUpConfetti();
-	ApplyLevelUpLayout();
 	if (levelUpSeHandle_ != 0) {
 		GameAudioCache::Play(levelUpSeHandle_);
 		GameAudioCache::SetVolumeFromTuning(levelUpSeHandle_, kAudioLevelUp, 1.0f);
@@ -1610,13 +501,7 @@ void DirectXGameScene::RequestLevelUp()
 
 void DirectXGameScene::RequestSceneChange(const char* sceneId)
 {
-	if (!pendingSceneId_.empty()) {
-		return;
-	}
-	pendingSceneId_ = sceneId;
-	if (curtain_) {
-		curtain_->StartClose(24.0f);
-	}
+	sceneTransition_.Request(sceneId);
 }
 
 void DirectXGameScene::RequestResultScene()
@@ -1638,351 +523,32 @@ void DirectXGameScene::RecordResultSummary()
 		playerManager_ ? playerManager_->GetTotalEXP() : 0);
 }
 
-void DirectXGameScene::UpdateCurtain(float deltaTime)
-{
-	if (!curtain_) {
-		return;
-	}
-	curtain_->Update(deltaTime);
-	if (!pendingSceneId_.empty() && curtain_->IsFinished()) {
-		Engine::Scene::SceneManager::GetInstance()->ChangeScene(pendingSceneId_);
-	}
-}
-
-void DirectXGameScene::BuildLevelUpChoices()
-{
-	levelUpChoices_.clear();
-	if (!playerManager_) {
-		return;
-	}
-
-	const auto addChoice = [this](std::string texturePath, std::string iconPath, std::function<void()> apply) {
-		levelUpChoices_.push_back({
-			std::move(texturePath),
-			std::move(iconPath),
-			std::move(apply),
-			});
-		};
-
-	if (!playerManager_->IsNormalBulletMaxLevel()) {
-		addChoice(
-			WeaponLevelTexturePath("normal", playerManager_->GetNormalBulletLevel() + 1),
-			"ui/game/normal/icon.png",
-			[this]() { playerManager_->UpgradeNormalBullets(); });
-	}
-	if (!playerManager_->IsOrbitBulletMaxLevel()) {
-		addChoice(
-			playerManager_->HasOrbitBullets() ? WeaponLevelTexturePath("orbit", playerManager_->GetOrbitBulletLevel() + 1) : "ui/game/orbit/add.png",
-			"ui/game/orbit/icon.png",
-			[this]() { playerManager_->UpgradeOrbitBullets(); });
-	}
-	if (!playerManager_->IsDroneMaxLevel()) {
-		addChoice(
-			playerManager_->HasDrone() ? WeaponLevelTexturePath("drone", playerManager_->GetDroneLevel() + 1) : "ui/game/drone/add.png",
-			"ui/game/drone/icon.png",
-			[this]() { playerManager_->UpgradeDrone(); });
-	}
-	if (!playerManager_->IsLightningMaxLevel()) {
-		addChoice(
-			playerManager_->HasLightning() ? WeaponLevelTexturePath("lightning", playerManager_->GetLightningLevel() + 1) : "ui/game/lightning/add.png",
-			"ui/game/lightning/icon.png",
-			[this]() { playerManager_->UpgradeLightning(); });
-	}
-	addChoice("ui/game/lvup_attack.png", "ui/game/lvup_attack_icon.png", [this]() { playerManager_->UpgradeAttackPower(); });
-	addChoice("ui/game/lvup_maxhp.png", "ui/game/lvup_maxhp_icon.png", [this]() { playerManager_->IncreaseMaxHP(); });
-	addChoice("ui/game/lvup_speed.png", "ui/game/lvup_speed_icon.png", [this]() { playerManager_->UpgradeMoveSpeed(); });
-	if (playerManager_->GetHP() < playerManager_->GetMaxHP()) {
-		addChoice("ui/game/lvup_heal.png", "ui/game/lvup_heal_icon.png", [this]() { playerManager_->RecoverHP(); });
-	}
-
-	static std::mt19937 rng{ std::random_device{}() };
-	std::shuffle(levelUpChoices_.begin(), levelUpChoices_.end(), rng);
-	if (levelUpChoices_.size() > levelUpChoiceSprites_.size()) {
-		levelUpChoices_.resize(levelUpChoiceSprites_.size());
-	}
-
-	for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
-		const std::string path = index < levelUpChoices_.size() ? levelUpChoices_[index].texturePath : "ui/game/lvup_attack.png";
-		levelUpChoiceSprites_[index].SetTexture(path);
-		levelUpChoiceSprites_[index].SetSize(levelUpChoiceSize_);
-		const std::string iconPath = index < levelUpChoices_.size() ? levelUpChoices_[index].iconPath : "ui/game/lvup_attack_icon.png";
-		levelUpChoiceIcons_[index].SetTexture(iconPath);
-		levelUpChoiceIcons_[index].SetSize(levelUpChoiceSize_);
-		levelUpChoiceIcons_[index].SetVisible(index < levelUpChoices_.size());
-	}
-	ApplyLevelUpLayout();
-}
-
-void DirectXGameScene::ApplySelectedLevelUpChoice()
-{
-	if (!playerManager_ || levelUpChoices_.empty()) {
-		return;
-	}
-
-	const LevelUpChoice& choice = levelUpChoices_[static_cast<size_t>(std::clamp(menuSelection_, 0, static_cast<int32_t>(levelUpChoices_.size()) - 1))];
-	if (choice.apply) {
-		choice.apply();
-	}
-}
-
-void DirectXGameScene::ApplyLevelUpLayout()
-{
-	levelUpOverlay_.SetPosition({ levelUpSlideOffsetX_, 0.0f });
-	for (size_t index = 0; index < levelUpChoiceSprites_.size(); ++index) {
-		levelUpChoiceSprites_[index].SetPosition({
-			levelUpSlideOffsetX_,
-			levelUpChoiceStepY_ * static_cast<float>(index),
-		});
-		levelUpChoiceSprites_[index].SetSize(levelUpChoiceSize_);
-		levelUpChoiceIcons_[index].SetPosition({
-			levelUpSlideOffsetX_,
-			levelUpChoiceStepY_ * static_cast<float>(index),
-		});
-		levelUpChoiceIcons_[index].SetSize(levelUpChoiceSize_);
-	}
-}
-
-int32_t DirectXGameScene::GetHoveredPauseMenuIndex() const
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (!input || GameInputBindings::IsGameInputSuppressedByImGui()) {
-		return -1;
-	}
-
-	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
-		return -1;
-	}
-	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
-	for (int32_t index = 0; index < static_cast<int32_t>(pauseMenuLayout_.hitboxPositions.size()); ++index) {
-		if (IsPointInRect(mousePosition, pauseMenuLayout_.hitboxPositions[static_cast<size_t>(index)], pauseMenuLayout_.hitboxSize)) {
-			return index;
-		}
-	}
-	return -1;
-}
-
-bool DirectXGameScene::IsMousePauseConfirm(int32_t hoveredMenuIndex) const
-{
-	return hoveredMenuIndex >= 0 &&
-		GameInputBindings::IsMouseConfirmTriggered(Engine::InputSystem::Input::GetInstance());
-}
-
-int32_t DirectXGameScene::GetHoveredLevelUpChoiceIndex() const
-{
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (!input || levelUpChoices_.empty()) {
-		return -1;
-	}
-
-	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
-		return -1;
-	}
-	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
-	const int32_t choiceCount = static_cast<int32_t>(levelUpChoices_.size());
-	for (int32_t index = 0; index < choiceCount; ++index) {
-		const Vector2 rectPosition{
-			levelUpSlideOffsetX_ + levelUpChoiceHitboxOffset_.x,
-			levelUpChoiceHitboxOffset_.y + levelUpChoiceStepY_ * static_cast<float>(index),
-		};
-		if (IsPointInRect(mousePosition, rectPosition, levelUpChoiceHitboxSize_)) {
-			return index;
-		}
-	}
-	return -1;
-}
-
-bool DirectXGameScene::IsMouseLevelUpConfirm(int32_t hoveredChoiceIndex) const
-{
-	return hoveredChoiceIndex >= 0 &&
-		GameInputBindings::IsMouseConfirmTriggered(Engine::InputSystem::Input::GetInstance());
-}
-
 void DirectXGameScene::SpawnLevelUpConfetti()
 {
 	if (!player_) {
 		return;
 	}
-
-	const uint32_t confettiCount = static_cast<uint32_t>((std::max)(120, particleTuning_.levelUpConfettiCount));
-	if (confettiCount == 0) {
-		return;
-	}
-
-	const LevelUpConfettiSpawnArea spawnArea = CalculateLevelUpConfettiSpawnArea(*player_);
-	ConfettiParticleBehavior::Settings confettiSettings{};
-	confettiSettings.lifetimeMin = 1.8f;
-	confettiSettings.lifetimeMax = 2.8f;
-	confettiSettings.velocityScale = (std::max)(1.55f, particleTuning_.confettiVelocityScale);
-	confettiSettings.scaleMultiplier = (std::max)(1.9f, particleTuning_.confettiScaleMultiplier);
-	confettiSettings.gravity = 0.012f;
-	confettiSettings.horizontalAxis = spawnArea.horizontalAxis;
-	confettiSettings.verticalAxis = spawnArea.verticalAxis;
-	confettiSettings.depthAxis = spawnArea.depthAxis;
-	confettiSettings.horizontalOffsetRange = spawnArea.horizontalRange;
-	confettiSettings.depthOffsetRange = 1.2f;
-	confettiSettings.yOffset = -0.65f;
-
-	Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-	particleManager->SetBehavior("DirectXGame.Confetti", std::make_unique<ConfettiParticleBehavior>(confettiSettings));
-	particleManager->Emit("DirectXGame.Confetti", spawnArea.center, confettiCount);
-}
-
-void DirectXGameScene::MoveMenuSelection(int32_t delta)
-{
-	const int32_t maxSelection = gameState_ == GameState::Paused ? 1 : static_cast<int32_t>(levelUpChoices_.empty() ? 0 : levelUpChoices_.size() - 1);
-	menuSelection_ += delta;
-	if (menuSelection_ < 0) {
-		menuSelection_ = maxSelection;
-	} else if (menuSelection_ > maxSelection) {
-		menuSelection_ = 0;
-	}
+	levelUpSelectionHud_.SpawnConfetti(*player_, particleEffects_);
 }
 
 void DirectXGameScene::QueueDebugDraw()
 {
-	if ((!debugDrawEnabled_ && !lightDebugDrawEnabled_) || !player_) {
-		return;
-	}
-
-	Engine::LineSystem::Line line;
-	const Vector3 playerPosition = player_->GetWorldPosition();
-	if (debugDrawEnabled_) {
-		line.DrawOBB(player_->GetCollisionObb(), { 0.25f, 0.95f, 1.0f, 1.0f });
-		line.DrawSphere(playerPosition, 50.0f, { 0.25f, 0.55f, 1.0f, 0.45f });
-
-		if (enemyManager_) {
-			for (const std::unique_ptr<Enemy>& enemy : enemyManager_->GetEnemies()) {
-				if (!enemy || !enemy->IsActive()) {
-					continue;
-				}
-				line.DrawOBB(enemy->GetCollisionObb(), { 1.0f, 0.2f, 0.18f, 1.0f });
-			}
-			for (const std::unique_ptr<ExpOrb>& orb : enemyManager_->GetExpOrbs()) {
-				if (!orb || !orb->IsActive()) {
-					continue;
-				}
-				const Vector3 orbPosition = orb->GetPosition();
-				line.DrawSphere(orbPosition, 0.65f, { 0.3f, 1.0f, 0.58f, 0.8f });
-				const float dx = orbPosition.x - playerPosition.x;
-				const float dz = orbPosition.z - playerPosition.z;
-				if (dx * dx + dz * dz <= 144.0f) {
-					line.Draw(
-						{ playerPosition.x, playerPosition.y + 1.0f, playerPosition.z },
-						{ orbPosition.x, orbPosition.y + 0.5f, orbPosition.z },
-						{ 0.3f, 1.0f, 0.58f, 0.65f });
-				}
-			}
-		}
-		if (playerManager_) {
-			for (const std::unique_ptr<NormalBullet>& bullet : playerManager_->GetNormalBullets()) {
-				if (bullet && bullet->IsActive()) {
-					line.DrawOBB(bullet->GetCollisionObb(), { 1.0f, 0.65f, 0.15f, 1.0f });
-					line.Draw(bullet->GetPreviousPosition(), bullet->GetPosition(), { 1.0f, 0.65f, 0.15f, 0.75f });
-				}
-			}
-			for (const std::unique_ptr<OrbitBullet>& bullet : playerManager_->GetOrbitBullets()) {
-				if (bullet && bullet->IsActive()) {
-					line.DrawOBB(bullet->GetCollisionObb(), { 0.7f, 0.35f, 1.0f, 1.0f });
-				}
-			}
-			if (playerManager_->HasDrone() && playerManager_->GetDrone()) {
-				for (const std::unique_ptr<NormalBullet>& bullet : playerManager_->GetDrone()->GetBullets()) {
-					if (bullet && bullet->IsActive()) {
-						line.DrawOBB(bullet->GetCollisionObb(), { 0.25f, 0.85f, 1.0f, 1.0f });
-						line.Draw(bullet->GetPreviousPosition(), bullet->GetPosition(), { 0.25f, 0.85f, 1.0f, 0.75f });
-					}
-				}
-			}
-			if (playerManager_->GetLightningEffectTimer() > 0.0f) {
-				for (const Vector3& target : playerManager_->GetLightningEffectTargets()) {
-					line.DrawSphere(target, playerManager_->GetLightningRadius(), { 0.4f, 0.75f, 1.0f, 0.55f });
-				}
-			}
-		}
-	}
-
-	if (lightDebugDrawEnabled_) {
-		const SceneLightData& sceneLight =
-			Engine::Graphics3D::Object3DCommon::GetInstance()->GetSceneLight();
-		if (sceneLight.enable) {
-			const Vector3 start = playerPosition + Vector3{ 0.0f, 22.0f, 0.0f };
-			const Vector3 end = {
-				start.x + sceneLight.direction.x * 16.0f,
-				start.y + sceneLight.direction.y * 16.0f,
-				start.z + sceneLight.direction.z * 16.0f,
-			};
-			line.Draw(start, end, { 1.0f, 1.0f, 0.55f, 1.0f });
-			line.DrawSphere(start, 0.9f, { 1.0f, 1.0f, 0.55f, 1.0f });
-		}
-	}
-}
-
-void DirectXGameScene::QueueEffectDraw()
-{
-}
-
-void DirectXGameScene::ApplyLightSettingsToWorld()
-{
-	if (player_) {
-		player_->SetLightSettings(lightSettings_);
-	}
-	if (playerManager_) {
-		playerManager_->SetLightSettings(lightSettings_);
-	}
-	if (enemyManager_) {
-		enemyManager_->SetLightSettings(lightSettings_);
-	}
-	if (gridPlane_) {
-		gridPlane_->SetLightSettings(lightSettings_);
-	}
-	if (skyDome_) {
-		skyDome_->SetLightSettings(lightSettings_);
-	}
-}
-
-void DirectXGameScene::UpdateDebugCamera()
-{
-	debugCamera_.SetTranslate(debugCameraPosition_);
-	debugCamera_.SetRotate(debugCameraRotation_);
-	debugCamera_.SetFarClip(500.0f);
-	debugCamera_.Update();
-	Engine::CameraSystem::CameraManager* cameraManager = Engine::CameraSystem::CameraManager::GetInstance();
-	cameraManager->SyncCamera("directxgame_debug", &debugCamera_);
-	if (debugCameraEnabled_) {
-		cameraManager->SetActiveCamera("directxgame_debug");
-	}
+	GameplayDebugDraw::Queue(
+		debugContext_.IsCollisionDrawEnabled(),
+		debugContext_.IsLightDrawEnabled(),
+		player_.get(),
+		enemyManager_.get(),
+		playerManager_.get());
 }
 
 void DirectXGameScene::UpdateDebugUi()
 {
 #ifdef _DEBUG
+	GameplayDebugWindowVisibility& debugWindows = debugContext_.Windows();
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
 	if (input->TriggerKey(DIK_F5)) {
-		LoadDebugTuning();
-		ApplyParticleBehaviorTuning();
+		debugContext_.Load(player_.get(), particleEffects_);
 	}
-	const DebugWindowVisibility previousDebugWindows = debugWindows_;
-	const auto saveWindowVisibilityIfChanged = [this](const DebugWindowVisibility& previous) {
-		if (previous.windowSwitcher != debugWindows_.windowSwitcher ||
-			previous.sceneView != debugWindows_.sceneView ||
-			previous.objectView != debugWindows_.objectView ||
-			previous.particleView != debugWindows_.particleView ||
-			previous.statisticsView != debugWindows_.statisticsView ||
-			previous.offscreenSettings != debugWindows_.offscreenSettings ||
-			previous.lightSettings != debugWindows_.lightSettings ||
-			previous.gizmo != debugWindows_.gizmo ||
-			previous.objectManager != debugWindows_.objectManager ||
-			previous.motionEditor != debugWindows_.motionEditor ||
-			previous.spriteManager != debugWindows_.spriteManager ||
-			previous.colliderTagManager != debugWindows_.colliderTagManager ||
-			previous.audio != debugWindows_.audio ||
-			previous.keyInputDebug != debugWindows_.keyInputDebug ||
-			previous.sceneSettings != debugWindows_.sceneSettings ||
-			previous.sceneSpecificDebug != debugWindows_.sceneSpecificDebug ||
-			previous.objectSettings != debugWindows_.objectSettings) {
-			SaveDebugTuning();
-		}
-	};
 	if (input->TriggerKey(DIK_F6) && playerManager_) {
 		playerManager_->ForceDebugDeath();
 	}
@@ -1997,890 +563,174 @@ void DirectXGameScene::UpdateDebugUi()
 		return;
 	}
 	if (input->TriggerKey(DIK_F11)) {
-		timer_.SetTime(kGameTimeLimitSeconds);
+		gameplayHud_.GetTimer().SetTime(kGameTimeLimitSeconds);
 		StartBossPhase();
 		return;
 	}
 
-	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
-		{ "Scene", &debugWindows_.sceneView },
-		{ "オブジェクトビュー", &debugWindows_.objectView },
-		{ "パーティクルビュー", &debugWindows_.particleView },
-		{ "統計", &debugWindows_.statisticsView },
-		{ "オフスクリーン設定", &debugWindows_.offscreenSettings },
-		{ "ライト設定", &debugWindows_.lightSettings },
-		{ "ギズモ", &debugWindows_.gizmo },
-		{ "オブジェクトマネージャ", &debugWindows_.objectManager },
-		{ "モーションエディター", &debugWindows_.motionEditor },
-		{ "スプライトマネージャ", &debugWindows_.spriteManager },
-		{ "コライダー/タグ管理", &debugWindows_.colliderTagManager },
-		{ "オーディオ", &debugWindows_.audio },
-		{ "キー操作デバッグ", &debugWindows_.keyInputDebug },
-		{ "シーン設定", &debugWindows_.sceneSettings },
-		{ "シーン固有デバッグ", &debugWindows_.sceneSpecificDebug },
-		{ "オブジェクト設定", &debugWindows_.objectSettings },
-	};
-	const Engine::Editor::DebugEditorMenuItem editItems[] = {
-		{ "ギズモ", &debugWindows_.gizmo },
-		{ "オブジェクト設定", &debugWindows_.objectSettings },
-		{ "モーションエディター", &debugWindows_.motionEditor },
-	};
-	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
-		{ "オブジェクトマネージャ", &debugWindows_.objectManager },
-		{ "オブジェクト設定", &debugWindows_.objectSettings },
-		{ "コライダー/タグ管理", &debugWindows_.colliderTagManager },
-	};
-	Engine::Editor::DebugEditorManager::DrawMainMenu({
-		windowItems,
-		std::size(windowItems),
-		editItems,
-		std::size(editItems),
-		objectItems,
-		std::size(objectItems),
-		"デバッグ設定を保存",
-		[this]() { SaveDebugTuning(); },
-		"デバッグ設定を復元",
-		[this]() { LoadDebugTuning(); ApplyParticleBehaviorTuning(); },
-		"Debug: F5 Reload / F6 Death / F8 EXP / F9 Max Weapons / F10 Result / F11 Boss",
-		[this]() { Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kTitle); },
-		{},
-		[this]() { RequestResultScene(); },
-		&debugWindows_.windowSwitcher,
-	});
-	if (debugWindows_.windowSwitcher) {
-		ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_FirstUseEver);
-		Engine::Editor::DebugEditorManager::DrawWindowSwitcher(
-			"ウィンドウ表示切り替え",
-			&debugWindows_.windowSwitcher,
-			windowItems,
-			std::size(windowItems),
-			{ 260.0f, 440.0f },
-			[this]() {
-				if (ImGui::Button("表示状態を保存")) {
-					SaveDebugTuning();
-				}
-				ImGui::SameLine();
-				if (ImGui::Button("復元")) {
-					LoadDebugTuning();
-					ApplyParticleBehaviorTuning();
-				}
-				Engine::Editor::DebugEditorManager::DrawHotReloadButton();
-			});
+	const bool windowVisibilityChanged = GameplayDebugEditorShell::Draw(
+		debugWindows,
+		[this]() {
+			debugContext_.Save(player_.get(), particleEffects_);
+		},
+		[this]() {
+			debugContext_.Load(player_.get(), particleEffects_);
+		},
+		[this]() {
+			Engine::Scene::SceneManager::GetInstance()->ChangeScene(
+				SceneId::kTitle);
+		},
+		[this]() { RequestResultScene(); });
+
+	if (debugWindows.sceneSettings) {
+		GameplaySceneDebugPanel::DrawSettings(
+			&debugWindows.sceneSettings,
+			debugContext_.GameplayFrozen(),
+			gameplayFlow_.GetStateName());
 	}
 
-	if (debugWindows_.sceneView) {
-		const Engine::Editor::DebugSceneViewportState sceneViewport =
-			Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugWindows_.sceneView);
-		ScreenUtil::SetDebugSceneInputActive(sceneViewport.inputActive);
-		if (sceneViewport.drawn) {
-			ScreenUtil::SetDebugSceneViewport(sceneViewport.min, sceneViewport.size);
-		} else {
-			ScreenUtil::ClearDebugSceneViewport();
-		}
-	} else {
-		ScreenUtil::ClearDebugSceneViewport();
-	}
-
-	if (debugWindows_.sceneSettings) {
-	ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(260.0f, 92.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("シーン設定", &debugWindows_.sceneSettings);
-	if (ImGui::Button(debugFreezeGameplay_ ? "Resume Gameplay" : "Freeze Gameplay", ImVec2(-1.0f, 32.0f))) {
-		debugFreezeGameplay_ = !debugFreezeGameplay_;
-	}
-	ImGui::Text("Freeze: %s", BoolText(debugFreezeGameplay_));
-	ImGui::Text("State: %s", GetGameStateName());
-	ImGui::End();
-	}
-
-	if (debugWindows_.keyInputDebug) {
-	ImGui::SetNextWindowPos(ImVec2(288.0f, 330.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(430.0f, 300.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("キー操作デバッグ", &debugWindows_.keyInputDebug);
-	if (ImGui::CollapsingHeader("Input / State Debug", ImGuiTreeNodeFlags_DefaultOpen)) {
-		const Vector2 keyboardMove = GetKeyboardMoveDebug(input);
-		const Vector2 gamepadMove = GetGamepadMoveDebug(input);
-		Vector2 gamepadAim{ 0.0f, 0.0f };
-		const bool rightStickAimActive = GameInputBindings::GetAimVector(input, gamepadAim);
-		const auto mouseMove = input->GetMouseMove();
-		const bool mouseAimActive = mouseMove.lX != 0 || mouseMove.lY != 0 || input->PushMouse(0) || input->PushMouse(1);
-
-		ImGui::Text("Priority Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
-		ImGui::Text("Keyboard Move: %.2f, %.2f", keyboardMove.x, keyboardMove.y);
-		ImGui::Text("Gamepad Move: %.2f, %.2f", gamepadMove.x, gamepadMove.y);
-		ImGui::Text("Mouse Aim: %s  Move: %ld, %ld  Pos: %.0f, %.0f",
-			BoolText(mouseAimActive),
-			mouseMove.lX,
-			mouseMove.lY,
-			input->GetMousePos().x,
-			input->GetMousePos().y);
-		ImGui::Text("Right Stick Aim: %s  %.2f, %.2f",
-			BoolText(rightStickAimActive),
-			gamepadAim.x,
-			gamepadAim.y);
-
-		const bool gameplayUpdateRuns = (gameState_ == GameState::Playing || gameState_ == GameState::Boss) && pendingSceneId_.empty() && !debugFreezeGameplay_;
-		ImGui::Separator();
-		ImGui::Text("Scene State: %s  Pending Scene: %s",
-			GetGameStateName(),
-			pendingSceneId_.empty() ? "none" : pendingSceneId_.c_str());
-		ImGui::Text("Gameplay Update: %s", BoolText(gameplayUpdateRuns));
-		ImGui::Text("Player / Enemy / Bullet / Collision / EXP Update: %s", BoolText(gameplayUpdateRuns));
-		ImGui::Text("UI / Curtain / Effects Update: %s", BoolText(true));
-		ImGui::Text("Paused Safety: %s", BoolText(gameState_ != GameState::Paused || !gameplayUpdateRuns));
-		ImGui::Text("LevelUp Safety: %s", BoolText(gameState_ != GameState::LevelUp || !gameplayUpdateRuns));
-		ImGui::Text("Dead Safety: %s", BoolText(gameState_ != GameState::Dead || !gameplayUpdateRuns));
-		const Engine::Graphics3D::ModelLoadDiagnostics modelDiagnostics = Engine::Graphics3D::Model::GetLoadDiagnostics();
-		ImGui::Text("Model Load Warnings: non-triangle skipped %u / mesh fallback %u",
-			modelDiagnostics.skippedNonTriangleFaceCount,
-			modelDiagnostics.meshFallbackCount);
-	}
-	ImGui::End();
-	}
-
-	if (debugWindows_.lightSettings) {
-	ImGui::SetNextWindowPos(ImVec2(730.0f, 12.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(380.0f, 420.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("ライト設定", &debugWindows_.lightSettings);
-		bool debugCameraEnabled = debugCameraEnabled_;
-		if (ImGui::Checkbox("Use Debug Camera", &debugCameraEnabled)) {
-			debugCameraEnabled_ = debugCameraEnabled;
-			UpdateDebugCamera();
-			if (!debugCameraEnabled_) {
-				Engine::CameraSystem::CameraManager::GetInstance()->SetActiveCamera("directxgame_player");
-			}
-		}
-		float debugCameraPosition[3]{ debugCameraPosition_.x, debugCameraPosition_.y, debugCameraPosition_.z };
-		if (ImGui::DragFloat3("Debug Camera Position", debugCameraPosition, 0.5f, -220.0f, 220.0f)) {
-			debugCameraPosition_ = { debugCameraPosition[0], debugCameraPosition[1], debugCameraPosition[2] };
-			UpdateDebugCamera();
-		}
-		float debugCameraRotation[3]{ debugCameraRotation_.x, debugCameraRotation_.y, debugCameraRotation_.z };
-		if (ImGui::DragFloat3("Debug Camera Rotation", debugCameraRotation, 0.01f, -3.14f, 3.14f)) {
-			debugCameraRotation_ = { debugCameraRotation[0], debugCameraRotation[1], debugCameraRotation[2] };
-			UpdateDebugCamera();
-		}
-
-		bool lightDebugDrawEnabled = lightDebugDrawEnabled_;
-		if (ImGui::Checkbox("Draw Light Markers", &lightDebugDrawEnabled)) {
-			lightDebugDrawEnabled_ = lightDebugDrawEnabled;
-			debugDrawEnabled_ = debugDrawEnabled_ || lightDebugDrawEnabled_;
-		}
-
-		Engine::Graphics3D::Object3DCommon* objectCommon =
-			Engine::Graphics3D::Object3DCommon::GetInstance();
-		SceneLightData sceneLight = objectCommon->GetSceneLight();
-		bool lightChanged = false;
-		bool sunEnabled = sceneLight.enable != 0;
-		if (ImGui::Checkbox("Sun Enabled", &sunEnabled)) {
-			sceneLight.enable = sunEnabled;
-			lightChanged = true;
-		}
-		float sunColor[3]{ sceneLight.color.x, sceneLight.color.y, sceneLight.color.z };
-		if (ImGui::ColorEdit3("Sun Color", sunColor)) {
-			sceneLight.color = { sunColor[0], sunColor[1], sunColor[2], 1.0f };
-			lightChanged = true;
-		}
-		float sunDirection[3]{
-			sceneLight.direction.x, sceneLight.direction.y, sceneLight.direction.z
+	if (debugWindows.keyInputDebug) {
+		const bool gameplayUpdateRuns =
+			gameplayFlow_.IsCombatActive() &&
+			!sceneTransition_.HasPendingScene() &&
+			!debugContext_.IsGameplayFrozen();
+		const GameplayInputDebugState inputDebugState{
+			navigationInputDevice_,
+			gameplayFlow_.GetStateName(),
+			sceneTransition_.HasPendingScene()
+				? std::string_view(sceneTransition_.GetPendingSceneId())
+				: std::string_view("none"),
+			gameplayUpdateRuns,
+			!gameplayFlow_.Is(GameplayState::Paused) || !gameplayUpdateRuns,
+			!gameplayFlow_.Is(GameplayState::LevelUp) || !gameplayUpdateRuns,
+			!gameplayFlow_.Is(GameplayState::Dead) || !gameplayUpdateRuns,
 		};
-		if (ImGui::DragFloat3("Sun Direction", sunDirection, 0.02f, -1.0f, 1.0f)) {
-			sceneLight.direction = { sunDirection[0], sunDirection[1], sunDirection[2] };
-			lightChanged = true;
-		}
-		if (ImGui::SliderFloat("Sun Intensity", &sceneLight.intensity, 0.0f, 3.0f)) {
-			lightChanged = true;
-		}
-		float ambientColor[3]{
-			sceneLight.ambientColor.x, sceneLight.ambientColor.y, sceneLight.ambientColor.z
-		};
-		if (ImGui::ColorEdit3("Ambient Color", ambientColor)) {
-			sceneLight.ambientColor = {
-				ambientColor[0], ambientColor[1], ambientColor[2], 1.0f
-			};
-			lightChanged = true;
-		}
-		if (ImGui::SliderFloat(
-				"Ambient Intensity", &sceneLight.ambientIntensity, 0.0f, 1.0f)) {
-			lightChanged = true;
-		}
-		if (ImGui::SliderFloat(
-				"Specular Strength", &sceneLight.specularStrength, 0.0f, 1.0f)) {
-			lightChanged = true;
-		}
-		if (lightChanged) {
-			objectCommon->SetSceneLight(sceneLight);
-		}
-
-		ImGui::Separator();
-		bool shadowEnabled = objectCommon->IsShadowEnabled();
-		if (ImGui::Checkbox("Shadow Enabled", &shadowEnabled)) {
-			objectCommon->SetShadowEnabled(shadowEnabled);
-		}
-		float shadowStrength = objectCommon->GetShadowStrength();
-		if (ImGui::SliderFloat("Shadow Strength", &shadowStrength, 0.0f, 1.0f)) {
-			objectCommon->SetShadowStrength(shadowStrength);
-		}
-		float shadowSoftness = objectCommon->GetShadowSoftness();
-		if (ImGui::SliderFloat("Shadow Softness", &shadowSoftness, 0.5f, 4.0f)) {
-			objectCommon->SetShadowSoftness(shadowSoftness);
-		}
-		float shadowBias = objectCommon->GetShadowBias();
-		if (ImGui::SliderFloat("Shadow Bias", &shadowBias, 0.0f, 0.006f, "%.5f")) {
-			objectCommon->SetShadowBias(shadowBias);
-		}
-		float shadowArea = objectCommon->GetShadowArea();
-		if (ImGui::SliderFloat("Shadow Area", &shadowArea, 20.0f, 160.0f)) {
-			objectCommon->SetShadowArea(shadowArea);
-		}
-	ImGui::End();
+		GameplayInputDebugPanel::Draw(
+			&debugWindows.keyInputDebug,
+			input,
+			inputDebugState);
 	}
 
-	if (debugWindows_.audio) {
+	if (debugWindows.lightSettings) {
+		GameplayRenderingDebugPanel::DrawLighting(
+			&debugWindows.lightSettings,
+			debugContext_.CameraEnabled(),
+			debugContext_.CameraPosition(),
+			debugContext_.CameraRotation(),
+			debugContext_.LightDrawEnabled(),
+			debugContext_.CollisionDrawEnabled(),
+			[this]() { debugContext_.UpdateCamera(); });
+	}
+
+	if (debugWindows.audio) {
 	ImGui::SetNextWindowPos(ImVec2(1125.0f, 12.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("オーディオ", &debugWindows_.audio);
-	float masterVolume = GameAudioCache::GetMasterVolume();
-	if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
-		GameAudioCache::SetMasterVolume(masterVolume);
-	}
-	if (ImGui::Button("Save Debug Tuning")) {
-		SaveDebugTuning();
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Reload Debug Tuning")) {
-		LoadDebugTuning();
-		ApplyParticleBehaviorTuning();
-	}
-	if (ImGui::CollapsingHeader("Audio Balance")) {
-		auto tuneVolume = [](const char* label, const char* key, float fallback) {
-			float volume = GameAudioCache::GetTunedVolume(key, fallback);
-			if (ImGui::SliderFloat(label, &volume, 0.0f, 1.0f)) {
-				GameAudioCache::SetTunedVolume(key, volume);
-			}
-		};
-		tuneVolume("Title BGM", "title.bgm", 0.1f);
-		tuneVolume("Title Select", "title.select", 1.0f);
-		tuneVolume("Title Decide", "title.decide", 1.0f);
-		tuneVolume("Game Start", kAudioStart, 1.0f);
-		tuneVolume("Pause Toggle", kAudioPauseToggle, 0.5f);
-		tuneVolume("Level Up", kAudioLevelUp, 1.0f);
-		tuneVolume("Player Death", kAudioDeath, 1.0f);
-		tuneVolume("Shot", "combat.shot", 1.0f);
-		tuneVolume("Enemy Hit", "combat.enemyHit", 0.5f);
-		tuneVolume("Enemy Death", "combat.enemyDeath", 1.0f);
-		tuneVolume("Player Damage", "combat.playerDamage", 0.8f);
-		tuneVolume("EXP Pickup", "combat.expPickup", 1.0f);
-		tuneVolume("Result Finish", "result.finish", 1.0f);
-	}
-	ImGui::End();
+	GameAudioDebugPanel::Draw(
+		&debugWindows.audio,
+		GetGameAudioTuningEntries(),
+		[this]() {
+			debugContext_.Save(player_.get(), particleEffects_);
+		},
+		[this]() {
+			debugContext_.Load(player_.get(), particleEffects_);
+		});
 	}
 
-	if (debugWindows_.statisticsView) {
-	ImGui::SetNextWindowPos(ImVec2(12.0f, 330.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(520.0f, 420.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("統計", &debugWindows_.statisticsView);
-		const size_t enemyCount = enemyManager_ ? enemyManager_->GetActiveEnemyCount() : 0;
-		const size_t orbCount = enemyManager_ ? enemyManager_->GetExpOrbCount() : 0;
-		const size_t normalBulletCount = playerManager_ ? playerManager_->GetNormalBullets().size() : 0;
-		const size_t orbitBulletCount = playerManager_ ? playerManager_->GetOrbitBullets().size() : 0;
-		const size_t normalBulletPeak = playerManager_ ? playerManager_->GetPeakNormalBulletCount() : 0;
-		const size_t normalBulletPrunes = playerManager_ ? playerManager_->GetNormalBulletPruneCount() : 0;
-		const size_t expOrbPrunes = enemyManager_ ? enemyManager_->GetExpOrbPruneCount() : 0;
-		size_t droneBulletCount = 0;
-		size_t droneBulletPeak = 0;
-		size_t droneBulletPrunes = 0;
-		if (playerManager_ && playerManager_->HasDrone() && playerManager_->GetDrone()) {
-			droneBulletCount = playerManager_->GetDrone()->GetBullets().size();
-			droneBulletPeak = playerManager_->GetDrone()->GetPeakBulletCount();
-			droneBulletPrunes = playerManager_->GetDrone()->GetBulletPruneCount();
-		}
+	if (debugWindows.statisticsView) {
 		const uint32_t gameFrameCount = sessionContext_ ? sessionContext_->GetGameFrameCount() : 0u;
-		const uint32_t telemetryFrames = gameFrameCount >= debugSoftCapTelemetryStartFrame_ ?
-			gameFrameCount - debugSoftCapTelemetryStartFrame_ :
-			gameFrameCount;
-		const float gameplayMinutes = sessionContext_ ?
-			static_cast<float>(telemetryFrames) / (60.0f * 60.0f) :
-			0.0f;
-		const float pruneRateDivisor = (std::max)(gameplayMinutes, 0.01f);
-		const float expOrbPrunesPerMinute = static_cast<float>(expOrbPrunes) / pruneRateDivisor;
-		const float normalBulletPrunesPerMinute = static_cast<float>(normalBulletPrunes) / pruneRateDivisor;
-		const float droneBulletPrunesPerMinute = static_cast<float>(droneBulletPrunes) / pruneRateDivisor;
-
-		Engine::Particle::ParticleManager* particleManager = Engine::Particle::ParticleManager::GetInstance();
-		Engine::Base::DirectXCommon* dxCommon = Engine::Graphics2D::SpriteCommon::GetInstance()->GetDxCommon();
-		ImGui::Text("State: %s", GetGameStateName());
-		ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
-		if (dxCommon && ImGui::CollapsingHeader("FPS Limit", ImGuiTreeNodeFlags_DefaultOpen)) {
-			bool frameLimitEnabled = dxCommon->IsFrameRateLimitEnabled();
-			if (ImGui::Checkbox("Frame Rate Limit", &frameLimitEnabled)) {
-				dxCommon->SetFrameRateLimitEnabled(frameLimitEnabled);
-			}
-
-			float targetFrameRate = dxCommon->GetTargetFrameRate();
-			if (ImGui::SliderFloat("Target FPS", &targetFrameRate, 15.0f, 240.0f, "%.0f")) {
-				dxCommon->SetTargetFrameRate(targetFrameRate);
-			}
-
-			bool vSyncEnabled = dxCommon->IsVSyncEnabled();
-			if (ImGui::Checkbox("VSync", &vSyncEnabled)) {
-				dxCommon->SetVSyncEnabled(vSyncEnabled);
-			}
-			ImGui::Text("Effective cap: %s%s",
-				frameLimitEnabled ? "Target FPS" : "Unlimited",
-				vSyncEnabled ? " + VSync" : "");
-		}
-		static std::array<float, 120> fpsHistory{};
-		static int32_t fpsHistoryOffset = 0;
-		fpsHistory[fpsHistoryOffset] = ImGui::GetIO().Framerate;
-		fpsHistoryOffset = (fpsHistoryOffset + 1) % static_cast<int32_t>(fpsHistory.size());
-		if (ImPlot::BeginPlot("FPS History", ImVec2(-1.0f, 140.0f), ImPlotFlags_NoLegend)) {
-			ImPlot::SetupAxes("Frame", "FPS");
-			ImPlot::PlotLine("FPS", fpsHistory.data(), static_cast<int>(fpsHistory.size()));
-			ImPlot::EndPlot();
-		}
-		ImGui::Text("Enemies: %zu  EXP Orbs: %zu / %zu  Kills: %d", enemyCount, orbCount, EnemyManager::kMaxExpOrbs, enemyManager_ ? enemyManager_->GetTotalKillCount() : 0);
-		ImGui::Text("EXP Orb Peak: %zu  Pruned: %zu",
-			enemyManager_ ? enemyManager_->GetPeakExpOrbCount() : 0,
-			expOrbPrunes);
-		ImGui::Text("Bullets: Normal %zu / %zu | Orbit %zu | Drone %zu / %zu",
-			normalBulletCount,
-			PlayerManager::kMaxActiveNormalBullets,
-			orbitBulletCount,
-			droneBulletCount,
-			Drone::kMaxActiveBullets);
-		ImGui::Text("Bullet Peaks: Normal %zu / Drone %zu  Pruned: Normal %zu / Drone %zu",
-			normalBulletPeak,
-			droneBulletPeak,
-			normalBulletPrunes,
-			droneBulletPrunes);
-		ImGui::Text("Prune Rate/min: EXP %.1f | Normal %.1f | Drone %.1f",
-			expOrbPrunesPerMinute,
-			normalBulletPrunesPerMinute,
-			droneBulletPrunesPerMinute);
-		if (ImGui::Button("Reset Soft Cap Telemetry")) {
-			if (enemyManager_) {
-				enemyManager_->ResetExpOrbTelemetry();
-			}
-			if (playerManager_) {
-				playerManager_->ResetBulletTelemetry();
-			}
-			debugSoftCapTelemetryStartFrame_ = gameFrameCount;
-			debugSoftCapNextAutoLogFrame_ = gameFrameCount + static_cast<uint32_t>(debugSoftCapAutoLogIntervalSeconds_ * 60);
-			debugSoftCapLastAutoLogFrame_ = UINT32_MAX;
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Save Soft Cap CSV")) {
-			SaveSoftCapTelemetrySnapshot();
-		}
-		if (ImGui::Checkbox("Auto Save Soft Cap CSV", &debugSoftCapAutoLogEnabled_)) {
-			debugSoftCapNextAutoLogFrame_ = gameFrameCount;
-			debugSoftCapLastAutoLogFrame_ = UINT32_MAX;
-		}
-		if (ImGui::DragInt("Auto Save Interval Sec", &debugSoftCapAutoLogIntervalSeconds_, 1.0f, 5, 300)) {
-			debugSoftCapAutoLogIntervalSeconds_ = (std::max)(5, debugSoftCapAutoLogIntervalSeconds_);
-			debugSoftCapNextAutoLogFrame_ = gameFrameCount + static_cast<uint32_t>(debugSoftCapAutoLogIntervalSeconds_ * 60);
-		}
-		if (debugSoftCapAutoLogEnabled_) {
-			const uint32_t framesUntilNextAutoLog = gameFrameCount < debugSoftCapNextAutoLogFrame_ ?
-				debugSoftCapNextAutoLogFrame_ - gameFrameCount :
-				0u;
-			ImGui::Text("Next Auto Save: %.1f sec", static_cast<float>(framesUntilNextAutoLog) / 60.0f);
-		}
-		if (debugSoftCapAutoLogEnabled_ &&
-			gameState_ == GameState::Playing &&
-			!debugFreezeGameplay_ &&
-			gameFrameCount >= debugSoftCapNextAutoLogFrame_ &&
-			gameFrameCount != debugSoftCapLastAutoLogFrame_) {
-			SaveSoftCapTelemetrySnapshot();
-			debugSoftCapLastAutoLogFrame_ = gameFrameCount;
-			debugSoftCapNextAutoLogFrame_ = gameFrameCount + static_cast<uint32_t>(debugSoftCapAutoLogIntervalSeconds_ * 60);
-		}
-		if (orbCount >= EnemyManager::kMaxExpOrbs ||
-			normalBulletCount >= PlayerManager::kMaxActiveNormalBullets ||
-			droneBulletCount >= Drone::kMaxActiveBullets) {
-			ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.25f, 1.0f), "Soft cap currently active");
-		}
-		ImGui::Text("Particles: %zu active across %zu groups",
-			particleManager->GetTotalActiveParticleCount(),
-			particleManager->GetParticleGroupCount());
-		bool useFixedParticleDelta = particleManager->IsUsingFixedDeltaTime();
-		if (ImGui::Checkbox("Use Fixed Particle Delta", &useFixedParticleDelta)) {
-			particleManager->SetUseFixedDeltaTime(useFixedParticleDelta);
-		}
-		ImGui::Text("Particle Delta: %.4f sec  fixed %.4f sec",
-			particleManager->GetLastAppliedDeltaTime(),
-			particleManager->GetFixedDeltaTime());
-		if (ImGui::CollapsingHeader("Render Debug")) {
-			const std::string& activeCameraName =
-				Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCameraName();
-			ImGui::Text("Active Camera: %s", activeCameraName.empty() ? "none" : activeCameraName.c_str());
-			ImGui::Text("Particle Draw Calls: %u", particleManager->GetLastDrawCallCount());
-			ImGui::Text("Particle Drawn Instances: %u", particleManager->GetLastDrawnInstanceCount());
-		}
-		if (Engine::Base::SrvManager* srvManager = Engine::Graphics3D::Object3DCommon::GetInstance()->GetSrvManager()) {
-			ImGui::Text("SRV: %u / %u used  remaining %u",
-				srvManager->GetUsedCount(),
-				srvManager->GetMaxCount(),
-				srvManager->GetRemainingCount());
-			if (ImGui::TreeNode("SRV Usage")) {
-				const std::vector<Engine::Base::SrvManager::UsageRecord>& records = srvManager->GetUsageRecords();
-				const size_t firstIndex = records.size() > 24 ? records.size() - 24 : 0;
-				for (size_t index = firstIndex; index < records.size(); ++index) {
-					ImGui::Text("#%u %s", records[index].index, records[index].usage.c_str());
-				}
-				ImGui::TreePop();
-			}
-		}
-		if (ImGui::TreeNode("Particle Groups")) {
-			constexpr std::array<const char*, 12> kDirectXGameParticleGroups{
-				"DirectXGame.Ripple",
-				"DirectXGame.Spark",
-				"DirectXGame.EnemyHitSpark",
-				"DirectXGame.ExpSpark",
-				"DirectXGame.LightningImpact",
-				"DirectXGame.PlayerDeathSpark",
-				"DirectXGame.DeathSmoke",
-				"DirectXGame.Confetti",
-				"DirectXGame.NormalTrail",
-				"DirectXGame.DroneTrail",
-				"DirectXGame.OrbitTrail",
-				"DirectXGame.SuicideEnemyTrail",
-			};
-			for (const char* groupName : kDirectXGameParticleGroups) {
-				const std::optional<size_t> activeCount = particleManager->GetActiveParticleCount(groupName);
-				const std::optional<uint32_t> maxInstanceCount = particleManager->GetParticleGroupMaxInstanceCount(groupName);
-				const std::optional<std::string> debugName = particleManager->GetParticleGroupDebugName(groupName);
-				ImGui::Text("%s: %zu / %u",
-					debugName.value_or(groupName).c_str(),
-					activeCount.value_or(0),
-					maxInstanceCount.value_or(0));
-			}
-			ImGui::TreePop();
-		}
-		if (playerManager_) {
-			ImGui::Text("Weapons: Normal Lv%d Dmg%d Interval %.2f",
-				playerManager_->GetNormalBulletLevel(),
-				playerManager_->GetNormalBulletDamage(),
-				playerManager_->GetNormalBulletInterval());
-			ImGui::Text("Orbit Lv%d Dmg%d | Drone Lv%d Dmg%d | Lightning Lv%d Dmg%d Count%d Radius %.1f",
-				playerManager_->GetOrbitBulletLevel(),
-				playerManager_->GetOrbitBulletDamage(),
-				playerManager_->GetDroneLevel(),
-				playerManager_->GetDroneDamage(),
-				playerManager_->GetLightningLevel(),
-				playerManager_->GetLightningDamage(),
-				playerManager_->GetLightningStrikeCount(),
-				playerManager_->GetLightningRadius());
-		}
-	ImGui::End();
+		debugContext_.StatisticsPanel().Draw(
+			&debugWindows.statisticsView,
+			gameplayFlow_.GetStateName(),
+			gameFrameCount,
+			gameplayFlow_.Is(GameplayState::Playing) &&
+				!debugContext_.IsGameplayFrozen(),
+			enemyManager_.get(),
+			playerManager_.get());
 	}
 
-	if (debugWindows_.objectView || debugWindows_.objectSettings) {
-	ImGui::SetNextWindowPos(ImVec2(1125.0f, 390.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
-	bool objectWindowOpen = debugWindows_.objectView || debugWindows_.objectSettings;
-	ImGui::Begin("オブジェクトビュー / オブジェクト設定", &objectWindowOpen);
-	if (!objectWindowOpen) {
-		debugWindows_.objectView = false;
-		debugWindows_.objectSettings = false;
+	if (debugWindows.objectView || debugWindows.objectSettings) {
+		GameplayPlayerDebugPanel::Draw(
+			&debugWindows.objectView,
+			&debugWindows.objectSettings,
+			player_.get(),
+			playerManager_.get());
 	}
-	if (player_) {
-		const Vector3& position = player_->GetWorldPosition();
-		ImGui::Separator();
-		ImGui::Text("Player Position: %.2f, %.2f, %.2f", position.x, position.y, position.z);
-		ImGui::Text("Player Rotation Y: %.2f", player_->GetWorldRotationY());
-		ImGui::Text(
-			"Aim Device: %s",
-			player_->GetAimInputDevice() == Player::AimInputDevice::Gamepad ? "Gamepad" : "KeyboardMouse");
-		float moveSpeed = player_->GetMoveSpeed();
-		if (ImGui::DragFloat("Move Speed", &moveSpeed, 0.1f, 1.0f, 120.0f)) {
-			player_->SetMoveSpeed(moveSpeed);
+
+	if (debugWindows.particleView || debugWindows.spriteManager) {
+		GameplayVisualDebugPanel::Draw(
+			&debugWindows.particleView,
+			&debugWindows.spriteManager,
+			uiInitialized_,
+			&debugContext_.CollisionDrawEnabled(),
+			gameplayHud_.GetHitFlashTimer(),
+			playerDeathPresentation_.GetElapsedTime(),
+			player_.get(),
+			particleEffects_,
+			gameplayHud_.GetTimer(),
+			gameplayHud_.GetHpGauge(),
+			gameplayHud_.GetExpGauge(),
+			gameplayHud_.GetKeyUi(),
+			gameplayHud_.GetPauseMiniMap(),
+			pauseBuildHud_,
+			[this]() { SpawnLevelUpConfetti(); });
+	}
+
+	if (debugWindows.sceneSpecificDebug) {
+		const GameplayDebugAction action = GameplaySceneDebugPanel::Draw(
+			&debugWindows.sceneSpecificDebug,
+			enemyManager_.get());
+		if (action == GameplayDebugAction::GoToResult) {
+			RequestResultScene();
+			return;
 		}
-		bool mouseAimEnabled = player_->IsMouseAimEnabled();
-		if (ImGui::Checkbox("Mouse Aim", &mouseAimEnabled)) {
-			player_->SetMouseAimEnabled(mouseAimEnabled);
+		if (action == GameplayDebugAction::ForceTimeUp) {
+			gameplayHud_.GetTimer().SetTime(kGameTimeLimitSeconds);
+			StartBossPhase();
+			return;
 		}
-		float cameraHeight = player_->GetCameraHeight();
-		if (ImGui::DragFloat("Camera Height", &cameraHeight, 0.5f, 20.0f, 160.0f)) {
-			player_->SetCameraHeight(cameraHeight);
+		if (action == GameplayDebugAction::BackToTitle) {
+			Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kTitle);
+			return;
 		}
-		float cameraDistance = player_->GetCameraDistance();
-		if (ImGui::DragFloat("Camera Distance", &cameraDistance, 0.5f, 10.0f, 120.0f)) {
-			player_->SetCameraDistance(cameraDistance);
-		}
-		float cameraPitch = player_->GetCameraPitch();
-		if (ImGui::DragFloat("Camera Pitch", &cameraPitch, 0.01f, 0.2f, 1.5f)) {
-			player_->SetCameraPitch(cameraPitch);
-		}
-		float cameraFollowSmoothness = player_->GetCameraFollowSmoothness();
-		if (ImGui::DragFloat("Camera Follow Smoothness", &cameraFollowSmoothness, 0.1f, 0.0f, 30.0f)) {
-			player_->SetCameraFollowSmoothness(cameraFollowSmoothness);
-		}
-		constexpr const char* kCameraModeLabels[] = {
-			"World Back",
-			"Player Back",
-			"World Front",
-			"Top Down",
+	}
+
+	if (debugWindows.offscreenSettings) {
+		GameplayRenderingDebugPanel::DrawOffscreen(
+			&debugWindows.offscreenSettings);
+	}
+	if (debugWindows.gizmo) {
+		debugContext_.GizmoPanel().Draw(
+			&debugWindows.gizmo,
+			player_.get());
+	}
+	if (debugWindows.objectManager) {
+		const RuntimeObjectStatus objectStatus{
+			player_ != nullptr,
+			playerManager_ != nullptr,
+			enemyManager_ != nullptr,
+			gridPlane_ != nullptr,
+			skyDome_ != nullptr,
+			sceneTransition_.IsInitialized(),
 		};
-		int32_t cameraMode = static_cast<int32_t>(player_->GetCameraMode());
-		if (ImGui::Combo("Camera Mode", &cameraMode, kCameraModeLabels, static_cast<int32_t>(std::size(kCameraModeLabels)))) {
-			player_->SetCameraMode(static_cast<Player::CameraMode>(cameraMode));
-		}
+		GameplayRuntimeDebugPanel::DrawObjectManager(
+			&debugWindows.objectManager,
+			objectStatus,
+			enemyManager_.get());
 	}
-	if (playerManager_) {
-		ImGui::Separator();
-		ImGui::Text("HP: %d / %d", playerManager_->GetHP(), playerManager_->GetMaxHP());
-		ImGui::Text("EXP: %d / %d", playerManager_->GetEXP(), playerManager_->GetNextLevelEXP());
-		ImGui::Text("Level: %d", playerManager_->GetLevel());
-		ImGui::Text("Normal Lv: %d  Active: %zu", playerManager_->GetNormalBulletLevel(), playerManager_->GetNormalBullets().size());
-		ImGui::Text("Orbit Lv: %d  Active: %zu", playerManager_->GetOrbitBulletLevel(), playerManager_->GetOrbitBullets().size());
-		ImGui::Text("Drone Lv: %d  Enabled: %s", playerManager_->GetDroneLevel(), playerManager_->HasDrone() ? "true" : "false");
-		ImGui::Text("Lightning Lv: %d  Enabled: %s", playerManager_->GetLightningLevel(), playerManager_->HasLightning() ? "true" : "false");
-		if (ImGui::Button("Add EXP +10")) {
-			playerManager_->AddEXP(10);
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Normal Up")) {
-			playerManager_->UpgradeNormalBullets();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Orbit Up")) {
-			playerManager_->UpgradeOrbitBullets();
-		}
-		if (ImGui::Button("Drone Up")) {
-			playerManager_->UpgradeDrone();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Lightning Up")) {
-			playerManager_->UpgradeLightning();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Max Weapons")) {
-			playerManager_->MaxAllWeapons();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Strongest")) {
-			playerManager_->MakeDebugStrongest();
-		}
+	if (debugWindows.motionEditor) {
+		GameplayRuntimeDebugPanel::DrawMotionEditor(
+			&debugWindows.motionEditor);
 	}
-	ImGui::End();
+	if (debugWindows.colliderTagManager) {
+		GameplayRuntimeDebugPanel::DrawColliderManager(
+			&debugWindows.colliderTagManager,
+			&debugContext_.CollisionDrawEnabled(),
+			enemyManager_.get(),
+			playerManager_.get());
 	}
-
-	if (debugWindows_.particleView || debugWindows_.spriteManager) {
-	ImGui::SetNextWindowPos(ImVec2(548.0f, 330.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(430.0f, 420.0f), ImGuiCond_FirstUseEver);
-	bool visualWindowOpen = debugWindows_.particleView || debugWindows_.spriteManager;
-	ImGui::Begin("パーティクルビュー / スプライトマネージャ", &visualWindowOpen);
-	if (!visualWindowOpen) {
-		debugWindows_.particleView = false;
-		debugWindows_.spriteManager = false;
+	if (windowVisibilityChanged) {
+		debugContext_.Save(player_.get(), particleEffects_);
 	}
-	if (uiInitialized_) {
-		ImGui::Separator();
-		ImGui::Checkbox("DebugDraw collision / spawn range", &debugDrawEnabled_);
-		ImGui::Text("Hit Flash: %.2f  Death Timer: %.2f", hitFlashTimer_, deathTimer_);
-		if (ImGui::CollapsingHeader("Particle Tuning")) {
-			ImGui::SliderInt("Damage Spark Count", &particleTuning_.playerDamageSparkCount, 0, 100);
-			ImGui::SliderInt("Damage Ripple Count", &particleTuning_.playerDamageRippleCount, 0, 12);
-			ImGui::SliderInt("Enemy Hit Spark Count", &particleTuning_.enemyHitSparkCount, 0, 80);
-			ImGui::SliderInt("Enemy Death Spark Count", &particleTuning_.enemyDeathSparkCount, 0, 120);
-			ImGui::SliderInt("Enemy Death Smoke Count", &particleTuning_.enemyDeathSmokeCount, 0, 80);
-			ImGui::SliderInt("EXP Spark Count", &particleTuning_.expSparkCount, 0, 80);
-			ImGui::SliderInt("Lightning Spark Count", &particleTuning_.lightningSparkCount, 0, 100);
-			ImGui::SliderInt("LevelUp Confetti Count", &particleTuning_.levelUpConfettiCount, 0, 160);
-			ImGui::SliderInt("Player Death Spark Count", &particleTuning_.playerDeathSparkCount, 0, 160);
-			ImGui::SliderInt("Player Death Smoke Count", &particleTuning_.playerDeathSmokeCount, 0, 100);
-			ImGui::SliderInt("Player Death Ripple Count", &particleTuning_.playerDeathRippleCount, 0, 12);
-			bool particleBehaviorChanged = false;
-			particleBehaviorChanged |= ImGui::SliderFloat("Spark Lifetime", &particleTuning_.sparkLifetime, 0.08f, 1.2f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Spark Velocity Scale", &particleTuning_.sparkVelocityScale, 0.2f, 3.0f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Spark Scale Multiplier", &particleTuning_.sparkScaleMultiplier, 0.25f, 3.0f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Smoke Lifetime", &particleTuning_.smokeLifetime, 0.2f, 2.0f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Smoke Scale Multiplier", &particleTuning_.smokeScaleMultiplier, 0.25f, 3.0f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Ripple Lifetime", &particleTuning_.rippleLifetime, 0.1f, 1.2f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Ripple Expand Speed", &particleTuning_.rippleExpandSpeed, 1.0f, 9.0f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Confetti Velocity Scale", &particleTuning_.confettiVelocityScale, 0.2f, 3.0f);
-			particleBehaviorChanged |= ImGui::SliderFloat("Confetti Scale Multiplier", &particleTuning_.confettiScaleMultiplier, 0.25f, 3.0f);
-			if (particleBehaviorChanged) {
-				ApplyParticleBehaviorTuning();
-			}
-			if (ImGui::Button("Emit Player Spark") && player_) {
-				Engine::Particle::ParticleManager::GetInstance()->Emit(
-					"DirectXGame.Spark",
-					player_->GetWorldPosition(),
-					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDamageSparkCount)));
-			}
-			ImGui::SameLine();
-			if (ImGui::Button("Emit Enemy Death") && player_) {
-				Engine::Particle::ParticleManager::GetInstance()->Emit(
-					"DirectXGame.EnemyHitSpark",
-					player_->GetWorldPosition(),
-					static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSparkCount)));
-				Engine::Particle::ParticleManager::GetInstance()->Emit(
-					"DirectXGame.DeathSmoke",
-					player_->GetWorldPosition(),
-					static_cast<uint32_t>((std::max)(0, particleTuning_.enemyDeathSmokeCount)));
-			}
-			ImGui::SameLine();
-			if (ImGui::Button("Emit Player Death") && player_) {
-				Engine::Particle::ParticleManager::GetInstance()->Emit(
-					"DirectXGame.PlayerDeathSpark",
-					player_->GetWorldPosition(),
-					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSparkCount)));
-				Engine::Particle::ParticleManager::GetInstance()->Emit(
-					"DirectXGame.DeathSmoke",
-					player_->GetWorldPosition(),
-					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathSmokeCount)));
-				Engine::Particle::ParticleManager::GetInstance()->Emit(
-					"DirectXGame.Ripple",
-					player_->GetWorldPosition(),
-					static_cast<uint32_t>((std::max)(0, particleTuning_.playerDeathRippleCount)));
-			}
-			ImGui::SameLine();
-			if (ImGui::Button("Emit LevelUp Confetti")) {
-				SpawnLevelUpConfetti();
-			}
-		}
-		timer_.DebugDrawImGui();
-		hpGauge_.DebugDrawImGui();
-		expGauge_.DebugDrawImGui();
-		keyUI_.DebugDrawImGui();
-		miniMap_.DebugDrawImGui();
-		if (ImGui::CollapsingHeader("Pause Build Icons")) {
-			ImGui::Checkbox("Show Pause Build Icons", &pauseBuildLayout_.visible);
-			ImGui::Checkbox("Enable HUD Debug##PauseBuildIcons", &pauseBuildLayout_.debugEnabled);
-			if (pauseBuildLayout_.debugEnabled) {
-				float position[2]{ pauseBuildLayout_.position.x, pauseBuildLayout_.position.y };
-				if (ImGui::DragFloat2("Pause Build Position", position, 1.0f, -400.0f, 1280.0f)) {
-					pauseBuildLayout_.position = { position[0], position[1] };
-					UpdatePauseBuildUi();
-				}
-				if (ImGui::DragFloat("Pause Build Spacing", &pauseBuildLayout_.stepX, 1.0f, 32.0f, 240.0f)) {
-					UpdatePauseBuildUi();
-				}
-				float iconSize[2]{ pauseBuildLayout_.iconSize.x, pauseBuildLayout_.iconSize.y };
-				if (ImGui::DragFloat2("Pause Build Icon Size", iconSize, 1.0f, 16.0f, 256.0f)) {
-					pauseBuildLayout_.iconSize = { (std::max)(16.0f, iconSize[0]), (std::max)(16.0f, iconSize[1]) };
-					UpdatePauseBuildUi();
-				}
-				if (ImGui::Button("Save Pause Layout")) {
-					SavePauseBuildLayout();
-				}
-			}
-		}
-	}
-	ImGui::End();
-	}
-
-	if (debugWindows_.sceneSpecificDebug) {
-	ImGui::SetNextWindowPos(ImVec2(12.0f, 120.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("シーン固有デバッグ", &debugWindows_.sceneSpecificDebug);
-	if (enemyManager_) {
-		ImGui::Separator();
-		ImGui::Text("Enemies: %zu / %zu", enemyManager_->GetActiveEnemyCount(), enemyManager_->GetEnemies().size());
-		ImGui::Text("EXP Orbs: %zu / %zu", enemyManager_->GetExpOrbCount(), EnemyManager::kMaxExpOrbs);
-		ImGui::Text("Kills: %d", enemyManager_->GetTotalKillCount());
-		if (ImGui::Button("Debug Damage All Enemies")) {
-			enemyManager_->DamageAllEnemies(999);
-		}
-	}
-	if (ImGui::Button("Go To Result")) {
-		RequestResultScene();
-		ImGui::End();
-		return;
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Force Time Up")) {
-		timer_.SetTime(kGameTimeLimitSeconds);
-		StartBossPhase();
-		ImGui::End();
-		return;
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Back To Title")) {
-		Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kTitle);
-		ImGui::End();
-		return;
-	}
-	ImGui::End();
-	}
-
-	if (debugWindows_.offscreenSettings) {
-		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
-			offscreen->DrawImGui();
-		}
-	}
-	if (debugWindows_.gizmo) {
-		ImGui::SetNextWindowPos(ImVec2(920.0f, 300.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 240.0f), ImGuiCond_FirstUseEver);
-		ImGui::Begin("ギズモ", &debugWindows_.gizmo);
-		constexpr const char* kGizmoTargetLabels[] = { "Player" };
-		int32_t gizmoTarget = static_cast<int32_t>(debugGizmoTarget_);
-		if (ImGui::Combo("Target", &gizmoTarget, kGizmoTargetLabels, static_cast<int32_t>(std::size(kGizmoTargetLabels)))) {
-			debugGizmoTarget_ = static_cast<DebugGizmoTarget>(gizmoTarget);
-		}
-		constexpr const char* kGizmoOperationLabels[] = { "Translate", "Rotate", "Scale" };
-		int32_t gizmoOperation = static_cast<int32_t>(debugGizmoOperation_);
-		if (ImGui::Combo("Operation", &gizmoOperation, kGizmoOperationLabels, static_cast<int32_t>(std::size(kGizmoOperationLabels)))) {
-			debugGizmoOperation_ = static_cast<Engine::Editor::ImGuizmoManager::Operation>(gizmoOperation);
-		}
-		ImGui::Text("Using: %s", BoolText(Engine::Editor::ImGuizmoManager::IsUsing()));
-		Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-		if (!activeCamera) {
-			ImGui::TextUnformatted("Active camera is not available.");
-		} else {
-			Vector3 targetPosition{};
-			float targetRotationY = 0.0f;
-			bool canEditTarget = false;
-			if (debugGizmoTarget_ == DebugGizmoTarget::Player && player_) {
-				targetPosition = player_->GetWorldPosition();
-				targetRotationY = player_->GetWorldRotationY();
-				canEditTarget = true;
-			}
-			if (canEditTarget) {
-				float translation[3]{ targetPosition.x, targetPosition.y, targetPosition.z };
-				float rotation[3]{ 0.0f, targetRotationY * 180.0f / 3.14159265f, 0.0f };
-				float scale[3]{ 1.0f, 1.0f, 1.0f };
-				Matrix4x4 objectMatrix = MyMath::MakeAffineMatrix(
-					Vector3{ scale[0], scale[1], scale[2] },
-					Vector3{ 0.0f, targetRotationY, 0.0f },
-					targetPosition);
-				ImGui::DragFloat3("Position", translation, 0.25f, -160.0f, 160.0f);
-				if (debugGizmoTarget_ == DebugGizmoTarget::Player) {
-					ImGui::DragFloat("Rotation Y", &rotation[1], 1.0f, -180.0f, 180.0f);
-				}
-				Engine::Editor::ImGuizmoManager::RecomposeMatrixFromComponents(
-					translation,
-					rotation,
-					scale,
-					&objectMatrix.m[0][0]);
-				const ImGuiViewport* viewport = ImGui::GetMainViewport();
-				Engine::Editor::ImGuizmoManager::SetRect(
-					viewport->Pos.x,
-					viewport->Pos.y,
-					viewport->Size.x,
-					viewport->Size.y);
-				const bool manipulated = Engine::Editor::ImGuizmoManager::Manipulate(
-					&activeCamera->GetViewMatrix().m[0][0],
-					&activeCamera->GetProjectionMatrix().m[0][0],
-					&objectMatrix.m[0][0],
-					debugGizmoOperation_,
-					Engine::Editor::ImGuizmoManager::Mode::World);
-				if (manipulated) {
-					Engine::Editor::ImGuizmoManager::DecomposeMatrixToComponents(
-						&objectMatrix.m[0][0],
-						translation,
-						rotation,
-						scale);
-				}
-				const Vector3 editedPosition{ translation[0], translation[1], translation[2] };
-				if (debugGizmoTarget_ == DebugGizmoTarget::Player && player_) {
-					player_->SetDebugWorldPosition(editedPosition);
-					player_->SetDebugWorldRotationY(rotation[1] * 3.14159265f / 180.0f);
-				}
-			} else {
-				ImGui::TextUnformatted("Selected target is not available.");
-			}
-		}
-		ImGui::End();
-	}
-	if (debugWindows_.objectManager) {
-		ImGui::SetNextWindowPos(ImVec2(920.0f, 460.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 260.0f), ImGuiCond_FirstUseEver);
-		ImGui::Begin("オブジェクトマネージャ", &debugWindows_.objectManager);
-		if (ImGui::TreeNode("Scene Objects")) {
-			ImGui::BulletText("Player: %s", player_ ? "loaded" : "none");
-			ImGui::BulletText("PlayerManager: %s", playerManager_ ? "loaded" : "none");
-			ImGui::BulletText("EnemyManager: %s", enemyManager_ ? "loaded" : "none");
-			ImGui::BulletText("GridPlane: %s", gridPlane_ ? "loaded" : "none");
-			ImGui::BulletText("SkyDome: %s", skyDome_ ? "loaded" : "none");
-			ImGui::BulletText("CurtainTransition: %s", curtain_ ? "loaded" : "none");
-			ImGui::TreePop();
-		}
-		if (enemyManager_ && ImGui::TreeNode("Enemies")) {
-			const auto& enemies = enemyManager_->GetEnemies();
-			ImGui::Text("Active: %zu / %zu", enemyManager_->GetActiveEnemyCount(), enemies.size());
-			const size_t previewCount = (std::min)(enemies.size(), size_t{ 12 });
-			for (size_t index = 0; index < previewCount; ++index) {
-				const Enemy* enemy = enemies[index].get();
-				if (!enemy) {
-					continue;
-				}
-				const Vector3& position = enemy->GetPosition();
-				ImGui::Text(
-					"#%zu %s HP:%d Pos: %.1f, %.1f, %.1f",
-					index,
-					enemy->IsActive() ? "Active" : "Inactive",
-					enemy->GetHP(),
-					position.x,
-					position.y,
-					position.z);
-			}
-			if (enemies.size() > previewCount) {
-				ImGui::Text("... %zu more", enemies.size() - previewCount);
-			}
-			ImGui::TreePop();
-		}
-		if (enemyManager_ && ImGui::TreeNode("EXP Orbs")) {
-			ImGui::Text("Active: %zu / %zu", enemyManager_->GetExpOrbCount(), EnemyManager::kMaxExpOrbs);
-			ImGui::Text("Peak: %zu  Pruned: %zu", enemyManager_->GetPeakExpOrbCount(), enemyManager_->GetExpOrbPruneCount());
-			if (ImGui::Button("Reset Orb Telemetry")) {
-				enemyManager_->ResetExpOrbTelemetry();
-			}
-			ImGui::TreePop();
-		}
-		ImGui::End();
-	}
-	if (debugWindows_.motionEditor) {
-		ImGui::SetNextWindowPos(ImVec2(1255.0f, 120.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(320.0f, 140.0f), ImGuiCond_FirstUseEver);
-		if (ImGui::Begin("モーションエディター", &debugWindows_.motionEditor)) {
-			ImGui::TextUnformatted("モーション編集ビューです。");
-			ax::NodeEditor::Begin("MotionGraph");
-			ax::NodeEditor::BeginNode(1);
-			ImGui::TextUnformatted("Start");
-			ax::NodeEditor::BeginPin(11, ax::NodeEditor::PinKind::Output);
-			ImGui::TextUnformatted("Out");
-			ax::NodeEditor::EndPin();
-			ax::NodeEditor::EndNode();
-			ax::NodeEditor::BeginNode(2);
-			ax::NodeEditor::BeginPin(21, ax::NodeEditor::PinKind::Input);
-			ImGui::TextUnformatted("In");
-			ax::NodeEditor::EndPin();
-			ImGui::TextUnformatted("Death Camera");
-			ax::NodeEditor::EndNode();
-			ax::NodeEditor::Link(100, 11, 21);
-			ax::NodeEditor::End();
-		}
-		ImGui::End();
-	}
-	if (debugWindows_.colliderTagManager) {
-		ImGui::SetNextWindowPos(ImVec2(1255.0f, 280.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
-		ImGui::Begin("コライダー/タグ管理", &debugWindows_.colliderTagManager);
-		ImGui::Checkbox("DebugDraw collision / spawn range", &debugDrawEnabled_);
-		ImGui::SeparatorText("Runtime Tags");
-		ImGui::BulletText("Player");
-		ImGui::BulletText("Enemy");
-		ImGui::BulletText("PlayerBullet");
-		ImGui::BulletText("ExpOrb");
-		ImGui::SeparatorText("Collision State");
-		if (enemyManager_) {
-			ImGui::Text("Enemies: %zu active", enemyManager_->GetActiveEnemyCount());
-			ImGui::Text("EXP Orbs: %zu active", enemyManager_->GetExpOrbCount());
-			ImGui::Text("Recent Hit Effects: %zu", enemyManager_->GetRecentHitEffectPositions().size());
-			ImGui::Text("Recent Death Effects: %zu", enemyManager_->GetRecentDeathEffectPositions().size());
-		}
-		if (playerManager_) {
-			ImGui::Text("Normal Bullets: %zu", playerManager_->GetNormalBullets().size());
-			ImGui::Text("Orbit Bullets: %zu", playerManager_->GetOrbitBullets().size());
-		}
-		ImGui::End();
-	}
-	Engine::Editor::DebugEditorManager::SaveWindowItems(windowItems, std::size(windowItems));
-	saveWindowVisibilityIfChanged(previousDebugWindows);
 #endif
 }
 
@@ -2892,50 +742,26 @@ void DirectXGameScene::ApplyPostEffect() const
 	}
 
 	PostEffectType effect = PostEffectType::Fullscreen;
-	switch (gameState_) {
-	case GameState::Paused:
+	switch (gameplayFlow_.GetState()) {
+	case GameplayState::Paused:
 		effect = PostEffectType::Fullscreen;
 		break;
-	case GameState::LevelUp:
+	case GameplayState::LevelUp:
 		effect = PostEffectType::Fullscreen;
 		break;
-	case GameState::Dead:
+	case GameplayState::Dead:
 		effect = PostEffectType::Grayscale;
 		break;
-	case GameState::Start:
-	case GameState::Playing:
-	case GameState::BossIntro:
-	case GameState::Boss:
-	case GameState::BossDefeated:
+	case GameplayState::Start:
+	case GameplayState::Playing:
+	case GameplayState::BossIntro:
+	case GameplayState::Boss:
+	case GameplayState::BossDefeated:
 	default:
 		effect = PostEffectType::Fullscreen;
 		break;
 	}
 	offscreen->SetScenePostEffectType(effect);
-}
-
-const char* DirectXGameScene::GetGameStateName() const
-{
-	switch (gameState_) {
-	case GameState::Start:
-		return "Start";
-	case GameState::Playing:
-		return "Playing";
-	case GameState::BossIntro:
-		return "BossIntro";
-	case GameState::Boss:
-		return "Boss";
-	case GameState::BossDefeated:
-		return "BossDefeated";
-	case GameState::Paused:
-		return "Paused";
-	case GameState::LevelUp:
-		return "LevelUp";
-	case GameState::Dead:
-		return "Dead";
-	default:
-		return "Unknown";
-	}
 }
 
 }

@@ -1,12 +1,15 @@
 #include "game/directxgame/scene/DirectXGameTitleScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/DirectXGameResourceProbe.h"
+#include "game/directxgame/core/GameAudioDebugPanel.h"
+#include "game/directxgame/core/GameAudioTuning.h"
 #include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameInputBindings.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "game/directxgame/core/ScreenUtil.h"
+#include "game/directxgame/core/SceneLighting.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/effects/CurtainTransition.h"
 #include "Camera.h"
@@ -20,6 +23,7 @@
 #include "TextureManager.h"
 #include <Windows.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iterator>
 #include <string>
@@ -45,12 +49,6 @@ constexpr char kAudioTitleSelect[] = "title.select";
 constexpr char kAudioTitleDecide[] = "title.decide";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kTitleCameraName[] = "directxgame_title";
-constexpr float kCubeModelLocalHeight = 2.0f;
-constexpr float kTitleLightTopOffset = 25.0f;
-const Vector4 kTitlePointColor{ 1.0f, 0.960784f, 0.819608f, 1.0f };
-constexpr float kTitlePointIntensity = 2.02f;
-constexpr float kTitlePointRadius = 260.0f;
-constexpr float kTitlePointDecay = 2.05f;
 
 bool IsPointInRect(const Vector2& point, const Vector2& rectPosition, const Vector2& rectSize)
 {
@@ -69,6 +67,7 @@ DirectXGameTitleScene::DirectXGameTitleScene(std::shared_ptr<DirectXGameSessionC
 
 void DirectXGameTitleScene::Initialize()
 {
+	LoadGameAudioTuning();
 	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 	if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
 		offscreen->SetScenePostEffectType(PostEffectType::Fullscreen);
@@ -125,7 +124,6 @@ void DirectXGameTitleScene::Update()
 		UpdateNavigation();
 	}
 	UpdateModelAnimation();
-	UpdatePlayerLight();
 	UpdateCameraAnimation();
 
 	if (titleObject_) {
@@ -237,7 +235,6 @@ void DirectXGameTitleScene::InitializeCameraAndObjects()
 	titleObject_->SetRotate({ 0.0f, -2.618f, 0.0f });
 	titleObject_->SetScale(layoutSettings_.modelScale);
 	titleObject_->SetTranslate(layoutSettings_.modelBasePosition);
-	lightSettings_.ApplyTo(*titleObject_);
 
 	const ModelHandle skydomeHandle = GameModelCache::Load("skydome.obj");
 	skyDomeObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
@@ -252,44 +249,23 @@ void DirectXGameTitleScene::InitializeCameraAndObjects()
 
 	gridPlane_ = std::make_unique<GridPlane>();
 	gridPlane_->Initialize();
-	gridPlane_->SetLightSettings(lightSettings_);
 	gridPlane_->Update(layoutSettings_.modelBasePosition);
-
-	UpdatePlayerLight();
 }
 
 void DirectXGameTitleScene::InitializeLighting()
 {
 	const UILayoutIO::LayoutMap tuning = UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {});
 
-	DirectionalLight directional{};
-	directional.color = GameLightDefaults::kDirectionalColor;
-	directional.direction = GameLightDefaults::kDirectionalDirection;
-	directional.intensity = 0.0f;
-	directional.enable = false;
-	lightSettings_.SetDirectionalLight(directional);
-
-	titleLightOffset_ = { 0.0f, UILayoutIO::GetFloat(tuning, "title.light.height", kTitleLightTopOffset), 0.0f };
-	titleLightOffset_.x = 0.0f;
-	titleLightOffset_.z = 0.0f;
-
-	PointLight point{};
-	const Vector3 pointColor = UILayoutIO::GetVector3(
-		tuning,
-		"title.light.pointColor",
-		{ kTitlePointColor.x, kTitlePointColor.y, kTitlePointColor.z });
-	point.color = { pointColor.x, pointColor.y, pointColor.z, kTitlePointColor.w };
-	point.position = {
-		layoutSettings_.modelBasePosition.x,
-		layoutSettings_.modelBasePosition.y + layoutSettings_.modelScale.y * kCubeModelLocalHeight + titleLightOffset_.y,
-		layoutSettings_.modelBasePosition.z,
-	};
-	point.intensity = UILayoutIO::GetFloat(tuning, "title.light.pointIntensity", kTitlePointIntensity);
-	point.radius = UILayoutIO::GetFloat(tuning, "title.light.pointRadius", kTitlePointRadius);
-	point.decay = UILayoutIO::GetFloat(tuning, "title.light.pointDecay", kTitlePointDecay);
-	point.enable = UILayoutIO::GetFloat(tuning, "title.light.pointEnabled", 1.0f) > 0.5f;
-	lightSettings_.SetPointLight(point);
-	lightSettings_.SetLightingEnabled(true);
+	SceneLighting::Defaults defaults{};
+	defaults.light.color = { 1.0f, 0.96f, 0.86f, 1.0f };
+	defaults.light.direction = { -0.55f, -1.0f, -0.45f };
+	defaults.light.intensity = 0.9f;
+	defaults.light.ambientColor = { 0.48f, 0.52f, 0.62f, 1.0f };
+	defaults.light.ambientIntensity = 0.34f;
+	defaults.light.specularStrength = 0.16f;
+	defaults.light.enable = 1;
+	SceneLighting::ApplyDefaults(defaults);
+	SceneLighting::Load(tuning, "title.");
 }
 
 void DirectXGameTitleScene::ApplyLayout()
@@ -468,29 +444,6 @@ void DirectXGameTitleScene::UpdateModelAnimation()
 	titleObject_->SetTranslate(layoutSettings_.modelBasePosition);
 }
 
-void DirectXGameTitleScene::UpdatePlayerLight()
-{
-	PointLight point = lightSettings_.GetPointLight();
-	Vector3 position = layoutSettings_.modelBasePosition;
-	if (titleObject_) {
-		position = titleObject_->GetTransform().translate;
-	}
-	const Vector3 scale = titleObject_ ? titleObject_->GetTransform().scale : layoutSettings_.modelScale;
-	point.position = {
-		position.x,
-		position.y + scale.y * kCubeModelLocalHeight + titleLightOffset_.y,
-		position.z,
-	};
-	lightSettings_.SetPointLight(point);
-
-	if (titleObject_) {
-		lightSettings_.ApplyTo(*titleObject_);
-	}
-	if (gridPlane_) {
-		gridPlane_->SetLightSettings(lightSettings_);
-	}
-}
-
 void DirectXGameTitleScene::UpdateCameraAnimation()
 {
 	if (!titleCamera_) {
@@ -614,31 +567,12 @@ void DirectXGameTitleScene::DrawDebugUi()
 	}
 
 	if (debugWindows_.audio) {
-	ImGui::Begin("オーディオ", &debugWindows_.audio);
-	if (debugWindows_.audio) {
-		float masterVolume = GameAudioCache::GetMasterVolume();
-		if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
-			GameAudioCache::SetMasterVolume(masterVolume);
-		}
-		if (ImGui::CollapsingHeader("Audio Balance")) {
-			float titleBgm = GameAudioCache::GetTunedVolume(kAudioTitleBgm, 0.1f);
-			if (ImGui::SliderFloat("Title BGM", &titleBgm, 0.0f, 1.0f)) {
-				GameAudioCache::SetTunedVolume(kAudioTitleBgm, titleBgm);
-				if (titleBgmHandle_ != 0) {
-					GameAudioCache::SetVolumeFromTuning(titleBgmHandle_, kAudioTitleBgm, 0.1f);
-				}
-			}
-			float selectSe = GameAudioCache::GetTunedVolume(kAudioTitleSelect, 1.0f);
-			if (ImGui::SliderFloat("Title Select", &selectSe, 0.0f, 1.0f)) {
-				GameAudioCache::SetTunedVolume(kAudioTitleSelect, selectSe);
-			}
-			float decideSe = GameAudioCache::GetTunedVolume(kAudioTitleDecide, 1.0f);
-			if (ImGui::SliderFloat("Title Decide", &decideSe, 0.0f, 1.0f)) {
-				GameAudioCache::SetTunedVolume(kAudioTitleDecide, decideSe);
-			}
-		}
-	}
-	ImGui::End();
+	const std::array<AudioTuningEntry, 3> titleAudioEntries{ {
+		{ "Title BGM", kAudioTitleBgm, 0.1f, titleBgmHandle_ },
+		{ "Title Select", kAudioTitleSelect, 1.0f },
+		{ "Title Decide", kAudioTitleDecide, 1.0f },
+	} };
+	GameAudioDebugPanel::Draw(&debugWindows_.audio, titleAudioEntries);
 	}
 
 	if (debugWindows_.statisticsView) {
@@ -737,44 +671,7 @@ void DirectXGameTitleScene::DrawDebugUi()
 		}
 
 		if (ImGui::CollapsingHeader("Title Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-			PointLight point = lightSettings_.GetPointLight();
-			bool lightChanged = false;
-
-			bool pointEnabled = point.enable != 0;
-			if (ImGui::Checkbox("Title Light Enabled", &pointEnabled)) {
-				point.enable = pointEnabled;
-				lightChanged = true;
-			}
-			if (ImGui::DragFloat("Title Light Height", &titleLightOffset_.y, 0.25f, -8.0f, 80.0f)) {
-				lightChanged = true;
-			}
-			float pointColor[3]{ point.color.x, point.color.y, point.color.z };
-			if (ImGui::ColorEdit3("Title Light Color", pointColor)) {
-				point.color = { pointColor[0], pointColor[1], pointColor[2], point.color.w };
-				lightChanged = true;
-			}
-			if (ImGui::SliderFloat("Title Light Intensity", &point.intensity, 0.0f, 12.0f)) {
-				lightChanged = true;
-			}
-			if (ImGui::DragFloat("Title Light Radius", &point.radius, 0.5f, 1.0f, 260.0f)) {
-				lightChanged = true;
-			}
-			if (ImGui::DragFloat("Title Light Decay", &point.decay, 0.05f, 0.1f, 8.0f)) {
-				lightChanged = true;
-			}
-			if (ImGui::Button("Apply Title Reference Light")) {
-				titleLightOffset_ = { 0.0f, kTitleLightTopOffset, 0.0f };
-				point.color = kTitlePointColor;
-				point.intensity = kTitlePointIntensity;
-				point.radius = kTitlePointRadius;
-				point.decay = kTitlePointDecay;
-				point.enable = true;
-				lightChanged = true;
-			}
-			if (lightChanged) {
-				lightSettings_.SetPointLight(point);
-				UpdatePlayerLight();
-			}
+			SceneLighting::DrawDebugUi();
 		}
 
 		float cameraTarget[3]{
@@ -894,7 +791,6 @@ void DirectXGameTitleScene::ReloadDebugData()
 #endif
 	InitializeLighting();
 	ApplyLayout();
-	UpdatePlayerLight();
 }
 
 bool DirectXGameTitleScene::IsMouseMenuConfirm(int32_t hoveredMenuIndex) const

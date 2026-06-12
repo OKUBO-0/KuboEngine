@@ -27,7 +27,6 @@ void SkyDome::Initialize()
 	skyObject_->SetScale({ 100.0f, 100.0f, 100.0f });
 	skyObject_->SetTranslate({ 0.0f, 0.0f, 0.0f });
 	skyObject_->SetColor({ 0.62f, 0.76f, 1.0f, 1.0f });
-	lightSettings_.ApplyTo(*skyObject_);
 }
 
 void SkyDome::Update()
@@ -45,15 +44,6 @@ void SkyDome::Draw()
 {
 	if (skyObject_) {
 		skyObject_->Draw();
-	}
-}
-
-void SkyDome::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (skyObject_) {
-		lightSettings_.ApplyTo(*skyObject_);
-		skyObject_->SetLighting(false);
 	}
 }
 

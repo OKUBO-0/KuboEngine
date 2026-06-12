@@ -3,7 +3,6 @@
 #include "Object3D.h"
 #include "Vector3.h"
 #include "Vector4.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include "game/directxgame/enemy/EnemyBehavior.h"
 #include <cstdint>
 #include <memory>
@@ -27,7 +26,6 @@ public:
 	void SetModelByType(int32_t type);
 	void SetBehaviorByType(int32_t type);
 	bool IsSuicideType() const { return type_ == 4; }
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 	const Vector3& GetPosition() const { return position_; }
 	const Vector3& GetPreviousPosition() const { return previousPosition_; }
@@ -83,7 +81,6 @@ private:
 	std::unique_ptr<IEnemyBehavior> behavior_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> floatingShadowObject_;
-	GameLightSettings lightSettings_{};
 
 	Vector4 behaviorColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
 	float behaviorScaleMultiplier_ = 1.0f;

@@ -45,7 +45,6 @@ void ExpOrb::Initialize(const Vector3& position, int32_t expValue)
 	object_->SetEnvironmentReflectionStrength(0.15f);
 	object_->SetEnvironmentRoughness(0.45f);
 	object_->SetColor({ 0.45f, 1.0f, 0.45f, 1.0f });
-	lightSettings_.ApplyTo(*object_);
 	ApplyTransform();
 	object_->Update();
 }
@@ -100,14 +99,6 @@ void ExpOrb::Draw()
 {
 	if (active_ && object_) {
 		object_->Draw();
-	}
-}
-
-void ExpOrb::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (object_) {
-		lightSettings_.ApplyTo(*object_);
 	}
 }
 

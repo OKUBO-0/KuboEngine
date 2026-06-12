@@ -37,7 +37,6 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	object_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	object_->SetEnvironmentReflectionStrength(0.0f);
 	object_->SetEnvironmentRoughness(1.0f);
-	lightSettings_.ApplyTo(*object_);
 
 	Update(center, 0.0f);
 }
@@ -109,14 +108,6 @@ bool OrbitBullet::CanHitEnemy(void* enemyPtr)
 void OrbitBullet::RegisterHit(void* enemyPtr)
 {
 	hitCooldowns_[enemyPtr] = hitInterval_;
-}
-
-void OrbitBullet::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (object_) {
-		lightSettings_.ApplyTo(*object_);
-	}
 }
 
 void OrbitBullet::ApplyTransform()

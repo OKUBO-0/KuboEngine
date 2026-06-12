@@ -263,7 +263,6 @@ void PlayerManager::AddDrone()
 	droneDamageBonus_ = static_cast<int32_t>(GetWeaponUpgradeSetting("drone.lv1.damageBonus", 0.0f));
 	dronePierceCount_ = static_cast<int32_t>(GetWeaponUpgradeSetting("drone.lv1.pierceCount", 1.0f));
 	drone_ = std::make_unique<Drone>();
-	drone_->SetLightSettings(lightSettings_);
 	drone_->Initialize({ 3.0f, 2.0f, 0.0f });
 }
 
@@ -396,20 +395,6 @@ void PlayerManager::PlayLevelUpEffect()
 	AddEXP(0);
 }
 
-void PlayerManager::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	for (std::unique_ptr<NormalBullet>& bullet : normalBullets_) {
-		bullet->SetLightSettings(lightSettings_);
-	}
-	for (std::unique_ptr<OrbitBullet>& bullet : orbitBullets_) {
-		bullet->SetLightSettings(lightSettings_);
-	}
-	if (drone_) {
-		drone_->SetLightSettings(lightSettings_);
-	}
-}
-
 void PlayerManager::UpdateInvincibility(float deltaTime)
 {
 	if (!invincible_) {
@@ -450,7 +435,6 @@ void PlayerManager::UpdateNormalBullets(float deltaTime)
 				startPosition.z += right.z * horizontalOffset;
 
 				auto bullet = std::make_unique<NormalBullet>();
-				bullet->SetLightSettings(lightSettings_);
 				bullet->InitializeForward(startPosition, forward, normalBulletSpeed_, normalBulletRange_, normalBulletPierceCount_);
 				normalBullets_.push_back(std::move(bullet));
 				peakNormalBulletCount_ = (std::max)(peakNormalBulletCount_, normalBullets_.size());
@@ -560,7 +544,6 @@ void PlayerManager::RebuildOrbitBullets()
 	for (int32_t i = 0; i < orbitBulletCount_; ++i) {
 		const float angle = (2.0f * std::numbers::pi_v<float> * static_cast<float>(i)) / static_cast<float>(orbitBulletCount_);
 		auto bullet = std::make_unique<OrbitBullet>();
-		bullet->SetLightSettings(lightSettings_);
 		bullet->Initialize(player_->GetWorldPosition(), orbitRadius_, angle, orbitAngularSpeed_, orbitBulletScale_, orbitHitInterval_);
 		orbitBullets_.push_back(std::move(bullet));
 	}

@@ -26,7 +26,6 @@ void Drone::Initialize(const Vector3& offset)
 	object_->SetEnvironmentReflectionStrength(0.0f);
 	object_->SetEnvironmentRoughness(1.0f);
 	object_->SetScale({ 0.5f, 0.5f, 0.5f });
-	lightSettings_.ApplyTo(*object_);
 }
 
 void Drone::Update(
@@ -83,17 +82,6 @@ void Drone::Draw()
 	}
 }
 
-void Drone::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (object_) {
-		lightSettings_.ApplyTo(*object_);
-	}
-	for (std::unique_ptr<NormalBullet>& bullet : bullets_) {
-		bullet->SetLightSettings(lightSettings_);
-	}
-}
-
 void Drone::ApplyTransform()
 {
 	if (!object_) {
@@ -112,7 +100,6 @@ void Drone::FireForward(float angle, int32_t shotCount, float bulletSpeed, float
 		const float shotAngle = angle + spread;
 		Vector3 shotDirection{ std::sin(shotAngle), 0.0f, std::cos(shotAngle) };
 		auto bullet = std::make_unique<NormalBullet>();
-		bullet->SetLightSettings(lightSettings_);
 		bullet->InitializeForward(
 			position_,
 			shotDirection,

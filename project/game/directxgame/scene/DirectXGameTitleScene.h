@@ -7,7 +7,6 @@
 #include "Vector3.h"
 #include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include "game/directxgame/effects/CurtainTransition.h"
 #include "game/directxgame/ui/common/UILabel.h"
 #include "game/directxgame/world/GridPlane.h"
@@ -78,7 +77,6 @@ private:
 	void UpdateNavigation();
 	void UpdateAudio();
 	void UpdateModelAnimation();
-	void UpdatePlayerLight();
 	void UpdateCameraAnimation();
 	void QueueDebugDraw();
 	void DrawDebugUi();
@@ -99,8 +97,6 @@ private:
 	std::unique_ptr<Engine::Graphics3D::Object3D> titleObject_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> skyDomeObject_;
 	std::unique_ptr<GridPlane> gridPlane_;
-	GameLightSettings lightSettings_{};
-	Vector3 titleLightOffset_ = GameLightDefaults::kPlayerLightOffset;
 	bool titleDebugDrawEnabled_ = true;
 
 	SoundHandle titleBgmHandle_ = 0;

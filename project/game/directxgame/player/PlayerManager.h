@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Vector3.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/weapons/Drone.h"
 #include "game/directxgame/player/weapons/NormalBullet.h"
@@ -107,7 +106,6 @@ public:
 
 	void MaxAllWeapons();
 	void PlayLevelUpEffect();
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 private:
 	void UpdateInvincibility(float deltaTime);
@@ -120,7 +118,6 @@ private:
 
 	Player* player_ = nullptr;
 	EnemyManager* enemyManager_ = nullptr;
-	GameLightSettings lightSettings_{};
 
 	bool invincible_ = false;
 	float invincibleTimer_ = 0.0f;

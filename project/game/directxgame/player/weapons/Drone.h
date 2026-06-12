@@ -2,7 +2,6 @@
 
 #include "Object3D.h"
 #include "Vector3.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include "game/directxgame/player/weapons/NormalBullet.h"
 #include <memory>
 #include <vector>
@@ -35,7 +34,6 @@ public:
 	}
 	static constexpr size_t kMaxActiveBullets = 64;
 	const Vector3& GetPosition() const { return position_; }
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 private:
 	void ApplyTransform();
@@ -48,7 +46,6 @@ private:
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
 	std::vector<std::unique_ptr<NormalBullet>> bullets_;
-	GameLightSettings lightSettings_{};
 	size_t peakBulletCount_ = 0;
 	size_t bulletPruneCount_ = 0;
 };

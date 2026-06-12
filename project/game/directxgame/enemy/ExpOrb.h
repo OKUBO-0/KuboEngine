@@ -2,7 +2,6 @@
 
 #include "Object3D.h"
 #include "Vector3.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include <cstdint>
 #include <memory>
 
@@ -17,7 +16,6 @@ public:
 	bool IsActive() const { return active_; }
 	int32_t GetEXP() const { return expValue_; }
 	const Vector3& GetPosition() const { return position_; }
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 private:
 	void ApplyTransform();
@@ -30,7 +28,6 @@ private:
 	float spin_ = 0.0f;
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
-	GameLightSettings lightSettings_{};
 };
 
 } // namespace DirectXGame

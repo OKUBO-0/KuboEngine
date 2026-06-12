@@ -54,7 +54,6 @@ void NormalBullet::InitializeForward(
 	object_->SetEnvironmentReflectionStrength(0.0f);
 	object_->SetEnvironmentRoughness(1.0f);
 	object_->SetScale({ 1.0f, 1.0f, 1.0f });
-	lightSettings_.ApplyTo(*object_);
 	ApplyTransform();
 	object_->Update();
 
@@ -149,14 +148,6 @@ bool NormalBullet::ConsumeHit()
 		return false;
 	}
 	return true;
-}
-
-void NormalBullet::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (object_) {
-		lightSettings_.ApplyTo(*object_);
-	}
 }
 
 void NormalBullet::ApplyTransform()

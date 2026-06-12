@@ -1,5 +1,5 @@
 #include "Game.h"
-#include "SceneFactory.h"
+#include "AbstractSceneFactory.h"
 #include "SceneManager.h"
 #include "ImGuiManager.h"
 #include "OffscreenRenderManager.h"
@@ -11,24 +11,26 @@
 #include "Input.h"
 #include <imgui.h>
 #endif // _DEBUG
+#include <stdexcept>
 #include <utility>
 
 namespace Engine::Scene {
 
-Game::Game()
-	: initialSceneName_("GAMEPLAY")
-{
-}
-
 Game::Game(std::unique_ptr<AbstractSceneFactory> sceneFactory, std::string initialSceneName)
 	: initialSceneName_(std::move(initialSceneName))
 {
+	if (!sceneFactory) {
+		throw std::invalid_argument("Game requires a scene factory");
+	}
 	debugEditorShellEnabled_ = false;
 	SetSceneFactory(std::move(sceneFactory));
 }
 
 void Game::SetSceneFactory(std::unique_ptr<AbstractSceneFactory> sceneFactory)
 {
+	if (!sceneFactory) {
+		throw std::invalid_argument("Game requires a scene factory");
+	}
 	this->sceneFactory = std::move(sceneFactory);
 }
 
@@ -41,9 +43,6 @@ void Game::Initialize()
 {
 	// 初期化
 	Engine::Base::Framework::Initialize();
-	if (!sceneFactory) {
-		sceneFactory = std::make_unique<SceneFactory>();
-	}
 	SceneManager::GetInstance()->SetSceneFactory(sceneFactory.get());
 
 	// シーンの変更

@@ -199,21 +199,6 @@ void EnemyManager::DrawShadow()
 	}
 }
 
-void EnemyManager::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	for (std::unique_ptr<Enemy>& enemy : enemies_) {
-		if (enemy) {
-			enemy->SetLightSettings(lightSettings_);
-		}
-	}
-	for (std::unique_ptr<ExpOrb>& orb : expOrbs_) {
-		if (orb) {
-			orb->SetLightSettings(lightSettings_);
-		}
-	}
-}
-
 size_t EnemyManager::GetActiveEnemyCount() const
 {
 	return static_cast<size_t>(std::count_if(enemies_.begin(), enemies_.end(), [](const std::unique_ptr<Enemy>& enemy) {
@@ -349,7 +334,6 @@ void EnemyManager::StartBossPhase()
 	const Vector3 position{ playerPosition.x, 4.0f, playerPosition.z + 34.0f };
 
 	auto enemy = std::make_unique<Enemy>();
-	enemy->SetLightSettings(lightSettings_);
 	enemy->Initialize();
 	enemy->SetPlayer(player_);
 	enemy->SetPosition(position);
@@ -435,7 +419,6 @@ void EnemyManager::SpawnOneEnemy(const EnemyTypeData& data)
 	};
 
 	auto enemy = std::make_unique<Enemy>();
-	enemy->SetLightSettings(lightSettings_);
 	enemy->Initialize();
 	enemy->SetPlayer(player_);
 	enemy->SetPosition(position);
@@ -583,7 +566,6 @@ void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 	++totalKillCount_;
 	recentDeathEffectPositions_.push_back(enemy.GetPosition());
 	auto orb = std::make_unique<ExpOrb>();
-	orb->SetLightSettings(lightSettings_);
 	orb->Initialize(enemy.GetPosition(), enemy.GetEXP());
 	expOrbs_.push_back(std::move(orb));
 	peakExpOrbCount_ = (std::max)(peakExpOrbCount_, expOrbs_.size());

@@ -2,7 +2,6 @@
 
 #include "Object3D.h"
 #include "Vector3.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include <array>
 #include <memory>
 
@@ -13,7 +12,6 @@ public:
 	void Initialize();
 	void Update(const Vector3& focusPosition);
 	void Draw();
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 private:
 	static float SnapToTile(float value);
@@ -21,7 +19,6 @@ private:
 	static constexpr int kTileRadius = 6;
 	static constexpr int kTileCountPerAxis = kTileRadius * 2 + 1;
 	std::array<std::unique_ptr<Engine::Graphics3D::Object3D>, kTileCountPerAxis * kTileCountPerAxis> tiles_;
-	GameLightSettings lightSettings_{};
 	float animationTime_ = 0.0f;
 
 	static constexpr float kGroundScale = 10.0f;

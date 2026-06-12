@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Vector3.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include "game/directxgame/enemy/Enemy.h"
 #include "game/directxgame/enemy/ExpOrb.h"
 #include <cstdint>
@@ -24,7 +23,6 @@ public:
 	void Update(float deltaTime);
 	void Draw();
 	void DrawShadow();
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 	const std::vector<std::unique_ptr<Enemy>>& GetEnemies() const { return enemies_; }
 	const std::list<std::unique_ptr<ExpOrb>>& GetExpOrbs() const { return expOrbs_; }
@@ -101,7 +99,6 @@ private:
 	std::vector<EnemyTypeData> enemyTypes_;
 	Player* player_ = nullptr;
 	PlayerManager* playerManager_ = nullptr;
-	GameLightSettings lightSettings_{};
 
 	float elapsedTime_ = 0.0f;
 	float spawnTimer_ = 0.0f;

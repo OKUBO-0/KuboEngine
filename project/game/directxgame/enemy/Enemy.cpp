@@ -46,7 +46,6 @@ void Enemy::Initialize()
 	object_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	object_->SetEnvironmentReflectionStrength(0.08f);
 	object_->SetEnvironmentRoughness(0.65f);
-	lightSettings_.ApplyTo(*object_);
 	ApplyTransform();
 	object_->Update();
 }
@@ -226,18 +225,6 @@ bool Enemy::ConsumeBossPhaseChanged()
 	const bool changed = bossPhaseChanged_;
 	bossPhaseChanged_ = false;
 	return changed;
-}
-
-void Enemy::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (object_) {
-		lightSettings_.ApplyTo(*object_);
-	}
-	if (floatingShadowObject_) {
-		lightSettings_.ApplyTo(*floatingShadowObject_);
-		floatingShadowObject_->SetLighting(false);
-	}
 }
 
 void Enemy::TakeDamage(int32_t damage, const Vector3& knockDirection, float strength)

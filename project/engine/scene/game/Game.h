@@ -12,7 +12,7 @@ namespace Engine::Scene {
 
 class Game : public Engine::Base::Framework {
 public:
-	Game();
+	Game() = delete;
 	explicit Game(std::unique_ptr<AbstractSceneFactory> sceneFactory, std::string initialSceneName = "GAMEPLAY");
 
 	void SetSceneFactory(std::unique_ptr<AbstractSceneFactory> sceneFactory);

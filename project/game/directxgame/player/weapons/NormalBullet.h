@@ -3,7 +3,6 @@
 #include "Object3D.h"
 #include "Vector3.h"
 #include "Vector4.h"
-#include "game/directxgame/core/GameLightSettings.h"
 #include <memory>
 #include <unordered_map>
 
@@ -33,7 +32,6 @@ public:
 	bool CanHitEnemy(void* enemyPtr);
 	void RegisterHit(void* enemyPtr);
 	bool ConsumeHit();
-	void SetLightSettings(const GameLightSettings& lightSettings);
 
 private:
 	void ApplyTransform();
@@ -50,7 +48,6 @@ private:
 	bool active_ = false;
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
-	GameLightSettings lightSettings_{};
 	std::unordered_map<void*, float> hitCooldowns_;
 	static constexpr float kHitInterval = 0.5f;
 };

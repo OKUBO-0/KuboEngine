@@ -1,6 +1,7 @@
 #include "game/directxgame/scene/DirectXGameResultScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/GameMenuController.h"
+#include "game/directxgame/core/GameAudioDebugPanel.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
@@ -165,16 +166,10 @@ void DirectXGameResultScene::Update()
 	}
 
 	if (debugWindows_.audio) {
-		ImGui::Begin("オーディオ", &debugWindows_.audio);
-		float masterVolume = GameAudioCache::GetMasterVolume();
-		if (ImGui::SliderFloat("Master Volume", &masterVolume, 0.0f, 1.0f)) {
-			GameAudioCache::SetMasterVolume(masterVolume);
-		}
-		float resultFinishVolume = GameAudioCache::GetTunedVolume(kAudioResultFinish, 1.0f);
-		if (ImGui::SliderFloat("Result Finish Volume", &resultFinishVolume, 0.0f, 1.0f)) {
-			GameAudioCache::SetTunedVolume(kAudioResultFinish, resultFinishVolume);
-		}
-		ImGui::End();
+		const std::array<AudioTuningEntry, 1> resultAudioEntries{ {
+			{ "Result Finish Volume", kAudioResultFinish, 1.0f },
+		} };
+		GameAudioDebugPanel::Draw(&debugWindows_.audio, resultAudioEntries);
 	}
 
 	if (debugWindows_.sceneSettings) {

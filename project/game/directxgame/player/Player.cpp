@@ -158,7 +158,6 @@ void Player::InitializeObjects()
 	playerObject_->SetEnvironmentReflectionStrength(0.0f);
 	playerObject_->SetEnvironmentRoughness(1.0f);
 	playerObject_->SetScale({ kPlayerModelScale, kPlayerModelScale, kPlayerModelScale });
-	lightSettings_.ApplyTo(*playerObject_);
 
 	const ModelHandle indicatorHandle = GameModelCache::Load("cube.obj");
 	aimIndicatorObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
@@ -169,7 +168,6 @@ void Player::InitializeObjects()
 	aimIndicatorObject_->SetEnvironmentRoughness(1.0f);
 	aimIndicatorObject_->SetLighting(false);
 	aimIndicatorObject_->SetColor({ 0.15f, 1.0f, 1.0f, 1.0f });
-	lightSettings_.ApplyTo(*aimIndicatorObject_);
 }
 
 void Player::Update(float deltaTime)
@@ -207,17 +205,6 @@ void Player::DrawShadow()
 {
 	if (visible_ && playerObject_) {
 		playerObject_->DrawShadow();
-	}
-}
-
-void Player::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	if (playerObject_) {
-		lightSettings_.ApplyTo(*playerObject_);
-	}
-	if (aimIndicatorObject_) {
-		lightSettings_.ApplyTo(*aimIndicatorObject_);
 	}
 }
 

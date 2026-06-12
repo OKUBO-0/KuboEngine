@@ -29,7 +29,6 @@ void GridPlane::Initialize()
 		tile->SetScale({ kGroundScale, 1.0f, kGroundScale });
 		tile->SetTranslate({ 0.0f, -2.0f, 0.0f });
 		tile->SetColor({ 0.43f, 0.44f, 0.47f, 1.0f });
-		lightSettings_.ApplyTo(*tile);
 	}
 }
 
@@ -70,16 +69,6 @@ void GridPlane::Draw()
 	for (const std::unique_ptr<Engine::Graphics3D::Object3D>& tile : tiles_) {
 		if (tile) {
 			tile->Draw();
-		}
-	}
-}
-
-void GridPlane::SetLightSettings(const GameLightSettings& lightSettings)
-{
-	lightSettings_ = lightSettings;
-	for (const std::unique_ptr<Engine::Graphics3D::Object3D>& tile : tiles_) {
-		if (tile) {
-			lightSettings_.ApplyTo(*tile);
 		}
 	}
 }
