@@ -1,6 +1,7 @@
 #include "LineCommon.h"
 #include "DirectXCommon.h"
 #include "GraphicsPipeline.h"
+#include "HResult.h"
 #include "MyMath.h"
 #include "SrvManager.h"
 #include <CameraManager.h>
@@ -32,20 +33,14 @@ void LineCommon::InitializePipeline()
 
 void LineCommon::InitializeVertexResources()
 {
-	vertexResource_ = dxCommon_->CreateBufferResource(sizeof(VertexDataLine) * linevertices.size());
+	const size_t vertexBytes = sizeof(VertexDataLine) * linevertices.size();
+	vertexResource_ = dxCommon_->CreateDefaultBufferResource(
+		linevertices.data(),
+		vertexBytes,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	vertexBufferView_.BufferLocation = vertexResource_->GetGPUVirtualAddress();
-	vertexBufferView_.SizeInBytes = UINT(sizeof(VertexDataLine) * linevertices.size());
+	vertexBufferView_.SizeInBytes = static_cast<UINT>(vertexBytes);
 	vertexBufferView_.StrideInBytes = sizeof(VertexDataLine);
-
-	void* mapped = nullptr;
-	vertexResource_->Map(0, nullptr, &mapped);
-	memcpy(mapped, linevertices.data(), sizeof(VertexDataLine) * linevertices.size());
-}
-
-void LineCommon::InitializeCameraResource()
-{
-	cameraResource = dxCommon_->CreateBufferResource(sizeof(CameraBufferforGpu));
-	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&camerabuffer));
 }
 
 void LineCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
@@ -54,68 +49,33 @@ void LineCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base:
 	srvManager_ = srvManager;
 	InitializePipeline();
 	InitializeVertexResources();
-	InitializeCameraResource();
-	instanceSrvIndex_ = UINT32_MAX;
+	for (uint32_t& srvIndex : instanceSrvIndices_) {
+		srvIndex = srvManager_->Allocate();
+	}
 }
 
 void LineCommon::UpdateCameraBuffer()
 {
 	Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-	if (!activeCamera) {
-		return;
-	}
-	camerabuffer->projection = activeCamera->GetProjectionMatrix();
-	camerabuffer->view = activeCamera->GetViewMatrix();
-}
-
-void LineCommon::EnsureInstanceResourceCapacity(size_t instanceSize)
-{
-	if (instanceResource_ && instanceResource_->GetDesc().Width >= instanceSize) {
-		return;
+	if (activeCamera) {
+		cameraData_.projection = activeCamera->GetProjectionMatrix();
+		cameraData_.view = activeCamera->GetViewMatrix();
 	}
 
-	D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(instanceSize);
-	CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-	HRESULT hr = dxCommon_->GetDevice()->CreateCommittedResource(
-		&heapProps,
-		D3D12_HEAP_FLAG_NONE,
-		&desc,
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&instanceResource_));
-	assert(SUCCEEDED(hr));
-}
-
-void LineCommon::UploadInstances(size_t instanceSize)
-{
-	LineInstanceData* mapped = nullptr;
-	instanceResource_->Map(0, nullptr, reinterpret_cast<void**>(&mapped));
-	memcpy(mapped, instances_.data(), instanceSize);
-	instanceResource_->Unmap(0, nullptr);
-}
-
-void LineCommon::EnsureInstanceSrvIndex()
-{
-	if (instanceSrvIndex_ == UINT32_MAX) {
-		instanceSrvIndex_ = srvManager_->Allocate();
-	}
-}
-
-void LineCommon::UpdateInstanceSrv()
-{
-	srvManager_->CreateSRVforStructuredBuffer(
-		instanceSrvIndex_,
-		instanceResource_.Get(),
-		static_cast<UINT>(instances_.size()),
-		sizeof(LineInstanceData));
 }
 
 void LineCommon::Finalize()
 {
+	if (srvManager_) {
+		for (uint32_t& srvIndex : instanceSrvIndices_) {
+			if (srvIndex != UINT32_MAX) {
+				srvManager_->Free(srvIndex);
+				srvIndex = UINT32_MAX;
+			}
+		}
+	}
 	graphicsPipeline_.reset();
-	instanceResource_.Reset();
 	vertexResource_.Reset();
-	cameraResource.Reset();
 	instances_.clear();
 	dxCommon_ = nullptr;
 	srvManager_ = nullptr;
@@ -132,24 +92,36 @@ void LineCommon::CommonDraw()
 void LineCommon::Update()
 {
 	UpdateCameraBuffer();
-	if (instances_.empty()) return;
-
-	size_t instanceSize = sizeof(LineInstanceData) * instances_.size();
-	EnsureInstanceResourceCapacity(instanceSize);
-	UploadInstances(instanceSize);
-	EnsureInstanceSrvIndex();
-	UpdateInstanceSrv();
 }
 
 void LineCommon::Draw()
 {
 	if (instances_.empty()) return;
 
+	const Engine::Base::DirectXCommon::FrameUploadAllocation cameraAllocation =
+		dxCommon_->AllocateFrameUpload(sizeof(CameraBufferforGpu), 256);
+	memcpy(cameraAllocation.cpuAddress, &cameraData_, sizeof(cameraData_));
+	const size_t instanceSize =
+		sizeof(LineInstanceData) * instances_.size();
+	const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
+		dxCommon_->AllocateFrameUpload(instanceSize, sizeof(LineInstanceData));
+	memcpy(instanceAllocation.cpuAddress, instances_.data(), instanceSize);
+	const uint32_t frameIndex = dxCommon_->GetCurrentFrameIndex();
+	const uint32_t srvIndex = instanceSrvIndices_[frameIndex];
+	srvManager_->CreateSRVforStructuredBuffer(
+		srvIndex,
+		instanceAllocation.resource,
+		static_cast<UINT>(instances_.size()),
+		sizeof(LineInstanceData),
+		instanceAllocation.offset / sizeof(LineInstanceData));
+
 	CommonDraw();
 	dxCommon_->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView_);
 	// RootParameter[0] → b0：カメラ（CBV）
-	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(0, cameraResource->GetGPUVirtualAddress());
-	srvManager_->SetGraphicsRootDescriptorTable(1, instanceSrvIndex_);
+	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
+		0,
+		cameraAllocation.gpuAddress);
+	srvManager_->SetGraphicsRootDescriptorTable(1, srvIndex);
 	dxCommon_->GetCommandList()->DrawInstanced(2, static_cast<UINT>(instances_.size()), 0, 0);
 
 	instances_.clear(); // ← 正しい変数名

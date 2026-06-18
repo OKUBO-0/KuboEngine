@@ -2,6 +2,7 @@
 #include "Input.h"
 #include "game/directxgame/core/GameplayFlowController.h"
 #include "game/directxgame/enemy/EnemyManager.h"
+#include "game/directxgame/core/GameTextureCache.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/PlayerManager.h"
 #include <algorithm>
@@ -13,6 +14,34 @@ float Clamp01(float value)
 	return std::clamp(value, 0.0f, 1.0f);
 }
 
+void PreloadGameplayHudTextures()
+{
+	DirectXGame::GameTextureCache::LoadBatch({
+		"white1x1.png",
+		"ui/number/numbers.png",
+		"ui/number/colon.png",
+		"ui/game/start.png",
+		"ui/game/death.png",
+		"ui/game/pause.png",
+		"ui/game/pause_arrow.png",
+		"ui/game/lv_label.png",
+		"ui/game/minimap_player.png",
+		"ui/game/minimap_enemy.png",
+		"ui/game/minimap_orb.png",
+		"ui/game/minimap_bg.png",
+		"ui/controls/key_W.png",
+		"ui/controls/key_a.png",
+		"ui/controls/key_s.png",
+		"ui/controls/key_d.png",
+		"ui/controls/key_esc.png",
+		"ui/game/normal/icon.png",
+		"ui/game/orbit/icon.png",
+		"ui/game/drone/icon.png",
+		"ui/game/lightning/icon.png",
+		"ui/game/lvup_attack_icon.png",
+		});
+}
+
 }
 
 namespace DirectXGame {
@@ -20,6 +49,8 @@ namespace DirectXGame {
 void GameplayHudPresentation::Initialize(
 	const PlayerManager* playerManager)
 {
+	PreloadGameplayHudTextures();
+
 	timer_.Initialize();
 	hpGauge_.Initialize();
 	expGauge_.Initialize();

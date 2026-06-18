@@ -1,16 +1,17 @@
 #pragma once
 #include "MyMath.h"
+#include "Model.h"
 #include "RenderingData.h"
 #include <d3d12.h>
 #include <wrl.h>
+#include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace Engine::Graphics3D {
 
-class Model;
 class Object3DCommon;
-struct SkinCluster;
 
 struct EnvironmentReflectionSetting {
 	float reflectionStrength = 1.0f; // 反射の強さ（0 = 無効、1 = 最大）
@@ -24,6 +25,8 @@ struct EnvironmentReflectionSetting {
 class Object3D
 {
 public:
+	~Object3D();
+
 	/// @brief 描画に必要なGPUリソースを初期化する
 	/// @param object3DCommon 共通描画設定
 	/// @return なし
@@ -36,7 +39,7 @@ public:
 
 	void SkeletonUpdate( Skeleton& skeleton);
 	void ApplyAnimation(Skeleton& skeleton, const Animation& animation, float animationTime);
-	void SkinClusterUpdate(SkinCluster&skinCluster,const Skeleton&skeleton);
+	void SkinClusterUpdate(const SkinCluster& skinCluster, const Skeleton& skeleton);
 	/// @brief 通常描画用のコマンドを積む
 	/// @param なし
 	/// @return なし
@@ -49,7 +52,7 @@ public:
 
 
 
-	void SetModel(Model* model) { model_ = model; }
+	void SetModel(Model* model);
 	void SetModel(const std::string& filepath);
 	void SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath);
 	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;
@@ -58,11 +61,11 @@ public:
 
 	//環境マップ
 	void SetSkyboxFilePath(const std::string& filepath) { skyboxFilePath_ = filepath; }
-	void SetEnvironmentReflectionStrength(float reflectionStrength) { environmentReflectionSettingData->reflectionStrength = reflectionStrength; }
-	void SetEnvironmentRoughness(float roughness) { environmentReflectionSettingData->roughness = roughness; }
-	void SetTextureInfluence(float influence) { environmentReflectionSettingData->textureInfluence = influence; }
-	float GetEnvironmentReflectionStrength() { return environmentReflectionSettingData->reflectionStrength; }
-	float GetEnvironmentRoughness() { return environmentReflectionSettingData->roughness; }
+	void SetEnvironmentReflectionStrength(float reflectionStrength) { environmentReflectionSettingData_.reflectionStrength = reflectionStrength; }
+	void SetEnvironmentRoughness(float roughness) { environmentReflectionSettingData_.roughness = roughness; }
+	void SetTextureInfluence(float influence) { environmentReflectionSettingData_.textureInfluence = influence; }
+	float GetEnvironmentReflectionStrength() const { return environmentReflectionSettingData_.reflectionStrength; }
+	float GetEnvironmentRoughness() const { return environmentReflectionSettingData_.roughness; }
 
 	// transform
 	void SetTransform(const EulerTransform& transform) { this->transform = transform; }
@@ -78,57 +81,57 @@ public:
 	void SetTranslate(const Vector3& translate) { transform.translate = translate; }
 
 	//ディレクションライト
-	void SetDirectionalLight(const DirectionalLight& directionalLight) { *directionalLightData = directionalLight; }
-	const DirectionalLight& GetDirectionalLight() const { return *directionalLightData; }
+	void SetDirectionalLight(const DirectionalLight& directionalLight) { directionalLightData_ = directionalLight; }
+	const DirectionalLight& GetDirectionalLight() const { return directionalLightData_; }
 	//ディレクションライトの向き
-	void SetDirectionalLightDirection(const Vector3& direction) { directionalLightData->direction = direction; }
+	void SetDirectionalLightDirection(const Vector3& direction) { directionalLightData_.direction = direction; }
 	//ディレクションライトの色
-	void SetDirectionalLightColor(const Vector4& color) { directionalLightData->color = color; }
+	void SetDirectionalLightColor(const Vector4& color) { directionalLightData_.color = color; }
 	//ディレクションライトの強さ
-	void SetDirectionalLightIntensity(float intensity) { directionalLightData->intensity = intensity; }
+	void SetDirectionalLightIntensity(float intensity) { directionalLightData_.intensity = intensity; }
 	//ライトオンオフ
-	void SetDirectionalLightEnable(bool enable) { directionalLightData->enable = enable; }
+	void SetDirectionalLightEnable(bool enable) { directionalLightData_.enable = enable; }
 
 	//ポイントライト
-	void SetPointLight(const PointLight& pointLight) { *pointLightData = pointLight; }
-	const PointLight& GetPointLight() const { return *pointLightData; }
+	void SetPointLight(const PointLight& pointLight) { pointLightData_ = pointLight; }
+	const PointLight& GetPointLight() const { return pointLightData_; }
 	//ポイントライトの位置
-	void SetPointLightPosition(const Vector3& position) { pointLightData->position = position; }
+	void SetPointLightPosition(const Vector3& position) { pointLightData_.position = position; }
 	//ポイントライトの色
-	void SetPointLightColor(const Vector4& color) { pointLightData->color = color; }
+	void SetPointLightColor(const Vector4& color) { pointLightData_.color = color; }
 	//ポイントライトの強さ
-	void SetPointLightIntensity(float intensity) { pointLightData->intensity = intensity; }
+	void SetPointLightIntensity(float intensity) { pointLightData_.intensity = intensity; }
 	//ポイントライトの半径
-	void SetPointLightRadius(float radius) { pointLightData->radius = radius; }
-	float GetPointLightRadius() { return pointLightData->radius; }
+	void SetPointLightRadius(float radius) { pointLightData_.radius = radius; }
+	float GetPointLightRadius() { return pointLightData_.radius; }
 	//ポイントライトの減衰率
-	void SetPointLightDecay(float decay) { pointLightData->decay = decay; }
-	float GetPointLightDecay() { return pointLightData->decay; }
+	void SetPointLightDecay(float decay) { pointLightData_.decay = decay; }
+	float GetPointLightDecay() { return pointLightData_.decay; }
 	//ポイントライトのオンオフ
-	void SetPointLightEnable(bool enable) { pointLightData->enable = enable; }
+	void SetPointLightEnable(bool enable) { pointLightData_.enable = enable; }
 
 
 	//スポットライト
-	void SetSpotLight(const SpotLight& spotLight) { *spotLightData = spotLight; }
-	const SpotLight& GetSpotLight() const { return *spotLightData; }
+	void SetSpotLight(const SpotLight& spotLight) { spotLightData_ = spotLight; }
+	const SpotLight& GetSpotLight() const { return spotLightData_; }
 	//スポットライトの位置
-	void SetSpotLightPosition(const Vector3& position) { spotLightData->position = position; }
+	void SetSpotLightPosition(const Vector3& position) { spotLightData_.position = position; }
 	//スポットライトの向き
-	void SetSpotLightDirection(const Vector3& direction) { spotLightData->direction = direction; }
+	void SetSpotLightDirection(const Vector3& direction) { spotLightData_.direction = direction; }
 	//スポットライトの色
-	void SetSpotLightColor(const Vector4& color) { spotLightData->color = color; }
+	void SetSpotLightColor(const Vector4& color) { spotLightData_.color = color; }
 	//スポットライトの強さ
-	void SetSpotLightIntensity(float intensity) { spotLightData->intensity = intensity; }
+	void SetSpotLightIntensity(float intensity) { spotLightData_.intensity = intensity; }
 	//スポットライトの距離
-	void SetSpotLightDistance(float distance) { spotLightData->distance = distance; }
+	void SetSpotLightDistance(float distance) { spotLightData_.distance = distance; }
 	//スポットライトの減衰率
-	void SetSpotLightDecay(float decay) { spotLightData->decay = decay; }
+	void SetSpotLightDecay(float decay) { spotLightData_.decay = decay; }
 	//スポットライトのコーンの角度
-	void SetSpotLightConeAngleCos(float coneAngleCos) { spotLightData->coneAngleCos = coneAngleCos; }
+	void SetSpotLightConeAngleCos(float coneAngleCos) { spotLightData_.coneAngleCos = coneAngleCos; }
 
-	void SetSpotLightCosFalloffStart(float cosFalloffStart) { spotLightData->cosFalloffStart = cosFalloffStart; }
+	void SetSpotLightCosFalloffStart(float cosFalloffStart) { spotLightData_.cosFalloffStart = cosFalloffStart; }
 	//スポットライトのオンオフ
-	void SetSpotLightEnable(bool enable) { spotLightData->enable = enable; }
+	void SetSpotLightEnable(bool enable) { spotLightData_.enable = enable; }
 
 	//ライトのオンオフ
 	void SetLighting(bool enable) { enableLighting = enable; }
@@ -152,38 +155,26 @@ private:
 	void InitializeLightResources();
 	void InitializeEnvironmentResources();
 	void InitializeCameraResources();
+	void InitializeSkinningState();
+	void ReleaseSkinningDescriptors();
 	void UpdateAnimationState();
 	void ApplyModelSettings();
 	void UpdateTransformationMatrices();
+	D3D12_GPU_VIRTUAL_ADDRESS UploadFrameConstant(const void* data, size_t size);
 
 	Object3DCommon* object3DCommon_ = nullptr;//Object3DCommonのポインタ
 
 	Model* model_ = nullptr;//モデルのポインタ
 
 	//トランスフォーム
-	//ModelTransform用のリソースを作る。Matrix4x4 1つ分のサイズを用意する
-	Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource;
-	//データを書き込む
-
-	TransformationMatrix* transformationMatrixData_ = nullptr;
-	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource_;
-	Material* materialData_ = nullptr;
+	TransformationMatrix transformationMatrixData_{};
+	Material materialData_{};
 
 
-	//平行光源
-	//平行光源用のResourceを作成
-	Microsoft::WRL::ComPtr<ID3D12Resource> directionalLightResource;
-	DirectionalLight* directionalLightData = nullptr;
-
-	//ポイントライト
-	//ポイントライト用のリソースを作成
-	Microsoft::WRL::ComPtr<ID3D12Resource> pointLightResource;
-	PointLight* pointLightData = nullptr;
-
-	//スポットライト
-	//スポットライト用のリソースを作成
-	Microsoft::WRL::ComPtr<ID3D12Resource> spotLightResource;
-	SpotLight* spotLightData = nullptr;
+	// Compatibility/debug state. Rendering uses Object3DCommon scene lighting.
+	DirectionalLight directionalLightData_{};
+	PointLight pointLightData_{};
+	SpotLight spotLightData_{};
 
 	//SRT
 	EulerTransform transform;
@@ -193,19 +184,24 @@ private:
 	//ライトのオンオフ
 	bool enableLighting = true;
 	//カメラforGPU
-	Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource;//カメラのデータを送るためのリソース
-	CameraForGpu* cameraForGpu = nullptr;//カメラのデータをGPUに送るための構造体
+	CameraForGpu cameraForGpu_{};
 	//アニメーション
 	float animationTime = 0.0f;
 	bool enableAnimation_= true;
 
 	Vector4 color_ = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルトは白
+	static constexpr uint32_t kBufferedFrameCount = 2;
+	Skeleton skeleton_{};
 	std::vector<Matrix4x4> skeletonPose_;
+	std::vector<WellForGPU> skinPaletteData_;
+	std::array<uint32_t, kBufferedFrameCount> skinPaletteSrvIndices_{
+		UINT32_MAX,
+		UINT32_MAX,
+	};
 
 	std::string debugName_;
 	std::string skyboxFilePath_ ; // スカイボックスのファイルパス
-	EnvironmentReflectionSetting* environmentReflectionSettingData; // 環境反射設定
-	Microsoft::WRL::ComPtr<ID3D12Resource> environmentReflectionSettingResource;
+	EnvironmentReflectionSetting environmentReflectionSettingData_; // 環境反射設定
 
 };
 

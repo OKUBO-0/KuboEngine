@@ -17,6 +17,7 @@
 #include <CameraManager.h>
 #include "ParticleManager.h"
 #include <algorithm>
+#include <cassert>
 
 namespace Engine::Base {
 
@@ -91,18 +92,24 @@ void Framework::FinalizeDebugTools()
 
 void Framework::FinalizeSharedManagers()
 {
-	Engine::AudioSystem::Audio::GetInstance()->Finalize();
-	winApp->Finalize();
-	Engine::Base::TextureManager::GetInstance()->Finalize();
-	Engine::Graphics3D::ModelManager::GetInstance()->Finalize();
-	Engine::CameraSystem::CameraManager::GetInstance()->Finalize();
-	Engine::Particle::ParticleManager::GetInstance()->Finalize();
-	Engine::Skybox::SkyBoxCommon::GetInstance()->Finalize();
-	Engine::InputSystem::Input::GetInstance()->Finalize();
-	Engine::Graphics2D::SpriteCommon::GetInstance()->Finalize();
-	Engine::Graphics3D::Object3DCommon::GetInstance()->Finalize();
+	dxCommon->WaitForAllFrames();
 	Engine::Scene::SceneManager::GetInstance()->Finalize();
+	Engine::Skybox::SkyBoxCommon::GetInstance()->Finalize();
 	Engine::LineSystem::LineCommon::GetInstance()->Finalize();
+	Engine::Graphics3D::Object3DCommon::GetInstance()->Finalize();
+	Engine::Graphics3D::ModelManager::GetInstance()->Finalize();
+	Engine::Graphics2D::SpriteCommon::GetInstance()->Finalize();
+	Engine::Particle::ParticleManager::GetInstance()->Finalize();
+	Engine::CameraSystem::CameraManager::GetInstance()->Finalize();
+	Engine::Base::TextureManager::GetInstance()->Finalize();
+	Engine::AudioSystem::Audio::GetInstance()->Finalize();
+	Engine::InputSystem::Input::GetInstance()->Finalize();
+	if (offscreenRenderManager) {
+		offscreenRenderManager->Finalize();
+	}
+	assert(srvManager->GetUsedCount() == 0 &&
+		"SRV descriptors remain allocated during framework shutdown");
+	winApp->Finalize();
 }
 
 void Framework::Update()

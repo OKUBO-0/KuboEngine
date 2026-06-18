@@ -1,5 +1,6 @@
 #include "GraphicsPipeline.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "Logger.h"
 #include "OffscreenRenderManager.h"
 #include <array>
@@ -213,13 +214,20 @@ void CreateRootSignatureFromDesc(
 	HRESULT hr = D3D12SerializeRootSignature(
 		&descriptionRootSignature, D3D_ROOT_SIGNATURE_VERSION_1, &signatureBlob, &errorBlob);
 	if (FAILED(hr)) {
-		Engine::Base::Logger::Log(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
-		assert(false);
+		if (errorBlob) {
+			Engine::Base::Logger::Log(
+				reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
+		}
+		Engine::Base::ThrowIfFailed(
+			hr,
+			"D3D12SerializeRootSignature");
 	}
 
 	hr = dxCommon->GetDevice()->CreateRootSignature(
 		0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(rootSignature));
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(
+		hr,
+		"ID3D12Device::CreateRootSignature");
 }
 
 void CreateRootSignatureWithParameters(
@@ -354,7 +362,9 @@ void CreateGraphicsPipelineStateFromDesc(
 	pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
 	HRESULT hr = dxCommon->GetDevice()->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(pipelineState));
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(
+		hr,
+		"ID3D12Device::CreateGraphicsPipelineState");
 }
 
 }
@@ -510,7 +520,9 @@ void GraphicsPipeline::CreateShadowMap()
 	pipelineDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 	const HRESULT hr = dxCommon_->GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc, IID_PPV_ARGS(graphicsPipelineStateShadowMap.GetAddressOf()));
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(
+		hr,
+		"ID3D12Device::CreateGraphicsPipelineState shadow map");
 }
 
 void GraphicsPipeline::RootSignatureShadowMapCreate()

@@ -2,6 +2,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace Engine::Base {
 class DirectXCommon;
@@ -43,12 +44,14 @@ public:
 	/// @param filePath 読み込むモデルのファイルパス
 	/// @return なし
 	void LoadModel(const std::string& filePath);
+	void LoadModels(const std::vector<std::string>& filePaths);
 
 	/// @brief リソースルートを指定してモデルを読み込む
 	/// @param resourceRoot モデル探索の起点となるリソースルート
 	/// @param filePath 読み込むモデルのファイルパス
 	/// @return なし
 	void LoadModelFromResourceRoot(const std::string& resourceRoot, const std::string& filePath);
+	void LoadModelsFromResourceRoot(const std::string& resourceRoot, const std::vector<std::string>& filePaths);
 
 	/// @brief 登録済みモデルをファイルパスから検索する
 	/// @param filePath 検索対象のファイルパス

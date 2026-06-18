@@ -16,8 +16,11 @@
 namespace DirectXGame {
 
 class DirectXGameSessionContext;
+class TitleSceneDebugUiController;
 
 class DirectXGameTitleScene : public Engine::Scene::BaseScene {
+	friend class TitleSceneDebugUiController;
+
 public:
 	explicit DirectXGameTitleScene(std::shared_ptr<DirectXGameSessionContext> sessionContext);
 

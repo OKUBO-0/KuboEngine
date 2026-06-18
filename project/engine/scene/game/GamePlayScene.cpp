@@ -509,15 +509,17 @@ void GamePlayScene::Draw()
 void GamePlayScene::LoadModel()
 {
 	// 必要なモデルを事前ロード
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("axis.obj");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("plane.gltf");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("sphere.obj");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("terrain.obj");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("animationfly.gltf");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("sphere.gltf");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("player.gltf");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("walk.gltf");
-	Engine::Graphics3D::ModelManager::GetInstance()->LoadModel("testanimation.gltf");
+	Engine::Graphics3D::ModelManager::GetInstance()->LoadModels({
+		"axis.obj",
+		"plane.gltf",
+		"sphere.obj",
+		"terrain.obj",
+		"animationfly.gltf",
+		"sphere.gltf",
+		"player.gltf",
+		"walk.gltf",
+		"testanimation.gltf",
+	});
 }
 
 }

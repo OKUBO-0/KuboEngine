@@ -252,6 +252,15 @@
     <ClCompile Include="game\directxgame\core\GameplayDebugContext.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\core\GameplayDebugUiController.cpp">
+      <Filter>game\directxgame\core</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\core\TitleSceneDebugUiController.cpp">
+      <Filter>game\directxgame\core</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\core\ResultSceneDebugUiController.cpp">
+      <Filter>game\directxgame\core</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\core\GameplayFlowController.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
@@ -360,7 +369,19 @@
     <ClCompile Include="game\directxgame\enemy\EnemyBehavior.cpp">
       <Filter>game\directxgame\enemy</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\EnemyCollisionSystem.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\enemy\EnemyManager.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\EnemyReactionController.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\EnemySpawnController.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\EnemyView.cpp">
       <Filter>game\directxgame\enemy</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\enemy\ExpOrb.cpp">
@@ -369,7 +390,28 @@
     <ClCompile Include="game\directxgame\player\Player.cpp">
       <Filter>game\directxgame\player</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerAimController.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerCameraController.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\player\PlayerManager.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerMovementController.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerPresentationController.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerView.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerProgression.cpp">
+      <Filter>game\directxgame\player</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\player\PlayerWeaponController.cpp">
       <Filter>game\directxgame\player</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\player\weapons\Drone.cpp">
@@ -402,6 +444,9 @@
       <Filter>engine\base\core</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\directx\DirectXCommon.h">
+      <Filter>engine\base\directx</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\directx\HResult.h">
       <Filter>engine\base\directx</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\core\Framework.h">
@@ -587,6 +632,15 @@
     <ClInclude Include="game\directxgame\core\GameplayDebugContext.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\core\GameplayDebugUiController.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\core\TitleSceneDebugUiController.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\core\ResultSceneDebugUiController.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\core\GameplayFlowController.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
@@ -710,7 +764,19 @@
     <ClInclude Include="game\directxgame\enemy\EnemyBehavior.h">
       <Filter>game\directxgame\enemy</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\enemy\EnemyCollisionSystem.h">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\enemy\EnemyManager.h">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\enemy\EnemyReactionController.h">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\enemy\EnemySpawnController.h">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\enemy\EnemyView.h">
       <Filter>game\directxgame\enemy</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\enemy\ExpOrb.h">
@@ -719,7 +785,28 @@
     <ClInclude Include="game\directxgame\player\Player.h">
       <Filter>game\directxgame\player</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerAimController.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerCameraController.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\player\PlayerManager.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerMovementController.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerPresentationController.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerView.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerProgression.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerWeaponController.h">
       <Filter>game\directxgame\player</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\player\weapons\Drone.h">

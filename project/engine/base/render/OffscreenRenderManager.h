@@ -36,6 +36,7 @@ public:
 	/// @param srvManager SRV管理
 	/// @return なし
 	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Finalize();
 	/// @brief オフスクリーン描画の開始処理を行う
 	/// @param なし
 	/// @return なし
@@ -82,7 +83,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> renderTargetTextureResource;//レンダーテクスチャ
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetTextureHandle;//レンダーテクスチャのハンドル
 	inline static const Vector4 kClearColor = { 0.0f,0.0f,0.0f,1.0f };
-	uint32_t srvIndex = 0;
+	uint32_t srvIndex = UINT32_MAX;
 	D3D12_CPU_DESCRIPTOR_HANDLE imGuiSceneTextureCpuHandle{};
 	D3D12_GPU_DESCRIPTOR_HANDLE imGuiSceneTextureGpuHandle_{};
 	bool imGuiSceneTextureReady_ = false;

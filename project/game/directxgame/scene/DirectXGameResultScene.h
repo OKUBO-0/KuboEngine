@@ -14,8 +14,11 @@
 namespace DirectXGame {
 
 class DirectXGameSessionContext;
+class ResultSceneDebugUiController;
 
 class DirectXGameResultScene : public Engine::Scene::BaseScene {
+	friend class ResultSceneDebugUiController;
+
 public:
 	explicit DirectXGameResultScene(std::shared_ptr<DirectXGameSessionContext> sessionContext);
 
@@ -42,6 +45,7 @@ private:
 	void FinishCountUp();
 	void RequestSceneChange(const char* sceneId);
 	void UpdateCurtain(float deltaTime);
+	void DrawDebugUi();
 
 	struct DebugWindowVisibility {
 		bool windowSwitcher = false;

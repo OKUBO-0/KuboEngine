@@ -1,15 +1,7 @@
 #include "game/directxgame/scene/DirectXGameScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
-#include "game/directxgame/core/GameAudioDebugPanel.h"
-#include "game/directxgame/core/GameAudioTuning.h"
-#include "game/directxgame/core/GameplayRuntimeDebugPanel.h"
-#include "game/directxgame/core/GameplaySceneDebugPanel.h"
-#include "game/directxgame/core/GameplayPlayerDebugPanel.h"
-#include "game/directxgame/core/GameplayInputDebugPanel.h"
-#include "game/directxgame/core/GameplayDebugEditorShell.h"
 #include "game/directxgame/core/GameplayDebugDraw.h"
-#include "game/directxgame/core/GameplayRenderingDebugPanel.h"
-#include "game/directxgame/core/GameplayVisualDebugPanel.h"
+#include "game/directxgame/core/GameplayDebugUiController.h"
 #include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
@@ -25,13 +17,10 @@
 #include "ParticleManager.h"
 #include "SceneManager.h"
 #include "SpriteCommon.h"
+#include "TextureManager.h"
 #include <algorithm>
 #include <cmath>
-#include <string>
 #include <utility>
-#ifdef _DEBUG
-#include <imgui.h>
-#endif
 
 namespace {
 
@@ -40,6 +29,7 @@ constexpr char kAudioStart[] = "game.start";
 constexpr char kAudioPauseToggle[] = "game.pauseToggle";
 constexpr char kAudioLevelUp[] = "game.levelUp";
 constexpr char kAudioDeath[] = "game.death";
+constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 float Clamp01(float value)
 {
 	return std::clamp(value, 0.0f, 1.0f);
@@ -224,6 +214,10 @@ void DirectXGameScene::InitializeLighting()
 
 void DirectXGameScene::InitializeWorld()
 {
+	Engine::Base::TextureManager::GetInstance()->LoadTextures({
+		kEnvironmentTexturePath,
+		});
+
 	player_ = std::make_unique<Player>();
 	player_->Initialize();
 
@@ -543,195 +537,32 @@ void DirectXGameScene::QueueDebugDraw()
 
 void DirectXGameScene::UpdateDebugUi()
 {
-#ifdef _DEBUG
-	GameplayDebugWindowVisibility& debugWindows = debugContext_.Windows();
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (input->TriggerKey(DIK_F5)) {
-		debugContext_.Load(player_.get(), particleEffects_);
-	}
-	if (input->TriggerKey(DIK_F6) && playerManager_) {
-		playerManager_->ForceDebugDeath();
-	}
-	if (input->TriggerKey(DIK_F8) && playerManager_) {
-		playerManager_->AddEXP(10);
-	}
-	if (input->TriggerKey(DIK_F9) && playerManager_) {
-		playerManager_->MakeDebugStrongest();
-	}
-	if (input->TriggerKey(DIK_F10)) {
+	const GameplayDebugUiAction action =
+		GameplayDebugUiController::Update(
+			debugContext_,
+			gameplayFlow_,
+			sceneTransition_,
+			gameplayHud_,
+			particleEffects_,
+			pauseBuildHud_,
+			player_.get(),
+			playerManager_.get(),
+			enemyManager_.get(),
+			gridPlane_.get(),
+			skyDome_.get(),
+			sessionContext_.get(),
+			navigationInputDevice_,
+			uiInitialized_,
+			playerDeathPresentation_.GetElapsedTime(),
+			[this]() { SpawnLevelUpConfetti(); });
+	if (action == GameplayDebugUiAction::RequestResult) {
 		RequestResultScene();
-		return;
-	}
-	if (input->TriggerKey(DIK_F11)) {
+	} else if (action == GameplayDebugUiAction::ForceBoss) {
 		gameplayHud_.GetTimer().SetTime(kGameTimeLimitSeconds);
 		StartBossPhase();
-		return;
+	} else if (action == GameplayDebugUiAction::BackToTitle) {
+		RequestSceneChange(SceneId::kTitle);
 	}
-
-	const bool windowVisibilityChanged = GameplayDebugEditorShell::Draw(
-		debugWindows,
-		[this]() {
-			debugContext_.Save(player_.get(), particleEffects_);
-		},
-		[this]() {
-			debugContext_.Load(player_.get(), particleEffects_);
-		},
-		[this]() {
-			Engine::Scene::SceneManager::GetInstance()->ChangeScene(
-				SceneId::kTitle);
-		},
-		[this]() { RequestResultScene(); });
-
-	if (debugWindows.sceneSettings) {
-		GameplaySceneDebugPanel::DrawSettings(
-			&debugWindows.sceneSettings,
-			debugContext_.GameplayFrozen(),
-			gameplayFlow_.GetStateName());
-	}
-
-	if (debugWindows.keyInputDebug) {
-		const bool gameplayUpdateRuns =
-			gameplayFlow_.IsCombatActive() &&
-			!sceneTransition_.HasPendingScene() &&
-			!debugContext_.IsGameplayFrozen();
-		const GameplayInputDebugState inputDebugState{
-			navigationInputDevice_,
-			gameplayFlow_.GetStateName(),
-			sceneTransition_.HasPendingScene()
-				? std::string_view(sceneTransition_.GetPendingSceneId())
-				: std::string_view("none"),
-			gameplayUpdateRuns,
-			!gameplayFlow_.Is(GameplayState::Paused) || !gameplayUpdateRuns,
-			!gameplayFlow_.Is(GameplayState::LevelUp) || !gameplayUpdateRuns,
-			!gameplayFlow_.Is(GameplayState::Dead) || !gameplayUpdateRuns,
-		};
-		GameplayInputDebugPanel::Draw(
-			&debugWindows.keyInputDebug,
-			input,
-			inputDebugState);
-	}
-
-	if (debugWindows.lightSettings) {
-		GameplayRenderingDebugPanel::DrawLighting(
-			&debugWindows.lightSettings,
-			debugContext_.CameraEnabled(),
-			debugContext_.CameraPosition(),
-			debugContext_.CameraRotation(),
-			debugContext_.LightDrawEnabled(),
-			debugContext_.CollisionDrawEnabled(),
-			[this]() { debugContext_.UpdateCamera(); });
-	}
-
-	if (debugWindows.audio) {
-	ImGui::SetNextWindowPos(ImVec2(1125.0f, 12.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
-	GameAudioDebugPanel::Draw(
-		&debugWindows.audio,
-		GetGameAudioTuningEntries(),
-		[this]() {
-			debugContext_.Save(player_.get(), particleEffects_);
-		},
-		[this]() {
-			debugContext_.Load(player_.get(), particleEffects_);
-		});
-	}
-
-	if (debugWindows.statisticsView) {
-		const uint32_t gameFrameCount = sessionContext_ ? sessionContext_->GetGameFrameCount() : 0u;
-		debugContext_.StatisticsPanel().Draw(
-			&debugWindows.statisticsView,
-			gameplayFlow_.GetStateName(),
-			gameFrameCount,
-			gameplayFlow_.Is(GameplayState::Playing) &&
-				!debugContext_.IsGameplayFrozen(),
-			enemyManager_.get(),
-			playerManager_.get());
-	}
-
-	if (debugWindows.objectView || debugWindows.objectSettings) {
-		GameplayPlayerDebugPanel::Draw(
-			&debugWindows.objectView,
-			&debugWindows.objectSettings,
-			player_.get(),
-			playerManager_.get());
-	}
-
-	if (debugWindows.particleView || debugWindows.spriteManager) {
-		GameplayVisualDebugPanel::Draw(
-			&debugWindows.particleView,
-			&debugWindows.spriteManager,
-			uiInitialized_,
-			&debugContext_.CollisionDrawEnabled(),
-			gameplayHud_.GetHitFlashTimer(),
-			playerDeathPresentation_.GetElapsedTime(),
-			player_.get(),
-			particleEffects_,
-			gameplayHud_.GetTimer(),
-			gameplayHud_.GetHpGauge(),
-			gameplayHud_.GetExpGauge(),
-			gameplayHud_.GetKeyUi(),
-			gameplayHud_.GetPauseMiniMap(),
-			pauseBuildHud_,
-			[this]() { SpawnLevelUpConfetti(); });
-	}
-
-	if (debugWindows.sceneSpecificDebug) {
-		const GameplayDebugAction action = GameplaySceneDebugPanel::Draw(
-			&debugWindows.sceneSpecificDebug,
-			enemyManager_.get());
-		if (action == GameplayDebugAction::GoToResult) {
-			RequestResultScene();
-			return;
-		}
-		if (action == GameplayDebugAction::ForceTimeUp) {
-			gameplayHud_.GetTimer().SetTime(kGameTimeLimitSeconds);
-			StartBossPhase();
-			return;
-		}
-		if (action == GameplayDebugAction::BackToTitle) {
-			Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kTitle);
-			return;
-		}
-	}
-
-	if (debugWindows.offscreenSettings) {
-		GameplayRenderingDebugPanel::DrawOffscreen(
-			&debugWindows.offscreenSettings);
-	}
-	if (debugWindows.gizmo) {
-		debugContext_.GizmoPanel().Draw(
-			&debugWindows.gizmo,
-			player_.get());
-	}
-	if (debugWindows.objectManager) {
-		const RuntimeObjectStatus objectStatus{
-			player_ != nullptr,
-			playerManager_ != nullptr,
-			enemyManager_ != nullptr,
-			gridPlane_ != nullptr,
-			skyDome_ != nullptr,
-			sceneTransition_.IsInitialized(),
-		};
-		GameplayRuntimeDebugPanel::DrawObjectManager(
-			&debugWindows.objectManager,
-			objectStatus,
-			enemyManager_.get());
-	}
-	if (debugWindows.motionEditor) {
-		GameplayRuntimeDebugPanel::DrawMotionEditor(
-			&debugWindows.motionEditor);
-	}
-	if (debugWindows.colliderTagManager) {
-		GameplayRuntimeDebugPanel::DrawColliderManager(
-			&debugWindows.colliderTagManager,
-			&debugContext_.CollisionDrawEnabled(),
-			enemyManager_.get(),
-			playerManager_.get());
-	}
-	if (windowVisibilityChanged) {
-		debugContext_.Save(player_.get(), particleEffects_);
-	}
-#endif
 }
 
 void DirectXGameScene::ApplyPostEffect() const

@@ -1,9 +1,10 @@
 #pragma once
 
-#include "Object3D.h"
 #include "Vector3.h"
 #include "Vector4.h"
 #include "game/directxgame/enemy/EnemyBehavior.h"
+#include "game/directxgame/enemy/EnemyReactionController.h"
+#include "game/directxgame/enemy/EnemyView.h"
 #include <cstdint>
 #include <memory>
 
@@ -55,16 +56,17 @@ public:
 	void SetBehaviorVisual(const Vector4& color, float scaleMultiplier = 1.0f);
 	void ClearBehaviorVisual();
 	void SetBoss(bool boss);
-	bool IsBoss() const { return boss_; }
-	int32_t GetBossPhase() const { return bossPhase_; }
-	bool ConsumeBossPhaseChanged();
+	bool IsBoss() const { return reactionController_.IsBoss(); }
+	int32_t GetBossPhase() const
+	{
+		return reactionController_.GetBossPhase();
+	}
+	bool ConsumeBossPhaseChanged()
+	{
+		return reactionController_.ConsumeBossPhaseChanged();
+	}
 
 private:
-	void InitializeFloatingShadow();
-	void ApplyTransform();
-	void UpdateFloatingShadow();
-	void ApplyDeathPose(float progress);
-
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	Vector3 previousPosition_{ 0.0f, 0.0f, 0.0f };
 	float rotationY_ = 0.0f;
@@ -79,25 +81,10 @@ private:
 
 	Player* player_ = nullptr;
 	std::unique_ptr<IEnemyBehavior> behavior_;
-	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
-	std::unique_ptr<Engine::Graphics3D::Object3D> floatingShadowObject_;
+	EnemyReactionController reactionController_{};
+	EnemyView view_{};
 
-	Vector4 behaviorColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float behaviorScaleMultiplier_ = 1.0f;
-	float hitFlashTimer_ = 0.0f;
-	Vector3 knockbackVelocity_{ 0.0f, 0.0f, 0.0f };
-	float knockbackTimer_ = 0.0f;
-	float knockbackCooldownTimer_ = 0.0f;
-	bool floatingVisualEnabled_ = false;
 	bool groundImpactPending_ = false;
-	bool boss_ = false;
-	int32_t bossPhase_ = 1;
-	bool bossPhaseChanged_ = false;
-	float bossPhaseTransitionTimer_ = 0.0f;
-
-	static constexpr float kHitFlashDuration = 0.12f;
-	static constexpr float kKnockbackDuration = 0.22f;
-	static constexpr float kKnockbackCooldown = 0.45f;
 };
 
 } // namespace DirectXGame

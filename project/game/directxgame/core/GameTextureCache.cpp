@@ -66,8 +66,21 @@ void GameTextureCache::LoadBatch(const std::vector<std::string>& relativePaths)
 	}
 
 	Engine::Base::TextureManager::GetInstance()->LoadTextures(fullPaths);
-	for (const std::string& relativePath : relativePaths) {
-		Load(relativePath);
+	auto& pathToHandle = GetPathToHandle();
+	auto& handleToPath = GetHandleToPath();
+	for (const std::string& fullPath : fullPaths) {
+		if (pathToHandle.contains(fullPath)) {
+			continue;
+		}
+
+		const TextureHandle handle =
+			Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(fullPath);
+		if (handle == 0) {
+			LogTextureLoadMessage(fullPath, fullPath, "TextureManager returned invalid SRV handle after batch load");
+			assert(false && "GameTextureCache::LoadBatch failed; see OutputDebugString for path details");
+		}
+		pathToHandle.emplace(fullPath, handle);
+		handleToPath.emplace(handle, fullPath);
 	}
 }
 

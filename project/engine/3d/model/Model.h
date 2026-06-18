@@ -5,7 +5,6 @@
 #include <array>
 #include <cstdint>
 #include <optional>
-#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,14 +42,10 @@ struct SkinCluster {
     std::vector<Matrix4x4> inverseBindPoseMatrices;
 
     // 頂点影響情報（ボーンと重み）
+    std::vector<VertexInfluence> influenceData;
     Microsoft::WRL::ComPtr<ID3D12Resource> influenceResource;
     D3D12_VERTEX_BUFFER_VIEW influenceBufferView;
-    std::span<VertexInfluence> mappedInfluence;
 
-    // ボーン行列（palette）
-    Microsoft::WRL::ComPtr<ID3D12Resource> paletteResource;
-    std::span<WellForGPU> mappedPalette;
-    std::pair<D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE> paletteSrvHandle;
 };
 
 /// @brief 3D モデルの描画データとアニメーション資産を保持するクラス
@@ -64,7 +59,12 @@ public:
     /// @param directorypath モデルファイルが存在するディレクトリ
     /// @param filename 読み込むモデルファイル名
     /// @return なし
-    void Initialize(ModelCommon* modelCommon, const std::string& directorypath, const std::string& filename);
+    void Initialize(
+        ModelCommon* modelCommon,
+        const std::string& directorypath,
+        const std::string& filename,
+        bool loadMaterialTexture = true);
+    void Finalize();
     static ModelLoadDiagnostics GetLoadDiagnostics();
 
     /// @brief モデルを描画する
@@ -95,13 +95,14 @@ public:
     const ModelData& GetModelData() const { return modelData; }
     float GetLocalBoundingRadius() const { return modelData.localBoundingRadius; }
     bool HasBounds() const { return modelData.hasBounds; }
+    bool HasSkinningData() const { return !modelData.skinClusterData.empty(); }
     Animation& GetAnimation() { return animation; }
     Skeleton& GetSkeleton() { return skeleton; }
     SkinCluster& GetSkinCluster() { return skinCluster; }
 
     // マテリアル設定
-    void SetEnableLighting(bool enable) { materialData->enableLighting = enable; }
-    void SetColor(const Vector4& color) { materialData->color = color; }
+    void SetEnableLighting(bool enable) { materialData_.enableLighting = enable; }
+    void SetColor(const Vector4& color) { materialData_.color = color; }
 
     /// @brief マテリアルテンプレートファイルを読み込む
     /// @param directorypath マテリアルファイルのディレクトリ
@@ -126,6 +127,11 @@ public:
     /// @return 生成したスキンクラスター
     SkinCluster CreateSkinCluster();
 
+    /// @brief モデルに対応するテクスチャを読み込む
+    /// @param なし
+    /// @return なし
+    void LoadMaterialTexture();
+
 private:
     /// @brief モデル読込後のランタイム資源を構築する
     /// @param directorypath モデルディレクトリ
@@ -148,11 +154,6 @@ private:
     /// @return なし
     void CreateMaterialBuffer();
 
-    /// @brief モデルに対応するテクスチャを読み込む
-    /// @param なし
-    /// @return なし
-    void LoadMaterialTexture();
-
     /// @brief メッシュ頂点データを内部形式へ変換する
     /// @param mesh Assimp メッシュ
     /// @param modelData 書き込み先モデルデータ
@@ -164,13 +165,19 @@ private:
     /// @param mesh Assimp メッシュ
     /// @param modelData 書き込み先モデルデータ
     /// @return なし
-    void LoadIndicesFromMesh(aiMesh* mesh, ModelData& modelData);
+    void LoadIndicesFromMesh(
+        aiMesh* mesh,
+        uint32_t baseVertex,
+        ModelData& modelData);
 
     /// @brief メッシュのボーン情報をスキンクラスターデータへ変換する
     /// @param mesh Assimp メッシュ
     /// @param modelData 書き込み先モデルデータ
     /// @return なし
-    void LoadSkinClusterDataFromMesh(aiMesh* mesh, ModelData& modelData);
+    void LoadSkinClusterDataFromMesh(
+        aiMesh* mesh,
+        uint32_t baseVertex,
+        ModelData& modelData);
 
     /// @brief シーン内マテリアルから代表テクスチャを抽出する
     /// @param scene Assimp シーン
@@ -206,11 +213,6 @@ private:
     /// @return なし
     void LoadScaleKeys(const aiNodeAnim* nodeAnimationAssimp, float ticksPerSecond, NodeAnimation& nodeAnimation);
 
-    /// @brief パレット用 GPU リソースを初期化する
-    /// @param skinCluster 初期化対象
-    /// @return なし
-    void InitializePaletteResources(SkinCluster& skinCluster);
-
     /// @brief 頂点インフルエンス用 GPU リソースを初期化する
     /// @param skinCluster 初期化対象
     /// @return なし
@@ -235,15 +237,12 @@ private:
 
     // GPUリソース
     Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource; // 頂点バッファ
-    VertexData* vertexData = nullptr;
     D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
 
-    Microsoft::WRL::ComPtr<ID3D12Resource> materialResource; // マテリアルバッファ
-    Material* materialData = nullptr;
+    Material materialData_{};
 
     Microsoft::WRL::ComPtr<ID3D12Resource> indexResource; // インデックスバッファ
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	uint32_t* mappedIndex = nullptr;
 };
 
 }

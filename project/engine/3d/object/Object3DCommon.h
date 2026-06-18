@@ -51,7 +51,7 @@ public:
 	void BindSceneLighting(bool skinning = false);
 	bool IsShadowPassActive() const { return shadowPassActive_; }
 	void SetSceneLight(const SceneLightData& light);
-	const SceneLightData& GetSceneLight() const { return *sceneLightData_; }
+	const SceneLightData& GetSceneLight() const { return sceneLightData_; }
 	void SetShadowEnabled(bool enabled);
 	bool IsShadowEnabled() const;
 	void SetShadowStrength(float strength);
@@ -84,13 +84,11 @@ private:
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> skinningGraphicsPipeline_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> shadowGraphicsPipeline_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> sceneLightResource_;
-	SceneLightData* sceneLightData_ = nullptr;
+	SceneLightData sceneLightData_{};
 	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMapResource_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shadowDsvHeap_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMapDataResource_;
-	ShadowMapData* shadowMapData_ = nullptr;
-	uint32_t shadowSrvIndex_ = 0;
+	ShadowMapData shadowMapData_{};
+	uint32_t shadowSrvIndex_ = UINT32_MAX;
 	D3D12_RESOURCE_STATES shadowMapState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	bool shadowPassActive_ = false;
 	bool shadowEnabled_ = true;

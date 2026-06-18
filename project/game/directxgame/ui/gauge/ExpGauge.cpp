@@ -30,7 +30,12 @@ int32_t StepDisplayValue(int32_t displayedValue, int32_t targetValue)
 
 float CalculateGaugeRate(int32_t displayedValue, int32_t maxValue)
 {
-	float ratio = static_cast<float>(displayedValue) / static_cast<float>(maxValue);
+	if (maxValue <= 0) {
+		return 0.0f;
+	}
+
+	const float ratio =
+		static_cast<float>(displayedValue) / static_cast<float>(maxValue);
 	return std::clamp(ratio, 0.0f, 1.0f);
 }
 

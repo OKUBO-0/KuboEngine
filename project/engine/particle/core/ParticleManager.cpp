@@ -1,12 +1,14 @@
 #include "ParticleManager.h"
 #include "DirectXCommon.h"
 #include "GraphicsPipeline.h"
+#include "HResult.h"
 #include "SrvManager.h"
 #include <ModelManager.h>
 #include <TextureManager.h>
 #include "CameraManager.h"
 #include <MyMath.h>
 #include <algorithm>
+#include <cstring>
 #include <numbers>
 #include <imgui.h>
 
@@ -30,6 +32,8 @@ ParticleManager* ParticleManager::GetInstance()
 
 void ParticleManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
 {
+	static_assert(kBufferedFrameCount == Engine::Base::DirectXCommon::kFrameCount);
+
 	//引数で受け取ったポインタをメンバ変数に代入
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
@@ -48,6 +52,16 @@ void ParticleManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::
 void ParticleManager::Finalize()
 {
 	graphicsPipeline_.reset();
+	if (srvManager_) {
+		for (const auto& [name, particleGroup] : particleGroups) {
+			static_cast<void>(name);
+			for (uint32_t srvIndex : particleGroup.srvIndices) {
+				if (srvIndex != UINT32_MAX) {
+					srvManager_->Free(srvIndex);
+				}
+			}
+		}
+	}
 	particleGroups.clear();
 	model_ = nullptr;
 	dxCommon_ = nullptr;
@@ -99,7 +113,7 @@ void ParticleManager::UpdateParticleGroup(ParticleGroup& particleGroup, float de
 			continue;
 		}
 
-		behavior->Update(particle, deltaTime, particleGroup.materialData);
+		behavior->Update(particle, deltaTime, &particleGroup.materialData);
 		UpdateAliveParticle(particle, particleGroup, counter, viewMatrix, projectionMatrix);
 		if (writeIndex != readIndex) {
 			particleGroup.particles[writeIndex] = particle;
@@ -156,10 +170,33 @@ void ParticleManager::Draw()
 			continue;
 		}
 
+		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
+			dxCommon_->AllocateFrameUpload(sizeof(Material), 256);
+		std::memcpy(
+			materialAllocation.cpuAddress,
+			&particleGroup.materialData,
+			sizeof(particleGroup.materialData));
+		const size_t instanceBytes =
+			sizeof(ParticleForGPU) * particleGroup.instanceCount;
+		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
+			dxCommon_->AllocateFrameUpload(instanceBytes, sizeof(ParticleForGPU));
+		std::memcpy(
+			instanceAllocation.cpuAddress,
+			particleGroup.instanceData.data(),
+			instanceBytes);
+		const uint32_t frameIndex = dxCommon_->GetCurrentFrameIndex();
+		const uint32_t srvIndex = particleGroup.srvIndices[frameIndex];
+		srvManager_->CreateSRVforStructuredBuffer(
+			srvIndex,
+			instanceAllocation.resource,
+			particleGroup.instanceCount,
+			sizeof(ParticleForGPU),
+			instanceAllocation.offset / sizeof(ParticleForGPU));
+
 		dxCommon_->GetCommandList()->IASetVertexBuffers(0, 1, &particleGroup.vertexBufferView);
-		dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(0, particleGroup.materialResource->GetGPUVirtualAddress());
+		dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
 		srvManager_->SetGraphicsRootDescriptorTable(2, particleGroup.materialdata.textureIndex);
-		srvManager_->SetGraphicsRootDescriptorTable(1, particleGroup.srvIndex);
+		srvManager_->SetGraphicsRootDescriptorTable(1, srvIndex);
 		dxCommon_->GetCommandList()->DrawInstanced(UINT(particleGroup.vertexCount), particleGroup.instanceCount, 0, 0);
 		++lastDrawCallCount_;
 		lastDrawnInstanceCount_ += particleGroup.instanceCount;
@@ -196,12 +233,10 @@ void ParticleManager::CreateParticleGroup(
 
 void ParticleManager::InitializeParticleGroupMaterial(ParticleGroup& particleGroup)
 {
-	particleGroup.materialResource = dxCommon_->CreateBufferResource(sizeof(Material));
-	particleGroup.materialData = nullptr;
-	particleGroup.materialResource->Map(0, nullptr, reinterpret_cast<void**>(&particleGroup.materialData));
-	particleGroup.materialData->color = { Vector4(1.0f, 1.0f, 1.0f, 1.0f) };
-	particleGroup.materialData->enableLighting = false;
-	particleGroup.materialData->uvTransform = particleGroup.materialData->uvTransform.MakeIdentity4x4();
+	particleGroup.materialData.color = { Vector4(1.0f, 1.0f, 1.0f, 1.0f) };
+	particleGroup.materialData.enableLighting = false;
+	particleGroup.materialData.uvTransform =
+		particleGroup.materialData.uvTransform.MakeIdentity4x4();
 }
 
 void ParticleManager::InitializeParticleGroupVertices(ParticleGroup& particleGroup, VerticesType verticesType)
@@ -220,15 +255,14 @@ void ParticleManager::InitializeParticleGroupVertices(ParticleGroup& particleGro
 	}
 
 	particleGroup.vertexCount = static_cast<uint32_t>(vertices.size());
-	particleGroup.vertexResource = dxCommon_->CreateBufferResource(sizeof(VertexData) * vertices.size());
+	const size_t vertexBytes = sizeof(VertexData) * vertices.size();
+	particleGroup.vertexResource = dxCommon_->CreateDefaultBufferResource(
+		vertices.data(),
+		vertexBytes,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	particleGroup.vertexBufferView.BufferLocation = particleGroup.vertexResource->GetGPUVirtualAddress();
-	particleGroup.vertexBufferView.SizeInBytes = static_cast<UINT>(sizeof(VertexData) * vertices.size());
+	particleGroup.vertexBufferView.SizeInBytes = static_cast<UINT>(vertexBytes);
 	particleGroup.vertexBufferView.StrideInBytes = sizeof(VertexData);
-
-	VertexData* vertexData = nullptr;
-	particleGroup.vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData));
-	std::memcpy(vertexData, vertices.data(), sizeof(VertexData) * vertices.size());
-	particleGroup.vertexResource->Unmap(0, nullptr);
 }
 
 void ParticleManager::InitializeParticleGroupTexture(ParticleGroup& particleGroup, const std::string& textureFilePath)
@@ -241,8 +275,7 @@ void ParticleManager::InitializeParticleGroupTexture(ParticleGroup& particleGrou
 void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGroup)
 {
 	particleGroup.instanceCount = 0;
-	particleGroup.instanceResource = dxCommon_->CreateBufferResource(sizeof(ParticleForGPU) * particleGroup.maxInstanceCount);
-	particleGroup.instanceResource->Map(0, nullptr, reinterpret_cast<void**>(&particleGroup.instanceData));
+	particleGroup.instanceData.resize(particleGroup.maxInstanceCount);
 
 	ParticleForGPU particleForGPU;
 	particleForGPU.WVP = particleForGPU.WVP.MakeIdentity4x4();
@@ -252,12 +285,10 @@ void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGr
 		particleGroup.instanceData[index] = particleForGPU;
 	}
 
-	particleGroup.srvIndex = srvManager_->Allocate();
-	srvManager_->CreateSRVforStructuredBuffer(
-		particleGroup.srvIndex,
-		particleGroup.instanceResource.Get(),
-		particleGroup.maxInstanceCount,
-		sizeof(ParticleForGPU));
+	particleGroup.srvIndices.fill(UINT32_MAX);
+	for (uint32_t& srvIndex : particleGroup.srvIndices) {
+		srvIndex = srvManager_->Allocate();
+	}
 }
 
 void ParticleManager::Emit(const std::string& name, const Vector3& position, uint32_t count)

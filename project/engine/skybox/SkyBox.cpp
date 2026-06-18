@@ -1,4 +1,5 @@
 #include "SkyBox.h"
+#include "HResult.h"
 #include "MyMath.h"
 #include "TextureManager.h"
 #include "CameraManager.h"
@@ -35,10 +36,15 @@ void SkyBox::Initialize(const std::string& textureFilePath)
 	InitializeIndexBuffer();
 	InitializeTexture();
 	InitializeMaterial();
-	InitializeTransformBuffer();
 
 	// Transform 変数
 	transform = { {30.0f,30.0f,30.0f},{0.0f,0.0f,0.0f} ,{0.0f,0.0f,0.0f} };
+	transformationMatrixData_.WVP =
+		transformationMatrixData_.WVP.MakeIdentity4x4();
+	transformationMatrixData_.World =
+		transformationMatrixData_.World.MakeIdentity4x4();
+	transformationMatrixData_.worldInverseTranspose =
+		transformationMatrixData_.worldInverseTranspose.MakeIdentity4x4();
 }
 
 void SkyBox::InitializeGeometry()
@@ -71,25 +77,26 @@ void SkyBox::InitializeIndices()
 
 void SkyBox::InitializeVertexBuffer()
 {
-	vertexResource = dxCommon_->CreateBufferResource(sizeof(VertexData) * vertices.size());
+	const size_t vertexBytes = sizeof(VertexData) * vertices.size();
+	vertexResource = dxCommon_->CreateDefaultBufferResource(
+		vertices.data(),
+		vertexBytes,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
-	vertexBufferView.SizeInBytes = static_cast<UINT>(sizeof(VertexData) * vertices.size());
+	vertexBufferView.SizeInBytes = static_cast<UINT>(vertexBytes);
 	vertexBufferView.StrideInBytes = sizeof(VertexData);
-	VertexData* vertexData = nullptr;
-	vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData));
-	std::memcpy(vertexData, vertices.data(), sizeof(VertexData) * vertices.size());
-	vertexResource->Unmap(0, nullptr);
 }
 
 void SkyBox::InitializeIndexBuffer()
 {
-	indexResource = dxCommon_->CreateBufferResource(sizeof(uint16_t) * indices.size());
+	const size_t indexBytes = sizeof(uint16_t) * indices.size();
+	indexResource = dxCommon_->CreateDefaultBufferResource(
+		indices.data(),
+		indexBytes,
+		D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	indexBufferView.BufferLocation = indexResource->GetGPUVirtualAddress();
 	indexBufferView.Format = DXGI_FORMAT_R16_UINT;
-	indexBufferView.SizeInBytes = static_cast<UINT>(sizeof(uint16_t) * indices.size());
-	indexResource->Map(0, nullptr, reinterpret_cast<void**>(&indexData));
-	std::memcpy(indexData, indices.data(), sizeof(uint16_t) * indices.size());
-	indexResource->Unmap(0, nullptr);
+	indexBufferView.SizeInBytes = static_cast<UINT>(indexBytes);
 }
 
 void SkyBox::InitializeTexture()
@@ -100,20 +107,9 @@ void SkyBox::InitializeTexture()
 
 void SkyBox::InitializeMaterial()
 {
-	materialResource = dxCommon_->CreateBufferResource(sizeof(Material));
-	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
-	materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-	materialData->enableLighting = false;//有効にするか否か
-	materialData->uvTransform = materialData->uvTransform.MakeIdentity4x4();
-}
-
-void SkyBox::InitializeTransformBuffer()
-{
-	transformationMatrixResource = SkyBoxCommon::GetInstance()->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrix));
-	transformationMatrixResource->Map(0, nullptr, reinterpret_cast<void**>(&transformationMatrixData_));
-	transformationMatrixData_->WVP = transformationMatrixData_->WVP.MakeIdentity4x4();
-	transformationMatrixData_->World = transformationMatrixData_->World.MakeIdentity4x4();
-	transformationMatrixData_->worldInverseTranspose = transformationMatrixData_->worldInverseTranspose.MakeIdentity4x4();
+	materialData_.color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+	materialData_.enableLighting = false;
+	materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
 }
 
 void SkyBox::Update()
@@ -125,25 +121,38 @@ void SkyBox::Update()
 
 		const Matrix4x4& viewProjectionMatrix = activeCamera->GetViewProjectionMatrix();
 		worldViewProjectionMatrix = worldMatrix * viewProjectionMatrix;
-		transformationMatrixData_->WVP = worldViewProjectionMatrix;
-		transformationMatrixData_->World = worldMatrix;
+		transformationMatrixData_.WVP = worldViewProjectionMatrix;
+		transformationMatrixData_.World = worldMatrix;
 
 	} else {
 		worldViewProjectionMatrix = worldMatrix;
-		transformationMatrixData_->WVP = worldViewProjectionMatrix;
-		transformationMatrixData_->World = worldMatrix;
+		transformationMatrixData_.WVP = worldViewProjectionMatrix;
+		transformationMatrixData_.World = worldMatrix;
 	}
 }
 
 void SkyBox::Draw()
 {
+	const Engine::Base::DirectXCommon::FrameUploadAllocation transformAllocation =
+		dxCommon_->AllocateFrameUpload(sizeof(TransformationMatrix), 256);
+	const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
+		dxCommon_->AllocateFrameUpload(sizeof(Material), 256);
+	std::memcpy(
+		transformAllocation.cpuAddress,
+		&transformationMatrixData_,
+		sizeof(transformationMatrixData_));
+	std::memcpy(
+		materialAllocation.cpuAddress,
+		&materialData_,
+		sizeof(materialData_));
+
 	SkyBoxCommon::GetInstance()->commonDraw();//共通描画処理を呼び出す
 	//頂点バッファビューをセット
 	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView);
 	//Materialをセット
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
 	//トランスフォームをセット
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
+	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformAllocation.gpuAddress);
 	//テクスチャをセット
 	SkyBoxCommon::GetInstance()->GetSrvManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_));
 	//インデックスバッファビューをセット

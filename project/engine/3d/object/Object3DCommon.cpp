@@ -1,12 +1,14 @@
 #include "Object3DCommon.h"
 #include "DirectXCommon.h"
 #include "GraphicsPipeline.h"
+#include "HResult.h"
 #include "Logger.h"
 #include "MyMath.h"
 #include "OffscreenRenderManager.h"
 #include "SrvManager.h"
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 
 namespace {
 
@@ -58,16 +60,14 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 	shadowGraphicsPipeline_->Initialize(dxCommon_);
 	shadowGraphicsPipeline_->CreateShadowMap();
 
-	sceneLightResource_ = dxCommon_->CreateBufferResource(sizeof(SceneLightData));
-	sceneLightResource_->Map(0, nullptr, reinterpret_cast<void**>(&sceneLightData_));
-	sceneLightData_->color = { 1.0f, 0.95f, 0.9f, 1.0f };
-	sceneLightData_->direction = MyMath::Normalize(Vector3{ -0.55f, -1.0f, -0.45f });
-	sceneLightData_->intensity = 0.85f;
-	sceneLightData_->ambientColor = { 0.48f, 0.52f, 0.62f, 1.0f };
-	sceneLightData_->ambientIntensity = 0.34f;
-	sceneLightData_->specularStrength = 0.16f;
-	sceneLightData_->enable = 1;
-	sceneLightData_->padding = 0.0f;
+	sceneLightData_.color = { 1.0f, 0.95f, 0.9f, 1.0f };
+	sceneLightData_.direction = MyMath::Normalize(Vector3{ -0.55f, -1.0f, -0.45f });
+	sceneLightData_.intensity = 0.85f;
+	sceneLightData_.ambientColor = { 0.48f, 0.52f, 0.62f, 1.0f };
+	sceneLightData_.ambientIntensity = 0.34f;
+	sceneLightData_.specularStrength = 0.16f;
+	sceneLightData_.enable = 1;
+	sceneLightData_.padding = 0.0f;
 
 	D3D12_RESOURCE_DESC resourceDesc{};
 	resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -87,7 +87,9 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 		&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValue,
 		IID_PPV_ARGS(shadowMapResource_.GetAddressOf()));
-	assert(SUCCEEDED(resourceResult));
+	Engine::Base::ThrowIfFailed(
+		resourceResult,
+		"ID3D12Device::CreateCommittedResource shadow map");
 
 	shadowDsvHeap_ = dxCommon_->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
@@ -107,10 +109,8 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 		shadowMapResource_.Get(), &srvDesc,
 		srvManager_->GetCPUDescriptorHandle(shadowSrvIndex_));
 
-	shadowMapDataResource_ = dxCommon_->CreateBufferResource(sizeof(ShadowMapData));
-	shadowMapDataResource_->Map(0, nullptr, reinterpret_cast<void**>(&shadowMapData_));
-	shadowMapData_->lightViewProjection = MyMath::MakeIdentity4x4();
-	shadowMapData_->settings = {
+	shadowMapData_.lightViewProjection = MyMath::MakeIdentity4x4();
+	shadowMapData_.settings = {
 		1.0f,
 		1.5f / static_cast<float>(kShadowMapSize),
 		0.68f,
@@ -121,32 +121,29 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 
 void Object3DCommon::Finalize()
 {
+	if (srvManager_ && shadowSrvIndex_ != UINT32_MAX) {
+		srvManager_->Free(shadowSrvIndex_);
+		shadowSrvIndex_ = UINT32_MAX;
+	}
 	graphicsPipeline_.reset();
 	skinningGraphicsPipeline_.reset();
 	shadowGraphicsPipeline_.reset();
-	sceneLightResource_.Reset();
-	sceneLightData_ = nullptr;
 	shadowMapResource_.Reset();
 	shadowDsvHeap_.Reset();
-	shadowMapDataResource_.Reset();
-	shadowMapData_ = nullptr;
 	dxCommon_ = nullptr;
 	srvManager_ = nullptr;
 }
 
 void Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 {
-	if (!sceneLightData_ || !shadowMapData_) {
-		return;
-	}
-	const Vector3 direction = MyMath::Normalize(sceneLightData_->direction);
+	const Vector3 direction = MyMath::Normalize(sceneLightData_.direction);
 	const Vector3 eye = focusPosition - direction * 95.0f;
 	const Matrix4x4 view = MakeLookAtMatrix(eye, focusPosition);
 	const Matrix4x4 projection = MyMath::MakeOrthographicMatrix(
 		-shadowArea_, shadowArea_, shadowArea_, -shadowArea_, 0.1f, 210.0f);
-	shadowMapData_->lightViewProjection = view * projection;
-	shadowMapData_->settings.x =
-		sceneLightData_->enable != 0 && shadowEnabled_ ? 1.0f : 0.0f;
+	shadowMapData_.lightViewProjection = view * projection;
+	shadowMapData_.settings.x =
+		sceneLightData_.enable != 0 && shadowEnabled_ ? 1.0f : 0.0f;
 
 	if (shadowMapState_ != D3D12_RESOURCE_STATE_DEPTH_WRITE) {
 		dxCommon_->TransitionResource(
@@ -172,8 +169,14 @@ void Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 	dxCommon_->GetCommandList()->SetPipelineState(
 		shadowGraphicsPipeline_->GetGraphicsPipelineStateShadowMap());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	const Engine::Base::DirectXCommon::FrameUploadAllocation shadowAllocation =
+		dxCommon_->AllocateFrameUpload(sizeof(ShadowMapData), 256);
+	std::memcpy(
+		shadowAllocation.cpuAddress,
+		&shadowMapData_,
+		sizeof(shadowMapData_));
 	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
-		1, shadowMapDataResource_->GetGPUVirtualAddress());
+		1, shadowAllocation.gpuAddress);
 	shadowPassActive_ = true;
 }
 
@@ -194,32 +197,45 @@ void Object3DCommon::EndShadowPass()
 
 void Object3DCommon::BindSceneLighting(bool skinning)
 {
+	const Engine::Base::DirectXCommon::FrameUploadAllocation lightAllocation =
+		dxCommon_->AllocateFrameUpload(sizeof(SceneLightData), 256);
+	std::memcpy(
+		lightAllocation.cpuAddress,
+		&sceneLightData_,
+		sizeof(sceneLightData_));
+	const Engine::Base::DirectXCommon::FrameUploadAllocation shadowAllocation =
+		dxCommon_->AllocateFrameUpload(sizeof(ShadowMapData), 256);
+	std::memcpy(
+		shadowAllocation.cpuAddress,
+		&shadowMapData_,
+		sizeof(shadowMapData_));
+
 	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
-		3, sceneLightResource_->GetGPUVirtualAddress());
+		3, lightAllocation.gpuAddress);
 	const UINT shadowTextureRoot = skinning ? 8u : 7u;
 	const UINT shadowDataRoot = skinning ? 9u : 8u;
 	srvManager_->SetGraphicsRootDescriptorTable(shadowTextureRoot, shadowSrvIndex_);
 	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
-		shadowDataRoot, shadowMapDataResource_->GetGPUVirtualAddress());
+		shadowDataRoot, shadowAllocation.gpuAddress);
 }
 
 void Object3DCommon::SetSceneLight(const SceneLightData& light)
 {
-	*sceneLightData_ = light;
-	if (sceneLightData_->direction.Length() < 0.001f) {
-		sceneLightData_->direction = { -0.55f, -1.0f, -0.45f };
+	sceneLightData_ = light;
+	if (sceneLightData_.direction.Length() < 0.001f) {
+		sceneLightData_.direction = { -0.55f, -1.0f, -0.45f };
 	}
-	sceneLightData_->direction = MyMath::Normalize(sceneLightData_->direction);
-	sceneLightData_->ambientIntensity =
-		std::clamp(sceneLightData_->ambientIntensity, 0.0f, 1.0f);
-	sceneLightData_->specularStrength =
-		std::clamp(sceneLightData_->specularStrength, 0.0f, 1.0f);
+	sceneLightData_.direction = MyMath::Normalize(sceneLightData_.direction);
+	sceneLightData_.ambientIntensity =
+		std::clamp(sceneLightData_.ambientIntensity, 0.0f, 1.0f);
+	sceneLightData_.specularStrength =
+		std::clamp(sceneLightData_.specularStrength, 0.0f, 1.0f);
 }
 
 void Object3DCommon::SetShadowEnabled(bool enabled)
 {
 	shadowEnabled_ = enabled;
-	shadowMapData_->settings.x = enabled ? 1.0f : 0.0f;
+	shadowMapData_.settings.x = enabled ? 1.0f : 0.0f;
 }
 
 bool Object3DCommon::IsShadowEnabled() const
@@ -229,33 +245,33 @@ bool Object3DCommon::IsShadowEnabled() const
 
 void Object3DCommon::SetShadowStrength(float strength)
 {
-	shadowMapData_->settings.z = std::clamp(strength, 0.0f, 1.0f);
+	shadowMapData_.settings.z = std::clamp(strength, 0.0f, 1.0f);
 }
 
 float Object3DCommon::GetShadowStrength() const
 {
-	return shadowMapData_ ? shadowMapData_->settings.z : 0.0f;
+	return shadowMapData_.settings.z;
 }
 
 void Object3DCommon::SetShadowSoftness(float texels)
 {
-	shadowMapData_->settings.y =
+	shadowMapData_.settings.y =
 		std::clamp(texels, 0.5f, 4.0f) / static_cast<float>(kShadowMapSize);
 }
 
 float Object3DCommon::GetShadowSoftness() const
 {
-	return shadowMapData_ ? shadowMapData_->settings.y * kShadowMapSize : 0.0f;
+	return shadowMapData_.settings.y * kShadowMapSize;
 }
 
 void Object3DCommon::SetShadowBias(float bias)
 {
-	shadowMapData_->settings.w = std::clamp(bias, 0.0f, 0.01f);
+	shadowMapData_.settings.w = std::clamp(bias, 0.0f, 0.01f);
 }
 
 float Object3DCommon::GetShadowBias() const
 {
-	return shadowMapData_ ? shadowMapData_->settings.w : 0.0f;
+	return shadowMapData_.settings.w;
 }
 
 void Object3DCommon::SetShadowArea(float area)

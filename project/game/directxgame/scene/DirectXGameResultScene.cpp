@@ -1,11 +1,10 @@
 #include "game/directxgame/scene/DirectXGameResultScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/GameMenuController.h"
-#include "game/directxgame/core/GameAudioDebugPanel.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include "game/directxgame/core/DirectXGameSessionContext.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
-#include "game/directxgame/core/ScreenUtil.h"
+#include "game/directxgame/core/ResultSceneDebugUiController.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/ui/common/DigitSpriteUtil.h"
 #include "CameraManager.h"
@@ -16,17 +15,14 @@
 #include "SpriteCommon.h"
 #include <algorithm>
 #include <cmath>
-#include <iterator>
 #include <string_view>
-#ifdef _DEBUG
-#include "DebugEditorManager.h"
-#include "IconsFontAwesome5.h"
-#include <imgui.h>
-#endif
 
 namespace {
 
 constexpr char kAudioResultFinish[] = "result.finish";
+constexpr char kResultBackgroundTexture[] = "ui/result/Result.png";
+constexpr char kResultFinishTexture[] = "ui/result/finish_ui.png";
+constexpr char kResultNumberTexture[] = "ui/number/numbers.png";
 constexpr int32_t kScorePerExp = 1;
 constexpr int32_t kScorePerKill = 100;
 constexpr int32_t kScorePerLevel = 1000;
@@ -91,192 +87,12 @@ void DirectXGameResultScene::Update()
 		}
 	}
 
-#ifdef _DEBUG
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (input && input->TriggerKey(DIK_F5)) {
-		ReloadDebugData();
-	}
-	const DebugWindowVisibility previousDebugWindows = debugWindows_;
-	const auto saveWindowVisibilityIfChanged = [this](const DebugWindowVisibility& previous) {
-		if (previous.windowSwitcher != debugWindows_.windowSwitcher ||
-			previous.sceneView != debugWindows_.sceneView ||
-			previous.statisticsView != debugWindows_.statisticsView ||
-			previous.sceneSettings != debugWindows_.sceneSettings ||
-			previous.audio != debugWindows_.audio ||
-			previous.keyInputDebug != debugWindows_.keyInputDebug) {
-			SaveLayout();
-		}
-	};
+	DrawDebugUi();
+}
 
-	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
-		{ "Scene", &debugWindows_.sceneView },
-		{ "統計", &debugWindows_.statisticsView },
-		{ "シーン設定", &debugWindows_.sceneSettings },
-		{ "オーディオ", &debugWindows_.audio },
-		{ "キー操作デバッグ", &debugWindows_.keyInputDebug },
-	};
-	const Engine::Editor::DebugEditorMenuItem editItems[] = {
-		{ "シーン設定", &debugWindows_.sceneSettings },
-	};
-	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
-		{ "Scene", &debugWindows_.sceneView },
-		{ "シーン設定", &debugWindows_.sceneSettings },
-	};
-	Engine::Editor::DebugEditorManager::DrawMainMenu({
-		windowItems,
-		std::size(windowItems),
-		editItems,
-		std::size(editItems),
-		objectItems,
-		std::size(objectItems),
-		"リザルトレイアウトを保存",
-		[this]() { SaveLayout(); },
-		"リザルト設定を再読み込み",
-		[this]() { ReloadDebugData(); },
-		"Result Debug UI",
-		[this]() { RequestSceneChange(SceneId::kTitle); },
-		{},
-		{},
-		&debugWindows_.windowSwitcher,
-	});
-
-	if (debugWindows_.windowSwitcher) {
-		Engine::Editor::DebugEditorManager::DrawWindowSwitcher(
-			"ウィンドウ表示切り替え",
-			&debugWindows_.windowSwitcher,
-			windowItems,
-			std::size(windowItems),
-			{ 260.0f, 180.0f },
-			[this]() {
-				Engine::Editor::DebugEditorManager::DrawHotReloadButton();
-			});
-	}
-
-	if (debugWindows_.sceneView) {
-		const Engine::Editor::DebugSceneViewportState sceneViewport =
-			Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugWindows_.sceneView);
-		ScreenUtil::SetDebugSceneInputActive(sceneViewport.inputActive);
-		if (sceneViewport.drawn) {
-			ScreenUtil::SetDebugSceneViewport(sceneViewport.min, sceneViewport.size);
-		} else {
-			ScreenUtil::ClearDebugSceneViewport();
-		}
-	} else {
-		ScreenUtil::ClearDebugSceneViewport();
-	}
-
-	if (debugWindows_.audio) {
-		const std::array<AudioTuningEntry, 1> resultAudioEntries{ {
-			{ "Result Finish Volume", kAudioResultFinish, 1.0f },
-		} };
-		GameAudioDebugPanel::Draw(&debugWindows_.audio, resultAudioEntries);
-	}
-
-	if (debugWindows_.sceneSettings) {
-		ImGui::Begin("シーン設定", &debugWindows_.sceneSettings);
-		ImGui::Checkbox("Enable Result Layout Debug", &layoutDebugEnabled_);
-		if (layoutDebugEnabled_) {
-		float backgroundPosition[2]{ backgroundPosition_.x, backgroundPosition_.y };
-		if (ImGui::DragFloat2("Background Position", backgroundPosition, 1.0f, -400.0f, 1280.0f)) {
-			backgroundPosition_ = { backgroundPosition[0], backgroundPosition[1] };
-			ApplyLayout();
-		}
-		float backgroundSize[2]{ backgroundSize_.x, backgroundSize_.y };
-		if (ImGui::DragFloat2("Background Size", backgroundSize, 1.0f, 64.0f, 1600.0f)) {
-			backgroundSize_ = { backgroundSize[0], backgroundSize[1] };
-			ApplyLayout();
-		}
-		float resultPosition[2]{ resultPosition_.x, resultPosition_.y };
-		if (ImGui::DragFloat2("Result UI Position", resultPosition, 1.0f, -400.0f, 1280.0f)) {
-			resultPosition_ = { resultPosition[0], resultPosition[1] };
-			ApplyLayout();
-		}
-		float resultSize[2]{ resultSize_.x, resultSize_.y };
-		if (ImGui::DragFloat2("Result UI Size", resultSize, 1.0f, 64.0f, 1600.0f)) {
-			resultSize_ = { resultSize[0], resultSize[1] };
-			ApplyLayout();
-		}
-		float finishPosition[2]{ finishPosition_.x, finishPosition_.y };
-		if (ImGui::DragFloat2("Finish UI Position", finishPosition, 1.0f, -400.0f, 1280.0f)) {
-			finishPosition_ = { finishPosition[0], finishPosition[1] };
-			ApplyLayout();
-		}
-		float finishSize[2]{ finishSize_.x, finishSize_.y };
-		if (ImGui::DragFloat2("Finish UI Size", finishSize, 1.0f, 64.0f, 1600.0f)) {
-			finishSize_ = { finishSize[0], finishSize[1] };
-			ApplyLayout();
-		}
-		float expPosition[2]{ expPosition_.x, expPosition_.y };
-		if (ImGui::DragFloat2("EXP Position", expPosition, 1.0f, -400.0f, 1280.0f)) {
-			expPosition_ = { expPosition[0], expPosition[1] };
-			ApplyLayout();
-		}
-		float levelPosition[2]{ levelPosition_.x, levelPosition_.y };
-		if (ImGui::DragFloat2("Level Position", levelPosition, 1.0f, -400.0f, 1280.0f)) {
-			levelPosition_ = { levelPosition[0], levelPosition[1] };
-			ApplyLayout();
-		}
-		float killPosition[2]{ killPosition_.x, killPosition_.y };
-		if (ImGui::DragFloat2("Kill Position", killPosition, 1.0f, -400.0f, 1280.0f)) {
-			killPosition_ = { killPosition[0], killPosition[1] };
-			ApplyLayout();
-		}
-		float totalScorePosition[2]{ totalScorePosition_.x, totalScorePosition_.y };
-		if (ImGui::DragFloat2("Total Score Position", totalScorePosition, 1.0f, -400.0f, 1280.0f)) {
-			totalScorePosition_ = { totalScorePosition[0], totalScorePosition[1] };
-			ApplyLayout();
-		}
-		float digitSize[2]{ digitSize_.x, digitSize_.y };
-		if (ImGui::DragFloat2("Digit Size", digitSize, 1.0f, 4.0f, 128.0f)) {
-			digitSize_ = { digitSize[0], digitSize[1] };
-			ApplyLayout();
-		}
-		if (ImGui::DragFloat("Score Scale", &scoreScale_, 0.05f, 0.25f, 6.0f)) {
-			ApplyLayout();
-		}
-		if (ImGui::Button("Save Result Layout")) {
-			SaveLayout();
-		}
-	}
-		if (ImGui::Button("Back To Title")) {
-			RequestSceneChange(SceneId::kTitle);
-			ImGui::End();
-			return;
-		}
-		ImGui::End();
-	}
-
-	if (debugWindows_.statisticsView) {
-		ImGui::Begin("統計", &debugWindows_.statisticsView);
-		ImGui::Text("Stage 12 result scene");
-		ImGui::Text("Count Up Finished: %s", countUpFinished_ ? "true" : "false");
-		ImGui::Text("Displayed EXP: %.0f", displayedExp_);
-		ImGui::Text("Displayed Level: %.0f", displayedLevel_);
-		ImGui::Text("Displayed Kills: %.0f", displayedKills_);
-		ImGui::Text("Displayed Total Score: %.0f", displayedTotalScore_);
-		if (sessionContext_) {
-		const DirectXGameResultData& resultData = sessionContext_->GetResultData();
-		ImGui::Separator();
-		ImGui::Text("Run Count: %u", sessionContext_->GetRunCount());
-		ImGui::Text("Elapsed Frames: %u", resultData.elapsedFrames);
-		ImGui::Text("Level: %u", resultData.level);
-		ImGui::Text("Kill Count: %u", resultData.killCount);
-	}
-		ImGui::End();
-	}
-
-	if (debugWindows_.keyInputDebug) {
-		ImGui::Begin("キー操作デバッグ", &debugWindows_.keyInputDebug);
-		ImGui::TextUnformatted("リザルトシーン入力");
-		ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
-		ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
-		ImGui::Text("Cancel: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
-		ImGui::Text("Pending Scene: %s", pendingSceneId_.empty() ? "none" : pendingSceneId_.c_str());
-		ImGui::End();
-	}
-	Engine::Editor::DebugEditorManager::SaveWindowItems(windowItems, std::size(windowItems));
-	saveWindowVisibilityIfChanged(previousDebugWindows);
-#endif
+void DirectXGameResultScene::DrawDebugUi()
+{
+	ResultSceneDebugUiController::Draw(*this);
 }
 
 void DirectXGameResultScene::Draw()
@@ -324,16 +140,21 @@ void DirectXGameResultScene::InitializeUi()
 	debugWindows_.keyInputDebug = loadWindowVisible("debug.keyInputDebug", debugWindows_.keyInputDebug);
 #endif
 
-	background_.Initialize("ui/result/Result.png", backgroundPosition_);
-	resultUi_.Initialize("ui/result/Result.png", resultPosition_);
-	finishUi_.Initialize("ui/result/finish_ui.png", finishPosition_);
+	GameTextureCache::LoadBatch({
+		kResultBackgroundTexture,
+		kResultFinishTexture,
+		kResultNumberTexture,
+		});
+	background_.Initialize(kResultBackgroundTexture, backgroundPosition_);
+	resultUi_.Initialize(kResultBackgroundTexture, resultPosition_);
+	finishUi_.Initialize(kResultFinishTexture, finishPosition_);
 	finishUi_.SetAnchor(UIElement::Anchor::Center);
 	ApplyLayout();
 	curtain_ = std::make_unique<CurtainTransition>();
 	curtain_->Initialize();
 	curtain_->StartOpen(20.0f);
 
-	numberTexture_ = GameTextureCache::Load("ui/number/numbers.png");
+	numberTexture_ = GameTextureCache::Load(kResultNumberTexture);
 	finishSeHandle_ = GameAudioCache::LoadWave("audio/se/se_pause.wav");
 	for (size_t index = 0; index < expDigits_.size(); ++index) {
 		expDigits_[index] = GameSpriteFactory::Create(numberTexture_, { 0.0f, 0.0f });

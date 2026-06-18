@@ -48,22 +48,17 @@ private:
 	void InitializeIndexBuffer();
 	void InitializeTexture();
 	void InitializeMaterial();
-	void InitializeTransformBuffer();
 
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
 
 	//トランスフォーム
-	//ModelTransform用のリソースを作る。Matrix4x4 1つ分のサイズを用意する
-	Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource;
-	//データを書き込む
-	TransformationMatrix* transformationMatrixData_ = nullptr;
+	TransformationMatrix transformationMatrixData_{};
 
 	//indexバッファ
 	Microsoft::WRL::ComPtr<ID3D12Resource> indexResource;
 	//インデックスバッファビュー
 	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	uint16_t* indexData = nullptr;
 	std::vector<uint16_t> indices;
 	
 
@@ -73,9 +68,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource;
 	//VBV
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource;
-	//マテリアルにデータを書き込む	
-	Material* materialData = nullptr;
+	Material materialData_{};
 	std::string textureFilePath_;
 	int textureIndex_ = 0;
 

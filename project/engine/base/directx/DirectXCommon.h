@@ -3,6 +3,7 @@
 #include <dxgi1_6.h>
 #include <wrl.h>
 #include <array>
+#include <cstddef>
 #include <dxcapi.h>
 #pragma comment(lib, "dxcompiler.lib")
 #include"externals/DirectXTex/DirectXTex.h"
@@ -21,6 +22,29 @@ class WinApp;
 
 class DirectXCommon
 {
+public:
+	static constexpr uint32_t kFrameCount = 2;
+
+	struct FrameUploadAllocation
+	{
+		void* cpuAddress = nullptr;
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = 0;
+		ID3D12Resource* resource = nullptr;
+		size_t offset = 0;
+		size_t size = 0;
+	};
+
+private:
+	struct FrameContext
+	{
+		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator;
+		Microsoft::WRL::ComPtr<ID3D12Resource> uploadArena;
+		std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> deferredReleaseResources;
+		std::byte* uploadCpuAddress = nullptr;
+		size_t uploadOffset = 0;
+		uint64_t fenceValue = 0;
+	};
+
 	void DeviceInitialize();
 	void EnableDebugLayer();
 	Microsoft::WRL::ComPtr<IDXGIAdapter4> SelectAdapter();
@@ -48,9 +72,14 @@ class DirectXCommon
 	void CloseAndExecuteCommandList();
 	void FinalizeFrameTransition();
 	void WaitForGpuCompletion();
-	void ResetCommandObjects();
+	void SignalFrame(FrameContext& frameContext);
+	void WaitForFrame(const FrameContext& frameContext);
+	void ResetCommandObjects(uint32_t frameIndex);
+	void InitializeFrameUploadArenas();
 
 public:
+	~DirectXCommon();
+
 	/// @brief DirectX12 の描画基盤を初期化する
 	/// @param winApp ウィンドウ情報を持つアプリケーション管理クラス
 	/// @return なし
@@ -123,6 +152,10 @@ public:
 	ID3D12GraphicsCommandList* GetCommandList()const { return commandList.Get(); }
 
 	ID3D12CommandQueue* GetCommandQueue() const { return commandQueue.Get(); }
+	uint32_t GetCurrentFrameIndex() const { return currentFrameIndex_; }
+	uint64_t GetPendingSubmissionFenceValue() const { return nextFenceValue_ + 1; }
+	uint64_t GetCompletedFenceValue() const { return fence ? fence->GetCompletedValue() : 0; }
+	void WaitForAllFrames();
 
 	/// @brief RTV のビュー記述子を取得する
 	/// @param なし
@@ -164,6 +197,18 @@ public:
 	/// @param sizeInBytes バッファサイズ
 	/// @return 生成したバッファリソース
 	Microsoft::WRL::ComPtr<ID3D12Resource> CreateBufferResource(size_t sizeInBytes);
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBufferResource(
+		const void* data,
+		size_t sizeInBytes,
+		D3D12_RESOURCE_STATES finalState);
+
+	/// @brief 現在のframeが所有するupload arenaから一時領域を確保する
+	/// @param sizeInBytes 必要なバイト数
+	/// @param alignment CPU/GPU addressのアラインメント
+	/// @return CPU書込先とGPU仮想アドレス
+	FrameUploadAllocation AllocateFrameUpload(
+		size_t sizeInBytes,
+		size_t alignment = 16);
 
 	/// @brief テクスチャメタデータに基づいてリソースを生成する
 	/// @param metadata テクスチャのメタデータ
@@ -214,7 +259,9 @@ private:
 	Microsoft::WRL::ComPtr< IDXGIFactory7> dxgiFactory = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
 	// コマンド
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator = nullptr;
+	static constexpr size_t kFrameUploadArenaSize = 4 * 1024 * 1024;
+	std::array<FrameContext, kFrameCount> frameContexts_;
+	uint32_t currentFrameIndex_ = 0;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue = nullptr;
 	// スワップチェーン
@@ -239,8 +286,8 @@ private:
 	std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> rtvHandles;
 	// Fence
 	Microsoft::WRL::ComPtr<ID3D12Fence> fence = nullptr;
-	HANDLE fenceEvent;
-	uint64_t fenceValue = 0;
+	HANDLE fenceEvent = nullptr;
+	uint64_t nextFenceValue_ = 0;
 	// ビューポート
 	D3D12_VIEWPORT viewport{};
 	// シザー矩形

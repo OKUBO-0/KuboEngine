@@ -1,6 +1,7 @@
 #include "OffscreenRenderManager.h"
 #include "DirectXCommon.h"
 #include "GraphicsPipeline.h"
+#include "HResult.h"
 #include "SrvManager.h"
 #include "WinApp.h"
 #include <cassert>
@@ -13,6 +14,7 @@ OffscreenRenderManager* OffscreenRenderManager::instance_ = nullptr;
 OffscreenRenderManager::OffscreenRenderManager() = default;
 OffscreenRenderManager::~OffscreenRenderManager()
 {
+	Finalize();
 	if (instance_ == this) {
 		instance_ = nullptr;
 	}
@@ -49,6 +51,19 @@ void OffscreenRenderManager::Initialize(Engine::Base::DirectXCommon* dxCommon, E
 
 	graphicsPipeline_->RootSignatureCopyImageCreate();
 	graphicsPipeline_->CreateAllPostEffects(); // ←これだけ！
+}
+
+void OffscreenRenderManager::Finalize()
+{
+	if (srvManager_ && srvIndex != UINT32_MAX) {
+		srvManager_->Free(srvIndex);
+		srvIndex = UINT32_MAX;
+	}
+	graphicsPipeline_.reset();
+	renderTargetTextureResource.Reset();
+	imGuiSceneTextureReady_ = false;
+	dxCommon_ = nullptr;
+	srvManager_ = nullptr;
 }
 
 void OffscreenRenderManager::Begin()
@@ -196,7 +211,9 @@ Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTarge
 		&clearValue,//Clear最適値
 		IID_PPV_ARGS(&resource)//作成するResourceポインタへのポインタ
 	);
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(
+		hr,
+		"ID3D12Device::CreateCommittedResource offscreen target");
 
 	return resource;
 }

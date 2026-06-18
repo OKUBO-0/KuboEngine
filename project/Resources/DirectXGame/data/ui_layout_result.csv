@@ -12,7 +12,7 @@ debug.sceneSettings,1
 finishUISize,320,48
 expPosition,720,252
 killPosition,720,484
-debug.keyInputDebug,0
+debug.keyInputDebug,1
 totalScorePosition,825,581
 scoreScale,1.55
 debug.windowSwitcher,0

@@ -4,7 +4,10 @@
 #include "game/directxgame/core/DirectXGameSceneFactory.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
 #include <Windows.h>
+#include <cstdlib>
+#include <exception>
 #include <memory>
+#include <string>
 
 namespace {
 
@@ -38,5 +41,27 @@ namespace {
 /// @brief Windows サブシステムが要求するプロセスエントリーポイント
 /// @details 外部公開される自由関数はこの OS エントリーポイントだけに留め、実行責務は Application へ委譲する。
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-	return Application{}.Run();
+	try {
+		return Application{}.Run();
+	} catch (const std::exception& error) {
+		const std::string message =
+			std::string("KuboEngine failed:\n") + error.what();
+		OutputDebugStringA((message + '\n').c_str());
+		MessageBoxA(
+			nullptr,
+			message.c_str(),
+			"KuboEngine Error",
+			MB_OK | MB_ICONERROR);
+		return EXIT_FAILURE;
+	} catch (...) {
+		constexpr char message[] =
+			"KuboEngine failed with an unknown exception.";
+		OutputDebugStringA(message);
+		MessageBoxA(
+			nullptr,
+			message,
+			"KuboEngine Error",
+			MB_OK | MB_ICONERROR);
+		return EXIT_FAILURE;
+	}
 }

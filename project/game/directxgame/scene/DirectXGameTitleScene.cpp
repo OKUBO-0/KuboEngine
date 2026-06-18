@@ -1,7 +1,6 @@
 #include "game/directxgame/scene/DirectXGameTitleScene.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/DirectXGameResourceProbe.h"
-#include "game/directxgame/core/GameAudioDebugPanel.h"
 #include "game/directxgame/core/GameAudioTuning.h"
 #include "game/directxgame/core/GameMenuController.h"
 #include "game/directxgame/core/DirectXGameSceneId.h"
@@ -10,6 +9,7 @@
 #include "game/directxgame/core/GameModelCache.h"
 #include "game/directxgame/core/ScreenUtil.h"
 #include "game/directxgame/core/SceneLighting.h"
+#include "game/directxgame/core/TitleSceneDebugUiController.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/effects/CurtainTransition.h"
 #include "Camera.h"
@@ -23,16 +23,9 @@
 #include "TextureManager.h"
 #include <Windows.h>
 #include <algorithm>
-#include <array>
 #include <cmath>
-#include <iterator>
 #include <string>
 #include <string_view>
-#ifdef _DEBUG
-#include "DebugEditorManager.h"
-#include "IconsFontAwesome5.h"
-#include <imgui.h>
-#endif
 
 namespace {
 
@@ -202,9 +195,21 @@ void DirectXGameTitleScene::InitializeResources()
 	debugWindows_.keyInputDebug = loadWindowVisible("debug.keyInputDebug", debugWindows_.keyInputDebug);
 #endif
 
-	titleSprite_.Initialize(kTitleTexturePath, layoutSettings_.titlePosition);
-	cursorSprite_.Initialize(kCursorTexturePath, layoutSettings_.cursorBasePosition);
-	guideSprite_.Initialize(kGuideTexturePath, layoutSettings_.guidePosition);
+	const std::string titleTexturePath =
+		ResourcePaths::MakeTexturePath(kTitleTexturePath);
+	const std::string cursorTexturePath =
+		ResourcePaths::MakeTexturePath(kCursorTexturePath);
+	const std::string guideTexturePath =
+		ResourcePaths::MakeTexturePath(kGuideTexturePath);
+	Engine::Base::TextureManager::GetInstance()->LoadTextures({
+		titleTexturePath,
+		cursorTexturePath,
+		guideTexturePath,
+		kEnvironmentTexturePath,
+		});
+	titleSprite_.Initialize(titleTexturePath, layoutSettings_.titlePosition);
+	cursorSprite_.Initialize(cursorTexturePath, layoutSettings_.cursorBasePosition);
+	guideSprite_.Initialize(guideTexturePath, layoutSettings_.guidePosition);
 	guideSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 
 	curtain_ = std::make_unique<CurtainTransition>();
@@ -222,8 +227,6 @@ void DirectXGameTitleScene::InitializeCameraAndObjects()
 	UpdateCameraAnimation();
 	Engine::CameraSystem::CameraManager::GetInstance()->AddCamera(kTitleCameraName, titleCamera_.get());
 	Engine::CameraSystem::CameraManager::GetInstance()->SetActiveCamera(kTitleCameraName);
-
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 
 	const ModelHandle titleModelHandle = GameModelCache::Load("cube.obj");
 	titleObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
@@ -483,241 +486,7 @@ void DirectXGameTitleScene::UpdateCameraAnimation()
 
 void DirectXGameTitleScene::DrawDebugUi()
 {
-#ifdef _DEBUG
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (input && input->TriggerKey(DIK_F5)) {
-		ReloadDebugData();
-	}
-	const DebugWindowVisibility previousDebugWindows = debugWindows_;
-	const auto saveWindowVisibilityIfChanged = [this](const DebugWindowVisibility& previous) {
-		if (previous.windowSwitcher != debugWindows_.windowSwitcher ||
-			previous.titleView != debugWindows_.titleView ||
-			previous.statisticsView != debugWindows_.statisticsView ||
-			previous.titleSettings != debugWindows_.titleSettings ||
-			previous.offscreenSettings != debugWindows_.offscreenSettings ||
-			previous.lightSettings != debugWindows_.lightSettings ||
-			previous.audio != debugWindows_.audio ||
-			previous.keyInputDebug != debugWindows_.keyInputDebug) {
-			SaveLayout();
-		}
-	};
-
-	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
-		{ "Scene", &debugWindows_.titleView },
-		{ "統計", &debugWindows_.statisticsView },
-		{ "シーン設定", &debugWindows_.titleSettings },
-		{ "オフスクリーン設定", &debugWindows_.offscreenSettings },
-		{ "ライト設定", &debugWindows_.lightSettings },
-		{ "オーディオ", &debugWindows_.audio },
-		{ "キー操作デバッグ", &debugWindows_.keyInputDebug },
-	};
-	const Engine::Editor::DebugEditorMenuItem editItems[] = {
-		{ "シーン設定", &debugWindows_.titleSettings },
-		{ "ライト設定", &debugWindows_.lightSettings },
-	};
-	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
-		{ "Scene", &debugWindows_.titleView },
-		{ "シーン設定", &debugWindows_.titleSettings },
-	};
-	Engine::Editor::DebugEditorManager::DrawMainMenu({
-		windowItems,
-		std::size(windowItems),
-		editItems,
-		std::size(editItems),
-		objectItems,
-		std::size(objectItems),
-		"タイトルレイアウトを保存",
-		[this]() { SaveLayout(); },
-		"タイトル設定を再読み込み",
-		[this]() { ReloadDebugData(); },
-		"Title Debug UI",
-		{},
-		[this]() { StartGameTransition(); },
-		{},
-		&debugWindows_.windowSwitcher,
-	});
-
-	if (debugWindows_.windowSwitcher) {
-		Engine::Editor::DebugEditorManager::DrawWindowSwitcher(
-			"ウィンドウ表示切り替え",
-			&debugWindows_.windowSwitcher,
-			windowItems,
-			std::size(windowItems),
-			{ 260.0f, 220.0f },
-			[this]() {
-				Engine::Editor::DebugEditorManager::DrawHotReloadButton();
-			});
-	}
-	if (debugWindows_.offscreenSettings) {
-		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
-			offscreen->DrawImGui();
-		}
-	}
-	if (debugWindows_.titleView) {
-	const Engine::Editor::DebugSceneViewportState sceneViewport =
-		Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugWindows_.titleView);
-	ScreenUtil::SetDebugSceneInputActive(sceneViewport.inputActive);
-	if (sceneViewport.drawn) {
-		ScreenUtil::SetDebugSceneViewport(sceneViewport.min, sceneViewport.size);
-	} else {
-		ScreenUtil::ClearDebugSceneViewport();
-	}
-	} else {
-		ScreenUtil::ClearDebugSceneViewport();
-	}
-
-	if (debugWindows_.audio) {
-	const std::array<AudioTuningEntry, 3> titleAudioEntries{ {
-		{ "Title BGM", kAudioTitleBgm, 0.1f, titleBgmHandle_ },
-		{ "Title Select", kAudioTitleSelect, 1.0f },
-		{ "Title Decide", kAudioTitleDecide, 1.0f },
-	} };
-	GameAudioDebugPanel::Draw(&debugWindows_.audio, titleAudioEntries);
-	}
-
-	if (debugWindows_.statisticsView) {
-	ImGui::Begin("統計", &debugWindows_.statisticsView);
-	const DirectXGameResourceProbeStatus& probeStatus = DirectXGameResourceProbe::Verify();
-	ImGui::Text("Texture Probe: %s", probeStatus.textureLoaded ? "OK" : "NG");
-	ImGui::Text("Model Probe: %s", probeStatus.modelLoaded ? "OK" : "NG");
-	ImGui::Text("CSV Probe: %s", probeStatus.csvOpened ? "OK" : "NG");
-	ImGui::Text("Required Assets: %s (%zu checked, %zu missing)",
-		probeStatus.requiredAssetsReady ? "OK" : "NG",
-		probeStatus.requiredAssetCount,
-		probeStatus.missingRequiredAssets.size());
-	if (!probeStatus.missingRequiredAssets.empty() && ImGui::TreeNode("Missing DirectXGame Assets")) {
-		for (const std::string& path : probeStatus.missingRequiredAssets) {
-			ImGui::TextUnformatted(path.c_str());
-		}
-		ImGui::TreePop();
-	}
-	ImGui::End();
-	}
-
-	if (debugWindows_.titleSettings) {
-	ImGui::Begin("シーン設定", &debugWindows_.titleSettings);
-	ImGui::Checkbox("Enable Title Debug", &layoutSettings_.debugEnabled);
-	if (layoutSettings_.debugEnabled) {
-		float titlePosition[2]{ layoutSettings_.titlePosition.x, layoutSettings_.titlePosition.y };
-		if (ImGui::DragFloat2("Title Position", titlePosition, 1.0f, -400.0f, 1280.0f)) {
-			layoutSettings_.titlePosition = { titlePosition[0], titlePosition[1] };
-			ApplyLayout();
-		}
-
-		float titleSize[2]{ layoutSettings_.titleSize.x, layoutSettings_.titleSize.y };
-		if (ImGui::DragFloat2("Title Size", titleSize, 1.0f, 64.0f, 1280.0f)) {
-			layoutSettings_.titleSize = { titleSize[0], titleSize[1] };
-			ApplyLayout();
-		}
-
-		float cursorPosition[2]{ layoutSettings_.cursorBasePosition.x, layoutSettings_.cursorBasePosition.y };
-		if (ImGui::DragFloat2("Cursor Base", cursorPosition, 1.0f, -400.0f, 1280.0f)) {
-			layoutSettings_.cursorBasePosition = { cursorPosition[0], cursorPosition[1] };
-			ApplyLayout();
-		}
-
-		float cursorSize[2]{ layoutSettings_.cursorSize.x, layoutSettings_.cursorSize.y };
-		if (ImGui::DragFloat2("Cursor Size", cursorSize, 1.0f, 64.0f, 1280.0f)) {
-			layoutSettings_.cursorSize = { cursorSize[0], cursorSize[1] };
-			ApplyLayout();
-		}
-
-		if (ImGui::DragFloat("Cursor Step", &layoutSettings_.cursorStepY, 1.0f, 16.0f, 320.0f)) {
-			ApplyLayout();
-		}
-
-		float hitboxPosition[2]{ layoutSettings_.menuHitboxPosition.x, layoutSettings_.menuHitboxPosition.y };
-		if (ImGui::DragFloat2("Menu Hitbox Pos", hitboxPosition, 1.0f, -400.0f, 1280.0f)) {
-			layoutSettings_.menuHitboxPosition = { hitboxPosition[0], hitboxPosition[1] };
-		}
-
-		float hitboxSize[2]{ layoutSettings_.menuHitboxSize.x, layoutSettings_.menuHitboxSize.y };
-		if (ImGui::DragFloat2("Menu Hitbox Size", hitboxSize, 1.0f, 16.0f, 640.0f)) {
-			layoutSettings_.menuHitboxSize = { hitboxSize[0], hitboxSize[1] };
-		}
-
-		ImGui::DragFloat("Menu Hitbox Step", &layoutSettings_.menuHitboxStepY, 1.0f, 16.0f, 320.0f);
-
-		float guidePosition[2]{ layoutSettings_.guidePosition.x, layoutSettings_.guidePosition.y };
-		if (ImGui::DragFloat2("Guide Position", guidePosition, 1.0f, -400.0f, 1280.0f)) {
-			layoutSettings_.guidePosition = { guidePosition[0], guidePosition[1] };
-			ApplyLayout();
-		}
-
-		float guideSize[2]{ layoutSettings_.guideSize.x, layoutSettings_.guideSize.y };
-		if (ImGui::DragFloat2("Guide Size", guideSize, 1.0f, 64.0f, 1280.0f)) {
-			layoutSettings_.guideSize = { guideSize[0], guideSize[1] };
-			ApplyLayout();
-		}
-
-		float modelPosition[3]{
-			layoutSettings_.modelBasePosition.x,
-			layoutSettings_.modelBasePosition.y,
-			layoutSettings_.modelBasePosition.z,
-		};
-		if (ImGui::DragFloat3("Model Position", modelPosition, 0.1f, -40.0f, 40.0f)) {
-			layoutSettings_.modelBasePosition = { modelPosition[0], modelPosition[1], modelPosition[2] };
-			ApplyLayout();
-		}
-
-		float modelScale[3]{
-			layoutSettings_.modelScale.x,
-			layoutSettings_.modelScale.y,
-			layoutSettings_.modelScale.z,
-		};
-		if (ImGui::DragFloat3("Model Scale", modelScale, 0.1f, 0.5f, 10.0f)) {
-			layoutSettings_.modelScale = { modelScale[0], modelScale[1], modelScale[2] };
-			ApplyLayout();
-		}
-
-		if (ImGui::CollapsingHeader("Title Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-			SceneLighting::DrawDebugUi();
-		}
-
-		float cameraTarget[3]{
-			layoutSettings_.cameraTarget.x,
-			layoutSettings_.cameraTarget.y,
-			layoutSettings_.cameraTarget.z,
-		};
-		if (ImGui::DragFloat3("Camera Target Offset", cameraTarget, 0.1f, -60.0f, 60.0f)) {
-			layoutSettings_.cameraTarget = { cameraTarget[0], cameraTarget[1], cameraTarget[2] };
-			ApplyLayout();
-		}
-
-		if (ImGui::DragFloat("Camera Distance", &layoutSettings_.cameraDistance, 0.5f, 8.0f, 120.0f)) {
-			ApplyLayout();
-		}
-		if (ImGui::DragFloat("Camera Height", &layoutSettings_.cameraHeight, 0.5f, -20.0f, 80.0f)) {
-			ApplyLayout();
-		}
-		if (ImGui::DragFloat("Camera Pitch", &layoutSettings_.cameraPitch, 0.01f, -1.2f, 1.2f)) {
-			ApplyLayout();
-		}
-		if (ImGui::DragFloat("Camera Yaw", &layoutSettings_.cameraYaw, 0.01f, -6.28f, 6.28f)) {
-			ApplyLayout();
-		}
-		ImGui::DragFloat("Camera Orbit Speed", &layoutSettings_.cameraOrbitSpeed, 0.01f, -1.0f, 1.0f);
-
-		if (ImGui::Button("Save Title Layout")) {
-			SaveLayout();
-		}
-	}
-	ImGui::End();
-	}
-
-	if (debugWindows_.keyInputDebug) {
-	ImGui::Begin("キー操作デバッグ", &debugWindows_.keyInputDebug);
-	ImGui::TextUnformatted("タイトルシーン入力");
-	ImGui::Text("Input Device: %s", GameInputBindings::ToDisplayName(navigationInputDevice_));
-	ImGui::Text("Confirm: %s", GameInputBindings::GetConfirmLabel(navigationInputDevice_));
-	ImGui::Text("Cancel: %s", GameInputBindings::GetCancelLabel(navigationInputDevice_));
-	ImGui::Text("Menu Index: %d", menuIndex_);
-	ImGui::Text("Guide Active: %s", guideActive_ ? "true" : "false");
-	ImGui::End();
-	}
-	Engine::Editor::DebugEditorManager::SaveWindowItems(windowItems, std::size(windowItems));
-	saveWindowVisibilityIfChanged(previousDebugWindows);
-#endif
+	TitleSceneDebugUiController::Draw(*this);
 }
 
 void DirectXGameTitleScene::SaveLayout() const

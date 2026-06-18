@@ -1,4 +1,5 @@
 #include "Audio.h"
+#include "HResult.h"
 #include <Windows.h>
 #include <algorithm>
 #include <cstdlib>
@@ -124,10 +125,10 @@ void Audio::Initialize()
 {
     // XAudio2 本体とマスターボイスを先に生成して、以降の SourceVoice 作成先を確保する
     HRESULT hr = XAudio2Create(&xAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
-    assert(SUCCEEDED(hr));
+    Engine::Base::ThrowIfFailed(hr, "XAudio2Create");
 
     hr = xAudio2->CreateMasteringVoice(&masterVoice);
-    assert(SUCCEEDED(hr));
+    Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateMasteringVoice");
 }
 
 void Audio::Finalize()
@@ -185,7 +186,7 @@ void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
 
     IXAudio2SourceVoice* newVoice = nullptr;
     hr = xAudio2->CreateSourceVoice(&newVoice, &soundData.wfex);
-    assert(SUCCEEDED(hr));
+    Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateSourceVoice");
 
     // 読み込み済みバッファをそのまま SourceVoice へ渡して再生する
     XAUDIO2_BUFFER buf{};
@@ -195,7 +196,19 @@ void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
     buf.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
 
     hr = newVoice->SubmitSourceBuffer(&buf);
+    if (FAILED(hr)) {
+        newVoice->DestroyVoice();
+        Engine::Base::ThrowIfFailed(
+            hr,
+            "IXAudio2SourceVoice::SubmitSourceBuffer");
+    }
     hr = newVoice->Start();
+    if (FAILED(hr)) {
+        newVoice->DestroyVoice();
+        Engine::Base::ThrowIfFailed(
+            hr,
+            "IXAudio2SourceVoice::Start");
+    }
 
     activeVoices[const_cast<SoundData*>(&soundData)] = newVoice;
 }
@@ -275,7 +288,9 @@ void Audio::SetPlaybackSpeed(float speed)
         IXAudio2SourceVoice* voice = voiceEntry.second;
         if (voice) {
             HRESULT hr = voice->SetFrequencyRatio(speed);
-            assert(SUCCEEDED(hr));
+            Engine::Base::ThrowIfFailed(
+                hr,
+                "IXAudio2SourceVoice::SetFrequencyRatio");
         }
     }
 }
@@ -287,7 +302,9 @@ void Audio::SetPlaybackSpeed(SoundData* soundData, float speed)
         IXAudio2SourceVoice* voice = it->second;
         if (voice) {
             HRESULT hr = voice->SetFrequencyRatio(speed);
-            assert(SUCCEEDED(hr));
+            Engine::Base::ThrowIfFailed(
+                hr,
+                "IXAudio2SourceVoice::SetFrequencyRatio");
         }
     }
 }

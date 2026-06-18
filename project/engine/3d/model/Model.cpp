@@ -1,5 +1,6 @@
 #include "Model.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "ModelCommon.h"
 #include "MyMath.h"
 #include <Windows.h>
@@ -12,6 +13,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <assert.h>
 #include "TextureManager.h"
@@ -20,6 +22,16 @@
 namespace {
 
 Engine::Graphics3D::ModelLoadDiagnostics g_modelLoadDiagnostics{};
+constexpr float kDefaultAnimationTicksPerSecond = 25.0f;
+
+float ResolveAnimationTicksPerSecond(const aiAnimation& animation)
+{
+    const float ticksPerSecond =
+        static_cast<float>(animation.mTicksPerSecond);
+    return std::isfinite(ticksPerSecond) && ticksPerSecond > 0.0f
+        ? ticksPerSecond
+        : kDefaultAnimationTicksPerSecond;
+}
 
 std::string ResolveModelFilePath(const std::string& directoryPath, const std::string& filename)
 {
@@ -102,14 +114,24 @@ ModelLoadDiagnostics Model::GetLoadDiagnostics()
     return g_modelLoadDiagnostics;
 }
 
-void Model::Initialize(ModelCommon* modelCommon, const std::string& directorypath, const std::string& filename)
+void Model::Initialize(
+	ModelCommon* modelCommon,
+	const std::string& directorypath,
+	const std::string& filename,
+	bool loadMaterialTexture)
 {
 	modelCommon_ = modelCommon;
 	LoadRuntimeAssets(directorypath, filename);
 	CreateVertexBuffer();
 	CreateIndexBuffer();
 	CreateMaterialBuffer();
-	LoadMaterialTexture();
+	if (loadMaterialTexture) {
+		LoadMaterialTexture();
+	}
+}
+
+void Model::Finalize()
+{
 }
 
 void Model::LoadRuntimeAssets(const std::string& directorypath, const std::string& filename)
@@ -124,34 +146,35 @@ void Model::LoadRuntimeAssets(const std::string& directorypath, const std::strin
 void Model::CreateVertexBuffer()
 {
 	// 頂点バッファ生成とデータ転送
-	vertexResource = modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(VertexData) * modelData.vertices.size());
+	const size_t vertexBytes = sizeof(VertexData) * modelData.vertices.size();
+	vertexResource = modelCommon_->GetDxCommon()->CreateDefaultBufferResource(
+		modelData.vertices.data(),
+		vertexBytes,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
-	vertexBufferView.SizeInBytes = UINT(sizeof(VertexData) * modelData.vertices.size());
+	vertexBufferView.SizeInBytes = static_cast<UINT>(vertexBytes);
 	vertexBufferView.StrideInBytes = sizeof(VertexData);
-	vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData));
-	std::memcpy(vertexData, modelData.vertices.data(), sizeof(VertexData) * modelData.vertices.size());
 }
 
 void Model::CreateIndexBuffer()
 {
 	// インデックスバッファ生成とデータ転送
-	indexResource = modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(uint32_t) * modelData.indices.size());
+	const size_t indexBytes = sizeof(uint32_t) * modelData.indices.size();
+	indexResource = modelCommon_->GetDxCommon()->CreateDefaultBufferResource(
+		modelData.indices.data(),
+		indexBytes,
+		D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	indexBufferView.BufferLocation = indexResource->GetGPUVirtualAddress();
-	indexBufferView.SizeInBytes = UINT(sizeof(uint32_t) * modelData.indices.size());
+	indexBufferView.SizeInBytes = static_cast<UINT>(indexBytes);
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedIndex));
-	std::memcpy(mappedIndex, modelData.indices.data(), sizeof(uint32_t) * modelData.indices.size());
 }
 
 void Model::CreateMaterialBuffer()
 {
-	// マテリアルバッファ生成と初期化
-	materialResource = modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(Material));
-	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
-	materialData->color = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルト白
-	materialData->enableLighting = true;                        // ライティング有効
-	materialData->uvTransform = materialData->uvTransform.MakeIdentity4x4();
-	materialData->shininess = 60.0f;                       // 光沢度
+	materialData_.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	materialData_.enableLighting = true;
+	materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
+	materialData_.shininess = 60.0f;
 }
 
 void Model::LoadMaterialTexture()
@@ -163,6 +186,16 @@ void Model::LoadMaterialTexture()
 
 void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 {
+	if (materialAddress == 0) {
+		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
+			modelCommon_->GetDxCommon()->AllocateFrameUpload(sizeof(Material), 256);
+		std::memcpy(
+			materialAllocation.cpuAddress,
+			&materialData_,
+			sizeof(materialData_));
+		materialAddress = materialAllocation.gpuAddress;
+	}
+
 	// 頂点バッファビュー（通常頂点 + スキンクラスター影響情報）
 	D3D12_VERTEX_BUFFER_VIEW vbvs[2] = {
 		vertexBufferView,
@@ -178,7 +211,7 @@ void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 	// マテリアルCBV設定
 	modelCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(
 		0,
-		materialAddress != 0 ? materialAddress : materialResource->GetGPUVirtualAddress());
+		materialAddress);
 
 	// テクスチャSRV設定
 	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath));
@@ -298,6 +331,22 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
         FailModelLoad("LoadModelFile", path, "model has no meshes");
     }
 
+    size_t totalVertexCount = 0;
+    size_t maximumIndexCount = 0;
+    for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
+        const aiMesh* mesh = scene->mMeshes[meshIndex];
+        totalVertexCount += mesh->mNumVertices;
+        maximumIndexCount += static_cast<size_t>(mesh->mNumFaces) * 3;
+    }
+    if (totalVertexCount > (std::numeric_limits<uint32_t>::max)()) {
+        FailModelLoad(
+            "LoadModelFile",
+            path,
+            "model vertex count exceeds 32-bit index range");
+    }
+    modelData.vertices.reserve(totalVertexCount);
+    modelData.indices.reserve(maximumIndexCount);
+
     // メッシュごとの処理
     for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
         aiMesh* mesh = scene->mMeshes[meshIndex];
@@ -308,9 +357,11 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
             LogMeshFallback(path, meshIndex, "mesh has no texture coordinates; using fallback uv");
         }
 
+        const uint32_t baseVertex =
+            static_cast<uint32_t>(modelData.vertices.size());
         LoadVerticesFromMesh(mesh, modelData);
-        LoadIndicesFromMesh(mesh, modelData);
-        LoadSkinClusterDataFromMesh(mesh, modelData);
+        LoadIndicesFromMesh(mesh, baseVertex, modelData);
+        LoadSkinClusterDataFromMesh(mesh, baseVertex, modelData);
     }
     CalculateBounds(modelData);
 
@@ -341,14 +392,23 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
 
     // 現状は最初の 1 クリップだけを読み込んで再生対象にしている
     aiAnimation* animationAssimp = scene->mAnimations[0]; // 最初のアニメーションのみ採用
-    animation.duration = float(animationAssimp->mDuration / animationAssimp->mTicksPerSecond);
+    const float ticksPerSecond =
+        ResolveAnimationTicksPerSecond(*animationAssimp);
+    const float duration =
+        static_cast<float>(animationAssimp->mDuration) /
+        ticksPerSecond;
+    animation.duration =
+        std::isfinite(duration) && duration >= 0.0f
+        ? duration
+        : 0.0f;
     LoadAnimationChannels(animationAssimp, animation);
     return animation;
 }
 
 void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
 {
-    modelData.vertices.resize(mesh->mNumVertices);
+    const size_t baseVertex = modelData.vertices.size();
+    modelData.vertices.resize(baseVertex + mesh->mNumVertices);
 
     // 頂点情報の読み込み
     for (uint32_t vertexIndex = 0; vertexIndex < mesh->mNumVertices; ++vertexIndex) {
@@ -357,9 +417,10 @@ void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
         const aiVector3D texcoord = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][vertexIndex] : aiVector3D{ 0.0f, 0.0f, 0.0f };
 
         // 右手系 → 左手系変換
-        modelData.vertices[vertexIndex].position = { -position.x, position.y, position.z, 1.0f };
-        modelData.vertices[vertexIndex].normal = { -normal.x, normal.y, normal.z };
-        modelData.vertices[vertexIndex].texcoord = { texcoord.x, texcoord.y };
+        VertexData& vertex = modelData.vertices[baseVertex + vertexIndex];
+        vertex.position = { -position.x, position.y, position.z, 1.0f };
+        vertex.normal = { -normal.x, normal.y, normal.z };
+        vertex.texcoord = { texcoord.x, texcoord.y };
     }
 }
 
@@ -409,7 +470,10 @@ void Model::CalculateBounds(ModelData& modelData)
     modelData.hasBounds = true;
 }
 
-void Model::LoadIndicesFromMesh(aiMesh* mesh, ModelData& modelData)
+void Model::LoadIndicesFromMesh(
+    aiMesh* mesh,
+    uint32_t baseVertex,
+    ModelData& modelData)
 {
     // インデックス情報の読み込み（三角形のみ対応）
     for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
@@ -419,12 +483,16 @@ void Model::LoadIndicesFromMesh(aiMesh* mesh, ModelData& modelData)
             continue;
         }
         for (uint32_t element = 0; element < face.mNumIndices; ++element) {
-            modelData.indices.push_back(face.mIndices[element]);
+            modelData.indices.push_back(
+                baseVertex + face.mIndices[element]);
         }
     }
 }
 
-void Model::LoadSkinClusterDataFromMesh(aiMesh* mesh, ModelData& modelData)
+void Model::LoadSkinClusterDataFromMesh(
+    aiMesh* mesh,
+    uint32_t baseVertex,
+    ModelData& modelData)
 {
     // ボーンごとの逆バインド姿勢と頂点ウェイトを収集する
     for (uint32_t boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
@@ -449,7 +517,7 @@ void Model::LoadSkinClusterDataFromMesh(aiMesh* mesh, ModelData& modelData)
         for (uint32_t weightIndex = 0; weightIndex < bone->mNumWeights; ++weightIndex) {
             jointWeightData.vertexWeights.push_back({
                 bone->mWeights[weightIndex].mWeight,
-                bone->mWeights[weightIndex].mVertexId
+                baseVertex + bone->mWeights[weightIndex].mVertexId
                 });
         }
     }
@@ -472,7 +540,6 @@ void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& direc
 SkinCluster Model::CreateSkinCluster()
 {
     SkinCluster skinCluster;
-    InitializePaletteResources(skinCluster);
     InitializeInfluenceResources(skinCluster);
     InitializeInverseBindPoseMatrices(skinCluster);
     ApplyJointWeightsToSkinCluster(skinCluster);
@@ -481,7 +548,8 @@ SkinCluster Model::CreateSkinCluster()
 
 void Model::LoadAnimationChannels(const aiAnimation* animationAssimp, Animation& animation)
 {
-    const float ticksPerSecond = float(animationAssimp->mTicksPerSecond);
+    const float ticksPerSecond =
+        ResolveAnimationTicksPerSecond(*animationAssimp);
     for (uint32_t channelIndex = 0; channelIndex < animationAssimp->mNumChannels; ++channelIndex) {
         aiNodeAnim* nodeAnimationAssimp = animationAssimp->mChannels[channelIndex];
         NodeAnimation& nodeAnimation = animation.nodeAnimations[nodeAnimationAssimp->mNodeName.C_Str()];
@@ -533,32 +601,9 @@ void Model::LoadScaleKeys(
     }
 }
 
-void Model::InitializePaletteResources(SkinCluster& skinCluster)
-{
-    skinCluster.paletteResource =
-        modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(WellForGPU) * skeleton.joints.size());
-    WellForGPU* mappedPalette = nullptr;
-    skinCluster.paletteResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedPalette));
-    skinCluster.mappedPalette = { mappedPalette, skeleton.joints.size() };
-
-    uint32_t srvIndex = modelCommon_->GetSRVManager()->Allocate();
-    modelCommon_->GetSRVManager()->CreateSRVforStructuredBuffer(
-        srvIndex, skinCluster.paletteResource.Get(), static_cast<UINT>(skeleton.joints.size()), sizeof(WellForGPU));
-    skinCluster.paletteSrvHandle.first = modelCommon_->GetSRVManager()->GetCPUDescriptorHandle(srvIndex);
-    skinCluster.paletteSrvHandle.second = modelCommon_->GetSRVManager()->GetGPUDescriptorHandle(srvIndex);
-}
-
 void Model::InitializeInfluenceResources(SkinCluster& skinCluster)
 {
-    skinCluster.influenceResource =
-        modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(VertexInfluence) * modelData.vertices.size());
-    VertexInfluence* mappedInfluence = nullptr;
-    skinCluster.influenceResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedInfluence));
-    std::memset(mappedInfluence, 0, sizeof(VertexInfluence) * modelData.vertices.size());
-    skinCluster.mappedInfluence = { mappedInfluence, modelData.vertices.size() };
-    skinCluster.influenceBufferView.BufferLocation = skinCluster.influenceResource->GetGPUVirtualAddress();
-    skinCluster.influenceBufferView.SizeInBytes = UINT(sizeof(VertexInfluence) * modelData.vertices.size());
-    skinCluster.influenceBufferView.StrideInBytes = sizeof(VertexInfluence);
+    skinCluster.influenceData.resize(modelData.vertices.size());
 }
 
 void Model::InitializeInverseBindPoseMatrices(SkinCluster& skinCluster)
@@ -581,7 +626,7 @@ void Model::ApplyJointWeightsToSkinCluster(SkinCluster& skinCluster)
         const uint32_t jointIndex = (*it).second;
         skinCluster.inverseBindPoseMatrices[jointIndex] = jointWeight.second.inverseBindPoseMatrix;
         for (const auto& vertexWeight : jointWeight.second.vertexWeights) {
-            auto& currentInfluence = skinCluster.mappedInfluence[vertexWeight.vectorIndex];
+            auto& currentInfluence = skinCluster.influenceData[vertexWeight.vectorIndex];
             for (uint32_t index = 0; index < kNumMaxInfluence; ++index) {
                 if (currentInfluence.weights[index] == 0.0f) {
                     currentInfluence.weights[index] = vertexWeight.weight;
@@ -591,6 +636,20 @@ void Model::ApplyJointWeightsToSkinCluster(SkinCluster& skinCluster)
             }
         }
     }
+
+    const size_t influenceBytes =
+        sizeof(VertexInfluence) * skinCluster.influenceData.size();
+    skinCluster.influenceResource =
+        modelCommon_->GetDxCommon()->CreateDefaultBufferResource(
+            skinCluster.influenceData.data(),
+            influenceBytes,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    skinCluster.influenceBufferView.BufferLocation =
+        skinCluster.influenceResource->GetGPUVirtualAddress();
+    skinCluster.influenceBufferView.SizeInBytes =
+        static_cast<UINT>(influenceBytes);
+    skinCluster.influenceBufferView.StrideInBytes = sizeof(VertexInfluence);
+    std::vector<VertexInfluence>().swap(skinCluster.influenceData);
 }
 
 }

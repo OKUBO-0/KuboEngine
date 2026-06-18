@@ -1,6 +1,7 @@
 #include "Object3DCommon.h"
 #include "Object3D.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "Model.h"
 #include "MyMath.h"
 #include "SrvManager.h"
@@ -9,6 +10,7 @@
 #include "CameraManager.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <numbers>
 
 namespace {
@@ -19,6 +21,11 @@ constexpr float kDefaultEnvironmentRoughness = 0.5f;
 
 namespace Engine::Graphics3D {
 
+Object3D::~Object3D()
+{
+	ReleaseSkinningDescriptors();
+}
+
 void Object3D::Initialize(Object3DCommon* object3DCommon)
 {
 	object3DCommon_ = object3DCommon;
@@ -28,6 +35,7 @@ void Object3D::Initialize(Object3DCommon* object3DCommon)
 	InitializeEnvironmentResources();
 	transform = { {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f} ,{0.0f,0.0f,0.0f} };
 	InitializeCameraResources();
+	InitializeSkinningState();
 }
 
 void Object3D::Update()
@@ -66,25 +74,33 @@ void Object3D::ApplyAnimation(Skeleton& skeleton, const Animation& animation, fl
 		if (auto it = animation.nodeAnimations.find(joint.name); it != animation.nodeAnimations.end()) {
 			const NodeAnimation& nodeAnimation = it->second;
 
-			joint.transform.translate = CalculateValue(nodeAnimation.translate, animationTime);
-			joint.transform.rotate = CalculateValue(nodeAnimation.rotate, animationTime);
-			joint.transform.scale = CalculateValue(nodeAnimation.scale, animationTime);
+			if (!nodeAnimation.translate.empty()) {
+				joint.transform.translate =
+					CalculateValue(nodeAnimation.translate, animationTime);
+			}
+			if (!nodeAnimation.rotate.empty()) {
+				joint.transform.rotate =
+					CalculateValue(nodeAnimation.rotate, animationTime);
+			}
+			if (!nodeAnimation.scale.empty()) {
+				joint.transform.scale =
+					CalculateValue(nodeAnimation.scale, animationTime);
+			}
 		}
 	}
 }
 
-void Object3D::SkinClusterUpdate(SkinCluster& skinCluster, const Skeleton& skeleton)
+void Object3D::SkinClusterUpdate(const SkinCluster& skinCluster, const Skeleton& skeleton)
 {
+	skinPaletteData_.resize(skeleton.joints.size());
 	for (size_t jointIndex = 0; jointIndex < skeleton.joints.size(); ++jointIndex)
 	{
 		assert(jointIndex < skinCluster.inverseBindPoseMatrices.size());
-		skinCluster.mappedPalette[jointIndex].skeletonSpaceMatrix =
+		skinPaletteData_[jointIndex].skeletonSpaceMatrix =
 			skinCluster.inverseBindPoseMatrices[jointIndex] * skeleton.joints[jointIndex].skeletonSpaceMatrix;
-		skinCluster.mappedPalette[jointIndex].skeletonSpaceInverseTransposeMatrix =
-			MyMath::Transpose(skinCluster.mappedPalette[jointIndex].skeletonSpaceMatrix.Inverse());
+		skinPaletteData_[jointIndex].skeletonSpaceInverseTransposeMatrix =
+			MyMath::Transpose(skinPaletteData_[jointIndex].skeletonSpaceMatrix.Inverse());
 	}
-
-
 }
 
 
@@ -92,26 +108,62 @@ void Object3D::SkinClusterUpdate(SkinCluster& skinCluster, const Skeleton& skele
 
 void Object3D::Draw()
 {
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
+	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
+	const D3D12_GPU_VIRTUAL_ADDRESS cameraAddress =
+		UploadFrameConstant(&cameraForGpu_, sizeof(cameraForGpu_));
+	const D3D12_GPU_VIRTUAL_ADDRESS environmentAddress =
+		UploadFrameConstant(&environmentReflectionSettingData_, sizeof(environmentReflectionSettingData_));
+	const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
+		UploadFrameConstant(&materialData_, sizeof(materialData_));
+
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformAddress);
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraAddress);
 	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(5, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentReflectionSettingResource->GetGPUVirtualAddress());
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentAddress);
 	object3DCommon_->BindSceneLighting();
 	if (model_) {
-		model_->Draw(materialResource_->GetGPUVirtualAddress());
+		model_->Draw(materialAddress);
 	}
 }
 
 void Object3D::DrawSkinning()
 {
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformationMatrixResource->GetGPUVirtualAddress());
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraResource->GetGPUVirtualAddress());
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(7, model_->GetSkinCluster().paletteSrvHandle.second);
+	if (!model_ || skinPaletteData_.empty()) {
+		return;
+	}
+
+	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
+	const D3D12_GPU_VIRTUAL_ADDRESS cameraAddress =
+		UploadFrameConstant(&cameraForGpu_, sizeof(cameraForGpu_));
+	const D3D12_GPU_VIRTUAL_ADDRESS environmentAddress =
+		UploadFrameConstant(&environmentReflectionSettingData_, sizeof(environmentReflectionSettingData_));
+	const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
+		UploadFrameConstant(&materialData_, sizeof(materialData_));
+	const size_t paletteBytes = sizeof(WellForGPU) * skinPaletteData_.size();
+	const Engine::Base::DirectXCommon::FrameUploadAllocation paletteAllocation =
+		object3DCommon_->GetDxCommon()->AllocateFrameUpload(paletteBytes, sizeof(WellForGPU));
+	std::memcpy(paletteAllocation.cpuAddress, skinPaletteData_.data(), paletteBytes);
+	const uint32_t frameIndex = object3DCommon_->GetDxCommon()->GetCurrentFrameIndex();
+	const uint32_t paletteSrvIndex = skinPaletteSrvIndices_[frameIndex];
+	object3DCommon_->GetSrvManager()->CreateSRVforStructuredBuffer(
+		paletteSrvIndex,
+		paletteAllocation.resource,
+		static_cast<UINT>(skinPaletteData_.size()),
+		sizeof(WellForGPU),
+		paletteAllocation.offset / sizeof(WellForGPU));
+
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformAddress);
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraAddress);
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(
+		7,
+		object3DCommon_->GetSrvManager()->GetGPUDescriptorHandle(paletteSrvIndex));
 	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(5, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentReflectionSettingResource->GetGPUVirtualAddress());
+	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentAddress);
 	object3DCommon_->BindSceneLighting(true);
 	if (model_) {
-		model_->Draw(materialResource_->GetGPUVirtualAddress());
+		model_->Draw(materialAddress);
 	}
 }
 
@@ -120,20 +172,28 @@ void Object3D::DrawShadow()
 	if (!model_ || !object3DCommon_->IsShadowPassActive()) {
 		return;
 	}
+	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
 	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(
-		0, transformationMatrixResource->GetGPUVirtualAddress());
+		0, transformAddress);
 	model_->DrawGeometry();
+}
+
+void Object3D::SetModel(Model* model)
+{
+	model_ = model;
+	InitializeSkinningState();
 }
 
 void Object3D::SetModel(const std::string& filepath)
 {
 	// モデルを検索してセットする
-	model_ = ModelManager::GetInstance()->FindModel(filepath);
+	SetModel(ModelManager::GetInstance()->FindModel(filepath));
 }
 
 void Object3D::SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath)
 {
-	model_ = ModelManager::GetInstance()->FindModelFromResourceRoot(resourceRoot, filepath);
+	SetModel(ModelManager::GetInstance()->FindModelFromResourceRoot(resourceRoot, filepath));
 }
 
 float Object3D::GetScaledModelBoundingRadius(float fallback) const
@@ -233,71 +293,92 @@ Engine::Math::OBB Object3D::GetScaledModelObb(float fallbackRadius) const
 
 void Object3D::InitializeTransformResources()
 {
-	transformationMatrixResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrix));
-	transformationMatrixResource->Map(0, nullptr, reinterpret_cast<void**>(&transformationMatrixData_));
-	transformationMatrixData_->WVP = transformationMatrixData_->WVP.MakeIdentity4x4();
-	transformationMatrixData_->World = transformationMatrixData_->World.MakeIdentity4x4();
-	transformationMatrixData_->worldInverseTranspose =
-		transformationMatrixData_->worldInverseTranspose.MakeIdentity4x4();
+	transformationMatrixData_.WVP =
+		transformationMatrixData_.WVP.MakeIdentity4x4();
+	transformationMatrixData_.World =
+		transformationMatrixData_.World.MakeIdentity4x4();
+	transformationMatrixData_.worldInverseTranspose =
+		transformationMatrixData_.worldInverseTranspose.MakeIdentity4x4();
 }
 
 void Object3D::InitializeLightResources()
 {
-	directionalLightResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(DirectionalLight));
-	directionalLightResource->Map(0, nullptr, reinterpret_cast<void**>(&directionalLightData));
-	directionalLightData->color = { 1.0f,1.0f,1.0f,1.0f };
-	directionalLightData->direction = { 0.0f,-1.0f,1.0f };
-	directionalLightData->intensity = 1.0f;
-	directionalLightData->enable = 1;
+	directionalLightData_.color = { 1.0f,1.0f,1.0f,1.0f };
+	directionalLightData_.direction = { 0.0f,-1.0f,1.0f };
+	directionalLightData_.intensity = 1.0f;
+	directionalLightData_.enable = 1;
 
-	pointLightResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(PointLight));
-	pointLightResource->Map(0, nullptr, reinterpret_cast<void**>(&pointLightData));
-	pointLightData->color = { 1.0f,1.0f,1.0f,1.0f };
-	pointLightData->position = { 0.0f,0.0f,0.0f };
-	pointLightData->intensity = 1.0f;
-	pointLightData->radius = 10.0f;
-	pointLightData->decay = 1.0f;
-	pointLightData->enable = 0;
+	pointLightData_.color = { 1.0f,1.0f,1.0f,1.0f };
+	pointLightData_.position = { 0.0f,0.0f,0.0f };
+	pointLightData_.intensity = 1.0f;
+	pointLightData_.radius = 10.0f;
+	pointLightData_.decay = 1.0f;
+	pointLightData_.enable = 0;
 
-	spotLightResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(SpotLight));
-	spotLightResource->Map(0, nullptr, reinterpret_cast<void**>(&spotLightData));
-	spotLightData->color = { 1.0f,1.0f,1.0f,1.0f };
-	spotLightData->position = { 0.0f,2.0f,0.0f };
-	spotLightData->intensity = 4.0f;
-	spotLightData->direction = MyMath::Normalize(Vector3{ 0.0f,-1.0f,0.0f });
-	spotLightData->distance = 7.0f;
-	spotLightData->decay = 2.0f;
-	spotLightData->coneAngleCos = std::cos(std::numbers::pi_v<float> / 3.0f);
-	spotLightData->cosFalloffStart = 1.0f;
-	spotLightData->enable = 0;
+	spotLightData_.color = { 1.0f,1.0f,1.0f,1.0f };
+	spotLightData_.position = { 0.0f,2.0f,0.0f };
+	spotLightData_.intensity = 4.0f;
+	spotLightData_.direction = MyMath::Normalize(Vector3{ 0.0f,-1.0f,0.0f });
+	spotLightData_.distance = 7.0f;
+	spotLightData_.decay = 2.0f;
+	spotLightData_.coneAngleCos = std::cos(std::numbers::pi_v<float> / 3.0f);
+	spotLightData_.cosFalloffStart = 1.0f;
+	spotLightData_.enable = 0;
 }
 
 void Object3D::InitializeEnvironmentResources()
 {
-	environmentReflectionSettingResource =
-		object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(EnvironmentReflectionSetting));
-	environmentReflectionSettingResource->Map(
-		0, nullptr, reinterpret_cast<void**>(&environmentReflectionSettingData));
-	environmentReflectionSettingData->reflectionStrength = kDefaultEnvironmentReflectionStrength;
-	environmentReflectionSettingData->roughness = kDefaultEnvironmentRoughness;
-	environmentReflectionSettingData->textureInfluence = 1.0f;
-	environmentReflectionSettingData->padding = 0.0f;
+	environmentReflectionSettingData_.reflectionStrength = kDefaultEnvironmentReflectionStrength;
+	environmentReflectionSettingData_.roughness = kDefaultEnvironmentRoughness;
+	environmentReflectionSettingData_.textureInfluence = 1.0f;
+	environmentReflectionSettingData_.padding = 0.0f;
 }
 
 void Object3D::InitializeMaterialResources()
 {
-	materialResource_ = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(Material));
-	materialResource_->Map(0, nullptr, reinterpret_cast<void**>(&materialData_));
-	materialData_->color = color_;
-	materialData_->enableLighting = enableLighting;
-	materialData_->uvTransform = materialData_->uvTransform.MakeIdentity4x4();
-	materialData_->shininess = 60.0f;
+	materialData_.color = color_;
+	materialData_.enableLighting = enableLighting;
+	materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
+	materialData_.shininess = 60.0f;
 }
 
 void Object3D::InitializeCameraResources()
 {
-	cameraResource = object3DCommon_->GetDxCommon()->CreateBufferResource(sizeof(CameraForGpu));
-	cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraForGpu));
+	cameraForGpu_ = {};
+}
+
+void Object3D::InitializeSkinningState()
+{
+	ReleaseSkinningDescriptors();
+	skeleton_ = {};
+	skeletonPose_.clear();
+	skinPaletteData_.clear();
+	animationTime = 0.0f;
+
+	if (!object3DCommon_ || !model_ || !model_->HasSkinningData() || model_->GetSkeleton().joints.empty()) {
+		return;
+	}
+
+	static_assert(kBufferedFrameCount == Engine::Base::DirectXCommon::kFrameCount);
+	skeleton_ = model_->GetSkeleton();
+	SkeletonUpdate(skeleton_);
+	SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
+	for (uint32_t& srvIndex : skinPaletteSrvIndices_) {
+		srvIndex = object3DCommon_->GetSrvManager()->Allocate();
+	}
+}
+
+void Object3D::ReleaseSkinningDescriptors()
+{
+	if (!object3DCommon_ || !object3DCommon_->GetSrvManager()) {
+		return;
+	}
+	for (uint32_t& srvIndex : skinPaletteSrvIndices_) {
+		if (srvIndex != UINT32_MAX) {
+			object3DCommon_->GetSrvManager()->Free(srvIndex);
+			srvIndex = UINT32_MAX;
+		}
+	}
 }
 
 void Object3D::UpdateAnimationState()
@@ -306,46 +387,57 @@ void Object3D::UpdateAnimationState()
 		return;
 	}
 
-	ApplyAnimation(model_->GetSkeleton(), model_->GetAnimation(), animationTime);
-	SkeletonUpdate(model_->GetSkeleton());
-	SkinClusterUpdate(model_->GetSkinCluster(), model_->GetSkeleton());
+	ApplyAnimation(skeleton_, model_->GetAnimation(), animationTime);
+	SkeletonUpdate(skeleton_);
+	SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
 	animationTime += kFixedAnimationDeltaTime;
-	animationTime = std::fmod(animationTime, model_->GetAnimation().duration);
+	const float duration = model_->GetAnimation().duration;
+	animationTime = std::isfinite(duration) && duration > 0.0f
+		? std::fmod(animationTime, duration)
+		: 0.0f;
 }
 
 void Object3D::ApplyModelSettings()
 {
-	if (!materialData_) {
-		return;
-	}
-
-	materialData_->enableLighting = enableLighting;
-	materialData_->color = color_;
+	materialData_.enableLighting = enableLighting;
+	materialData_.color = color_;
 }
 
 void Object3D::UpdateTransformationMatrices()
 {
 	worldMatrix = MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-	transformationMatrixData_->World = worldMatrix;
-	transformationMatrixData_->worldInverseTranspose = MyMath::Transpose(worldMatrix.Inverse());
+	transformationMatrixData_.World = worldMatrix;
+	transformationMatrixData_.worldInverseTranspose = MyMath::Transpose(worldMatrix.Inverse());
 
 	Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
 	if (!activeCamera) {
 		worldViewProjectionMatrix = worldMatrix;
-		transformationMatrixData_->WVP = worldViewProjectionMatrix;
+		transformationMatrixData_.WVP = worldViewProjectionMatrix;
 		return;
 	}
 
 	worldViewProjectionMatrix = worldMatrix * activeCamera->GetViewProjectionMatrix();
-	transformationMatrixData_->WVP = worldViewProjectionMatrix;
-	cameraForGpu->worldPosition = activeCamera->GetTransform().translate;
+	transformationMatrixData_.WVP = worldViewProjectionMatrix;
+	cameraForGpu_.worldPosition = activeCamera->GetTransform().translate;
+}
+
+D3D12_GPU_VIRTUAL_ADDRESS Object3D::UploadFrameConstant(
+	const void* data,
+	size_t size)
+{
+	const Engine::Base::DirectXCommon::FrameUploadAllocation allocation =
+		object3DCommon_->GetDxCommon()->AllocateFrameUpload(size, 256);
+	std::memcpy(allocation.cpuAddress, data, size);
+	return allocation.gpuAddress;
 }
 
 
 
 Vector3 Object3D::CalculateValue(const std::vector<KeyframeVector3>& keyframes, float time)
 {
-	assert(!keyframes.empty());
+	if (keyframes.empty()) {
+		return {};
+	}
 	if (keyframes.size() == 1 || time <= keyframes[0].time) {
 		return keyframes[0].value;
 	}
@@ -354,8 +446,13 @@ Vector3 Object3D::CalculateValue(const std::vector<KeyframeVector3>& keyframes, 
 		size_t nextIndex = index + 1;
 		//indexとnextIndexの2つのキーフレームを取得して範囲内に時刻があるか判定する
 		if (keyframes[index].time <= time && time <= keyframes[nextIndex].time) {
-			//補間する
-			float t = (time - keyframes[index].time) / (keyframes[nextIndex].time - keyframes[index].time);
+			const float keyframeDuration =
+				keyframes[nextIndex].time - keyframes[index].time;
+			if (std::abs(keyframeDuration) <= 0.000001f) {
+				return keyframes[nextIndex].value;
+			}
+			const float t =
+				(time - keyframes[index].time) / keyframeDuration;
 			return MyMath::Lerp(keyframes[index].value, keyframes[nextIndex].value, t);
 		}
 
@@ -365,8 +462,9 @@ Vector3 Object3D::CalculateValue(const std::vector<KeyframeVector3>& keyframes, 
 
 Quaternion Object3D::CalculateValue(const std::vector<KeyframeQuaternion>& keyframes, float time)
 {
-
-	assert(!keyframes.empty());
+	if (keyframes.empty()) {
+		return { 0.0f, 0.0f, 0.0f, 1.0f };
+	}
 	if (keyframes.size() == 1 || time <= keyframes[0].time) {
 		return keyframes[0].value;
 	}
@@ -374,8 +472,13 @@ Quaternion Object3D::CalculateValue(const std::vector<KeyframeQuaternion>& keyfr
 		size_t nextIndex = index + 1;
 		//indexとnextIndexの2つのキーフレームを取得して範囲内に時刻があるか判定する
 		if (keyframes[index].time <= time && time <= keyframes[nextIndex].time) {
-			//補間する
-			float t = (time - keyframes[index].time) / (keyframes[nextIndex].time - keyframes[index].time);
+			const float keyframeDuration =
+				keyframes[nextIndex].time - keyframes[index].time;
+			if (std::abs(keyframeDuration) <= 0.000001f) {
+				return keyframes[nextIndex].value;
+			}
+			const float t =
+				(time - keyframes[index].time) / keyframeDuration;
 			return MyMath::Slerp(keyframes[index].value, keyframes[nextIndex].value, t);
 		}
 	}

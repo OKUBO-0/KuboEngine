@@ -91,12 +91,7 @@ private:
 	LineCommon& operator=(const LineCommon&) = delete;
 	void InitializePipeline();
 	void InitializeVertexResources();
-	void InitializeCameraResource();
 	void UpdateCameraBuffer();
-	void EnsureInstanceResourceCapacity(size_t instanceSize);
-	void UploadInstances(size_t instanceSize);
-	void EnsureInstanceSrvIndex();
-	void UpdateInstanceSrv();
 private:
 	static const Vector3 kDefaultLineStart_;
 	static const Vector3 kDefaultLineEnd_;
@@ -110,8 +105,10 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_;
 
-	uint32_t instanceSrvIndex_ = UINT32_MAX;
-	Microsoft::WRL::ComPtr<ID3D12Resource> instanceResource_;
+	std::array<uint32_t, 2> instanceSrvIndices_{
+		UINT32_MAX,
+		UINT32_MAX,
+	};
 
 	LineInstanceData instance = {
 		.start = kDefaultLineStart_,
@@ -122,8 +119,7 @@ private:
 	std::vector<VertexDataLine>linevertices = { kDefaultLineVertices_.begin(), kDefaultLineVertices_.end() };
 	std::vector<LineInstanceData> instances_; // ← 複数ライン用
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource;//カメラのデータを送るためのリソース
-	CameraBufferforGpu* camerabuffer = nullptr;//カメラのデータをGPUに送るための構造体
+	CameraBufferforGpu cameraData_{};
 
 
 };

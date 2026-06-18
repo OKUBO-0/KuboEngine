@@ -27,7 +27,7 @@ private:
 
 		DirectX::TexMetadata metadata;
 		Microsoft::WRL::ComPtr<ID3D12Resource>resource;
-		uint32_t srvIndex;
+		uint32_t srvIndex = UINT32_MAX;
 		D3D12_CPU_DESCRIPTOR_HANDLE srvHandleCPU;
 		D3D12_GPU_DESCRIPTOR_HANDLE srvHandleGPU;
 
@@ -81,6 +81,8 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> RecordTextureUpload(
 		TexturData& textureData, const DirectX::ScratchImage& mipImages);
 	void CreateTextureSrv(TexturData& textureData);
+	const TexturData& GetLoadedTexture(
+		const std::string& filePath) const;
 
 	//テクスチャデータ
 	

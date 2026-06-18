@@ -3,6 +3,7 @@
 #include "RenderingData.h"
 #include <d3d12.h>
 #include <wrl.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -54,6 +55,8 @@ struct ParticleForGPU
 /// @details グループ生成、挙動の差し替え、インスタンシング描画を担当する。
 class ParticleManager
 {
+	static constexpr uint32_t kBufferedFrameCount = 2;
+
 	struct ParticleGroup
 	{
 		MaterialData materialdata;
@@ -62,23 +65,22 @@ class ParticleManager
 		std::vector<Particle> particles;
 		std::unique_ptr<IParticleBehavior> behavior;
 
-		// インスタンシング用のSRVインデックス
-		uint32_t srvIndex;
-		// インスタンシング用のリソース
-		Microsoft::WRL::ComPtr<ID3D12Resource> instanceResource;
+		// GPU使用中のdescriptorを上書きしないようframeごとにSRVを持つ
+		std::array<uint32_t, kBufferedFrameCount> srvIndices{
+			UINT32_MAX,
+			UINT32_MAX,
+		};
 		// インスタンス数
 		uint32_t instanceCount;
 		uint32_t maxInstanceCount = 0;
 		// インスタンスデータ
-		ParticleForGPU* instanceData = nullptr;
+		std::vector<ParticleForGPU> instanceData;
 		//頂点
 		uint32_t vertexCount = 0;
 		Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource;
 		//VBV
 		D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-		Microsoft::WRL::ComPtr<ID3D12Resource> materialResource;
-		//マテリアルにデータを書き込む	
-		Material* materialData = nullptr;
+		Material materialData{};
 	};
 public:
 	static constexpr uint32_t kDefaultMaxParticleInstanceCount = 1000;

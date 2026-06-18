@@ -1,5 +1,6 @@
 #include "ImGuiManager.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "DebugEditorManager.h"
 #include "ImGuizmoManager.h"
 #include "OffscreenRenderManager.h"
@@ -127,7 +128,9 @@ void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* win
 	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	//デスクリプターフープ生成
 	HRESULT hr = dxCommon_->GetDevice()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&srvHeap_));
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(
+		hr,
+		"ID3D12Device::CreateDescriptorHeap ImGui");
 
 	srvDescriptorSize_ = dxCommon_->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	nextSrvDescriptorIndex_ = kImGuiFirstDynamicSrvIndex;

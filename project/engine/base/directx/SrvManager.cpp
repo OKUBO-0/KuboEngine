@@ -2,6 +2,8 @@
 #include "DirectXCommon.h"
 #include "externals/DirectXTex/DirectXTex.h"
 #include <algorithm>
+#include <cassert>
+#include <stdexcept>
 #include <string>
 
 namespace Engine::Base {
@@ -15,6 +17,12 @@ void SrvManager::Initialize(DirectXCommon* dxCommon)
 	//デスクリプタ1個分のサイズを取得して記録
 	descriptorSize = directXCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	useIndex = 0;
+	activeCount_ = 0;
+	freeIndices_.clear();
+	freeIndices_.reserve(kMaxSRVCount);
+	retiredDescriptors_.clear();
+	retiredDescriptors_.reserve(kMaxSRVCount);
+	allocated_.assign(kMaxSRVCount, uint8_t{ 0 });
 	usageRecords_.clear();
 	usageRecords_.reserve(kMaxSRVCount);
 
@@ -23,19 +31,43 @@ void SrvManager::Initialize(DirectXCommon* dxCommon)
 
 uint32_t SrvManager::Allocate()
 {
-	assert(CheckTexturesNumber());
+	ReclaimCompletedDescriptors();
+	if (!CheckTexturesNumber()) {
+		throw std::runtime_error("SrvManager descriptor heap exhausted");
+	}
 
-	//reurnする番号をいったん記録しておく
-	uint32_t index = useIndex;
-	//次回のために番号を１進める
-	useIndex++;
+	uint32_t index = 0;
+	if (!freeIndices_.empty()) {
+		index = freeIndices_.back();
+		freeIndices_.pop_back();
+	} else {
+		index = useIndex;
+		++useIndex;
+	}
+	allocated_[index] = 1;
+	++activeCount_;
 	SetUsage(index, "Allocated");
-	//上で記録した番号をreturn
 	return index;
+}
+
+bool SrvManager::Free(uint32_t srvIndex)
+{
+	if (srvIndex >= kMaxSRVCount || !allocated_[srvIndex]) {
+		assert(false && "SrvManager::Free received an invalid or already freed index");
+		return false;
+	}
+
+	allocated_[srvIndex] = 0;
+	--activeCount_;
+	const uint64_t fenceValue = directXCommon->GetPendingSubmissionFenceValue();
+	retiredDescriptors_.push_back({ srvIndex, fenceValue });
+	SetUsage(srvIndex, "Retired");
+	return true;
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE SrvManager::GetCPUDescriptorHandle(uint32_t index)
 {
+	ValidateAllocated(index);
 	D3D12_CPU_DESCRIPTOR_HANDLE handleCPU = descriptorHeap->GetCPUDescriptorHandleForHeapStart();
 	handleCPU.ptr += (descriptorSize * index);
 	return handleCPU;
@@ -43,6 +75,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE SrvManager::GetCPUDescriptorHandle(uint32_t index)
 
 D3D12_GPU_DESCRIPTOR_HANDLE SrvManager::GetGPUDescriptorHandle(uint32_t index)
 {
+	ValidateAllocated(index);
 	D3D12_GPU_DESCRIPTOR_HANDLE handleGPU = descriptorHeap->GetGPUDescriptorHandleForHeapStart();
 	handleGPU.ptr += (descriptorSize * index);
 	return handleGPU;
@@ -50,6 +83,7 @@ D3D12_GPU_DESCRIPTOR_HANDLE SrvManager::GetGPUDescriptorHandle(uint32_t index)
 
 void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResource, DXGI_FORMAT format, UINT MipLevels, const DirectX::TexMetadata& metadata)
 {
+	ValidateAllocated(srvIndex);
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{  };
 	srvDesc.Format = format;
@@ -74,13 +108,19 @@ void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResou
 
 }
 
-void SrvManager::CreateSRVforStructuredBuffer(uint32_t srvIndex, ID3D12Resource* pResource, UINT numElements, UINT structureByteStride)
+void SrvManager::CreateSRVforStructuredBuffer(
+	uint32_t srvIndex,
+	ID3D12Resource* pResource,
+	UINT numElements,
+	UINT structureByteStride,
+	UINT64 firstElement)
 {
+	ValidateAllocated(srvIndex);
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
 	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-	srvDesc.Buffer.FirstElement = 0;
+	srvDesc.Buffer.FirstElement = firstElement;
 	srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
 	srvDesc.Buffer.NumElements = numElements;
 	srvDesc.Buffer.StructureByteStride = structureByteStride;
@@ -102,16 +142,57 @@ void SrvManager::PreDraw()
 
 void SrvManager::SetGraphicsRootDescriptorTable(UINT rootParameterIndex, uint32_t srvIndex)
 {
+	ValidateAllocated(srvIndex);
 	directXCommon->GetCommandList()->SetGraphicsRootDescriptorTable(rootParameterIndex, GetGPUDescriptorHandle(srvIndex));
 }
 
 bool SrvManager::CheckTexturesNumber()
 {
-	if (kMaxSRVCount <= useIndex) {
-		return false;
-	};
-	return true;
+	ReclaimCompletedDescriptors();
+	return !freeIndices_.empty() || useIndex < kMaxSRVCount;
+}
 
+uint32_t SrvManager::GetRemainingCount()
+{
+	ReclaimCompletedDescriptors();
+	return static_cast<uint32_t>(freeIndices_.size()) + (kMaxSRVCount - useIndex);
+}
+
+void SrvManager::ReclaimCompletedDescriptors()
+{
+	const uint64_t completedFenceValue = directXCommon->GetCompletedFenceValue();
+	auto firstPending = std::remove_if(
+		retiredDescriptors_.begin(),
+		retiredDescriptors_.end(),
+		[this, completedFenceValue](const RetiredDescriptor& retired) {
+			if (retired.fenceValue > completedFenceValue) {
+				return false;
+			}
+			freeIndices_.push_back(retired.index);
+			SetUsage(retired.index, "Free");
+			return true;
+		});
+	retiredDescriptors_.erase(firstPending, retiredDescriptors_.end());
+}
+
+bool SrvManager::IsAllocated(uint32_t srvIndex) const
+{
+	return srvIndex < allocated_.size() && allocated_[srvIndex] != 0;
+}
+
+void SrvManager::ValidateIndex(uint32_t srvIndex) const
+{
+	if (srvIndex >= kMaxSRVCount) {
+		throw std::out_of_range("SrvManager descriptor index is out of range");
+	}
+}
+
+void SrvManager::ValidateAllocated(uint32_t srvIndex) const
+{
+	ValidateIndex(srvIndex);
+	if (!allocated_[srvIndex]) {
+		throw std::logic_error("SrvManager descriptor index is not allocated");
+	}
 }
 
 void SrvManager::SetUsage(uint32_t srvIndex, const std::string& usage)

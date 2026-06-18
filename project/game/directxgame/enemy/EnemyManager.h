@@ -1,13 +1,14 @@
 #pragma once
 
 #include "Vector3.h"
+#include "game/directxgame/enemy/EnemyCollisionSystem.h"
 #include "game/directxgame/enemy/Enemy.h"
+#include "game/directxgame/enemy/EnemySpawnController.h"
 #include "game/directxgame/enemy/ExpOrb.h"
 #include <cstdint>
 #include <list>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace DirectXGame {
@@ -53,69 +54,23 @@ public:
 	bool ConsumeBossPhaseChanged(Vector3& outPosition, int32_t& outPhase);
 
 private:
-	using EnemyCellMap = std::unordered_map<int64_t, std::vector<Enemy*>>;
-
-	struct EnemyTypeData {
-		int32_t type = 0;
-		int32_t baseHP = 2;
-		float baseSpeed = 0.16f;
-		int32_t baseEXP = 8;
-		int32_t spawnCount = 1;
-	};
-
-	static constexpr size_t kDefaultMaxActiveEnemies = 84;
-	static constexpr float kDefaultSpawnUnlockInterval = 18.0f;
-	static constexpr float kDefaultSpawnDistance = 50.0f;
-	static constexpr float kDefaultRespawnDistance = 75.0f;
-	static constexpr float kDefaultRespawnRadius = 60.0f;
-	static constexpr float kDefaultMinSpawnInterval = 0.85f;
-	static constexpr float kDefaultBaseSpawnInterval = 1.9f;
-	static constexpr float kDefaultSpawnAcceleration = 0.0075f;
-	static constexpr float kEnemySeparationStrength = 1.1f;
-	static constexpr float kSpatialCellSize = 8.0f;
-	static constexpr float kEnemyQueryPadding = 2.0f;
-
-	void UpdateSpawnState(float deltaTime);
-	void SpawnEnemies();
-	void SpawnOneEnemy(const EnemyTypeData& data);
 	void UpdateEnemies(float deltaTime);
 	void RemoveInactiveEnemies();
-	void RelocateFarEnemies();
 	void UpdateExpOrbs(float deltaTime);
-	void ResolveEnemySeparation();
 	void SpawnDeathDrop(const Enemy& enemy);
-	bool TryHandleBulletHit(Enemy& enemy, const Vector3& impactPosition, int32_t damage, float knockStrength);
-	void CheckNormalBulletCollisions(PlayerManager& playerManager, const EnemyCellMap& spatialMap);
-	void CheckOrbitBulletCollisions(PlayerManager& playerManager, const EnemyCellMap& spatialMap);
-	void CheckDroneBulletCollisions(PlayerManager& playerManager, const EnemyCellMap& spatialMap);
-	void CheckPlayerCollisions(Player& player, PlayerManager& playerManager, const EnemyCellMap& spatialMap);
-	void BuildActiveEnemySpatialMap(EnemyCellMap& outMap, std::vector<Enemy*>& activeEnemies) const;
-	void CollectNearbyEnemies(const EnemyCellMap& spatialMap, const Vector3& center, float radius, std::vector<Enemy*>& outEnemies) const;
-	static int32_t ToCellCoord(float value);
-	static int64_t MakeCellKey(int32_t cellX, int32_t cellZ);
 
 	std::vector<std::unique_ptr<Enemy>> enemies_;
 	std::list<std::unique_ptr<ExpOrb>> expOrbs_;
-	std::vector<EnemyTypeData> enemyTypes_;
+	EnemySpawnController spawnController_{};
 	Player* player_ = nullptr;
 	PlayerManager* playerManager_ = nullptr;
 
-	float elapsedTime_ = 0.0f;
-	float spawnTimer_ = 0.0f;
-	float spawnInterval_ = kDefaultBaseSpawnInterval;
-	size_t maxActiveEnemies_ = kDefaultMaxActiveEnemies;
-	float spawnUnlockInterval_ = kDefaultSpawnUnlockInterval;
-	float spawnDistance_ = kDefaultSpawnDistance;
-	float respawnDistance_ = kDefaultRespawnDistance;
-	float respawnRadius_ = kDefaultRespawnRadius;
-	float minSpawnInterval_ = kDefaultMinSpawnInterval;
-	float baseSpawnInterval_ = kDefaultBaseSpawnInterval;
-	float spawnAcceleration_ = kDefaultSpawnAcceleration;
 	int32_t totalKillCount_ = 0;
 	size_t peakExpOrbCount_ = 0;
 	size_t expOrbPruneCount_ = 0;
 	std::vector<Vector3> recentHitEffectPositions_;
 	std::vector<Vector3> recentDeathEffectPositions_;
+	EnemyCollisionContext collisionContext_;
 	Enemy* bossEnemy_ = nullptr;
 	bool bossPhase_ = false;
 	bool bossDefeated_ = false;

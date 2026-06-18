@@ -1,4 +1,5 @@
 #include "WinApp.h"
+#include "HResult.h"
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
@@ -35,7 +36,7 @@ void WinApp::Initialize()
 {
 	timeBeginPeriod(1);
 	HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "CoInitializeEx");
 	RegisterWindowClass();
 	CreateMainWindow();
 	ShowWindow(hwnd, SW_SHOW);

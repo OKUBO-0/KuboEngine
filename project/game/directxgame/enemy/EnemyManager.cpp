@@ -1,117 +1,9 @@
 #include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/core/CsvReader.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
-#include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/PlayerManager.h"
-#include "MyMath.h"
 #include <algorithm>
-#include <array>
-#include <cfloat>
-#include <cmath>
 #include <cstdlib>
-
-namespace {
-
-constexpr char kHitSePath[] = "audio/se/se_hit.wav";
-constexpr char kPlayerDamageSePath[] = "audio/se/se_hit.wav";
-constexpr char kAudioEnemyHit[] = "combat.enemyHit";
-constexpr char kAudioPlayerDamage[] = "combat.playerDamage";
-
-float ToFloatOr(const std::string& value, float fallback)
-{
-	try {
-		return std::stof(value);
-	} catch (...) {
-		return fallback;
-	}
-}
-
-int32_t ToIntOr(const std::string& value, int32_t fallback)
-{
-	try {
-		return std::stoi(value);
-	} catch (...) {
-		return fallback;
-	}
-}
-
-std::array<Vector3, 4> GetObbCornersXZ(const Engine::Math::OBB& obb)
-{
-	const Vector3 center{ obb.center.x, 0.0f, obb.center.z };
-	const Vector3 axisX{ obb.orientations[0].x * obb.size.x, 0.0f, obb.orientations[0].z * obb.size.x };
-	const Vector3 axisZ{ obb.orientations[2].x * obb.size.z, 0.0f, obb.orientations[2].z * obb.size.z };
-	return {
-		center - axisX - axisZ,
-		center + axisX - axisZ,
-		center + axisX + axisZ,
-		center - axisX + axisZ,
-	};
-}
-
-bool NormalizeAxisXZ(Vector3& axis)
-{
-	axis.y = 0.0f;
-	const float length = std::sqrt(axis.x * axis.x + axis.z * axis.z);
-	if (length <= 0.0001f) {
-		return false;
-	}
-	axis.x /= length;
-	axis.z /= length;
-	return true;
-}
-
-void ProjectCorners(const std::array<Vector3, 4>& corners, const Vector3& axis, float& outMin, float& outMax)
-{
-	outMin = Engine::Math::MyMath::Dot(corners[0], axis);
-	outMax = outMin;
-	for (size_t index = 1; index < corners.size(); ++index) {
-		const float projected = Engine::Math::MyMath::Dot(corners[index], axis);
-		outMin = (std::min)(outMin, projected);
-		outMax = (std::max)(outMax, projected);
-	}
-}
-
-bool TryGetObbSeparationXZ(const Engine::Math::OBB& a, const Engine::Math::OBB& b, Vector3& outAxis, float& outOverlap)
-{
-	const std::array<Vector3, 4> cornersA = GetObbCornersXZ(a);
-	const std::array<Vector3, 4> cornersB = GetObbCornersXZ(b);
-	std::array<Vector3, 4> axes{
-		a.orientations[0],
-		a.orientations[2],
-		b.orientations[0],
-		b.orientations[2],
-	};
-
-	outOverlap = FLT_MAX;
-	outAxis = { 1.0f, 0.0f, 0.0f };
-	for (Vector3 axis : axes) {
-		if (!NormalizeAxisXZ(axis)) {
-			continue;
-		}
-		float minA = 0.0f;
-		float maxA = 0.0f;
-		float minB = 0.0f;
-		float maxB = 0.0f;
-		ProjectCorners(cornersA, axis, minA, maxA);
-		ProjectCorners(cornersB, axis, minB, maxB);
-		const float overlap = (std::min)(maxA, maxB) - (std::max)(minA, minB);
-		if (overlap <= 0.0f) {
-			return false;
-		}
-		if (overlap < outOverlap) {
-			const Vector3 centerDiff{ b.center.x - a.center.x, 0.0f, b.center.z - a.center.z };
-			if (Engine::Math::MyMath::Dot(centerDiff, axis) < 0.0f) {
-				axis *= -1.0f;
-			}
-			outOverlap = overlap;
-			outAxis = axis;
-		}
-	}
-	return outOverlap < FLT_MAX;
-}
-
-}
 
 namespace DirectXGame {
 
@@ -125,57 +17,38 @@ void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player,
 	if (playerManager_) {
 		playerManager_->SetEnemyManager(this);
 	}
-	LoadEnemyTypes(enemyTypesPath);
-	LoadSpawnSettings(DataPaths::Resolve(DataPaths::kEnemySpawnSettings));
-	spawnTimer_ = spawnInterval_;
+	spawnController_.Initialize(
+		enemyTypesPath,
+		DataPaths::Resolve(DataPaths::kEnemySpawnSettings));
 }
 
 void EnemyManager::LoadEnemyTypes(const std::string& filePath)
 {
-	enemyTypes_.clear();
-	const CsvReader::CsvTable rows = CsvReader::LoadRows(filePath);
-	for (const CsvReader::CsvRow& row : rows) {
-		if (row.size() < 5) {
-			continue;
-		}
-
-		EnemyTypeData data{};
-		data.type = ToIntOr(row[0], data.type);
-		data.baseHP = ToIntOr(row[1], data.baseHP);
-		data.baseSpeed = ToFloatOr(row[2], data.baseSpeed);
-		data.baseEXP = ToIntOr(row[3], data.baseEXP);
-		data.spawnCount = ToIntOr(row[4], data.spawnCount);
-		enemyTypes_.push_back(data);
-	}
+	spawnController_.LoadEnemyTypes(filePath);
 }
 
 void EnemyManager::LoadSpawnSettings(const std::string& filePath)
 {
-	const CsvReader::KeyValueMap values = CsvReader::LoadKeyValueMap(filePath);
-	for (const auto& [key, value] : values) {
-		if (key == "maxActiveEnemies") { maxActiveEnemies_ = static_cast<size_t>((std::max)(1, ToIntOr(value, static_cast<int32_t>(maxActiveEnemies_)))); }
-		else if (key == "spawnUnlockInterval") { spawnUnlockInterval_ = ToFloatOr(value, spawnUnlockInterval_); }
-		else if (key == "spawnDistance") { spawnDistance_ = ToFloatOr(value, spawnDistance_); }
-		else if (key == "respawnDistance") { respawnDistance_ = ToFloatOr(value, respawnDistance_); }
-		else if (key == "respawnRadius") { respawnRadius_ = ToFloatOr(value, respawnRadius_); }
-		else if (key == "minSpawnInterval") { minSpawnInterval_ = ToFloatOr(value, minSpawnInterval_); }
-		else if (key == "baseSpawnInterval") {
-			baseSpawnInterval_ = ToFloatOr(value, baseSpawnInterval_);
-			spawnInterval_ = baseSpawnInterval_;
-		} else if (key == "spawnAcceleration") {
-			spawnAcceleration_ = ToFloatOr(value, spawnAcceleration_);
-		}
-	}
+	spawnController_.LoadSpawnSettings(filePath);
 }
 
 void EnemyManager::Update(float deltaTime)
 {
-	UpdateSpawnState(deltaTime);
+	spawnController_.Update(
+		deltaTime,
+		player_,
+		enemies_,
+		bossPhase_);
 	UpdateEnemies(deltaTime);
 	RemoveInactiveEnemies();
-	RelocateFarEnemies();
+	spawnController_.RelocateFarEnemies(
+		player_,
+		enemies_,
+		bossEnemy_,
+		bossPhase_);
 	UpdateExpOrbs(deltaTime);
-	ResolveEnemySeparation();
+	EnemyCollisionSystem::RebuildContext(enemies_, collisionContext_);
+	EnemyCollisionSystem::ResolveEnemySeparation(collisionContext_);
 }
 
 void EnemyManager::Draw()
@@ -228,13 +101,13 @@ void EnemyManager::CheckCollisions(Player* player, PlayerManager* playerManager)
 		return;
 	}
 
-	EnemyCellMap spatialMap;
-	std::vector<Enemy*> activeEnemies;
-	BuildActiveEnemySpatialMap(spatialMap, activeEnemies);
-	CheckNormalBulletCollisions(*playerManager, spatialMap);
-	CheckOrbitBulletCollisions(*playerManager, spatialMap);
-	CheckDroneBulletCollisions(*playerManager, spatialMap);
-	CheckPlayerCollisions(*player, *playerManager, spatialMap);
+	EnemyCollisionSystem::RebuildContext(enemies_, collisionContext_);
+	EnemyCollisionSystem::CheckCollisions(
+		*player,
+		*playerManager,
+		collisionContext_,
+		recentHitEffectPositions_,
+		recentDeathEffectPositions_);
 }
 
 bool EnemyManager::FindNearestEnemyPosition(const Vector3& origin, float maxDistance, Vector3& outPosition) const
@@ -282,7 +155,8 @@ std::vector<Vector3> EnemyManager::PickLightningTargets(int32_t count) const
 	for (int32_t i = 0; i < count && !candidates.empty(); ++i) {
 		const size_t pickedIndex = static_cast<size_t>(std::rand() % static_cast<int32_t>(candidates.size()));
 		targets.push_back(candidates[pickedIndex]);
-		candidates.erase(candidates.begin() + static_cast<std::ptrdiff_t>(pickedIndex));
+		candidates[pickedIndex] = candidates.back();
+		candidates.pop_back();
 	}
 
 	return targets;
@@ -290,24 +164,12 @@ std::vector<Vector3> EnemyManager::PickLightningTargets(int32_t count) const
 
 void EnemyManager::ApplyLightningDamage(const Vector3& center, float radius, int32_t damage)
 {
-	const float radiusSq = radius * radius;
-	EnemyCellMap spatialMap;
-	std::vector<Enemy*> activeEnemies;
-	std::vector<Enemy*> nearbyEnemies;
-	BuildActiveEnemySpatialMap(spatialMap, activeEnemies);
-	CollectNearbyEnemies(spatialMap, center, radius, nearbyEnemies);
-
-	for (Enemy* enemy : nearbyEnemies) {
-		if (!enemy || !enemy->IsActive()) {
-			continue;
-		}
-		const Vector3 enemyPosition = enemy->GetPosition();
-		const float dx = enemyPosition.x - center.x;
-		const float dz = enemyPosition.z - center.z;
-		if (dx * dx + dz * dz <= radiusSq) {
-			TryHandleBulletHit(*enemy, center, damage, 0.9f + static_cast<float>(damage) * 0.1f);
-		}
-	}
+	EnemyCollisionSystem::ApplyAreaDamage(
+		center,
+		radius,
+		damage,
+		enemies_,
+		recentHitEffectPositions_);
 }
 
 void EnemyManager::StartBossPhase()
@@ -320,29 +182,12 @@ void EnemyManager::StartBossPhase()
 	bossDefeated_ = false;
 	enemies_.clear();
 
-	EnemyTypeData bossData{};
-	if (!enemyTypes_.empty()) {
-		bossData = enemyTypes_.back();
+	std::unique_ptr<Enemy> enemy =
+		spawnController_.CreateBossEnemy(player_);
+	if (!enemy) {
+		bossPhase_ = false;
+		return;
 	}
-	bossData.type = 5;
-	bossData.baseHP = (std::max)(bossData.baseHP, 140);
-	bossData.baseSpeed = (std::max)(bossData.baseSpeed, 0.18f);
-	bossData.baseEXP = (std::max)(bossData.baseEXP, 80);
-	bossData.spawnCount = 1;
-
-	const Vector3 playerPosition = player_->GetWorldPosition();
-	const Vector3 position{ playerPosition.x, 4.0f, playerPosition.z + 34.0f };
-
-	auto enemy = std::make_unique<Enemy>();
-	enemy->Initialize();
-	enemy->SetPlayer(player_);
-	enemy->SetPosition(position);
-	enemy->SetModelByType(bossData.type);
-	enemy->SetBehaviorByType(bossData.type);
-	enemy->SetBoss(true);
-	enemy->SetHP(bossData.baseHP);
-	enemy->SetEXP(bossData.baseEXP);
-	enemy->SetSpeed(bossData.baseSpeed);
 	bossEnemy_ = enemy.get();
 	enemies_.push_back(std::move(enemy));
 }
@@ -371,63 +216,6 @@ void EnemyManager::UpdateBossDeathPresentation(float elapsedTime, float duration
 	if (bossEnemy_ && bossEnemy_->IsDeathPresentationActive()) {
 		bossEnemy_->UpdateDeathPresentation(elapsedTime, duration);
 	}
-}
-
-void EnemyManager::UpdateSpawnState(float deltaTime)
-{
-	if (bossPhase_) {
-		return;
-	}
-	elapsedTime_ += deltaTime;
-	spawnTimer_ += deltaTime;
-	spawnInterval_ = (std::max)(minSpawnInterval_, baseSpawnInterval_ - elapsedTime_ * spawnAcceleration_);
-	while (spawnTimer_ >= spawnInterval_) {
-		SpawnEnemies();
-		spawnTimer_ -= spawnInterval_;
-	}
-}
-
-void EnemyManager::SpawnEnemies()
-{
-	if (enemyTypes_.empty() || !player_) {
-		return;
-	}
-	if (GetActiveEnemyCount() >= maxActiveEnemies_) {
-		return;
-	}
-
-	int32_t maxIndex = static_cast<int32_t>(elapsedTime_ / spawnUnlockInterval_);
-	maxIndex = std::clamp(maxIndex, 0, static_cast<int32_t>(enemyTypes_.size()) - 1);
-	const EnemyTypeData& data = enemyTypes_[static_cast<size_t>(std::rand() % (maxIndex + 1))];
-
-	for (int32_t i = 0; i < data.spawnCount; ++i) {
-		if (GetActiveEnemyCount() >= maxActiveEnemies_) {
-			break;
-		}
-		SpawnOneEnemy(data);
-	}
-}
-
-void EnemyManager::SpawnOneEnemy(const EnemyTypeData& data)
-{
-	const Vector3 playerPosition = player_->GetWorldPosition();
-	const float angle = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 6.283185307f;
-	const Vector3 position{
-		playerPosition.x + std::cos(angle) * spawnDistance_,
-		0.0f,
-		playerPosition.z + std::sin(angle) * spawnDistance_
-	};
-
-	auto enemy = std::make_unique<Enemy>();
-	enemy->Initialize();
-	enemy->SetPlayer(player_);
-	enemy->SetPosition(position);
-	enemy->SetModelByType(data.type);
-	enemy->SetBehaviorByType(data.type);
-	enemy->SetHP(data.baseHP + static_cast<int32_t>(elapsedTime_ / 45.0f));
-	enemy->SetEXP(data.baseEXP + static_cast<int32_t>(elapsedTime_ / 35.0f));
-	enemy->SetSpeed(data.baseSpeed + elapsedTime_ * 0.0015f);
-	enemies_.push_back(std::move(enemy));
 }
 
 void EnemyManager::UpdateEnemies(float deltaTime)
@@ -461,40 +249,6 @@ void EnemyManager::RemoveInactiveEnemies()
 		enemies_.end());
 }
 
-void EnemyManager::RelocateFarEnemies()
-{
-	if (!player_) {
-		return;
-	}
-
-	const Vector3 playerPosition = player_->GetWorldPosition();
-	const float respawnDistanceSq = respawnDistance_ * respawnDistance_;
-	for (std::unique_ptr<Enemy>& enemy : enemies_) {
-		if (!enemy || !enemy->IsActive()) {
-			continue;
-		}
-		if (bossPhase_ && enemy.get() == bossEnemy_) {
-			continue;
-		}
-		if (enemy->IsSuicideType()) {
-			continue;
-		}
-		const Vector3 enemyPosition = enemy->GetPosition();
-		const float dx = enemyPosition.x - playerPosition.x;
-		const float dz = enemyPosition.z - playerPosition.z;
-		if (dx * dx + dz * dz <= respawnDistanceSq) {
-			continue;
-		}
-
-		const float angle = (static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX)) * 6.283185307f;
-		enemy->SetPosition({
-			playerPosition.x + std::cos(angle) * respawnRadius_,
-			0.0f,
-			playerPosition.z + std::sin(angle) * respawnRadius_
-		});
-	}
-}
-
 void EnemyManager::UpdateExpOrbs(float deltaTime)
 {
 	if (!player_) {
@@ -515,52 +269,6 @@ void EnemyManager::UpdateExpOrbs(float deltaTime)
 	}
 }
 
-void EnemyManager::ResolveEnemySeparation()
-{
-	EnemyCellMap spatialMap;
-	std::vector<Enemy*> activeEnemies;
-	std::vector<Enemy*> nearbyEnemies;
-	BuildActiveEnemySpatialMap(spatialMap, activeEnemies);
-
-	for (Enemy* a : activeEnemies) {
-		if (!a || !a->IsActive()) {
-			continue;
-		}
-		nearbyEnemies.clear();
-		const float radiusA = a->GetCollisionRadius();
-		CollectNearbyEnemies(spatialMap, a->GetPosition(), radiusA + kEnemyQueryPadding, nearbyEnemies);
-		for (Enemy* b : nearbyEnemies) {
-			if (!b || !b->IsActive() || a >= b) {
-				continue;
-			}
-			if (a->IsSuicideType() || b->IsSuicideType()) {
-				continue;
-			}
-			const Engine::Math::OBB obbA = a->GetCollisionObb();
-			const Engine::Math::OBB obbB = b->GetCollisionObb();
-			if (!Engine::Math::MyMath::IsCollision(obbA, obbB)) {
-				continue;
-			}
-
-			Vector3 separationAxis{};
-			float overlap = 0.0f;
-			if (!TryGetObbSeparationXZ(obbA, obbB, separationAxis, overlap)) {
-				continue;
-			}
-
-			Vector3 posA = a->GetPosition();
-			Vector3 posB = b->GetPosition();
-			const float push = overlap * 0.5f * kEnemySeparationStrength;
-			posA.x -= separationAxis.x * push;
-			posA.z -= separationAxis.z * push;
-			posB.x += separationAxis.x * push;
-			posB.z += separationAxis.z * push;
-			a->SetPosition(posA);
-			b->SetPosition(posB);
-		}
-	}
-}
-
 void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 {
 	++totalKillCount_;
@@ -573,233 +281,6 @@ void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 		expOrbs_.pop_front();
 		++expOrbPruneCount_;
 	}
-}
-
-bool EnemyManager::TryHandleBulletHit(Enemy& enemy, const Vector3& impactPosition, int32_t damage, float knockStrength)
-{
-	static SoundHandle sharedHitSeHandle = 0;
-	if (sharedHitSeHandle == 0) {
-		sharedHitSeHandle = GameAudioCache::LoadWave(kHitSePath);
-	}
-	if (sharedHitSeHandle != 0) {
-		GameAudioCache::Play(sharedHitSeHandle);
-		GameAudioCache::SetVolumeFromTuning(sharedHitSeHandle, kAudioEnemyHit, 0.5f);
-	}
-
-	const Vector3 enemyPosition = enemy.GetPosition();
-	Vector3 knockDirection{
-		enemyPosition.x - impactPosition.x,
-		0.0f,
-		enemyPosition.z - impactPosition.z
-	};
-	const float length = std::sqrt(knockDirection.x * knockDirection.x + knockDirection.z * knockDirection.z);
-	if (length > 0.001f) {
-		knockDirection.x /= length;
-		knockDirection.z /= length;
-	}
-
-	enemy.TakeDamage(damage, knockDirection, knockStrength);
-	recentHitEffectPositions_.push_back(enemyPosition);
-	return true;
-}
-
-void EnemyManager::CheckNormalBulletCollisions(PlayerManager& playerManager, const EnemyCellMap& spatialMap)
-{
-	std::vector<Enemy*> nearbyEnemies;
-	const int32_t damage = playerManager.GetNormalBulletDamage();
-	for (const std::unique_ptr<NormalBullet>& bullet : playerManager.GetNormalBullets()) {
-		if (!bullet || !bullet->IsActive()) {
-			continue;
-		}
-		const Vector3 bulletPosition = bullet->GetPosition();
-		const float bulletRadius = bullet->GetCollisionRadius();
-		const Engine::Math::OBB bulletObb = bullet->GetCollisionObb();
-		nearbyEnemies.clear();
-		CollectNearbyEnemies(spatialMap, bulletPosition, bulletRadius + kEnemyQueryPadding, nearbyEnemies);
-		for (Enemy* enemy : nearbyEnemies) {
-			if (!enemy || !enemy->IsActive()) {
-				continue;
-			}
-			if (!Engine::Math::MyMath::IsCollision(bulletObb, enemy->GetCollisionObb())) {
-				continue;
-			}
-			if (!bullet->CanHitEnemy(enemy)) {
-				continue;
-			}
-
-			bullet->RegisterHit(enemy);
-			TryHandleBulletHit(*enemy, bulletPosition, damage, 0.8f + static_cast<float>(damage) * 0.18f);
-			if (!bullet->ConsumeHit()) {
-				break;
-			}
-		}
-	}
-}
-
-void EnemyManager::CheckOrbitBulletCollisions(PlayerManager& playerManager, const EnemyCellMap& spatialMap)
-{
-	std::vector<Enemy*> nearbyEnemies;
-	const int32_t damage = playerManager.GetOrbitBulletDamage();
-	for (const std::unique_ptr<OrbitBullet>& orbitBullet : playerManager.GetOrbitBullets()) {
-		if (!orbitBullet || !orbitBullet->IsActive()) {
-			continue;
-		}
-		const Vector3 orbitPosition = orbitBullet->GetPosition();
-		const float orbitRadius = orbitBullet->GetCollisionRadius();
-		const Engine::Math::OBB orbitObb = orbitBullet->GetCollisionObb();
-		nearbyEnemies.clear();
-		CollectNearbyEnemies(spatialMap, orbitPosition, orbitRadius + kEnemyQueryPadding, nearbyEnemies);
-		for (Enemy* enemy : nearbyEnemies) {
-			if (!enemy || !enemy->IsActive()) {
-				continue;
-			}
-			if (!Engine::Math::MyMath::IsCollision(orbitObb, enemy->GetCollisionObb())) {
-				continue;
-			}
-			if (!orbitBullet->CanHitEnemy(enemy)) {
-				continue;
-			}
-
-			orbitBullet->RegisterHit(enemy);
-			TryHandleBulletHit(*enemy, orbitPosition, damage, 0.7f + static_cast<float>(damage) * 0.12f);
-		}
-	}
-}
-
-void EnemyManager::CheckDroneBulletCollisions(PlayerManager& playerManager, const EnemyCellMap& spatialMap)
-{
-	if (!playerManager.HasDrone() || !playerManager.GetDrone()) {
-		return;
-	}
-
-	std::vector<Enemy*> nearbyEnemies;
-	const int32_t damage = playerManager.GetDroneDamage();
-	for (const std::unique_ptr<NormalBullet>& bullet : playerManager.GetDrone()->GetBullets()) {
-		if (!bullet || !bullet->IsActive()) {
-			continue;
-		}
-		const Vector3 bulletPosition = bullet->GetPosition();
-		const float bulletRadius = bullet->GetCollisionRadius();
-		const Engine::Math::OBB bulletObb = bullet->GetCollisionObb();
-		nearbyEnemies.clear();
-		CollectNearbyEnemies(spatialMap, bulletPosition, bulletRadius + kEnemyQueryPadding, nearbyEnemies);
-		for (Enemy* enemy : nearbyEnemies) {
-			if (!enemy || !enemy->IsActive()) {
-				continue;
-			}
-			if (!Engine::Math::MyMath::IsCollision(bulletObb, enemy->GetCollisionObb())) {
-				continue;
-			}
-			if (!bullet->CanHitEnemy(enemy)) {
-				continue;
-			}
-
-			bullet->RegisterHit(enemy);
-			TryHandleBulletHit(*enemy, bulletPosition, damage, 0.65f);
-			if (!bullet->ConsumeHit()) {
-				break;
-			}
-		}
-	}
-}
-
-void EnemyManager::CheckPlayerCollisions(Player& player, PlayerManager& playerManager, const EnemyCellMap& spatialMap)
-{
-	const Vector3 playerPosition = player.GetWorldPosition();
-	const float playerRadius = player.GetCollisionRadius();
-	const Engine::Math::OBB playerObb = player.GetCollisionObb();
-	std::vector<Enemy*> nearbyEnemies;
-	CollectNearbyEnemies(spatialMap, playerPosition, playerRadius + kEnemyQueryPadding, nearbyEnemies);
-	for (Enemy* enemy : nearbyEnemies) {
-		if (!enemy || !enemy->IsActive()) {
-			continue;
-		}
-		const Engine::Math::OBB enemyObb = enemy->GetCollisionObb();
-		if (!Engine::Math::MyMath::IsCollision(playerObb, enemyObb)) {
-			continue;
-		}
-
-		if (enemy->IsSuicideType()) {
-			const Vector3 impactPosition = enemy->GetPosition();
-			if (!player.IsDodging() && !playerManager.IsInvincible()) {
-				playerManager.TakeDamage();
-				static SoundHandle sharedPlayerDamageSeHandle = 0;
-				if (sharedPlayerDamageSeHandle == 0) {
-					sharedPlayerDamageSeHandle = GameAudioCache::LoadWave(kPlayerDamageSePath);
-				}
-				if (sharedPlayerDamageSeHandle != 0) {
-					GameAudioCache::Play(sharedPlayerDamageSeHandle);
-					GameAudioCache::SetVolumeFromTuning(sharedPlayerDamageSeHandle, kAudioPlayerDamage, 0.8f);
-				}
-			}
-			recentDeathEffectPositions_.push_back(impactPosition);
-			enemy->Deactivate();
-			continue;
-		}
-
-		Vector3 enemyPosition = enemy->GetPosition();
-		Vector3 separationAxis{};
-		float overlap = 0.0f;
-		if (TryGetObbSeparationXZ(playerObb, enemyObb, separationAxis, overlap)) {
-			const float push = overlap * kEnemySeparationStrength;
-			enemyPosition.x += separationAxis.x * push;
-			enemyPosition.z += separationAxis.z * push;
-			enemy->SetPosition(enemyPosition);
-		}
-
-		if (!player.IsDodging() && !playerManager.IsInvincible()) {
-			playerManager.TakeDamage();
-			static SoundHandle sharedPlayerDamageSeHandle = 0;
-			if (sharedPlayerDamageSeHandle == 0) {
-				sharedPlayerDamageSeHandle = GameAudioCache::LoadWave(kPlayerDamageSePath);
-			}
-			if (sharedPlayerDamageSeHandle != 0) {
-				GameAudioCache::Play(sharedPlayerDamageSeHandle);
-				GameAudioCache::SetVolumeFromTuning(sharedPlayerDamageSeHandle, kAudioPlayerDamage, 0.8f);
-			}
-		}
-	}
-}
-
-void EnemyManager::BuildActiveEnemySpatialMap(EnemyCellMap& outMap, std::vector<Enemy*>& activeEnemies) const
-{
-	outMap.clear();
-	activeEnemies.clear();
-	for (const std::unique_ptr<Enemy>& enemy : enemies_) {
-		if (!enemy || !enemy->IsActive()) {
-			continue;
-		}
-		Enemy* enemyPtr = enemy.get();
-		activeEnemies.push_back(enemyPtr);
-		const Vector3 position = enemyPtr->GetPosition();
-		outMap[MakeCellKey(ToCellCoord(position.x), ToCellCoord(position.z))].push_back(enemyPtr);
-	}
-}
-
-void EnemyManager::CollectNearbyEnemies(const EnemyCellMap& spatialMap, const Vector3& center, float radius, std::vector<Enemy*>& outEnemies) const
-{
-	outEnemies.clear();
-	const int32_t centerCellX = ToCellCoord(center.x);
-	const int32_t centerCellZ = ToCellCoord(center.z);
-	const int32_t cellRange = (std::max)(1, static_cast<int32_t>(std::ceil(radius / kSpatialCellSize)));
-	for (int32_t z = centerCellZ - cellRange; z <= centerCellZ + cellRange; ++z) {
-		for (int32_t x = centerCellX - cellRange; x <= centerCellX + cellRange; ++x) {
-			const auto it = spatialMap.find(MakeCellKey(x, z));
-			if (it != spatialMap.end()) {
-				outEnemies.insert(outEnemies.end(), it->second.begin(), it->second.end());
-			}
-		}
-	}
-}
-
-int32_t EnemyManager::ToCellCoord(float value)
-{
-	return static_cast<int32_t>(std::floor(value / kSpatialCellSize));
-}
-
-int64_t EnemyManager::MakeCellKey(int32_t cellX, int32_t cellZ)
-{
-	return (static_cast<int64_t>(cellX) << 32) ^ static_cast<uint32_t>(cellZ);
 }
 
 } // namespace DirectXGame

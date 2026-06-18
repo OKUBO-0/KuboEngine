@@ -1,4 +1,5 @@
 #include "Input.h"
+#include "HResult.h"
 #include "WinApp.h"
 #include <cassert>
 #pragma comment(lib,"dinput8.lib")
@@ -35,28 +36,28 @@ void Input::Initialize(Engine::Base::WinApp* winApp)
 	// キーボードとマウスの両方で使う DirectInput の本体を生成する
 	//DirectInputのインスタンスを生成
 	hr = DirectInput8Create(winApp->GetHInstance(), DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&directInput, nullptr);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "DirectInput8Create");
 	//キーボードデバイス生成
 
 	hr = directInput->CreateDevice(GUID_SysKeyboard, &keyboard, NULL);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInput8::CreateDevice keyboard");
 	//入力データ形式のセット
 	hr = keyboard->SetDataFormat(&c_dfDIKeyboard);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetDataFormat keyboard");
 	//排他制御レベルのセット
 	hr = keyboard->SetCooperativeLevel(winApp->GetHwnd(), DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetCooperativeLevel keyboard");
 
 	// マウスはクライアント座標へ変換して扱うためウィンドウハンドルに紐付ける
 	//マウスデバイス生成
 	hr = directInput->CreateDevice(GUID_SysMouse, &devMouse_, NULL);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInput8::CreateDevice mouse");
 	//入力データ形式のセット
 	hr = devMouse_->SetDataFormat(&c_dfDIMouse2);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetDataFormat mouse");
 	//排他制御レベルのセット
 	hr = devMouse_->SetCooperativeLevel(winApp_->GetHwnd(), DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetCooperativeLevel mouse");
 
 
 }

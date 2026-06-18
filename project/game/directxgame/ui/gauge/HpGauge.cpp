@@ -1,8 +1,8 @@
 #include "game/directxgame/ui/gauge/HpGauge.h"
 #include "game/directxgame/core/DirectXGameDataPaths.h"
 #include "game/directxgame/core/UILayoutIO.h"
-#include "CameraManager.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "Matrix4x4.h"
 #include "MyMath.h"
 #include "RenderingData.h"
@@ -11,9 +11,9 @@
 #include "WinApp.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <d3d12.h>
 #include <vector>
-#include <wrl/client.h>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -40,7 +40,12 @@ int32_t StepDisplayValue(int32_t displayedValue, int32_t targetValue)
 
 float CalculateGaugeRate(int32_t displayedValue, int32_t maxValue)
 {
-	float ratio = static_cast<float>(displayedValue) / static_cast<float>(maxValue);
+	if (maxValue <= 0) {
+		return 0.0f;
+	}
+
+	const float ratio =
+		static_cast<float>(displayedValue) / static_cast<float>(maxValue);
 	return std::clamp(ratio, 0.0f, 1.0f);
 }
 
@@ -57,36 +62,19 @@ public:
 
 		const size_t vertexCapacity = 2 + (kCapSegments + 1) * 2;
 		const size_t indexCapacity = (vertexCapacity - 1) * 3;
-		vertexResource_ = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(VertexData) * vertexCapacity);
-		indexResource_ = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(uint32_t) * indexCapacity);
-		materialResource_ = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(MaterialSprite));
-		transformationMatrixResource_ = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrixsprite));
-		cameraResource_ = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(CameraForGpu));
+		vertexData_.resize(vertexCapacity);
+		indexData_.resize(indexCapacity);
 
-		vertexResource_->Map(0, nullptr, reinterpret_cast<void**>(&vertexData_));
-		indexResource_->Map(0, nullptr, reinterpret_cast<void**>(&indexData_));
-		materialResource_->Map(0, nullptr, reinterpret_cast<void**>(&materialData_));
-		transformationMatrixResource_->Map(0, nullptr, reinterpret_cast<void**>(&transformationMatrixData_));
-		cameraResource_->Map(0, nullptr, reinterpret_cast<void**>(&cameraForGpu_));
-
-		vertexBufferView_.BufferLocation = vertexResource_->GetGPUVirtualAddress();
-		vertexBufferView_.SizeInBytes = static_cast<UINT>(sizeof(VertexData) * vertexCapacity);
-		vertexBufferView_.StrideInBytes = sizeof(VertexData);
-		indexBufferView_.BufferLocation = indexResource_->GetGPUVirtualAddress();
-		indexBufferView_.SizeInBytes = static_cast<UINT>(sizeof(uint32_t) * indexCapacity);
-		indexBufferView_.Format = DXGI_FORMAT_R32_UINT;
-
-		materialData_->uvTransform = materialData_->uvTransform.MakeIdentity4x4();
-		transformationMatrixData_->World = transformationMatrixData_->World.MakeIdentity4x4();
+		materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
+		transformationMatrixData_.World =
+			transformationMatrixData_.World.MakeIdentity4x4();
 		SetColor(color);
 	}
 
 	void SetColor(const Vector4& color)
 	{
 		color_ = color;
-		if (materialData_) {
-			materialData_->color = color_;
-		}
+		materialData_.color = color_;
 	}
 
 	void SetLayout(const Vector2& position, const Vector2& size)
@@ -102,28 +90,63 @@ public:
 			return;
 		}
 
-		UpdateCameraData();
 		UpdateGeometry();
 		UpdateMatrices();
 
+		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
+			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+				sizeof(MaterialSprite),
+				256);
+		std::memcpy(
+			materialAllocation.cpuAddress,
+			&materialData_,
+			sizeof(materialData_));
+		const Engine::Base::DirectXCommon::FrameUploadAllocation transformAllocation =
+			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+				sizeof(TransformationMatrixsprite),
+				256);
+		std::memcpy(
+			transformAllocation.cpuAddress,
+			&transformationMatrixData_,
+			sizeof(transformationMatrixData_));
+		const Engine::Base::DirectXCommon::FrameUploadAllocation vertexAllocation =
+			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+				sizeof(VertexData) * vertexData_.size(),
+				alignof(VertexData));
+		std::memcpy(
+			vertexAllocation.cpuAddress,
+			vertexData_.data(),
+			sizeof(VertexData) * vertexData_.size());
+		const Engine::Base::DirectXCommon::FrameUploadAllocation indexAllocation =
+			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+				sizeof(uint32_t) * indexCount_,
+				alignof(uint32_t));
+		std::memcpy(
+			indexAllocation.cpuAddress,
+			indexData_.data(),
+			sizeof(uint32_t) * indexCount_);
+		const D3D12_VERTEX_BUFFER_VIEW vertexBufferView{
+			.BufferLocation = vertexAllocation.gpuAddress,
+			.SizeInBytes =
+				static_cast<UINT>(sizeof(VertexData) * vertexData_.size()),
+			.StrideInBytes = sizeof(VertexData),
+		};
+		const D3D12_INDEX_BUFFER_VIEW indexBufferView{
+			.BufferLocation = indexAllocation.gpuAddress,
+			.SizeInBytes = static_cast<UINT>(sizeof(uint32_t) * indexCount_),
+			.Format = DXGI_FORMAT_R32_UINT,
+		};
+
 		auto* commandList = spriteCommon_->GetDxCommon()->GetCommandList();
-		commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
-		commandList->IASetIndexBuffer(&indexBufferView_);
-		commandList->SetGraphicsRootConstantBufferView(0, materialResource_->GetGPUVirtualAddress());
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		commandList->IASetIndexBuffer(&indexBufferView);
+		commandList->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
 		commandList->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(kWhiteTexturePath));
-		commandList->SetGraphicsRootConstantBufferView(2, transformationMatrixResource_->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootConstantBufferView(2, transformAllocation.gpuAddress);
 		commandList->DrawIndexedInstanced(indexCount_, 1, 0, 0, 0);
 	}
 
 private:
-	void UpdateCameraData()
-	{
-		Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-		if (activeCamera && cameraForGpu_) {
-			cameraForGpu_->worldPosition = activeCamera->GetTransform().translate;
-		}
-	}
-
 	void UpdateGeometry()
 	{
 		if (!geometryDirty_) {
@@ -181,23 +204,16 @@ private:
 		Matrix4x4 world = MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 		Matrix4x4 projection = MyMath::MakeOrthographicMatrix(
 			0.0f, 0.0f, float(Engine::Base::WinApp::kClientWidth), float(Engine::Base::WinApp::kClientHeight), 0.0f, 100.0f);
-		transformationMatrixData_->World = world;
-		transformationMatrixData_->WVP = world * Matrix4x4{}.MakeIdentity4x4() * projection;
+		transformationMatrixData_.World = world;
+		transformationMatrixData_.WVP =
+			world * Matrix4x4{}.MakeIdentity4x4() * projection;
 	}
 
 	Engine::Graphics2D::SpriteCommon* spriteCommon_ = nullptr;
-	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> indexResource_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> materialResource_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource_;
-	Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource_;
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_{};
-	D3D12_INDEX_BUFFER_VIEW indexBufferView_{};
-	VertexData* vertexData_ = nullptr;
-	uint32_t* indexData_ = nullptr;
-	MaterialSprite* materialData_ = nullptr;
-	TransformationMatrixsprite* transformationMatrixData_ = nullptr;
-	CameraForGpu* cameraForGpu_ = nullptr;
+	std::vector<VertexData> vertexData_;
+	std::vector<uint32_t> indexData_;
+	MaterialSprite materialData_{};
+	TransformationMatrixsprite transformationMatrixData_{};
 	Vector2 position_{};
 	Vector2 size_{};
 	Vector4 color_{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -242,8 +258,8 @@ void HpGauge::Draw()
 
 void HpGauge::SetHP(int32_t current, int32_t max)
 {
-	targetHP_ = current;
 	maxHP_ = std::max<int32_t>(1, max);
+	targetHP_ = std::clamp(current, 0, maxHP_);
 }
 
 bool HpGauge::IsDepleted() const
