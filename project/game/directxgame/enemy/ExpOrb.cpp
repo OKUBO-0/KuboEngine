@@ -2,7 +2,6 @@
 #include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include <algorithm>
 #include <cmath>
 #include <random>
@@ -36,7 +35,6 @@ void ExpOrb::Initialize(const Vector3& position, int32_t expValue)
 	static std::uniform_real_distribution<float> distribution(-0.5f, 0.5f);
 	velocity_ = { distribution(rng) * 0.05f, 0.05f, distribution(rng) * 0.05f };
 
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	const ModelHandle modelHandle = GameModelCache::Load("ExpOrb.obj");
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
@@ -104,11 +102,11 @@ void ExpOrb::Draw()
 
 void ExpOrb::Collect()
 {
-	static SoundHandle sharedPickupSeHandle = 0;
-	if (sharedPickupSeHandle == 0) {
+	static SoundHandle sharedPickupSeHandle{};
+	if (!sharedPickupSeHandle) {
 		sharedPickupSeHandle = GameAudioCache::LoadWave(kPickupSePath);
 	}
-	if (sharedPickupSeHandle != 0) {
+	if (sharedPickupSeHandle) {
 		GameAudioCache::Play(sharedPickupSeHandle);
 		GameAudioCache::SetVolumeFromTuning(sharedPickupSeHandle, kAudioExpPickup, 1.0f);
 	}

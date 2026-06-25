@@ -1,7 +1,6 @@
 #include "game/directxgame/world/GridPlane.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -15,7 +14,6 @@ namespace DirectXGame {
 
 void GridPlane::Initialize()
 {
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	const ModelHandle planeHandle = GameModelCache::Load("plane.obj");
 
 	for (std::unique_ptr<Engine::Graphics3D::Object3D>& tile : tiles_) {
@@ -26,6 +24,7 @@ void GridPlane::Initialize()
 		tile->SetEnvironmentReflectionStrength(0.0f);
 		tile->SetEnvironmentRoughness(1.0f);
 		tile->SetTextureInfluence(0.12f);
+		tile->SetCastsShadow(false);
 		tile->SetScale({ kGroundScale, 1.0f, kGroundScale });
 		tile->SetTranslate({ 0.0f, -2.0f, 0.0f });
 		tile->SetColor({ 0.43f, 0.44f, 0.47f, 1.0f });
@@ -69,6 +68,15 @@ void GridPlane::Draw()
 	for (const std::unique_ptr<Engine::Graphics3D::Object3D>& tile : tiles_) {
 		if (tile) {
 			tile->Draw();
+		}
+	}
+}
+
+void GridPlane::DrawShadow()
+{
+	for (const std::unique_ptr<Engine::Graphics3D::Object3D>& tile : tiles_) {
+		if (tile) {
+			tile->DrawShadow();
 		}
 	}
 }

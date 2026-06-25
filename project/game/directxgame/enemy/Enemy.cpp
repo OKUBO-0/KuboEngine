@@ -140,11 +140,11 @@ void Enemy::TakeDamage(int32_t damage, const Vector3& knockDirection, float stre
 {
 	hp_ -= damage;
 	if (hp_ <= 0) {
-		static SoundHandle sharedDeathSeHandle = 0;
-		if (sharedDeathSeHandle == 0) {
+		static SoundHandle sharedDeathSeHandle{};
+		if (!sharedDeathSeHandle) {
 			sharedDeathSeHandle = GameAudioCache::LoadWave(kDeathSePath);
 		}
-		if (sharedDeathSeHandle != 0) {
+		if (sharedDeathSeHandle) {
 			GameAudioCache::Play(sharedDeathSeHandle);
 			GameAudioCache::SetVolumeFromTuning(sharedDeathSeHandle, kAudioEnemyDeath, 1.0f);
 		}

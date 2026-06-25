@@ -1,5 +1,5 @@
 #include "game/directxgame/ui/hud/MiniMap.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/enemy/Enemy.h"

@@ -1,13 +1,13 @@
-#include "game/directxgame/core/ResultSceneDebugUiController.h"
+#include "game/directxgame/core/ResultSceneDebugUIController.h"
 
 #include "DebugEditorManager.h"
 #include "Input.h"
-#include "game/directxgame/core/DirectXGameSceneId.h"
-#include "game/directxgame/core/DirectXGameSessionContext.h"
-#include "game/directxgame/core/GameAudioDebugPanel.h"
+#include "game/directxgame/core/SceneId.h"
+#include "game/directxgame/core/GameSession.h"
+#include "game/directxgame/core/AudioDebugPanel.h"
 #include "game/directxgame/core/GameInputBindings.h"
 #include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/scene/DirectXGameResultScene.h"
+#include "game/directxgame/scene/ResultScene.h"
 #include <array>
 #include <iterator>
 #ifdef _DEBUG
@@ -43,7 +43,7 @@ bool DrawVector2Setting(
 
 namespace DirectXGame {
 
-void ResultSceneDebugUiController::Draw(DirectXGameResultScene& scene)
+void ResultSceneDebugUIController::Draw(ResultScene& scene)
 {
 #ifdef _DEBUG
 	auto& windows = scene.debugWindows_;
@@ -53,7 +53,7 @@ void ResultSceneDebugUiController::Draw(DirectXGameResultScene& scene)
 		scene.ReloadDebugData();
 	}
 
-	const DirectXGameResultScene::DebugWindowVisibility previousWindows =
+	const ResultScene::DebugWindowVisibility previousWindows =
 		windows;
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &windows.sceneView },
@@ -119,7 +119,7 @@ void ResultSceneDebugUiController::Draw(DirectXGameResultScene& scene)
 		const std::array<AudioTuningEntry, 1> resultAudioEntries{ {
 			{ "Result Finish Volume", kAudioResultFinish, 1.0f },
 		} };
-		GameAudioDebugPanel::Draw(
+		DebugUI::Audio::Draw(
 			&windows.audio,
 			resultAudioEntries);
 	}
@@ -218,7 +218,7 @@ void ResultSceneDebugUiController::Draw(DirectXGameResultScene& scene)
 			"Displayed Total Score: %.0f",
 			scene.displayedTotalScore_);
 		if (scene.sessionContext_) {
-			const DirectXGameResultData& resultData =
+	const RunResult& resultData =
 				scene.sessionContext_->GetResultData();
 			ImGui::Separator();
 			ImGui::Text(
@@ -229,6 +229,10 @@ void ResultSceneDebugUiController::Draw(DirectXGameResultScene& scene)
 				resultData.elapsedFrames);
 			ImGui::Text("Level: %u", resultData.level);
 			ImGui::Text("Kill Count: %u", resultData.killCount);
+			ImGui::Text("Run Coins: %d", resultData.coins);
+			ImGui::Text(
+				"Owned Coins: %d",
+				scene.sessionContext_->GetOwnedCoins());
 		}
 		ImGui::End();
 	}

@@ -18,6 +18,12 @@ namespace Engine::Graphics3D {
 class Object3DCommon
 {
 public:
+	struct ShadowPassStats {
+		uint32_t candidateCount = 0;
+		uint32_t submittedCount = 0;
+		uint32_t culledCount = 0;
+	};
+
 
 	/// @brief シングルトンインスタンスを取得する
 	/// @param なし
@@ -46,10 +52,13 @@ public:
 	/// @param なし
 	/// @return なし
 	void SkinningCommonDraw();
-	void BeginShadowPass(const Vector3& focusPosition);
+	bool BeginShadowPass(const Vector3& focusPosition);
 	void EndShadowPass();
 	void BindSceneLighting(bool skinning = false);
 	bool IsShadowPassActive() const { return shadowPassActive_; }
+	bool IsInsideShadowFrustum(const Vector3& worldCenter, float boundingRadius) const;
+	void RecordShadowCandidate(bool submitted);
+	const ShadowPassStats& GetShadowPassStats() const { return shadowPassStats_; }
 	void SetSceneLight(const SceneLightData& light);
 	const SceneLightData& GetSceneLight() const { return sceneLightData_; }
 	void SetShadowEnabled(bool enabled);
@@ -93,6 +102,7 @@ private:
 	bool shadowPassActive_ = false;
 	bool shadowEnabled_ = true;
 	float shadowArea_ = 72.0f;
+	ShadowPassStats shadowPassStats_{};
 	static constexpr uint32_t kShadowMapSize = 2048;
 };
 

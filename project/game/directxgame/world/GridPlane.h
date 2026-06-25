@@ -12,6 +12,7 @@ public:
 	void Initialize();
 	void Update(const Vector3& focusPosition);
 	void Draw();
+	void DrawShadow();
 
 private:
 	static float SnapToTile(float value);

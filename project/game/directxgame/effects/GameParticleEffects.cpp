@@ -1,5 +1,5 @@
 #include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/effects/DirectXGameParticleBehaviors.h"
+#include "game/directxgame/effects/ParticleBehaviors.h"
 #include "ParticleManager.h"
 #include <algorithm>
 #include <memory>
@@ -13,43 +13,43 @@ void GameParticleEffects::Initialize()
 {
 	Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance();
-	particleManager->CreateParticleGroup(
+	handles_.ripple = particleManager->CreateParticleGroup(
 		"DirectXGame.Ripple", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Ring,
 		std::make_unique<RippleParticleBehavior>(), 192);
-	particleManager->CreateParticleGroup(
+	handles_.spark = particleManager->CreateParticleGroup(
 		"DirectXGame.Spark", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<SparkParticleBehavior>(), 384);
-	particleManager->CreateParticleGroup(
+	handles_.enemyHitSpark = particleManager->CreateParticleGroup(
 		"DirectXGame.EnemyHitSpark", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }), 384);
-	particleManager->CreateParticleGroup(
+	handles_.expSpark = particleManager->CreateParticleGroup(
 		"DirectXGame.ExpSpark", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<SparkParticleBehavior>(Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }), 256);
-	particleManager->CreateParticleGroup(
+	handles_.lightningImpact = particleManager->CreateParticleGroup(
 		"DirectXGame.LightningImpact", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<LightningImpactParticleBehavior>(), 256);
-	particleManager->CreateParticleGroup(
+	handles_.playerDeathSpark = particleManager->CreateParticleGroup(
 		"DirectXGame.PlayerDeathSpark", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<SparkParticleBehavior>(Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }), 256);
-	particleManager->CreateParticleGroup(
+	handles_.deathSmoke = particleManager->CreateParticleGroup(
 		"DirectXGame.DeathSmoke", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<SmokeParticleBehavior>(), 256);
-	particleManager->CreateParticleGroup(
+	handles_.confetti = particleManager->CreateParticleGroup(
 		"DirectXGame.Confetti", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<ConfettiParticleBehavior>(), 384);
-	particleManager->CreateParticleGroup(
+	handles_.normalTrail = particleManager->CreateParticleGroup(
 		"DirectXGame.NormalTrail", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<TrailParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.16f, 0.9f }), 320);
-	particleManager->CreateParticleGroup(
+	handles_.droneTrail = particleManager->CreateParticleGroup(
 		"DirectXGame.DroneTrail", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<TrailParticleBehavior>(Vector4{ 0.3f, 0.84f, 1.0f, 0.9f }), 256);
@@ -58,7 +58,7 @@ void GameParticleEffects::Initialize()
 	orbitTrailSettings.lifetime = 0.22f;
 	orbitTrailSettings.scaleMin = 0.26f;
 	orbitTrailSettings.scaleMax = 0.42f;
-	particleManager->CreateParticleGroup(
+	handles_.orbitTrail = particleManager->CreateParticleGroup(
 		"DirectXGame.OrbitTrail", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<TrailParticleBehavior>(
@@ -69,7 +69,7 @@ void GameParticleEffects::Initialize()
 	suicideTrailSettings.shrinkRate = 0.94f;
 	suicideTrailSettings.fadeInRatio = 0.04f;
 	suicideTrailSettings.fadeOutPower = 2.2f;
-	particleManager->CreateParticleGroup(
+	handles_.suicideEnemyTrail = particleManager->CreateParticleGroup(
 		"DirectXGame.SuicideEnemyTrail", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<TrailParticleBehavior>(
@@ -186,36 +186,36 @@ void GameParticleEffects::ApplyTuning() const
 	Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance();
 	particleManager->SetBehavior(
-		"DirectXGame.Ripple",
+		handles_.ripple,
 		std::make_unique<RippleParticleBehavior>(
 			Vector4{ 0.45f, 0.75f, 1.0f, 1.0f }, rippleSettings));
 	particleManager->SetBehavior(
-		"DirectXGame.Spark",
+		handles_.spark,
 		std::make_unique<SparkParticleBehavior>(
 			Vector4{ 1.0f, 0.35f, 0.25f, 1.0f }, sparkSettings));
 	particleManager->SetBehavior(
-		"DirectXGame.EnemyHitSpark",
+		handles_.enemyHitSpark,
 		std::make_unique<SparkParticleBehavior>(
 			Vector4{ 1.0f, 0.62f, 0.18f, 1.0f }, sparkSettings));
 	particleManager->SetBehavior(
-		"DirectXGame.ExpSpark",
+		handles_.expSpark,
 		std::make_unique<SparkParticleBehavior>(
 			Vector4{ 0.35f, 1.0f, 0.58f, 1.0f }, sparkSettings));
 	particleManager->SetBehavior(
-		"DirectXGame.PlayerDeathSpark",
+		handles_.playerDeathSpark,
 		std::make_unique<SparkParticleBehavior>(
 			Vector4{ 1.0f, 0.18f, 0.12f, 1.0f }, sparkSettings));
 	particleManager->SetBehavior(
-		"DirectXGame.DeathSmoke",
+		handles_.deathSmoke,
 		std::make_unique<SmokeParticleBehavior>(
 			Vector4{ 0.45f, 0.42f, 0.38f, 0.85f }, smokeSettings));
 	particleManager->SetBehavior(
-		"DirectXGame.Confetti",
+		handles_.confetti,
 		std::make_unique<ConfettiParticleBehavior>(confettiSettings));
 }
 
 #ifdef _DEBUG
-void GameParticleEffects::DrawDebugUi(const Vector3& previewPosition)
+void GameParticleEffects::DrawDebugUI(const Vector3& previewPosition)
 {
 	ImGui::SliderInt("Damage Spark Count", &tuning_.playerDamageSparkCount, 0, 100);
 	ImGui::SliderInt("Damage Ripple Count", &tuning_.playerDamageRippleCount, 0, 12);
@@ -252,28 +252,28 @@ void GameParticleEffects::DrawDebugUi(const Vector3& previewPosition)
 		Engine::Particle::ParticleManager::GetInstance();
 	if (ImGui::Button("Preview Damage")) {
 		particleManager->Emit(
-			"DirectXGame.Spark", previewPosition,
+			handles_.spark, previewPosition,
 			static_cast<uint32_t>((std::max)(0, tuning_.playerDamageSparkCount)));
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Preview Enemy Death")) {
 		particleManager->Emit(
-			"DirectXGame.EnemyHitSpark", previewPosition,
+			handles_.enemyHitSpark, previewPosition,
 			static_cast<uint32_t>((std::max)(0, tuning_.enemyDeathSparkCount)));
 		particleManager->Emit(
-			"DirectXGame.DeathSmoke", previewPosition,
+			handles_.deathSmoke, previewPosition,
 			static_cast<uint32_t>((std::max)(0, tuning_.enemyDeathSmokeCount)));
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("Preview Player Death")) {
 		particleManager->Emit(
-			"DirectXGame.PlayerDeathSpark", previewPosition,
+			handles_.playerDeathSpark, previewPosition,
 			static_cast<uint32_t>((std::max)(0, tuning_.playerDeathSparkCount)));
 		particleManager->Emit(
-			"DirectXGame.DeathSmoke", previewPosition,
+			handles_.deathSmoke, previewPosition,
 			static_cast<uint32_t>((std::max)(0, tuning_.playerDeathSmokeCount)));
 		particleManager->Emit(
-			"DirectXGame.Ripple", previewPosition,
+			handles_.ripple, previewPosition,
 			static_cast<uint32_t>((std::max)(0, tuning_.playerDeathRippleCount)));
 	}
 }

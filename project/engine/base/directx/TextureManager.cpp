@@ -92,7 +92,7 @@ void TextureManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 {
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
-	textureDatas.reserve(Engine::Base::DirectXCommon::kMaxSRVCount);
+	textureDatas.reserve(srvManager_->GetMaxCount());
 
 }
 
@@ -216,8 +216,18 @@ void TextureManager::UploadTextureResource(TexturData& textureData, const Direct
 {
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource =
 		RecordTextureUpload(textureData, mipImages);
-	dxCommon_->CommandKick();
-	CreateTextureSrv(textureData);
+	dxCommon_->DeferResourceRelease(std::move(intermediateResource));
+	try {
+		CreateTextureSrv(textureData);
+	} catch (...) {
+		if (textureData.srvIndex != UINT32_MAX) {
+			srvManager_->Free(textureData.srvIndex);
+			textureData.srvIndex = UINT32_MAX;
+		}
+		// The recorded copy still references the destination until this frame completes.
+		dxCommon_->DeferResourceRelease(std::move(textureData.resource));
+		throw;
+	}
 }
 
 Microsoft::WRL::ComPtr<ID3D12Resource> TextureManager::RecordTextureUpload(

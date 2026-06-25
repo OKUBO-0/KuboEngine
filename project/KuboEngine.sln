@@ -14,6 +14,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DirectXTex", "externals\Dir
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "imgui", "externals\imgui\imgui.vcxproj", "{19CDD5D0-F891-4650-88F7-7C868EEFFEA5}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboEngineCpuTests", "tests\KuboEngineCpuTests.vcxproj", "{B7F6E37C-EC8B-4A6B-A529-20B955AA93A0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -32,6 +34,10 @@ Global
 		{19CDD5D0-F891-4650-88F7-7C868EEFFEA5}.Debug|x64.Build.0 = Debug|x64
 		{19CDD5D0-F891-4650-88F7-7C868EEFFEA5}.Release|x64.ActiveCfg = Release|x64
 		{19CDD5D0-F891-4650-88F7-7C868EEFFEA5}.Release|x64.Build.0 = Release|x64
+		{B7F6E37C-EC8B-4A6B-A529-20B955AA93A0}.Debug|x64.ActiveCfg = Debug|x64
+		{B7F6E37C-EC8B-4A6B-A529-20B955AA93A0}.Debug|x64.Build.0 = Debug|x64
+		{B7F6E37C-EC8B-4A6B-A529-20B955AA93A0}.Release|x64.ActiveCfg = Release|x64
+		{B7F6E37C-EC8B-4A6B-A529-20B955AA93A0}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

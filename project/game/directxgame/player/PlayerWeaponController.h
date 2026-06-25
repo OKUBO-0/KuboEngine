@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector3.h"
+#include "game/directxgame/player/WeaponType.h"
 #include "game/directxgame/player/weapons/Drone.h"
 #include "game/directxgame/player/weapons/NormalBullet.h"
 #include "game/directxgame/player/weapons/OrbitBullet.h"
@@ -42,6 +43,7 @@ public:
 	void UpgradeDrone();
 	void AddLightning();
 	void UpgradeLightning();
+	void UpgradeWeapon(WeaponType type, Player* player);
 	void MaxAllWeapons(Player* player);
 
 	const std::vector<std::unique_ptr<NormalBullet>>&
@@ -103,6 +105,7 @@ public:
 		return hasLightning_ &&
 			lightningLevel_ >= kLightningMaxLevel;
 	}
+	bool IsWeaponMaxLevel(WeaponType type) const;
 	int32_t GetNormalBulletDamage(int32_t attackPower) const
 	{
 		return attackPower + normalBulletDamageBonus_;
@@ -128,6 +131,9 @@ public:
 
 private:
 	void UpdateNormalBullets(float deltaTime, Player* player);
+	NormalBullet& AcquireNormalBullet();
+	void RecycleNormalBullet(size_t index);
+	void RecycleInactiveNormalBullets();
 	void UpdateOrbitBullets(float deltaTime, Player* player);
 	void UpdateDrone(
 		float deltaTime,
@@ -143,6 +149,7 @@ private:
 		float fallback) const;
 
 	std::vector<std::unique_ptr<NormalBullet>> normalBullets_;
+	std::vector<std::unique_ptr<NormalBullet>> normalBulletPool_;
 	bool hasNormalBullets_ = true;
 	float normalBulletInterval_ = 0.85f;
 	float normalBulletTimer_ = 0.0f;

@@ -1,7 +1,6 @@
 #include "game/directxgame/enemy/EnemyView.h"
 
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include <algorithm>
 #include <cmath>
@@ -19,8 +18,6 @@ namespace DirectXGame {
 
 void EnemyView::Initialize()
 {
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(
-		kEnvironmentTexturePath);
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(
 		Engine::Graphics3D::Object3DCommon::GetInstance());

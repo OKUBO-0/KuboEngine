@@ -1,11 +1,11 @@
 #include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/DirectXGameResourcePaths.h"
+#include "game/directxgame/core/ResourcePaths.h"
 #include "Audio.h"
 #include <Windows.h>
 #include <algorithm>
-#include <cassert>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 
@@ -25,15 +25,15 @@ std::unordered_map<std::string, SoundHandle>& GetPathToHandle()
 	return cache;
 }
 
-std::unordered_map<SoundHandle, CachedSoundEntry>& GetHandleToSound()
+std::unordered_map<uint32_t, CachedSoundEntry>& GetHandleToSound()
 {
-	static std::unordered_map<SoundHandle, CachedSoundEntry> cache;
+	static std::unordered_map<uint32_t, CachedSoundEntry> cache;
 	return cache;
 }
 
-SoundHandle& GetNextHandle()
+uint32_t& GetNextHandle()
 {
-	static SoundHandle nextHandle = 1;
+	static uint32_t nextHandle = 1;
 	return nextHandle;
 }
 
@@ -69,6 +69,16 @@ void LogAudioLoadMessage(const std::string& relativePath, const std::string& ful
 	OutputDebugStringA(message.str().c_str());
 }
 
+CachedSoundEntry* FindSoundEntry(SoundHandle handle)
+{
+	if (!handle) {
+		return nullptr;
+	}
+	auto& handleToSound = GetHandleToSound();
+	const auto it = handleToSound.find(handle.value);
+	return it == handleToSound.end() ? nullptr : &it->second;
+}
+
 }
 
 SoundHandle GameAudioCache::LoadWave(const std::string& relativePath)
@@ -79,7 +89,6 @@ SoundHandle GameAudioCache::LoadWave(const std::string& relativePath)
 		return pathToHandle.at(fullPath);
 	}
 
-	SoundHandle handle = GetNextHandle()++;
 	CachedSoundEntry entry{};
 	entry.fullPath = fullPath;
 	if (!std::filesystem::exists(fullPath)) {
@@ -88,54 +97,73 @@ SoundHandle GameAudioCache::LoadWave(const std::string& relativePath)
 	entry.soundData = Engine::AudioSystem::Audio::GetInstance()->SoundLoadWave(fullPath.c_str());
 	if (entry.soundData.buffer.empty() || entry.soundData.bufferSize == 0) {
 		LogAudioLoadMessage(relativePath, fullPath, "Audio::SoundLoadWave returned empty sound data");
-		assert(false && "GameAudioCache::LoadWave failed; see OutputDebugString for path details");
+		throw std::runtime_error(
+			"GameAudioCache::LoadWave failed: empty sound data: " +
+			fullPath);
 	}
+	const SoundHandle handle{ GetNextHandle()++ };
 	pathToHandle.emplace(fullPath, handle);
-	GetHandleToSound().emplace(handle, std::move(entry));
+	GetHandleToSound().emplace(handle.value, std::move(entry));
 	return handle;
 }
 
 Engine::AudioSystem::SoundData* GameAudioCache::GetSoundData(SoundHandle handle)
 {
-	auto& handleToSound = GetHandleToSound();
-	assert(handleToSound.contains(handle));
-	return &handleToSound.at(handle).soundData;
+	CachedSoundEntry* entry = FindSoundEntry(handle);
+	return entry ? &entry->soundData : nullptr;
 }
 
 void GameAudioCache::Play(SoundHandle handle)
 {
-	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(*GetSoundData(handle));
-	Engine::AudioSystem::Audio::GetInstance()->SetVolume(GetSoundData(handle),
-		GetEffectiveVolume(GetHandleToSound().at(handle).baseVolume));
+	CachedSoundEntry* entry = FindSoundEntry(handle);
+	if (!entry) {
+		return;
+	}
+	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(entry->soundData);
+	Engine::AudioSystem::Audio::GetInstance()->SetVolume(&entry->soundData,
+		GetEffectiveVolume(entry->baseVolume));
 }
 
 void GameAudioCache::PlayLoop(SoundHandle handle)
 {
-	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(*GetSoundData(handle), true);
-	Engine::AudioSystem::Audio::GetInstance()->SetVolume(GetSoundData(handle),
-		GetEffectiveVolume(GetHandleToSound().at(handle).baseVolume));
+	CachedSoundEntry* entry = FindSoundEntry(handle);
+	if (!entry) {
+		return;
+	}
+	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(entry->soundData, true);
+	Engine::AudioSystem::Audio::GetInstance()->SetVolume(&entry->soundData,
+		GetEffectiveVolume(entry->baseVolume));
 }
 
 void GameAudioCache::Stop(SoundHandle handle)
 {
-	Engine::AudioSystem::Audio::GetInstance()->StopSpecificAudio(GetSoundData(handle));
+	if (Engine::AudioSystem::SoundData* soundData = GetSoundData(handle)) {
+		Engine::AudioSystem::Audio::GetInstance()->StopSpecificAudio(soundData);
+	}
 }
 
 void GameAudioCache::Pause(SoundHandle handle)
 {
-	Engine::AudioSystem::Audio::GetInstance()->PauseSpecificAudio(GetSoundData(handle));
+	if (Engine::AudioSystem::SoundData* soundData = GetSoundData(handle)) {
+		Engine::AudioSystem::Audio::GetInstance()->PauseSpecificAudio(soundData);
+	}
 }
 
 void GameAudioCache::Resume(SoundHandle handle)
 {
-	Engine::AudioSystem::Audio::GetInstance()->ResumeSpecificAudio(GetSoundData(handle));
+	if (Engine::AudioSystem::SoundData* soundData = GetSoundData(handle)) {
+		Engine::AudioSystem::Audio::GetInstance()->ResumeSpecificAudio(soundData);
+	}
 }
 
 void GameAudioCache::SetVolume(SoundHandle handle, float volume)
 {
-	auto& entry = GetHandleToSound().at(handle);
-	entry.baseVolume = ClampVolume(volume);
-	Engine::AudioSystem::Audio::GetInstance()->SetVolume(&entry.soundData, GetEffectiveVolume(entry.baseVolume));
+	CachedSoundEntry* entry = FindSoundEntry(handle);
+	if (!entry) {
+		return;
+	}
+	entry->baseVolume = ClampVolume(volume);
+	Engine::AudioSystem::Audio::GetInstance()->SetVolume(&entry->soundData, GetEffectiveVolume(entry->baseVolume));
 }
 
 void GameAudioCache::SetVolumeFromTuning(SoundHandle handle, std::string_view key, float fallbackVolume)
@@ -174,7 +202,9 @@ float GameAudioCache::GetMasterVolume()
 
 bool GameAudioCache::IsPlaying(SoundHandle handle)
 {
-	return Engine::AudioSystem::Audio::GetInstance()->IsSoundPlaying(GetSoundData(handle));
+	Engine::AudioSystem::SoundData* soundData = GetSoundData(handle);
+	return soundData &&
+		Engine::AudioSystem::Audio::GetInstance()->IsSoundPlaying(soundData);
 }
 
 }

@@ -8,6 +8,7 @@
 #include "SrvManager.h"
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstring>
 
 namespace {
@@ -134,8 +135,14 @@ void Object3DCommon::Finalize()
 	srvManager_ = nullptr;
 }
 
-void Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
+bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 {
+	shadowPassActive_ = false;
+	shadowPassStats_ = {};
+	if (!shadowEnabled_ || sceneLightData_.enable == 0) {
+		shadowMapData_.settings.x = 0.0f;
+		return false;
+	}
 	const Vector3 direction = MyMath::Normalize(sceneLightData_.direction);
 	const Vector3 eye = focusPosition - direction * 95.0f;
 	const Matrix4x4 view = MakeLookAtMatrix(eye, focusPosition);
@@ -178,6 +185,40 @@ void Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
 		1, shadowAllocation.gpuAddress);
 	shadowPassActive_ = true;
+	return true;
+}
+
+bool Object3DCommon::IsInsideShadowFrustum(
+	const Vector3& worldCenter,
+	float boundingRadius) const
+{
+	if (!shadowPassActive_) {
+		return false;
+	}
+	const float radius = std::isfinite(boundingRadius)
+		? (std::max)(0.0f, boundingRadius)
+		: 0.0f;
+	const Vector3 clipCenter =
+		MyMath::Transform(worldCenter, shadowMapData_.lightViewProjection);
+	const float horizontalMargin = radius / (std::max)(shadowArea_, 1.0f);
+	constexpr float kShadowDepthRange = 210.0f - 0.1f;
+	const float depthMargin = radius / kShadowDepthRange;
+	return clipCenter.x >= -1.0f - horizontalMargin &&
+		clipCenter.x <= 1.0f + horizontalMargin &&
+		clipCenter.y >= -1.0f - horizontalMargin &&
+		clipCenter.y <= 1.0f + horizontalMargin &&
+		clipCenter.z >= -depthMargin &&
+		clipCenter.z <= 1.0f + depthMargin;
+}
+
+void Object3DCommon::RecordShadowCandidate(bool submitted)
+{
+	++shadowPassStats_.candidateCount;
+	if (submitted) {
+		++shadowPassStats_.submittedCount;
+	} else {
+		++shadowPassStats_.culledCount;
+	}
 }
 
 void Object3DCommon::EndShadowPass()

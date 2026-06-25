@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <FxCompile Include="Resources\Shaders\filter\convolution\BoxFilter.PS.hlsl">
@@ -90,10 +90,19 @@
     <ClCompile Include="engine\base\directx\DirectXCommon.cpp">
       <Filter>engine\base\directx</Filter>
     </ClCompile>
+    <ClCompile Include="engine\base\directx\ShaderCompiler.cpp">
+      <Filter>engine\base\directx</Filter>
+    </ClCompile>
     <ClCompile Include="engine\base\core\Framework.cpp">
       <Filter>engine\base\core</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\render\GraphicsPipeline.cpp">
+      <Filter>engine\base\render</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\base\render\PipelineStateBuilder.cpp">
+      <Filter>engine\base\render</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\base\render\PipelineRootSignatureFactory.cpp">
       <Filter>engine\base\render</Filter>
     </ClCompile>
     <ClCompile Include="engine\base\render\ImGuiManager.cpp">
@@ -132,6 +141,12 @@
     <ClCompile Include="engine\3d\model\Model.cpp">
       <Filter>engine\3d\model</Filter>
     </ClCompile>
+    <ClCompile Include="engine\3d\model\ModelAssetResolver.cpp">
+      <Filter>engine\3d\model</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\3d\model\ModelMeshConverter.cpp">
+      <Filter>engine\3d\model</Filter>
+    </ClCompile>
     <ClCompile Include="engine\3d\model\ModelCommon.cpp">
       <Filter>engine\3d\model</Filter>
     </ClCompile>
@@ -144,23 +159,8 @@
     <ClCompile Include="engine\2d\Sprite.cpp">
       <Filter>engine\2d</Filter>
     </ClCompile>
-    <ClCompile Include="engine\scene\screens\TitleScene.cpp">
-      <Filter>engine\scene\screens</Filter>
-    </ClCompile>
     <ClCompile Include="engine\scene\core\SceneManager.cpp">
       <Filter>engine\scene\core</Filter>
-    </ClCompile>
-    <ClCompile Include="engine\scene\core\SceneFactory.cpp">
-      <Filter>engine\scene\core</Filter>
-    </ClCompile>
-    <ClCompile Include="engine\scene\game\GamePlayScene.cpp">
-      <Filter>engine\scene\game</Filter>
-    </ClCompile>
-    <ClCompile Include="engine\scene\screens\GameOverScene.cpp">
-      <Filter>engine\scene\screens</Filter>
-    </ClCompile>
-    <ClCompile Include="engine\scene\screens\GameClearScene.cpp">
-      <Filter>engine\scene\screens</Filter>
     </ClCompile>
     <ClCompile Include="engine\particle\behaviors\MagicCircleBehavior.cpp">
       <Filter>engine\particle\behaviors</Filter>
@@ -213,64 +213,61 @@
     <ClCompile Include="engine\scene\core\BaseScene.cpp">
       <Filter>engine\scene\core</Filter>
     </ClCompile>
-    <ClCompile Include="engine\scene\states\PlayerControlState.cpp">
-      <Filter>engine\scene\states</Filter>
-    </ClCompile>
-    <ClCompile Include="game\directxgame\core\DirectXGameSessionContext.cpp">
+    <ClCompile Include="game\directxgame\core\GameSession.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\DirectXGameSceneFactory.cpp">
+    <ClCompile Include="game\directxgame\core\GameSceneFactory.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameAudioDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\AudioDebugPanel.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\core\GameAudioTuning.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayStatisticsDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\StatisticsDebugPanel.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayRuntimeDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\DebugRuntime.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayPlayerDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\PlayerDebugPanel.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayInputDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\DebugInput.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\core\LevelUpChoiceService.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayDebugEditorShell.cpp">
+    <ClCompile Include="game\directxgame\core\DebugEditorShell.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayDebugDraw.cpp">
+    <ClCompile Include="game\directxgame\core\DebugDraw.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayDebugContext.cpp">
+    <ClCompile Include="game\directxgame\core\DebugContext.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayDebugUiController.cpp">
+    <ClCompile Include="game\directxgame\core\DebugUI.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\TitleSceneDebugUiController.cpp">
+    <ClCompile Include="game\directxgame\core\TitleSceneDebugUIController.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\ResultSceneDebugUiController.cpp">
+    <ClCompile Include="game\directxgame\core\ResultSceneDebugUIController.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\core\GameplayFlowController.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayRenderingDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\RenderingDebugPanel.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplayVisualDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\VisualDebugPanel.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\GameplaySceneDebugPanel.cpp">
+    <ClCompile Include="game\directxgame\core\DebugScene.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\core\PlayerGizmoDebugPanel.cpp">
@@ -291,7 +288,7 @@
     <ClCompile Include="game\directxgame\effects\CombatEffectsPresentation.cpp">
       <Filter>game\directxgame\effects</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\effects\DirectXGameParticleBehaviors.cpp">
+    <ClCompile Include="game\directxgame\effects\ParticleBehaviors.cpp">
       <Filter>game\directxgame\effects</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\effects\GameParticleEffects.cpp">
@@ -360,7 +357,7 @@
     <ClCompile Include="game\directxgame\ui\hud\Timer.cpp">
       <Filter>game\directxgame\ui\hud</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\core\DirectXGameResourceProbe.cpp">
+    <ClCompile Include="game\directxgame\core\ResourceProbe.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\enemy\Enemy.cpp">
@@ -423,13 +420,13 @@
     <ClCompile Include="game\directxgame\player\weapons\OrbitBullet.cpp">
       <Filter>game\directxgame\player\weapons</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\scene\DirectXGameResultScene.cpp">
+    <ClCompile Include="game\directxgame\scene\ResultScene.cpp">
       <Filter>game\directxgame\scene</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\scene\DirectXGameScene.cpp">
+    <ClCompile Include="game\directxgame\scene\PlayScene.cpp">
       <Filter>game\directxgame\scene</Filter>
     </ClCompile>
-    <ClCompile Include="game\directxgame\scene\DirectXGameTitleScene.cpp">
+    <ClCompile Include="game\directxgame\scene\GameTitleScene.cpp">
       <Filter>game\directxgame\scene</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\world\GridPlane.cpp">
@@ -446,6 +443,9 @@
     <ClInclude Include="engine\base\directx\DirectXCommon.h">
       <Filter>engine\base\directx</Filter>
     </ClInclude>
+    <ClInclude Include="engine\base\directx\ShaderCompiler.h">
+      <Filter>engine\base\directx</Filter>
+    </ClInclude>
     <ClInclude Include="engine\base\directx\HResult.h">
       <Filter>engine\base\directx</Filter>
     </ClInclude>
@@ -453,6 +453,12 @@
       <Filter>engine\base\core</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\render\GraphicsPipeline.h">
+      <Filter>engine\base\render</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\render\PipelineStateBuilder.h">
+      <Filter>engine\base\render</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\render\PipelineRootSignatureFactory.h">
       <Filter>engine\base\render</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\render\ImGuiManager.h">
@@ -497,16 +503,7 @@
     <ClInclude Include="engine\camera\CameraManager.h">
       <Filter>engine\camera</Filter>
     </ClInclude>
-    <ClInclude Include="engine\scene\screens\GameClearScene.h">
-      <Filter>engine\scene\screens</Filter>
-    </ClInclude>
-    <ClInclude Include="engine\scene\screens\GameOverScene.h">
-      <Filter>engine\scene\screens</Filter>
-    </ClInclude>
     <ClInclude Include="engine\scene\game\Game.h">
-      <Filter>engine\scene\game</Filter>
-    </ClInclude>
-    <ClInclude Include="engine\scene\game\GamePlayScene.h">
       <Filter>engine\scene\game</Filter>
     </ClInclude>
     <ClInclude Include="engine\input\Input.h">
@@ -531,6 +528,12 @@
       <Filter>engine\math\types</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\model\Model.h">
+      <Filter>engine\3d\model</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\3d\model\ModelAssetResolver.h">
+      <Filter>engine\3d\model</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\3d\model\ModelMeshConverter.h">
       <Filter>engine\3d\model</Filter>
     </ClInclude>
     <ClInclude Include="engine\3d\model\ModelCommon.h">
@@ -560,9 +563,6 @@
     <ClInclude Include="engine\math\data\RenderingData.h">
       <Filter>engine\math\data</Filter>
     </ClInclude>
-    <ClInclude Include="engine\scene\core\SceneFactory.h">
-      <Filter>engine\scene\core</Filter>
-    </ClInclude>
     <ClInclude Include="engine\skybox\SkyBox.h">
       <Filter>engine\skybox</Filter>
     </ClInclude>
@@ -587,70 +587,64 @@
     <ClInclude Include="engine\scene\core\SceneManager.h">
       <Filter>engine\scene\core</Filter>
     </ClInclude>
-    <ClInclude Include="engine\scene\screens\TitleScene.h">
-      <Filter>engine\scene\screens</Filter>
-    </ClInclude>
-    <ClInclude Include="engine\scene\states\PlayerControlState.h">
-      <Filter>engine\scene\states</Filter>
-    </ClInclude>
     <ClInclude Include="engine\2d\SpriteCommon.h">
       <Filter>engine\2d</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\DirectXGameSceneId.h">
+    <ClInclude Include="game\directxgame\core\SceneId.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\DirectXGameSceneFactory.h">
+    <ClInclude Include="game\directxgame\core\GameSceneFactory.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameAudioDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\AudioDebugPanel.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\GameAudioTuning.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayStatisticsDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\StatisticsDebugPanel.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayRuntimeDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\DebugRuntime.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayPlayerDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\PlayerDebugPanel.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayInputDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\DebugInput.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\LevelUpChoiceService.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayDebugEditorShell.h">
+    <ClInclude Include="game\directxgame\core\DebugEditorShell.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayDebugDraw.h">
+    <ClInclude Include="game\directxgame\core\DebugDraw.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayDebugContext.h">
+    <ClInclude Include="game\directxgame\core\DebugContext.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayDebugUiController.h">
+    <ClInclude Include="game\directxgame\core\DebugUI.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\TitleSceneDebugUiController.h">
+    <ClInclude Include="game\directxgame\core\TitleSceneDebugUIController.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\ResultSceneDebugUiController.h">
+    <ClInclude Include="game\directxgame\core\ResultSceneDebugUIController.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\GameplayFlowController.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayRenderingDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\RenderingDebugPanel.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplayVisualDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\VisualDebugPanel.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\GameplaySceneDebugPanel.h">
+    <ClInclude Include="game\directxgame\core\DebugScene.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\PlayerGizmoDebugPanel.h">
@@ -662,7 +656,7 @@
     <ClInclude Include="game\directxgame\core\CsvReader.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\DirectXGameDataPaths.h">
+    <ClInclude Include="game\directxgame\core\DataPaths.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\effects\CurtainTransition.h">
@@ -674,7 +668,7 @@
     <ClInclude Include="game\directxgame\effects\CombatEffectsPresentation.h">
       <Filter>game\directxgame\effects</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\effects\DirectXGameParticleBehaviors.h">
+    <ClInclude Include="game\directxgame\effects\ParticleBehaviors.h">
       <Filter>game\directxgame\effects</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\effects\GameParticleEffects.h">
@@ -749,13 +743,16 @@
     <ClInclude Include="game\directxgame\core\ScreenUtil.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\DirectXGameResourcePaths.h">
+    <ClInclude Include="game\directxgame\core\ResourcePaths.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\DirectXGameResourceProbe.h">
+    <ClInclude Include="game\directxgame\core\ResourceProbe.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\core\DirectXGameSessionContext.h">
+    <ClInclude Include="game\directxgame\core\GameSession.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\core\GameplayRules.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\enemy\Enemy.h">
@@ -806,6 +803,12 @@
     <ClInclude Include="game\directxgame\player\PlayerProgression.h">
       <Filter>game\directxgame\player</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\player\WeaponType.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\player\WeaponUpgradeData.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\player\PlayerWeaponController.h">
       <Filter>game\directxgame\player</Filter>
     </ClInclude>
@@ -818,13 +821,13 @@
     <ClInclude Include="game\directxgame\player\weapons\OrbitBullet.h">
       <Filter>game\directxgame\player\weapons</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\scene\DirectXGameResultScene.h">
+    <ClInclude Include="game\directxgame\scene\ResultScene.h">
       <Filter>game\directxgame\scene</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\scene\DirectXGameScene.h">
+    <ClInclude Include="game\directxgame\scene\PlayScene.h">
       <Filter>game\directxgame\scene</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\scene\DirectXGameTitleScene.h">
+    <ClInclude Include="game\directxgame\scene\GameTitleScene.h">
       <Filter>game\directxgame\scene</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\world\GridPlane.h">

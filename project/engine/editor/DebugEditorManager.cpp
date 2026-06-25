@@ -80,10 +80,39 @@ void DrawMenuItems(const DebugEditorMenuItem* items, size_t count)
 {
 	for (size_t index = 0; index < count; ++index) {
 		if (items[index].open) {
-			if (ImGui::MenuItem(items[index].label, nullptr, items[index].open)) {
+			std::string label;
+			if (items[index].icon && items[index].icon[0] != '\0') {
+				label += items[index].icon;
+				label += ' ';
+			}
+			label += items[index].label ? items[index].label : "";
+			if (ImGui::MenuItem(label.c_str(), nullptr, items[index].open)) {
 				SaveWindowOpen(items[index].label, *items[index].open);
 			}
 		}
+	}
+}
+
+void DrawPlaybackToolbar(const DebugEditorMenuConfig& config)
+{
+	if (config.playbackState == DebugPlaybackState::Unavailable) {
+		return;
+	}
+	ImGui::Separator();
+
+	const bool frozen = config.playbackState == DebugPlaybackState::Paused;
+	const ImVec4 playColor = frozen
+		? ImVec4{ 0.15f, 0.62f, 0.26f, 1.0f }
+		: ImVec4{ 0.72f, 0.44f, 0.10f, 1.0f };
+	ImGui::PushStyleColor(ImGuiCol_Button, playColor);
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{ playColor.x + 0.10f, playColor.y + 0.10f, playColor.z + 0.10f, 1.0f });
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{ playColor.x * 0.75f, playColor.y * 0.75f, playColor.z * 0.75f, 1.0f });
+	if (ImGui::Button(frozen ? ICON_FA_PLAY : ICON_FA_PAUSE) && config.onTogglePlayback) {
+		config.onTogglePlayback();
+	}
+	ImGui::PopStyleColor(3);
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip(frozen ? "Resume Gameplay" : "Freeze Gameplay");
 	}
 }
 
@@ -166,8 +195,42 @@ void DebugEditorManager::BuildDefaultDockLayout(unsigned int dockspaceId)
 	ImGui::DockBuilderFinish(dockspaceId);
 }
 
+void DebugEditorManager::ApplyDarkEditorStyle()
+{
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.WindowRounding = 4.0f;
+	style.FrameRounding = 3.0f;
+	style.PopupRounding = 4.0f;
+	style.ScrollbarRounding = 4.0f;
+	style.GrabRounding = 3.0f;
+	style.WindowBorderSize = 1.0f;
+	style.FrameBorderSize = 1.0f;
+	style.Colors[ImGuiCol_Text] = ImVec4{ 0.94f, 0.94f, 0.94f, 1.0f };
+	style.Colors[ImGuiCol_TextDisabled] = ImVec4{ 0.45f, 0.45f, 0.45f, 1.0f };
+	style.Colors[ImGuiCol_WindowBg] = ImVec4{ 0.02f, 0.02f, 0.025f, 0.98f };
+	style.Colors[ImGuiCol_ChildBg] = ImVec4{ 0.03f, 0.03f, 0.035f, 1.0f };
+	style.Colors[ImGuiCol_PopupBg] = ImVec4{ 0.015f, 0.015f, 0.02f, 0.98f };
+	style.Colors[ImGuiCol_Border] = ImVec4{ 0.20f, 0.20f, 0.22f, 1.0f };
+	style.Colors[ImGuiCol_FrameBg] = ImVec4{ 0.08f, 0.08f, 0.09f, 1.0f };
+	style.Colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.16f, 0.16f, 0.18f, 1.0f };
+	style.Colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.22f, 0.22f, 0.25f, 1.0f };
+	style.Colors[ImGuiCol_TitleBg] = ImVec4{ 0.02f, 0.02f, 0.025f, 1.0f };
+	style.Colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.04f, 0.04f, 0.05f, 1.0f };
+	style.Colors[ImGuiCol_MenuBarBg] = ImVec4{ 0.00f, 0.00f, 0.00f, 1.0f };
+	style.Colors[ImGuiCol_Button] = ImVec4{ 0.10f, 0.10f, 0.12f, 1.0f };
+	style.Colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.20f, 0.20f, 0.23f, 1.0f };
+	style.Colors[ImGuiCol_ButtonActive] = ImVec4{ 0.28f, 0.28f, 0.32f, 1.0f };
+	style.Colors[ImGuiCol_Header] = ImVec4{ 0.12f, 0.12f, 0.14f, 1.0f };
+	style.Colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.22f, 0.22f, 0.26f, 1.0f };
+	style.Colors[ImGuiCol_HeaderActive] = ImVec4{ 0.30f, 0.30f, 0.34f, 1.0f };
+	style.Colors[ImGuiCol_Tab] = ImVec4{ 0.06f, 0.06f, 0.07f, 1.0f };
+	style.Colors[ImGuiCol_TabHovered] = ImVec4{ 0.18f, 0.18f, 0.22f, 1.0f };
+	style.Colors[ImGuiCol_TabActive] = ImVec4{ 0.12f, 0.12f, 0.15f, 1.0f };
+}
+
 void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 {
+	ApplyDarkEditorStyle();
 	ApplyPersistedWindowItems(config.windowItems, config.windowItemCount);
 	ApplyPersistedWindowItems(config.editItems, config.editItemCount);
 	ApplyPersistedWindowItems(config.objectItems, config.objectItemCount);
@@ -175,54 +238,57 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 		return;
 	}
 
-	if (ImGui::BeginMenu(ICON_FA_FILE " ファイル")) {
-		if (config.saveLabel && config.onSave && ImGui::MenuItem(config.saveLabel)) {
+	if (ImGui::BeginMenu(ICON_FA_FOLDER_OPEN " File")) {
+		if (config.saveLabel && config.onSave && ImGui::MenuItem((std::string(ICON_FA_SAVE " ") + config.saveLabel).c_str())) {
 			config.onSave();
 		}
-		if (config.restoreLabel && config.onRestore && ImGui::MenuItem(config.restoreLabel)) {
+		if (config.restoreLabel && config.onRestore && ImGui::MenuItem((std::string(ICON_FA_FOLDER_OPEN " ") + config.restoreLabel).c_str())) {
 			config.onRestore();
 		}
-		if (ImGui::MenuItem("疑似ホットリロード")) {
+		if (ImGui::MenuItem(ICON_FA_SYNC " Hot Reload")) {
 			RequestPseudoHotReload();
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_EDIT " 編集")) {
+	if (ImGui::BeginMenu(ICON_FA_TOOLS " Tools")) {
 		DrawMenuItems(config.editItems, config.editItemCount);
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_EYE " 表示")) {
-		if (ImGui::BeginMenu("ウィンドウ")) {
+	if (ImGui::BeginMenu(ICON_FA_EYE " View")) {
+		if (ImGui::BeginMenu(ICON_FA_WINDOW_RESTORE " Windows")) {
 			DrawMenuItems(config.windowItems, config.windowItemCount);
 			ImGui::EndMenu();
 		}
 		if (config.windowSwitcher) {
-			ImGui::MenuItem("ウィンドウ表示切り替え", nullptr, config.windowSwitcher);
+			ImGui::MenuItem(ICON_FA_LIST " Window Switcher", nullptr, config.windowSwitcher);
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_CUBE " オブジェクト")) {
+	if (ImGui::BeginMenu(ICON_FA_CUBE " Object")) {
 		DrawMenuItems(config.objectItems, config.objectItemCount);
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_QUESTION_CIRCLE " ヘルプ")) {
+	if (ImGui::BeginMenu(ICON_FA_GAMEPAD " Game")) {
+		if (config.onGoGame && ImGui::MenuItem(ICON_FA_PLAY " Game")) {
+			config.onGoGame();
+		}
+		if (config.onGoResult && ImGui::MenuItem(ICON_FA_FLAG_CHECKERED " Result")) {
+			config.onGoResult();
+		}
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu(ICON_FA_SLIDERS_H " Layout")) {
+		ImGui::MenuItem(ICON_FA_WINDOW_RESTORE " Dock: Scene / Inspector / Console", nullptr, false, false);
+		ImGui::MenuItem(ICON_FA_PALETTE " Theme: Dark", nullptr, false, false);
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu(ICON_FA_QUESTION_CIRCLE " Help")) {
 		if (config.helpText) {
 			ImGui::TextUnformatted(config.helpText);
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_GLOBE " シーン選択")) {
-		if (config.onGoTitle && ImGui::MenuItem("タイトルへ移動")) {
-			config.onGoTitle();
-		}
-		if (config.onGoGame && ImGui::MenuItem("ゲームへ移動")) {
-			config.onGoGame();
-		}
-		if (config.onGoResult && ImGui::MenuItem("リザルトへ移動")) {
-			config.onGoResult();
-		}
-		ImGui::EndMenu();
-	}
+	DrawPlaybackToolbar(config);
 
 	ImGui::EndMainMenuBar();
 }

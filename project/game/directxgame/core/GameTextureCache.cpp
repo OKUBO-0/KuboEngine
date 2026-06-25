@@ -1,5 +1,5 @@
 #include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/core/DirectXGameResourcePaths.h"
+#include "game/directxgame/core/ResourcePaths.h"
 #include "TextureManager.h"
 #include <Windows.h>
 #include <cassert>

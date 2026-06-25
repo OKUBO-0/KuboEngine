@@ -1,6 +1,6 @@
 #include "game/directxgame/ui/gauge/ExpGauge.h"
 #include "Sprite.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
 #include "game/directxgame/core/GameTextureCache.h"
 #include "game/directxgame/core/UILayoutIO.h"

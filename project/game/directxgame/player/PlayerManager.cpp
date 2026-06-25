@@ -1,7 +1,7 @@
 #include "game/directxgame/player/PlayerManager.h"
 
 #include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/DirectXGameResourcePaths.h"
+#include "game/directxgame/core/ResourcePaths.h"
 #include <stdexcept>
 
 namespace DirectXGame {

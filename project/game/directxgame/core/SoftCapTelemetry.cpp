@@ -1,6 +1,6 @@
 #include "game/directxgame/core/SoftCapTelemetry.h"
 #include "ParticleManager.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/enemy/EnemyManager.h"
 #include "game/directxgame/player/PlayerManager.h"
 #include "game/directxgame/player/weapons/Drone.h"

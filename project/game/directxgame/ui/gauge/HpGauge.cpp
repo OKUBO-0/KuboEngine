@@ -1,5 +1,6 @@
 #include "game/directxgame/ui/gauge/HpGauge.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/GameplayRules.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "DirectXCommon.h"
 #include "HResult.h"
@@ -40,13 +41,9 @@ int32_t StepDisplayValue(int32_t displayedValue, int32_t targetValue)
 
 float CalculateGaugeRate(int32_t displayedValue, int32_t maxValue)
 {
-	if (maxValue <= 0) {
-		return 0.0f;
-	}
-
-	const float ratio =
-		static_cast<float>(displayedValue) / static_cast<float>(maxValue);
-	return std::clamp(ratio, 0.0f, 1.0f);
+	return DirectXGame::GameplayRules::CalculateGaugeRate(
+		displayedValue,
+		maxValue);
 }
 
 }
@@ -58,8 +55,6 @@ public:
 	void Initialize(const Vector4& color)
 	{
 		spriteCommon_ = Engine::Graphics2D::SpriteCommon::GetInstance();
-		Engine::Base::TextureManager::GetInstance()->LoadTexture(kWhiteTexturePath);
-
 		const size_t vertexCapacity = 2 + (kCapSegments + 1) * 2;
 		const size_t indexCapacity = (vertexCapacity - 1) * 3;
 		vertexData_.resize(vertexCapacity);
@@ -259,7 +254,7 @@ void HpGauge::Draw()
 void HpGauge::SetHP(int32_t current, int32_t max)
 {
 	maxHP_ = std::max<int32_t>(1, max);
-	targetHP_ = std::clamp(current, 0, maxHP_);
+	targetHP_ = GameplayRules::ClampGaugeValue(current, max);
 }
 
 bool HpGauge::IsDepleted() const

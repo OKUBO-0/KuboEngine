@@ -10,10 +10,17 @@ struct SoundData;
 
 namespace DirectXGame {
 
-using SoundHandle = uint32_t;
+struct SoundHandle {
+	uint32_t value = 0;
+
+	explicit operator bool() const { return value != 0; }
+	friend bool operator==(const SoundHandle&, const SoundHandle&) = default;
+};
 
 class GameAudioCache {
 public:
+	/// Invalid handles are ignored by playback/control operations.
+	/// Handles are monotonic and remain valid for the process lifetime.
 	static SoundHandle LoadWave(const std::string& relativePath);
 	static Engine::AudioSystem::SoundData* GetSoundData(SoundHandle handle);
 	static void Play(SoundHandle handle);

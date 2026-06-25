@@ -1,4 +1,5 @@
 #include "game/directxgame/enemy/EnemyCollisionSystem.h"
+#include "game/directxgame/core/GameplayRules.h"
 
 #include "MyMath.h"
 #include "game/directxgame/core/GameAudioCache.h"
@@ -134,8 +135,24 @@ int32_t ToCellCoord(float value)
 
 uint64_t MakeCellKey(int32_t cellX, int32_t cellZ)
 {
-	return (static_cast<uint64_t>(static_cast<uint32_t>(cellX)) << 32) |
-		static_cast<uint32_t>(cellZ);
+	return DirectXGame::GameplayRules::MakeCellKey(cellX, cellZ);
+}
+
+void RegisterEnemyInOverlappingCells(
+	EnemyCellMap& outMap,
+	DirectXGame::Enemy& enemy)
+{
+	const Vector3 position = enemy.GetPosition();
+	const float radius = (std::max)(0.0f, enemy.GetCollisionRadius());
+	const int32_t minCellX = ToCellCoord(position.x - radius);
+	const int32_t maxCellX = ToCellCoord(position.x + radius);
+	const int32_t minCellZ = ToCellCoord(position.z - radius);
+	const int32_t maxCellZ = ToCellCoord(position.z + radius);
+	for (int32_t z = minCellZ; z <= maxCellZ; ++z) {
+		for (int32_t x = minCellX; x <= maxCellX; ++x) {
+			outMap[MakeCellKey(x, z)].push_back(&enemy);
+		}
+	}
 }
 
 void BuildActiveEnemySpatialMap(
@@ -152,10 +169,7 @@ void BuildActiveEnemySpatialMap(
 		}
 		DirectXGame::Enemy* enemyPtr = enemy.get();
 		activeEnemies.push_back(enemyPtr);
-		const Vector3 position = enemyPtr->GetPosition();
-		outMap[MakeCellKey(
-			ToCellCoord(position.x),
-			ToCellCoord(position.z))].push_back(enemyPtr);
+		RegisterEnemyInOverlappingCells(outMap, *enemyPtr);
 	}
 }
 
@@ -188,6 +202,13 @@ void CollectNearbyEnemies(
 			}
 		}
 	}
+	std::sort(
+		outEnemies.begin(),
+		outEnemies.end(),
+		std::less<DirectXGame::Enemy*>{});
+	outEnemies.erase(
+		std::unique(outEnemies.begin(), outEnemies.end()),
+		outEnemies.end());
 }
 
 void ApplyEnemyHit(
@@ -197,12 +218,12 @@ void ApplyEnemyHit(
 	float knockStrength,
 	std::vector<Vector3>& hitEffectPositions)
 {
-	static DirectXGame::SoundHandle sharedHitSeHandle = 0;
-	if (sharedHitSeHandle == 0) {
+	static DirectXGame::SoundHandle sharedHitSeHandle{};
+	if (!sharedHitSeHandle) {
 		sharedHitSeHandle =
 			DirectXGame::GameAudioCache::LoadWave(kHitSePath);
 	}
-	if (sharedHitSeHandle != 0) {
+	if (sharedHitSeHandle) {
 		DirectXGame::GameAudioCache::Play(sharedHitSeHandle);
 		DirectXGame::GameAudioCache::SetVolumeFromTuning(
 			sharedHitSeHandle,
@@ -230,13 +251,13 @@ void ApplyEnemyHit(
 
 void PlayPlayerDamageSound()
 {
-	static DirectXGame::SoundHandle sharedPlayerDamageSeHandle = 0;
-	if (sharedPlayerDamageSeHandle == 0) {
+	static DirectXGame::SoundHandle sharedPlayerDamageSeHandle{};
+	if (!sharedPlayerDamageSeHandle) {
 		sharedPlayerDamageSeHandle =
 			DirectXGame::GameAudioCache::LoadWave(
 				kPlayerDamageSePath);
 	}
-	if (sharedPlayerDamageSeHandle != 0) {
+	if (sharedPlayerDamageSeHandle) {
 		DirectXGame::GameAudioCache::Play(
 			sharedPlayerDamageSeHandle);
 		DirectXGame::GameAudioCache::SetVolumeFromTuning(

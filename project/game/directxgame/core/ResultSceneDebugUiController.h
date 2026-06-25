@@ -2,11 +2,11 @@
 
 namespace DirectXGame {
 
-class DirectXGameResultScene;
+class ResultScene;
 
-class ResultSceneDebugUiController final {
+class ResultSceneDebugUIController final {
 public:
-	static void Draw(DirectXGameResultScene& scene);
+	static void Draw(ResultScene& scene);
 };
 
 }

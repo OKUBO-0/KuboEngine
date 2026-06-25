@@ -49,6 +49,8 @@ public:
 	/// @return なし
 	void DrawSkinning();
 	void DrawShadow();
+	void SetCastsShadow(bool castsShadow) { castsShadow_ = castsShadow; }
+	bool CastsShadow() const { return castsShadow_; }
 
 
 
@@ -183,6 +185,7 @@ private:
 
 	//ライトのオンオフ
 	bool enableLighting = true;
+	bool castsShadow_ = true;
 	//カメラforGPU
 	CameraForGpu cameraForGpu_{};
 	//アニメーション

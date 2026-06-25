@@ -23,7 +23,7 @@ void AppendTuningEntries(
 	std::string_view keyPrefix = {});
 
 #ifdef _DEBUG
-void DrawDebugUi();
+void DrawDebugUI();
 #endif
 
 }

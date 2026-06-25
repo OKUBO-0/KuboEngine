@@ -6,6 +6,10 @@
 #include "game/directxgame/ui/hud/KeyUI.h"
 #include "game/directxgame/ui/hud/MiniMap.h"
 #include "game/directxgame/ui/hud/Timer.h"
+#include "Sprite.h"
+#include "game/directxgame/core/GameTextureCache.h"
+#include <array>
+#include <memory>
 
 namespace Engine::InputSystem {
 class Input;
@@ -29,9 +33,9 @@ public:
 		PlayerManager* playerManager,
 		EnemyManager* enemyManager,
 		Engine::InputSystem::Input* input,
-		float deathOverlayAlpha);
+		float deathOverlayAlpha,
+		int32_t runCoins);
 	void Draw(const GameplayFlowController& flow);
-	void DrawPauseMap();
 	void TriggerHitFlash(float duration);
 
 	float GetAnimationTime() const { return animationTime_; }
@@ -43,6 +47,9 @@ public:
 	MiniMap& GetPauseMiniMap() { return pauseMiniMap_; }
 
 private:
+	void UpdateCoinDisplay(int32_t runCoins);
+	void DrawCoinDisplay();
+
 	Timer timer_;
 	HpGauge hpGauge_;
 	ExpGauge expGauge_;
@@ -52,6 +59,11 @@ private:
 	UILabel startOverlay_;
 	UILabel hitFlashOverlay_;
 	UILabel deathOverlay_;
+	TextureHandle coinDigitTexture_ = 0;
+	static constexpr int32_t kCoinDigitCount = 6;
+	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kCoinDigitCount> coinDigits_;
+	Vector2 coinDigitPosition_{ 52.0f, 612.0f };
+	Vector2 coinDigitSize_{ 20.0f, 26.0f };
 	int32_t previousHp_ = 0;
 	float hitFlashTimer_ = 0.0f;
 	float animationTime_ = 0.0f;

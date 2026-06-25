@@ -1,7 +1,6 @@
 #include "game/directxgame/player/weapons/OrbitBullet.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -29,7 +28,6 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	};
 	previousPosition_ = position_;
 
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	const ModelHandle bulletHandle = GameModelCache::Load("bullet.obj");
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());

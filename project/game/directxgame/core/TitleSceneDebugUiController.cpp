@@ -1,14 +1,14 @@
-#include "game/directxgame/core/TitleSceneDebugUiController.h"
+#include "game/directxgame/core/TitleSceneDebugUIController.h"
 
 #include "DebugEditorManager.h"
 #include "Input.h"
 #include "OffscreenRenderManager.h"
-#include "game/directxgame/core/DirectXGameResourceProbe.h"
-#include "game/directxgame/core/GameAudioDebugPanel.h"
+#include "game/directxgame/core/ResourceProbe.h"
+#include "game/directxgame/core/AudioDebugPanel.h"
 #include "game/directxgame/core/GameInputBindings.h"
 #include "game/directxgame/core/SceneLighting.h"
 #include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/scene/DirectXGameTitleScene.h"
+#include "game/directxgame/scene/GameTitleScene.h"
 #include <array>
 #include <iterator>
 #include <string>
@@ -26,7 +26,7 @@ constexpr char kAudioTitleDecide[] = "title.decide";
 
 namespace DirectXGame {
 
-void TitleSceneDebugUiController::Draw(DirectXGameTitleScene& scene)
+void TitleSceneDebugUIController::Draw(TitleScene& scene)
 {
 #ifdef _DEBUG
 	auto& windows = scene.debugWindows_;
@@ -37,7 +37,7 @@ void TitleSceneDebugUiController::Draw(DirectXGameTitleScene& scene)
 		scene.ReloadDebugData();
 	}
 
-	const DirectXGameTitleScene::DebugWindowVisibility previousWindows = windows;
+	const TitleScene::DebugWindowVisibility previousWindows = windows;
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &windows.titleView },
 		{ "統計", &windows.statisticsView },
@@ -112,13 +112,13 @@ void TitleSceneDebugUiController::Draw(DirectXGameTitleScene& scene)
 			{ "Title Select", kAudioTitleSelect, 1.0f },
 			{ "Title Decide", kAudioTitleDecide, 1.0f },
 		} };
-		GameAudioDebugPanel::Draw(&windows.audio, titleAudioEntries);
+		DebugUI::Audio::Draw(&windows.audio, titleAudioEntries);
 	}
 
 	if (windows.statisticsView) {
 		ImGui::Begin("統計", &windows.statisticsView);
-		const DirectXGameResourceProbeStatus& probeStatus =
-			DirectXGameResourceProbe::Verify();
+	const ResourceProbeStatus& probeStatus =
+		ResourceProbe::Verify();
 		ImGui::Text(
 			"Texture Probe: %s",
 			probeStatus.textureLoaded ? "OK" : "NG");
@@ -332,7 +332,7 @@ void TitleSceneDebugUiController::Draw(DirectXGameTitleScene& scene)
 			if (ImGui::CollapsingHeader(
 					"Title Light",
 					ImGuiTreeNodeFlags_DefaultOpen)) {
-				SceneLighting::DrawDebugUi();
+				SceneLighting::DrawDebugUI();
 			}
 
 			float cameraTarget[3]{

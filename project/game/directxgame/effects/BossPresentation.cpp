@@ -53,17 +53,20 @@ void BossPresentation::StartEntrance(EnemyManager& enemyManager)
 
 bool BossPresentation::UpdateEntrance(
 	EnemyManager& enemyManager,
+	const GameParticleEffects& particleEffects,
 	float deltaTime)
 {
 	entranceTimer_ += deltaTime;
 	enemyManager.GetBossPresentationPosition(entranceFocusPosition_);
 
 	if (!entranceEffectEmitted_) {
+		const GameParticleEffects::Handles& handles =
+			particleEffects.GetHandles();
 		Engine::Particle::ParticleManager* particleManager =
 			Engine::Particle::ParticleManager::GetInstance();
-		particleManager->Emit("DirectXGame.EnemyHitSpark", entranceFocusPosition_, 42);
-		particleManager->Emit("DirectXGame.DeathSmoke", entranceFocusPosition_, 18);
-		particleManager->Emit("DirectXGame.Ripple", entranceFocusPosition_, 3);
+		particleManager->Emit(handles.enemyHitSpark, entranceFocusPosition_, 42);
+		particleManager->Emit(handles.deathSmoke, entranceFocusPosition_, 18);
+		particleManager->Emit(handles.ripple, entranceFocusPosition_, 3);
 		entranceEffectEmitted_ = true;
 	}
 
@@ -95,17 +98,18 @@ bool BossPresentation::UpdateDefeat(
 
 	if (!defeatEffectEmitted_) {
 		const GameParticleEffects::Tuning& tuning = particleEffects.GetTuning();
+		const GameParticleEffects::Handles& handles = particleEffects.GetHandles();
 		Engine::Particle::ParticleManager* particleManager =
 			Engine::Particle::ParticleManager::GetInstance();
 		particleManager->Emit(
-			"DirectXGame.EnemyHitSpark",
+			handles.enemyHitSpark,
 			defeatFocusPosition_,
 			static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSparkCount * 2)));
 		particleManager->Emit(
-			"DirectXGame.DeathSmoke",
+			handles.deathSmoke,
 			defeatFocusPosition_,
 			static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSmokeCount * 2)));
-		particleManager->Emit("DirectXGame.Ripple", defeatFocusPosition_, 2);
+		particleManager->Emit(handles.ripple, defeatFocusPosition_, 2);
 		defeatEffectEmitted_ = true;
 	}
 

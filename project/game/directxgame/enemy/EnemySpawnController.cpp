@@ -5,7 +5,7 @@
 #include "game/directxgame/player/Player.h"
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
+#include <numbers>
 #include <stdexcept>
 
 namespace DirectXGame {
@@ -29,7 +29,7 @@ void EnemySpawnController::LoadEnemyTypes(const std::string& filePath)
 		if (row.size() < 5) {
 			throw std::runtime_error(
 				"enemyTypes row " + std::to_string(rowIndex + 1) +
-				" requires 5 columns");
+				" requires at least 5 columns");
 		}
 
 		EnemyTypeData data{};
@@ -43,9 +43,12 @@ void EnemySpawnController::LoadEnemyTypes(const std::string& filePath)
 			CsvReader::ParseInt32(row[3], context + " baseEXP");
 		data.spawnCount =
 			CsvReader::ParseInt32(row[4], context + " spawnCount");
+		data.coinValue = row.size() >= 6
+			? CsvReader::ParseInt32(row[5], context + " coinValue")
+			: (std::max)(1, data.baseEXP / 2);
 		if (data.type < 0 || data.baseHP < 1 ||
 			data.baseSpeed <= 0.0f || data.baseEXP < 0 ||
-			data.spawnCount < 1) {
+			data.spawnCount < 1 || data.coinValue < 0) {
 			throw std::runtime_error(
 				context + " contains an out-of-range value");
 		}
@@ -139,7 +142,7 @@ void EnemySpawnController::RelocateFarEnemies(
 	Player* player,
 	std::vector<std::unique_ptr<Enemy>>& enemies,
 	const Enemy* bossEnemy,
-	bool bossPhase) const
+	bool bossPhase)
 {
 	if (!player) {
 		return;
@@ -166,10 +169,7 @@ void EnemySpawnController::RelocateFarEnemies(
 			continue;
 		}
 
-		const float angle =
-			(static_cast<float>(std::rand()) /
-				static_cast<float>(RAND_MAX)) *
-			6.283185307f;
+		const float angle = RandomAngle();
 		enemy->SetPosition({
 			playerPosition.x + std::cos(angle) * respawnRadius_,
 			0.0f,
@@ -193,6 +193,7 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 	data.baseHP = (std::max)(data.baseHP, 140);
 	data.baseSpeed = (std::max)(data.baseSpeed, 0.18f);
 	data.baseEXP = (std::max)(data.baseEXP, 80);
+	data.coinValue = (std::max)(data.coinValue, 50);
 
 	const Vector3 playerPosition = player->GetWorldPosition();
 	auto enemy = std::make_unique<Enemy>();
@@ -208,6 +209,7 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 	enemy->SetBoss(true);
 	enemy->SetHP(data.baseHP);
 	enemy->SetEXP(data.baseEXP);
+	enemy->SetCoinValue(data.coinValue);
 	enemy->SetSpeed(data.baseSpeed);
 	return enemy;
 }
@@ -229,7 +231,7 @@ void EnemySpawnController::SpawnEnemies(
 		static_cast<int>(enemyTypes_.size()) - 1);
 	const EnemyTypeData& data =
 		enemyTypes_[static_cast<size_t>(
-			std::rand() % (maxIndex + 1))];
+			std::uniform_int_distribution<int>(0, maxIndex)(randomEngine_))];
 
 	for (int index = 0; index < data.spawnCount; ++index) {
 		if (CountActiveEnemies(enemies) >= maxActiveEnemies_) {
@@ -242,13 +244,10 @@ void EnemySpawnController::SpawnEnemies(
 void EnemySpawnController::SpawnOneEnemy(
 	const EnemyTypeData& data,
 	Player& player,
-	std::vector<std::unique_ptr<Enemy>>& enemies) const
+	std::vector<std::unique_ptr<Enemy>>& enemies)
 {
 	const Vector3 playerPosition = player.GetWorldPosition();
-	const float angle =
-		(static_cast<float>(std::rand()) /
-			static_cast<float>(RAND_MAX)) *
-		6.283185307f;
+	const float angle = RandomAngle();
 
 	auto enemy = std::make_unique<Enemy>();
 	enemy->Initialize();
@@ -264,9 +263,18 @@ void EnemySpawnController::SpawnOneEnemy(
 		data.baseHP + static_cast<int>(elapsedTime_ / 45.0f));
 	enemy->SetEXP(
 		data.baseEXP + static_cast<int>(elapsedTime_ / 35.0f));
+	enemy->SetCoinValue(
+		data.coinValue + static_cast<int>(elapsedTime_ / 75.0f));
 	enemy->SetSpeed(
 		data.baseSpeed + elapsedTime_ * 0.0015f);
 	enemies.push_back(std::move(enemy));
+}
+
+float EnemySpawnController::RandomAngle()
+{
+	return std::uniform_real_distribution<float>(
+		0.0f,
+		2.0f * std::numbers::pi_v<float>)(randomEngine_);
 }
 
 size_t EnemySpawnController::CountActiveEnemies(

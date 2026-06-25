@@ -1,6 +1,6 @@
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include <filesystem>
 #include <fstream>
 

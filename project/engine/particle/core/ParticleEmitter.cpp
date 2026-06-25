@@ -14,7 +14,7 @@ ParticleEmitter::ParticleEmitter(const Vector3& position, float lifetime, float 
 	frequency = lifetime;//寿命
 	frequencyTime = currentTime;//現在の寿命
 	this->count = count;//count
-	name_ = name;//名前
+	SetName(name);
 	
 }
 
@@ -25,7 +25,7 @@ void ParticleEmitter::Update()
 
 	// 寿命（frequency）を超えたら発生
 	if (frequencyTime >= frequency) {
-		ParticleManager::GetInstance()->Emit(name_, position_, count);
+		Emit();
 		frequencyTime = kEmitterResetTime;
 	}
 }
@@ -34,8 +34,16 @@ void ParticleEmitter::Emit()
 {
 
 	//パーティクルを発生
-	ParticleManager::GetInstance()->Emit(name_, position_, count);
+	ParticleManager::GetInstance()->Emit(groupHandle_, position_, count);
 
+}
+
+void ParticleEmitter::SetName(const std::string& name)
+{
+	name_ = name;
+	const std::optional<ParticleGroupHandle> handle =
+		ParticleManager::GetInstance()->GetParticleGroupHandle(name_);
+	groupHandle_ = handle.value_or(ParticleGroupHandle{});
 }
 
 }

@@ -1,10 +1,12 @@
 #pragma once
+#include "ShaderCompiler.h"
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <wrl.h>
 #include <array>
 #include <cstddef>
 #include <dxcapi.h>
+#include <memory>
 #pragma comment(lib, "dxcompiler.lib")
 #include"externals/DirectXTex/DirectXTex.h"
 #include"externals/DirectXTex/d3dx12.h"
@@ -19,7 +21,6 @@
 namespace Engine::Base {
 
 class WinApp;
-
 class DirectXCommon
 {
 public:
@@ -59,15 +60,8 @@ private:
 	void FenceInitialize();
 	void ViewportInitialize();
 	void ScissorInitialize();
-	void DxcCompilerInitialize();
 	void ImguiInitialize();
 	void InitializeGraphicsResources();
-	Microsoft::WRL::ComPtr<IDxcBlobEncoding> LoadShaderSource(const std::wstring& filePath);
-	DxcBuffer CreateShaderSourceBuffer(IDxcBlobEncoding* shaderSource) const;
-	std::array<LPCWSTR, 9> CreateShaderCompileArguments(const std::wstring& filePath, const wchar_t* profile) const;
-	Microsoft::WRL::ComPtr<IDxcResult> ExecuteShaderCompile(const DxcBuffer& shaderSourceBuffer,
-		std::array<LPCWSTR, 9> arguments);
-	void ValidateShaderCompileResult(IDxcResult* shaderResult);
 	void PrepareBackBufferForRendering(uint32_t backBufferIndex);
 	void CloseAndExecuteCommandList();
 	void FinalizeFrameTransition();
@@ -94,16 +88,6 @@ public:
 	/// @param なし
 	/// @return なし
 	void End();
-
-	/// @brief SRV 用ヒープの CPU デスクリプタハンドルを取得する
-	/// @param index 取得したい SRV のインデックス
-	/// @return 指定インデックスの CPU デスクリプタハンドル
-	D3D12_CPU_DESCRIPTOR_HANDLE GetSRVCPUDescriptorHandle(uint32_t index);
-
-	/// @brief SRV 用ヒープの GPU デスクリプタハンドルを取得する
-	/// @param index 取得したい SRV のインデックス
-	/// @return 指定インデックスの GPU デスクリプタハンドル
-	D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index);
 
 	/// @brief RTV 用ヒープの CPU デスクリプタハンドルを取得する
 	/// @param index 取得したい RTV のインデックス
@@ -181,7 +165,7 @@ public:
 	/// @param filePath コンパイル対象のシェーダーファイルパス
 	/// @param profile 使用するシェーダープロファイル
 	/// @return コンパイル済みシェーダーバイトコード
-	IDxcBlob* CompileShader(
+	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(
 		const std::wstring& filePath,
 		const wchar_t* profile);
 
@@ -209,6 +193,10 @@ public:
 	FrameUploadAllocation AllocateFrameUpload(
 		size_t sizeInBytes,
 		size_t alignment = 16);
+
+	/// @brief 現在のframeが完了するまで一時リソースを保持する
+	/// @param resource GPU参照完了後に解放するリソース
+	void DeferResourceRelease(Microsoft::WRL::ComPtr<ID3D12Resource>&& resource);
 
 	/// @brief テクスチャメタデータに基づいてリソースを生成する
 	/// @param metadata テクスチャのメタデータ
@@ -246,10 +234,6 @@ public:
 	/// @return なし
 	void TransitionResource(ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after);
 
-	
-	/// @brief 最大 SRV 数
-	/// @details 1 フレーム中に参照可能な SRV スロットの上限値。
-	static const uint32_t kMaxSRVCount;
 private:
 
 	// Windows API 管理
@@ -271,11 +255,9 @@ private:
 	// 深度バッファ
 	Microsoft::WRL::ComPtr<ID3D12Resource> depthStenciResource;
 	// ディスクリプタヒープ
-	uint32_t descriptorSizeSRV;
 	uint32_t descriptorSizeRTV;
 	uint32_t descriptorSizeDSV;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvDescriptorHeap;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvDescriptorHeap;
 
 
@@ -292,10 +274,7 @@ private:
 	D3D12_VIEWPORT viewport{};
 	// シザー矩形
 	D3D12_RECT scissorRect{};
-	// DXC
-	IDxcUtils* dxcUtils = nullptr;
-	IDxcCompiler3* dxcCompiler = nullptr;
-	IDxcIncludeHandler* includeHandler = nullptr;
+	std::unique_ptr<ShaderCompiler> shaderCompiler_;
 	// バリア
 	D3D12_RESOURCE_BARRIER barrier{};
 	// FPS 固定用の基準時刻

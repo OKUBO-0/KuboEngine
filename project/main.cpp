@@ -1,8 +1,8 @@
 #include "Game.h"
 #include "Framework.h"
 #include "D3DResourceLeakChecker.h"
-#include "game/directxgame/core/DirectXGameSceneFactory.h"
-#include "game/directxgame/core/DirectXGameSceneId.h"
+#include "game/directxgame/core/GameSceneFactory.h"
+#include "game/directxgame/core/SceneId.h"
 #include <Windows.h>
 #include <cstdlib>
 #include <exception>
@@ -27,7 +27,7 @@ namespace {
 
 			// Framework を継承した Game を生成して、実行責務を一本化する
 			auto directXGame = std::make_unique<Engine::Scene::Game>(
-				std::make_unique<DirectXGame::DirectXGameSceneFactory>(),
+				std::make_unique<DirectXGame::GameSceneFactory>(),
 				DirectXGame::SceneId::kTitle);
 			std::unique_ptr<Engine::Base::Framework> game = std::move(directXGame);
 			game->Run();

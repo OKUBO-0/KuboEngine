@@ -1,9 +1,9 @@
 #include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
+#include "game/directxgame/core/GameSession.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/PlayerManager.h"
 #include <algorithm>
-#include <cstdlib>
 
 namespace DirectXGame {
 
@@ -30,6 +30,12 @@ void EnemyManager::LoadEnemyTypes(const std::string& filePath)
 void EnemyManager::LoadSpawnSettings(const std::string& filePath)
 {
 	spawnController_.LoadSpawnSettings(filePath);
+}
+
+void EnemyManager::SetRandomSeed(uint32_t seed)
+{
+	randomEngine_.seed(seed);
+	spawnController_.SetRandomSeed(seed ^ 0xA511E9B3u);
 }
 
 void EnemyManager::Update(float deltaTime)
@@ -153,7 +159,9 @@ std::vector<Vector3> EnemyManager::PickLightningTargets(int32_t count) const
 
 	targets.reserve(static_cast<size_t>(count));
 	for (int32_t i = 0; i < count && !candidates.empty(); ++i) {
-		const size_t pickedIndex = static_cast<size_t>(std::rand() % static_cast<int32_t>(candidates.size()));
+		const size_t pickedIndex = std::uniform_int_distribution<size_t>(
+			0,
+			candidates.size() - 1)(randomEngine_);
 		targets.push_back(candidates[pickedIndex]);
 		candidates[pickedIndex] = candidates.back();
 		candidates.pop_back();
@@ -272,6 +280,9 @@ void EnemyManager::UpdateExpOrbs(float deltaTime)
 void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 {
 	++totalKillCount_;
+	if (session_) {
+		session_->AddRunCoins(enemy.GetCoinValue());
+	}
 	recentDeathEffectPositions_.push_back(enemy.GetPosition());
 	auto orb = std::make_unique<ExpOrb>();
 	orb->Initialize(enemy.GetPosition(), enemy.GetEXP());

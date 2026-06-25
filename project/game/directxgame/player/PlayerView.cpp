@@ -1,7 +1,6 @@
 #include "game/directxgame/player/PlayerView.h"
 
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include "game/directxgame/core/GameModelCache.h"
 
 namespace {
@@ -17,9 +16,6 @@ namespace DirectXGame {
 
 void PlayerView::Initialize()
 {
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(
-		kEnvironmentTexturePath);
-
 	const ModelHandle playerHandle = GameModelCache::Load("cube.obj");
 	playerObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	playerObject_->Initialize(

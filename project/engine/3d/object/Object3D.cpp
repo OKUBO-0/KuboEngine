@@ -169,7 +169,19 @@ void Object3D::DrawSkinning()
 
 void Object3D::DrawShadow()
 {
-	if (!model_ || !object3DCommon_->IsShadowPassActive()) {
+	if (!castsShadow_ || !model_ || !object3DCommon_->IsShadowPassActive()) {
+		return;
+	}
+	const Engine::Math::OBB bounds = GetScaledModelObb();
+	const float boundingRadius = std::sqrt(
+		bounds.size.x * bounds.size.x +
+		bounds.size.y * bounds.size.y +
+		bounds.size.z * bounds.size.z);
+	const bool insideShadowFrustum = object3DCommon_->IsInsideShadowFrustum(
+		bounds.center,
+		boundingRadius);
+	object3DCommon_->RecordShadowCandidate(insideShadowFrustum);
+	if (!insideShadowFrustum) {
 		return;
 	}
 	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =

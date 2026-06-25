@@ -1,6 +1,6 @@
 #include "game/directxgame/ui/hud/KeyUI.h"
 #include "Input.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/core/GameInputBindings.h"
 #include "game/directxgame/core/GameSpriteFactory.h"
 #include "game/directxgame/core/UILayoutIO.h"

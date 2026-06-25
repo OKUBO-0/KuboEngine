@@ -31,7 +31,7 @@ public:
 	void SaveLayout() const;
 
 #ifdef _DEBUG
-	void DrawDebugUi();
+	void DrawDebugUI();
 #endif
 
 private:

@@ -184,7 +184,7 @@ def page_cover(c: canvas.Canvas) -> None:
     text(c, 54, PAGE_H - 75, "PROGRAMMER // 2026", 10, CYAN, FONT_BOLD)
     text(c, 54, PAGE_H - 143, "プログラム説明資料", 36, colors.white, FONT_BOLD)
     text(c, 56, PAGE_H - 180, "KuboEngine / Octopus", 18, colors.white, FONT_BOLD)
-    paragraph(c, 56, PAGE_H - 215, "DirectX 12 × C++ × HLSL。設計、データ駆動、負荷対策、開発効率化を中心に構成。", 560, 10.6, 16, colors.HexColor("#F8FAFC"))
+    paragraph(c, 56, PAGE_H - 215, "DirectX 12 × C++ × HLSL。設計、データ駆動、OBB 衝突判定、シャドウマップ、負荷対策を中心に構成。", 560, 10.6, 16, colors.HexColor("#F8FAFC"))
     x = 56
     for label, col in [("C++", BLUE), ("DirectX 12", CYAN), ("HLSL", GREEN), ("ImGui", PURPLE), ("CSV Driven", ORANGE), ("Performance", RED)]:
         x = chip(c, x, PAGE_H - 248, label, col)
@@ -202,11 +202,12 @@ def page_index(c: canvas.Canvas) -> None:
         ("04", "アーキテクチャ", "SceneFactory と SessionContext"),
         ("05", "ゲーム進行", "GameplayFlowController による状態管理"),
         ("06", "プレイヤー・武器", "成長と 4 種類の武器制御"),
-        ("07", "敵・衝突・性能", "空間分割と Telemetry"),
+        ("07", "敵・衝突・性能", "空間分割、OBB、Telemetry"),
         ("08", "レベルアップ", "候補生成と CSV 重み調整"),
         ("09", "データ駆動", "CSV による調整基盤"),
         ("10", "UI / Debug / 演出", "HUD、MiniMap、ImGui、Presentation"),
-        ("11", "まとめ", "学びと今後の改善"),
+        ("11", "描画・リソース", "Shadow Map、演出、キャッシュ"),
+        ("12", "まとめ", "学びと今後の改善"),
     ]
     y -= 20
     col_w = (CONTENT_W - 16) / 2
@@ -222,7 +223,7 @@ def page_production(c: canvas.Canvas) -> None:
     y -= 22
     left = (CONTENT_W - 18) * 0.45
     right = CONTENT_W - left - 18
-    box(c, MARGIN_X, y, left, 82, "制作期間", "2025/07〜開発中（継続制作）\n週7〜8時間程度で制作\n延べ時間：約350〜400時間", BLUE)
+    box(c, MARGIN_X, y, left, 82, "制作期間", "2025/07〜開発中（継続制作）\n延べ時間：約350〜400時間", BLUE)
     box(c, MARGIN_X, y - 100, left, 82, "制作人数", "個人制作\nプログラマ 1 名のみ", GREEN)
     box(c, MARGIN_X, y - 200, left, 94, "担当箇所", "コード全般を担当。\nengine/、game/directxgame/、Resources/DirectXGame/data/ などの実装・調整を担当。", ORANGE)
     box(
@@ -248,13 +249,13 @@ def page_production(c: canvas.Canvas) -> None:
 
 
 def page_focus(c: canvas.Canvas) -> None:
-    y = title(c, "02", "TECHNICAL FOCUS", "技術的な注力ポイント", "現行プログラムで特に工夫した設計、調整しやすさ、負荷対策を中心に整理。")
+    y = title(c, "02", "TECHNICAL FOCUS", "技術的な注力ポイント", "設計、描画、衝突判定、調整環境まで、現行プログラムで工夫した点を整理。")
     y -= 18
     w = (CONTENT_W - 24) / 3
     sections = [
-        ("設計・責務分離", ["Scene、Player、Enemy、UI、演出の責務を分け、変更時の影響範囲を小さくした。", "進行管理、武器制御、敵生成、衝突、演出を専用クラス化。", "Presentation 層を分け、ゲームロジックの見通しを維持。"], BLUE),
-        ("データ駆動・調整", ["CSV で武器強化、敵出現、レベルアップ重み、UI 配置を外部化。", "ImGui と連携し、実行中に状態確認と調整を行える開発環境を構築。", "manifest でロード対象を一覧化し、抜け漏れを削減。"], GREEN),
-        ("負荷対策・見える化", ["敵最大 84 体と複数武器の衝突を空間分割で近傍判定に限定。", "通常弾、EXP Orb などの peak / prune を監視。", "SoftCapTelemetry で負荷状況を CSV 出力。"], ORANGE),
+        ("描画・表現", ["Shadow Map でプレイヤーと敵の影を描画し、画面の接地感を強化。", "影の濃さ、ぼかし、bias、範囲を SceneLighting から調整可能にした。", "ポストエフェクトと演出クラスを分け、見た目の変更範囲を限定。"], BLUE),
+        ("衝突・負荷対策", ["空間分割で近傍候補を絞り、敵数が増えても総当たりを避ける。", "Player、Enemy、Bullet を OBB で判定し、回転やスケールを反映。", "Telemetry で敵数、弾数、EXP Orb 数の最大数と削減数を監視。"], GREEN),
+        ("調整・検証基盤", ["CSV で武器強化、敵出現、レベルアップ重み、UI 配置を外部化。", "ImGui と DebugPanel で実行中に状態確認と調整を行える。", "Line::DrawOBB と ColliderManager で判定形状を可視化。"], ORANGE),
     ]
     for i, (head, items, col) in enumerate(sections):
         x = MARGIN_X + i * (w + 12)
@@ -302,7 +303,7 @@ def page_arch(c: canvas.Canvas) -> None:
     y -= 18
     node(c, 80, y, 120, 42, "WinMain\nApplication", NAVY)
     node(c, 250, y, 130, 42, "Engine::Scene::Game", BLUE)
-    node(c, 430, y, 150, 42, "DirectXGameSceneFactory", CYAN)
+	node(c, 430, y, 150, 42, "GameSceneFactory", CYAN)
     arrow(c, 200, y - 21, 250, y - 21)
     arrow(c, 380, y - 21, 430, y - 21)
     sy = y - 110
@@ -362,15 +363,24 @@ def page_player_weapon(c: canvas.Canvas) -> None:
 
 
 def page_collision(c: canvas.Canvas) -> None:
-    y = title(c, "07", "ENEMY / COLLISION", "敵管理と空間分割", "EnemyManager は敵リストと EXP Orb を持ち、生成・衝突・撃破ドロップ・ボス状態を統合する。")
+    y = title(c, "07", "ENEMY / COLLISION", "敵管理と OBB 衝突判定", "EnemyManager は敵リストと EXP Orb を持ち、生成・衝突・撃破ドロップ・ボス状態を統合する。")
     y -= 18
     col_w = (CONTENT_W - 24) / 3
-    for i, (head, body, col) in enumerate([("EnemySpawnController", "CSV から敵タイプ・スポーン設定を読み込み、経過時間に応じて出現数や間隔を制御。", BLUE), ("EnemyCollisionSystem", "spatialMap と nearbyEnemies を使い、接触し得る敵だけを検査。範囲ダメージと重なり解消も担当。", CYAN), ("Telemetry", "敵数、EXP Orb 数、弾数 peak / prune を取得し、デバッグ UI と CSV 出力で負荷を可視化。", GREEN)]):
-        box(c, MARGIN_X + i * (col_w + 12), y, col_w, 118, head, body, col, colors.white, 7.9)
-    y -= 170
+    cards = [
+        ("EnemySpawnController", "CSV から敵タイプ・スポーン設定を読み込み、経過時間に応じて出現数や間隔を制御。", BLUE),
+        ("Spatial Hash", "spatialMap と nearbyEnemies で候補を近傍セルに限定し、総当たりを避ける。", CYAN),
+        ("OBB Narrow Phase", "Player、Enemy、通常弾、衛星弾などをモデル由来の OBB で判定。回転やスケールを反映しやすい。", GREEN),
+        ("Collider Debug", "Line::DrawOBB と ColliderManager で判定形状を表示し、見た目と当たり判定のズレを確認。", PURPLE),
+        ("Telemetry", "敵数、EXP Orb 数、弾数 peak / prune を取得し、デバッグ UI と CSV 出力で負荷を可視化。", ORANGE),
+    ]
+    for i, (head, body, col) in enumerate(cards):
+        x = MARGIN_X + (i % 3) * (col_w + 12)
+        yy = y - (i // 3) * 82
+        box(c, x, yy, col_w, 64, head, body, col, colors.white, 7.3)
+    y -= 192
     text(c, MARGIN_X, y, "処理フロー", 14, NAVY, FONT_BOLD)
     w = (CONTENT_W - 48) / 5
-    for i, label in enumerate(["Spawn", "SpatialMap", "Collision", "Damage", "Drop / Prune"]):
+    for i, label in enumerate(["Spawn", "SpatialMap", "OBB Check", "Damage", "Drop / Prune"]):
         node(c, MARGIN_X + i * (w + 12), y - 36, w, 36, label, [BLUE, CYAN, GREEN, ORANGE, RED][i])
     footer(c, 9)
 
@@ -429,7 +439,7 @@ def page_ui_debug(c: canvas.Canvas) -> None:
     y = title(c, "10", "UI / DEBUG", "HUD・ミニマップ・調整環境", "スプライトベースの UI 基盤と ImGui デバッグ UI を使い、実行中の状態確認と調整をしやすくした。")
     y -= 18
     col_w = (CONTENT_W - 24) / 3
-    cards = [("UIElement", "位置、サイズ、表示、親子関係、縦横レイアウトを共通化。", BLUE), ("GameplayHudPresentation", "Timer、HP、EXP、KeyUI、MiniMap、開始/死亡/被弾オーバーレイを管理。", GREEN), ("MiniMap", "敵・EXP Orb・プレイヤーを円形範囲にクランプして表示。", PURPLE), ("GameplayDebugUiController", "各 DebugPanel の統合とデバッグ操作の窓口。", ORANGE), ("Runtime / Statistics", "オブジェクト数、敵数、弾数、EXP Orb 数を監視。", CYAN)]
+    cards = [("UIElement", "位置、サイズ、表示、親子関係、縦横レイアウトを共通化。", BLUE), ("GameplayHudPresentation", "Timer、HP、EXP、KeyUI、MiniMap、開始/死亡/被弾オーバーレイを管理。", GREEN), ("MiniMap", "敵・EXP Orb・プレイヤーを円形範囲にクランプして表示。", PURPLE), ("GameplayDebugUiController", "各 DebugPanel の統合とデバッグ操作の窓口。", ORANGE), ("Collider / OBB Debug", "Player、Enemy、Bullet の OBB を線描画し、判定範囲を実行中に確認。", RED), ("Runtime / Statistics", "オブジェクト数、敵数、弾数、EXP Orb 数を監視。", CYAN)]
     for i, (head, body, col) in enumerate(cards):
         x = MARGIN_X + (i % 3) * (col_w + 12)
         yy = y - (i // 3) * 80
@@ -449,14 +459,22 @@ def page_ui_debug(c: canvas.Canvas) -> None:
 
 
 def page_rendering_resource(c: canvas.Canvas) -> None:
-    y = title(c, "11", "RENDERING / RESOURCE", "描画・演出・リソース管理", "描画基盤、ゲーム演出、ロード処理を分け、見た目と開発効率の両方を扱いやすくした。")
+    y = title(c, "11", "RENDERING / RESOURCE", "シャドウマップ・演出・リソース管理", "描画基盤、影描画、ゲーム演出、ロード処理を分け、見た目と開発効率の両方を扱いやすくした。")
     y -= 18
     col_w = (CONTENT_W - 24) / 3
-    for i, (head, body, col) in enumerate([("OffscreenRenderManager", "一度オフスクリーンへ描画し、ポストエフェクトや ImGui Scene 表示へ利用。", BLUE), ("Post Effects", "Fullscreen、GrayScale、Vignette、BoxFilter、RadialBlur、Outline。", CYAN), ("Boss / Combat Presentation", "登場、撃破、雷撃などの演出を専用クラスで制御。", PURPLE), ("GameTexture / Model / Audio Cache", "重複ロードを抑え、利用側コードを単純化。", GREEN)]):
+    cards = [
+        ("Shadow Map Pass", "2048 x 2048 の深度マップを生成。BeginShadowPass から DrawShadow を呼び、通常描画で参照。", BLUE),
+        ("Shadow Tuning", "SceneLighting で有効化、濃さ、ぼかし、bias、描画範囲を調整。CSV調整とImGui操作に対応。", CYAN),
+        ("OffscreenRenderManager", "一度オフスクリーンへ描画し、ポストエフェクトやシーン表示へ利用。", GREEN),
+        ("Post Effects", "Fullscreen、GrayScale、Vignette、RadialBlur などを実装。", ORANGE),
+        ("Boss / Combat Presentation", "登場、撃破、雷撃などの演出を専用クラスで制御。", PURPLE),
+        ("GameTexture / Model / Audio Cache", "重複ロードを抑え、利用側コードを単純化。", RED),
+    ]
+    for i, (head, body, col) in enumerate(cards):
         x = MARGIN_X + (i % 3) * (col_w + 12)
         yy = y - (i // 3) * 82
         box(c, x, yy, col_w, 64, head, body, col, colors.white, 7.7)
-    y -= 182
+    y -= 192
     text(c, MARGIN_X, y, "リソース管理の工夫", 14, NAVY, FONT_BOLD)
     bullets(c, MARGIN_X, y - 26, ["ロードパスを ResourcePaths / DataPaths に集約し、Resources 配下を一貫して扱う。", "SceneTransition と CurtainTransition により、画面切り替えと状態遷移を自然につなぐ。"], CONTENT_W, 8.8, 13)
     footer(c, 13)

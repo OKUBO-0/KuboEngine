@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ParticleManager.h"
 #include "Vector3.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include <cstdint>
@@ -9,6 +10,21 @@ namespace DirectXGame {
 
 class GameParticleEffects final {
 public:
+	struct Handles {
+		Engine::Particle::ParticleGroupHandle ripple{};
+		Engine::Particle::ParticleGroupHandle spark{};
+		Engine::Particle::ParticleGroupHandle enemyHitSpark{};
+		Engine::Particle::ParticleGroupHandle expSpark{};
+		Engine::Particle::ParticleGroupHandle lightningImpact{};
+		Engine::Particle::ParticleGroupHandle playerDeathSpark{};
+		Engine::Particle::ParticleGroupHandle deathSmoke{};
+		Engine::Particle::ParticleGroupHandle confetti{};
+		Engine::Particle::ParticleGroupHandle normalTrail{};
+		Engine::Particle::ParticleGroupHandle droneTrail{};
+		Engine::Particle::ParticleGroupHandle orbitTrail{};
+		Engine::Particle::ParticleGroupHandle suicideEnemyTrail{};
+	};
+
 	struct Tuning {
 		int32_t playerDamageSparkCount = 18;
 		int32_t playerDamageRippleCount = 1;
@@ -38,12 +54,14 @@ public:
 	void ApplyTuning() const;
 
 	const Tuning& GetTuning() const { return tuning_; }
+	const Handles& GetHandles() const { return handles_; }
 
 #ifdef _DEBUG
-	void DrawDebugUi(const Vector3& previewPosition);
+	void DrawDebugUI(const Vector3& previewPosition);
 #endif
 
 private:
+	Handles handles_{};
 	Tuning tuning_{};
 	bool initialized_ = false;
 };

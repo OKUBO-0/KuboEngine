@@ -20,28 +20,28 @@ public:
 	void Initialize(Engine::Base::DirectXCommon* dxCommon);
 
 	/// @brief 3Dオブジェクト用PSOを生成する
-	void Create();//3dオブジェクト用
+	void Create();
 	/// @brief 3Dオブジェクト用ルートシグネチャを生成する
-	void RootSignatureCreate();//3dオブジェクト用
+	void RootSignatureCreate();
 
 	/// @brief パーティクル用PSOを生成する
-	void CreateParticle();//パーティクル用
+	void CreateParticle();
 	/// @brief パーティクル用ルートシグネチャを生成する
-	void RootSignatureParticleCreate();//パーティクル用
+	void RootSignatureParticleCreate();
 
 	/// @brief スプライト用PSOを生成する
-	void CreateSprite();//スプライト用
+	void CreateSprite();
 	/// @brief スプライト用ルートシグネチャを生成する
-	void RootSignatureSpriteCreate();//スプライト用
+	void RootSignatureSpriteCreate();
 
-	void CreateCopyImage(PostEffectType type, const std::wstring& psFilename); // ← 従来通りの単一バージョン
-	void CreateAllPostEffects(); // ← 新：複数ポストエフェクト用
+	void CreateCopyImage(PostEffectType type, const std::wstring& psFilename);
+	void CreateAllPostEffects();
 	void RootSignatureCopyImageCreate();
 	
 	/// @brief ライン用PSOを生成する
-	void CreateLine();//ライン用
+	void CreateLine();
 	/// @brief ライン用ルートシグネチャを生成する
-	void RootSignatureLineCreate();//ライン用
+	void RootSignatureLineCreate();
 
 	/// @brief スキニング用PSOを生成する
 	void CreateSkinning();//スキニング用
@@ -51,9 +51,9 @@ public:
 	void RootSignatureShadowMapCreate();
 
 	/// @brief スカイボックス用PSOを生成する
-	void CreateSkybox();//Skybox用
+	void CreateSkybox();
 	/// @brief スカイボックス用ルートシグネチャを生成する
-	void RootSignatureSkyboxCreate();//Skybox用
+	void RootSignatureSkyboxCreate();
 
 
 

@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -17,6 +19,7 @@ public:
 		const std::string& spawnSettingsPath);
 	void LoadEnemyTypes(const std::string& filePath);
 	void LoadSpawnSettings(const std::string& filePath);
+	void SetRandomSeed(uint32_t seed) { randomEngine_.seed(seed); }
 	void Update(
 		float deltaTime,
 		Player* player,
@@ -26,7 +29,7 @@ public:
 		Player* player,
 		std::vector<std::unique_ptr<Enemy>>& enemies,
 		const Enemy* bossEnemy,
-		bool bossPhase) const;
+		bool bossPhase);
 	std::unique_ptr<Enemy> CreateBossEnemy(Player* player) const;
 
 private:
@@ -35,6 +38,7 @@ private:
 		int baseHP = 2;
 		float baseSpeed = 0.16f;
 		int baseEXP = 8;
+		int coinValue = 0;
 		int spawnCount = 1;
 	};
 
@@ -53,7 +57,8 @@ private:
 	void SpawnOneEnemy(
 		const EnemyTypeData& data,
 		Player& player,
-		std::vector<std::unique_ptr<Enemy>>& enemies) const;
+		std::vector<std::unique_ptr<Enemy>>& enemies);
+	float RandomAngle();
 	static size_t CountActiveEnemies(
 		const std::vector<std::unique_ptr<Enemy>>& enemies);
 
@@ -69,6 +74,7 @@ private:
 	float minSpawnInterval_ = kDefaultMinSpawnInterval;
 	float baseSpawnInterval_ = kDefaultBaseSpawnInterval;
 	float spawnAcceleration_ = kDefaultSpawnAcceleration;
+	std::mt19937 randomEngine_{ std::random_device{}() };
 };
 
 }

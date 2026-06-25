@@ -63,6 +63,11 @@ void ParticleManager::Finalize()
 		}
 	}
 	particleGroups.clear();
+	particleGroupsByIndex_.clear();
+	++particleGroupGeneration_;
+	if (particleGroupGeneration_ == 0) {
+		particleGroupGeneration_ = 1;
+	}
 	model_ = nullptr;
 	dxCommon_ = nullptr;
 	srvManager_ = nullptr;
@@ -203,7 +208,7 @@ void ParticleManager::Draw()
 	}
 }
 
-void ParticleManager::CreateParticleGroup(
+ParticleGroupHandle ParticleManager::CreateParticleGroup(
 	const std::string& name,
 	const std::string& textureFilePath,
 	VerticesType verticesType,
@@ -211,17 +216,23 @@ void ParticleManager::CreateParticleGroup(
 	uint32_t maxInstanceCount)
 {
 	//登録済みなら早期リターン
-	if (particleGroups.contains(name)) {
-		return;
+	if (const auto it = particleGroups.find(name);
+		it != particleGroups.end()) {
+		return it->second.handle;
 	}
 
 	// 先に空グループを登録して以後の初期化を at(name) で揃える
 	ParticleGroup particleGroup;
+	particleGroup.handle = {
+		static_cast<uint32_t>(particleGroupsByIndex_.size()),
+		particleGroupGeneration_,
+	};
 	particleGroup.debugName = name;
 	particleGroup.maxInstanceCount = (std::max)(1u, maxInstanceCount);
 	particleGroups.insert(std::make_pair(name, std::move(particleGroup)));
 
 	ParticleGroup& targetGroup = particleGroups.at(name);
+	particleGroupsByIndex_.push_back(&targetGroup);
 	InitializeParticleGroupMaterial(targetGroup);
 	InitializeParticleGroupVertices(targetGroup, verticesType);
 	InitializeParticleGroupTexture(targetGroup, textureFilePath);
@@ -229,6 +240,7 @@ void ParticleManager::CreateParticleGroup(
 
 	// Strategy として振る舞いを保持し、Emit/Update 時に差し替えて使う
 	targetGroup.behavior = std::move(behavior);
+	return targetGroup.handle;
 }
 
 void ParticleManager::InitializeParticleGroupMaterial(ParticleGroup& particleGroup)
@@ -293,8 +305,24 @@ void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGr
 
 void ParticleManager::Emit(const std::string& name, const Vector3& position, uint32_t count)
 {
-	assert(particleGroups.contains(name));
-	ParticleGroup& particleGroup = particleGroups.at(name);
+	const std::optional<ParticleGroupHandle> handle =
+		GetParticleGroupHandle(name);
+	if (!handle) {
+		return;
+	}
+	Emit(*handle, position, count);
+}
+
+void ParticleManager::Emit(
+	ParticleGroupHandle handle,
+	const Vector3& position,
+	uint32_t count)
+{
+	ParticleGroup* resolvedGroup = ResolveParticleGroup(handle);
+	if (!resolvedGroup) {
+		return;
+	}
+	ParticleGroup& particleGroup = *resolvedGroup;
 	if (!particleGroup.behavior) {
 		return;
 	}
@@ -328,8 +356,25 @@ void ParticleManager::EmitTrailSegment(
 	const Vector3& end,
 	float width)
 {
-	assert(particleGroups.contains(name));
-	ParticleGroup& particleGroup = particleGroups.at(name);
+	const std::optional<ParticleGroupHandle> handle =
+		GetParticleGroupHandle(name);
+	if (!handle) {
+		return;
+	}
+	EmitTrailSegment(*handle, start, end, width);
+}
+
+void ParticleManager::EmitTrailSegment(
+	ParticleGroupHandle handle,
+	const Vector3& start,
+	const Vector3& end,
+	float width)
+{
+	ParticleGroup* resolvedGroup = ResolveParticleGroup(handle);
+	if (!resolvedGroup) {
+		return;
+	}
+	ParticleGroup& particleGroup = *resolvedGroup;
 	if (!particleGroup.behavior || particleGroup.particles.size() >= particleGroup.maxInstanceCount) {
 		return;
 	}
@@ -447,8 +492,52 @@ std::vector<VertexData> ParticleManager::MakeQuadVertices()
 
 void ParticleManager::SetBehavior(const std::string& groupName, std::unique_ptr<IParticleBehavior> behavior)
 {
-	assert(particleGroups.contains(groupName) && "ParticleGroup does not exist!");
-	particleGroups.at(groupName).behavior = std::move(behavior);
+	const std::optional<ParticleGroupHandle> handle =
+		GetParticleGroupHandle(groupName);
+	if (!handle) {
+		return;
+	}
+	SetBehavior(*handle, std::move(behavior));
+}
+
+void ParticleManager::SetBehavior(
+	ParticleGroupHandle handle,
+	std::unique_ptr<IParticleBehavior> behavior)
+{
+	if (ParticleGroup* particleGroup = ResolveParticleGroup(handle)) {
+		particleGroup->behavior = std::move(behavior);
+	}
+}
+
+std::optional<ParticleGroupHandle>
+ParticleManager::GetParticleGroupHandle(
+	const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return it->second.handle;
+}
+
+ParticleManager::ParticleGroup* ParticleManager::ResolveParticleGroup(
+	ParticleGroupHandle handle)
+{
+	if (handle.generation != particleGroupGeneration_ ||
+		handle.index >= particleGroupsByIndex_.size()) {
+		return nullptr;
+	}
+	return particleGroupsByIndex_[handle.index];
+}
+
+const ParticleManager::ParticleGroup* ParticleManager::ResolveParticleGroup(
+	ParticleGroupHandle handle) const
+{
+	if (handle.generation != particleGroupGeneration_ ||
+		handle.index >= particleGroupsByIndex_.size()) {
+		return nullptr;
+	}
+	return particleGroupsByIndex_[handle.index];
 }
 
 size_t ParticleManager::GetTotalActiveParticleCount() const

@@ -1,6 +1,8 @@
 #include "game/directxgame/player/PlayerWeaponController.h"
+#include "game/directxgame/player/WeaponUpgradeData.h"
 
 #include "game/directxgame/core/CsvReader.h"
+#include "game/directxgame/core/GameplayRules.h"
 #include "game/directxgame/enemy/EnemyManager.h"
 #include "game/directxgame/player/Player.h"
 #include <algorithm>
@@ -10,7 +12,8 @@
 
 namespace {
 
-constexpr float kMinWeaponInterval = 0.01f;
+constexpr float kMinWeaponInterval =
+	DirectXGame::GameplayRules::kMinimumWeaponInterval;
 constexpr int32_t kMaxCatchUpAttacksPerFrame = 4;
 
 float PositiveFiniteOr(float value, float fallback)
@@ -65,15 +68,15 @@ bool PlayerWeaponController::LoadStatusValue(
 		throw std::runtime_error(
 			"playerStatus contains an invalid weapon interval value");
 	}
+	normalBulletInterval_ = GameplayRules::NormalizeWeaponInterval(
+		normalBulletInterval_,
+		normalBulletMinInterval_);
 	normalBulletMinInterval_ = (std::max)(
 		kMinWeaponInterval,
 		normalBulletMinInterval_);
-	normalBulletInterval_ = (std::max)(
-		normalBulletMinInterval_,
-		normalBulletInterval_);
-	droneInterval_ = (std::max)(
-		kMinWeaponInterval,
-		droneInterval_);
+	droneInterval_ = GameplayRules::NormalizeWeaponInterval(
+		droneInterval_,
+		kMinWeaponInterval);
 	return true;
 }
 
@@ -412,19 +415,45 @@ void PlayerWeaponController::UpgradeLightning()
 		PositiveFiniteOr(lightningInterval_, kMinWeaponInterval));
 }
 
+void PlayerWeaponController::UpgradeWeapon(WeaponType type, Player* player)
+{
+	switch (type) {
+	case WeaponType::NormalBullet:
+		UpgradeNormalBullets(player);
+		break;
+	case WeaponType::OrbitBullet:
+		UpgradeOrbitBullets(player);
+		break;
+	case WeaponType::Drone:
+		UpgradeDrone();
+		break;
+	case WeaponType::Lightning:
+		UpgradeLightning();
+		break;
+	}
+}
+
+bool PlayerWeaponController::IsWeaponMaxLevel(WeaponType type) const
+{
+	switch (type) {
+	case WeaponType::NormalBullet:
+		return IsNormalBulletMaxLevel();
+	case WeaponType::OrbitBullet:
+		return IsOrbitBulletMaxLevel();
+	case WeaponType::Drone:
+		return IsDroneMaxLevel();
+	case WeaponType::Lightning:
+		return IsLightningMaxLevel();
+	}
+	return true;
+}
+
 void PlayerWeaponController::MaxAllWeapons(Player* player)
 {
-	while (!IsNormalBulletMaxLevel()) {
-		UpgradeNormalBullets(player);
-	}
-	while (!IsOrbitBulletMaxLevel()) {
-		UpgradeOrbitBullets(player);
-	}
-	while (!IsDroneMaxLevel()) {
-		UpgradeDrone();
-	}
-	while (!IsLightningMaxLevel()) {
-		UpgradeLightning();
+	for (WeaponType type : kUpgradeableWeaponTypes) {
+		while (!IsWeaponMaxLevel(type)) {
+			UpgradeWeapon(type, player);
+		}
 	}
 }
 
@@ -477,20 +506,19 @@ void PlayerWeaponController::UpdateNormalBullets(
 					1.25f;
 				startPosition.x += right.x * horizontalOffset;
 				startPosition.z += right.z * horizontalOffset;
-				auto bullet = std::make_unique<NormalBullet>();
-				bullet->InitializeForward(
+				NormalBullet& bullet = AcquireNormalBullet();
+				bullet.InitializeForward(
 					startPosition,
 					forward,
 					normalBulletSpeed_,
 					normalBulletRange_,
 					normalBulletPierceCount_);
-				normalBullets_.push_back(std::move(bullet));
 				peakNormalBulletCount_ = (std::max)(
 					peakNormalBulletCount_,
 					normalBullets_.size());
 				if (normalBullets_.size() >
 					kMaxActiveNormalBullets) {
-					normalBullets_.erase(normalBullets_.begin());
+					RecycleNormalBullet(0);
 					++normalBulletPruneCount_;
 				}
 			}
@@ -509,14 +537,46 @@ void PlayerWeaponController::UpdateNormalBullets(
 			player ? player->GetWorldPosition() : Vector3{},
 			deltaTime);
 	}
-	normalBullets_.erase(
-		std::remove_if(
-			normalBullets_.begin(),
-			normalBullets_.end(),
-			[](const std::unique_ptr<NormalBullet>& bullet) {
-				return !bullet->IsActive();
-			}),
-		normalBullets_.end());
+	RecycleInactiveNormalBullets();
+}
+
+NormalBullet& PlayerWeaponController::AcquireNormalBullet()
+{
+	if (normalBulletPool_.empty()) {
+		normalBullets_.push_back(std::make_unique<NormalBullet>());
+		return *normalBullets_.back();
+	}
+
+	normalBullets_.push_back(std::move(normalBulletPool_.back()));
+	normalBulletPool_.pop_back();
+	return *normalBullets_.back();
+}
+
+void PlayerWeaponController::RecycleNormalBullet(size_t index)
+{
+	if (index >= normalBullets_.size()) {
+		return;
+	}
+
+	if (normalBullets_[index]) {
+		normalBullets_[index]->Deactivate();
+		normalBulletPool_.push_back(std::move(normalBullets_[index]));
+	}
+	if (index != normalBullets_.size() - 1) {
+		normalBullets_[index] = std::move(normalBullets_.back());
+	}
+	normalBullets_.pop_back();
+}
+
+void PlayerWeaponController::RecycleInactiveNormalBullets()
+{
+	for (size_t index = 0; index < normalBullets_.size();) {
+		if (normalBullets_[index] && normalBullets_[index]->IsActive()) {
+			++index;
+			continue;
+		}
+		RecycleNormalBullet(index);
+	}
 }
 
 void PlayerWeaponController::UpdateOrbitBullets(

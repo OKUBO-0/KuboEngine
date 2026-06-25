@@ -1,4 +1,5 @@
 #pragma once
+#include "ParticleManager.h"
 #include <Vector3.h>
 #include <string>
 
@@ -84,7 +85,7 @@ public:
 	/// @brief 発生先グループ名を設定する
 	/// @param name 新しいグループ名
 	/// @return なし
-	void SetName(const std::string& name) { name_ = name; }
+	void SetName(const std::string& name);
 
 	
 	
@@ -100,6 +101,7 @@ private:
 	uint32_t count;
 	// 発生先グループ名
 	std::string name_;
+	ParticleGroupHandle groupHandle_{};
 };
 
 }

@@ -38,6 +38,9 @@ public:
 private:
 	void ApplyTransform();
 	void FireForward(float angle, int32_t shotCount, float bulletSpeed, float bulletRange, int32_t bulletPierceCount);
+	NormalBullet& AcquireBullet();
+	void RecycleBullet(size_t index);
+	void RecycleInactiveBullets();
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	Vector3 offset_{ 3.0f, 2.0f, 0.0f };
@@ -46,6 +49,7 @@ private:
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
 	std::vector<std::unique_ptr<NormalBullet>> bullets_;
+	std::vector<std::unique_ptr<NormalBullet>> bulletPool_;
 	size_t peakBulletCount_ = 0;
 	size_t bulletPruneCount_ = 0;
 };

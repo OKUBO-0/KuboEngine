@@ -57,6 +57,7 @@ bool CombatEffectsPresentation::Update(
 	Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance();
 	const GameParticleEffects::Tuning& tuning = particleEffects.GetTuning();
+	const GameParticleEffects::Handles& handles = particleEffects.GetHandles();
 	bool bossPhaseChanged = false;
 
 	if (enemyManager) {
@@ -64,7 +65,7 @@ bool CombatEffectsPresentation::Update(
 			enemyManager->GetRecentHitEffectPositions();
 		for (const Vector3& hitPosition : hitPositions) {
 			particleManager->Emit(
-				"DirectXGame.EnemyHitSpark",
+				handles.enemyHitSpark,
 				hitPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyHitSparkCount)));
 		}
@@ -77,11 +78,11 @@ bool CombatEffectsPresentation::Update(
 		for (const Vector3& deathPosition :
 			enemyManager->GetRecentDeathEffectPositions()) {
 			particleManager->Emit(
-				"DirectXGame.EnemyHitSpark",
+				handles.enemyHitSpark,
 				deathPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSparkCount)));
 			particleManager->Emit(
-				"DirectXGame.DeathSmoke",
+				handles.deathSmoke,
 				deathPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSmokeCount)));
 		}
@@ -91,15 +92,15 @@ bool CombatEffectsPresentation::Update(
 		int32_t phase = 0;
 		if (enemyManager->ConsumeBossPhaseChanged(phasePosition, phase)) {
 			particleManager->Emit(
-				"DirectXGame.EnemyHitSpark",
+				handles.enemyHitSpark,
 				phasePosition,
 				phase == 3 ? 64u : 42u);
 			particleManager->Emit(
-				"DirectXGame.DeathSmoke",
+				handles.deathSmoke,
 				phasePosition,
 				phase == 3 ? 20u : 12u);
 			particleManager->Emit(
-				"DirectXGame.Ripple",
+				handles.ripple,
 				phasePosition,
 				phase == 3 ? 4u : 2u);
 			bossPhaseChanged = true;
@@ -109,7 +110,7 @@ bool CombatEffectsPresentation::Update(
 				continue;
 			}
 			particleManager->EmitTrailSegment(
-				"DirectXGame.SuicideEnemyTrail",
+				handles.suicideEnemyTrail,
 				enemy->GetPreviousPosition(),
 				enemy->GetPosition(),
 				0.34f);
@@ -120,11 +121,11 @@ bool CombatEffectsPresentation::Update(
 	const int32_t hp = playerManager.GetHP();
 	if (hp < previousHp_) {
 		particleManager->Emit(
-			"DirectXGame.Spark",
+			handles.spark,
 			playerPosition,
 			static_cast<uint32_t>((std::max)(0, tuning.playerDamageSparkCount)));
 		particleManager->Emit(
-			"DirectXGame.Ripple",
+			handles.ripple,
 			playerPosition,
 			static_cast<uint32_t>((std::max)(0, tuning.playerDamageRippleCount)));
 	}
@@ -133,7 +134,7 @@ bool CombatEffectsPresentation::Update(
 	const int32_t totalExp = playerManager.GetTotalEXP();
 	if (totalExp > previousTotalExp_) {
 		particleManager->Emit(
-			"DirectXGame.ExpSpark",
+			handles.expSpark,
 			playerPosition,
 			static_cast<uint32_t>((std::max)(0, tuning.expSparkCount)));
 	}
@@ -143,7 +144,7 @@ bool CombatEffectsPresentation::Update(
 	if (lightningTimer > previousLightningTimer_) {
 		for (const Vector3& target : playerManager.GetLightningEffectTargets()) {
 			particleManager->Emit(
-				"DirectXGame.LightningImpact",
+				handles.lightningImpact,
 				target,
 				static_cast<uint32_t>((std::max)(0, tuning.lightningSparkCount)));
 		}
@@ -155,7 +156,7 @@ bool CombatEffectsPresentation::Update(
 		playerManager.GetNormalBullets()) {
 		if (bullet && bullet->IsActive()) {
 			particleManager->EmitTrailSegment(
-				"DirectXGame.NormalTrail",
+				handles.normalTrail,
 				bullet->GetPreviousPosition(),
 				bullet->GetPosition(),
 				0.28f);
@@ -165,7 +166,7 @@ bool CombatEffectsPresentation::Update(
 		playerManager.GetOrbitBullets()) {
 		if (bullet && bullet->IsActive()) {
 			particleManager->EmitTrailSegment(
-				"DirectXGame.OrbitTrail",
+				handles.orbitTrail,
 				bullet->GetPreviousPosition(),
 				bullet->GetPosition(),
 				0.42f);
@@ -176,7 +177,7 @@ bool CombatEffectsPresentation::Update(
 			playerManager.GetDrone()->GetBullets()) {
 			if (bullet && bullet->IsActive()) {
 				particleManager->EmitTrailSegment(
-					"DirectXGame.DroneTrail",
+					handles.droneTrail,
 					bullet->GetPreviousPosition(),
 					bullet->GetPosition(),
 					0.24f);

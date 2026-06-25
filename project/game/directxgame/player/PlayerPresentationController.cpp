@@ -221,7 +221,7 @@ void PlayerPresentationController::SyncCamera(
 
 	Engine::CameraSystem::CameraManager* cameraManager =
 		Engine::CameraSystem::CameraManager::GetInstance();
-	if (cameraManager->SyncCamera(kGameCameraName, camera)) {
+	if (cameraManager->GetCamera(kGameCameraName) == camera) {
 		cameraManager->SetActiveCamera(kGameCameraName);
 	}
 }

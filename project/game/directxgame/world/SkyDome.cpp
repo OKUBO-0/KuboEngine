@@ -1,7 +1,6 @@
 #include "game/directxgame/world/SkyDome.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include <cmath>
 
 namespace {
@@ -14,8 +13,6 @@ namespace DirectXGame {
 
 void SkyDome::Initialize()
 {
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
-
 	const ModelHandle skydomeHandle = GameModelCache::Load("skydome.obj");
 	skyObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	skyObject_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());

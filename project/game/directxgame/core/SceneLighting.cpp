@@ -95,7 +95,7 @@ void AppendTuningEntries(
 }
 
 #ifdef _DEBUG
-void DrawDebugUi()
+void DrawDebugUI()
 {
 	Engine::Graphics3D::Object3DCommon* objectCommon =
 		Engine::Graphics3D::Object3DCommon::GetInstance();

@@ -53,7 +53,14 @@ inline void ClearDebugSceneViewport()
 inline Vector2 ToGamePosition(const Vector2& windowPosition)
 {
 	if (!gDebugSceneViewportEnabled || gDebugSceneViewportSize.x <= 0.0f || gDebugSceneViewportSize.y <= 0.0f) {
-		return windowPosition;
+		const Vector2 clientSize = GetClientSize();
+		if (clientSize.x <= 0.0f || clientSize.y <= 0.0f) {
+			return windowPosition;
+		}
+		return {
+			windowPosition.x * static_cast<float>(Engine::Base::WinApp::kClientWidth) / clientSize.x,
+			windowPosition.y * static_cast<float>(Engine::Base::WinApp::kClientHeight) / clientSize.y,
+		};
 	}
 
 	return {

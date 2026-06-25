@@ -1,5 +1,6 @@
 #include "DirectXCommon.h"
 #include "HResult.h"
+#include "ShaderCompiler.h"
 #include "WinApp.h"
 #include <algorithm>
 #include <cassert>
@@ -225,17 +226,14 @@ void DirectXCommon::DepthBufferInitialize()
 
 }
 
-const uint32_t DirectXCommon::kMaxSRVCount = 512;
 void DirectXCommon::DescriptorHeapInitialize()
 {
 	//サイズを取得
-	descriptorSizeSRV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	descriptorSizeRTV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	descriptorSizeDSV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
-	// RTV、SRV、DSV を用途ごとに分けて確保し、後続の各マネージャーから再利用する
+	// SRV heap は SrvManager が単独で所有する
 	rtvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 3, false);//RTV
-	srvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kMaxSRVCount, true);//SRV
 	dsvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);//DSV用のヒープでディスクリプタの数は1。DSVはShader内で触るものではない
 
 }
@@ -325,20 +323,6 @@ void DirectXCommon::ScissorInitialize()
 
 }
 
-void DirectXCommon::DxcCompilerInitialize()
-{
-#pragma region DxcCompiler
-	// HLSL コンパイルを実行する DXC 本体と include 解決用ハンドラを初期化する
-	hr = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&dxcUtils));
-	ThrowIfFailed(hr, "DxcCreateInstance utils");
-	hr = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&dxcCompiler));
-	ThrowIfFailed(hr, "DxcCreateInstance compiler");
-	//includeに対する設定
-	hr = dxcUtils->CreateDefaultIncludeHandler(&includeHandler);
-	ThrowIfFailed(hr, "IDxcUtils::CreateDefaultIncludeHandler");
-#pragma endregion
-}
-
 void DirectXCommon::ImguiInitialize()
 {
 }
@@ -356,77 +340,9 @@ void DirectXCommon::InitializeGraphicsResources()
 	FenceInitialize();
 	ViewportInitialize();
 	ScissorInitialize();
-	DxcCompilerInitialize();
+	shaderCompiler_ = std::make_unique<ShaderCompiler>();
+	shaderCompiler_->Initialize();
 	ImguiInitialize();
-}
-
-Microsoft::WRL::ComPtr<IDxcBlobEncoding> DirectXCommon::LoadShaderSource(const std::wstring& filePath)
-{
-	Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource = nullptr;
-	hr = dxcUtils->LoadFile(filePath.c_str(), nullptr, shaderSource.GetAddressOf());
-	ThrowIfFailed(hr, "IDxcUtils::LoadFile");
-	return shaderSource;
-}
-
-DxcBuffer DirectXCommon::CreateShaderSourceBuffer(IDxcBlobEncoding* shaderSource) const
-{
-	DxcBuffer shaderSourceBuffer{};
-	shaderSourceBuffer.Ptr = shaderSource->GetBufferPointer();
-	shaderSourceBuffer.Size = shaderSource->GetBufferSize();
-	shaderSourceBuffer.Encoding = DXC_CP_UTF8;
-	return shaderSourceBuffer;
-}
-
-std::array<LPCWSTR, 9> DirectXCommon::CreateShaderCompileArguments(const std::wstring& filePath, const wchar_t* profile) const
-{
-	return {
-		filePath.c_str(),
-		L"-E", L"main",
-		L"-T", profile,
-		L"-Zi", L"-Qembed_debug",
-		L"-Od", L"-Zpr",
-	};
-}
-
-Microsoft::WRL::ComPtr<IDxcResult> DirectXCommon::ExecuteShaderCompile(const DxcBuffer& shaderSourceBuffer,
-	std::array<LPCWSTR, 9> arguments)
-{
-	Microsoft::WRL::ComPtr<IDxcResult> shaderResult = nullptr;
-	hr = dxcCompiler->Compile(
-		&shaderSourceBuffer,
-		arguments.data(),
-		static_cast<UINT32>(arguments.size()),
-		includeHandler,
-		IID_PPV_ARGS(shaderResult.GetAddressOf()));
-	ThrowIfFailed(hr, "IDxcCompiler3::Compile");
-	return shaderResult;
-}
-
-void DirectXCommon::ValidateShaderCompileResult(IDxcResult* shaderResult)
-{
-	Microsoft::WRL::ComPtr<IDxcBlobUtf8> shaderError = nullptr;
-	ThrowIfFailed(
-		shaderResult->GetOutput(
-			DXC_OUT_ERRORS,
-			IID_PPV_ARGS(shaderError.GetAddressOf()),
-			nullptr),
-		"IDxcResult::GetOutput errors");
-
-	HRESULT compileStatus = S_OK;
-	ThrowIfFailed(
-		shaderResult->GetStatus(&compileStatus),
-		"IDxcResult::GetStatus");
-	if (FAILED(compileStatus)) {
-		const std::string detail =
-			shaderError && shaderError->GetStringLength() != 0
-			? shaderError->GetStringPointer()
-			: "Shader compilation failed without diagnostic text";
-		Logger::Log(detail);
-		throw std::runtime_error(detail);
-	}
-	if (shaderError != nullptr && shaderError->GetStringLength() != 0) {
-		Logger::Log(shaderError->GetStringPointer());
-	}
 }
 
 //初期化
@@ -567,16 +483,6 @@ void DirectXCommon::End()
 	ResetCommandObjects(currentFrameIndex_);
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetSRVCPUDescriptorHandle(uint32_t index)
-{
-	return GetCPUDescriptorHandle(srvDescriptorHeap, descriptorSizeSRV, index);
-}
-
-D3D12_GPU_DESCRIPTOR_HANDLE DirectXCommon::GetSRVGPUDescriptorHandle(uint32_t index)
-{
-	return GetGPUDescriptorHandle(srvDescriptorHeap, descriptorSizeSRV, index);
-}
-
 D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetRTVCPUDescriptorHandle(uint32_t index)
 {
 	return GetCPUDescriptorHandle(rtvDescriptorHeap, descriptorSizeRTV, index);
@@ -658,24 +564,11 @@ D3D12_GPU_DESCRIPTOR_HANDLE DirectXCommon::GetGPUDescriptorHandle(Microsoft::WRL
 
 }
 
-IDxcBlob* DirectXCommon::CompileShader(const std::wstring& filePath, const wchar_t* profile)
+Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(
+	const std::wstring& filePath,
+	const wchar_t* profile)
 {
-	//シェーダーをコンパイルする旨をログに出す
-	Logger::Log(StringUtility::ConvertString(std::format(L"Begin CompileShader,path:{},profile:{}\n", filePath, profile)));
-	Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource = LoadShaderSource(filePath);
-	DxcBuffer shaderSourceBuffer = CreateShaderSourceBuffer(shaderSource.Get());
-	std::array<LPCWSTR, 9> arguments = CreateShaderCompileArguments(filePath, profile);
-	Microsoft::WRL::ComPtr<IDxcResult> shaderResult = ExecuteShaderCompile(shaderSourceBuffer, arguments);
-	ValidateShaderCompileResult(shaderResult.Get());
-
-	//コンパイル結果から実行用のバイナリ部分を取得
-	Microsoft::WRL::ComPtr<IDxcBlob> shaderBlob = nullptr;
-	hr = shaderResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(shaderBlob.GetAddressOf()), nullptr);
-	ThrowIfFailed(hr, "IDxcResult::GetOutput object");
-	//成功したログを出す
-	Logger::Log(StringUtility::ConvertString(std::format(L"Complite Succeded,path:{},profile:{}\n", filePath, profile)));
-
-	return shaderBlob.Detach();
+	return shaderCompiler_->Compile(filePath, profile);
 }
 
 
@@ -807,6 +700,15 @@ DirectXCommon::FrameUploadAllocation DirectXCommon::AllocateFrameUpload(
 	};
 	frameContext.uploadOffset = alignedOffset + sizeInBytes;
 	return allocation;
+}
+
+void DirectXCommon::DeferResourceRelease(
+	Microsoft::WRL::ComPtr<ID3D12Resource>&& resource)
+{
+	if (resource) {
+		frameContexts_[currentFrameIndex_].deferredReleaseResources.push_back(
+			std::move(resource));
+	}
 }
 
 Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateTextureResource(const DirectX::TexMetadata& metadata)

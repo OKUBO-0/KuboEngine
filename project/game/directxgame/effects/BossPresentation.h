@@ -11,7 +11,10 @@ class BossPresentation final {
 public:
 	void Reset();
 	void StartEntrance(EnemyManager& enemyManager);
-	bool UpdateEntrance(EnemyManager& enemyManager, float deltaTime);
+	bool UpdateEntrance(
+		EnemyManager& enemyManager,
+		const GameParticleEffects& particleEffects,
+		float deltaTime);
 
 	void StartDefeat(EnemyManager& enemyManager);
 	bool UpdateDefeat(

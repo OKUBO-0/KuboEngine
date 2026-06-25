@@ -2,7 +2,6 @@
 #include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -44,24 +43,26 @@ void NormalBullet::InitializeForward(
 	traveled_ = 0.0f;
 	remainingHits_ = (std::max)(1, maxHits);
 	active_ = true;
+	hitCooldowns_.clear();
 
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
-	const ModelHandle bulletHandle = GameModelCache::Load("bullet.obj");
-	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
-	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
-	GameModelCache::ApplyToObject(*object_, bulletHandle);
-	object_->SetSkyboxFilePath(kEnvironmentTexturePath);
-	object_->SetEnvironmentReflectionStrength(0.0f);
-	object_->SetEnvironmentRoughness(1.0f);
+	if (!object_) {
+		const ModelHandle bulletHandle = GameModelCache::Load("bullet.obj");
+		object_ = std::make_unique<Engine::Graphics3D::Object3D>();
+		object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
+		GameModelCache::ApplyToObject(*object_, bulletHandle);
+		object_->SetSkyboxFilePath(kEnvironmentTexturePath);
+		object_->SetEnvironmentReflectionStrength(0.0f);
+		object_->SetEnvironmentRoughness(1.0f);
+	}
 	object_->SetScale({ 1.0f, 1.0f, 1.0f });
 	ApplyTransform();
 	object_->Update();
 
-	static SoundHandle sharedShotSeHandle = 0;
-	if (sharedShotSeHandle == 0) {
+	static SoundHandle sharedShotSeHandle{};
+	if (!sharedShotSeHandle) {
 		sharedShotSeHandle = GameAudioCache::LoadWave(kShotSePath);
 	}
-	if (sharedShotSeHandle != 0) {
+	if (sharedShotSeHandle) {
 	GameAudioCache::Play(sharedShotSeHandle);
 	GameAudioCache::SetVolumeFromTuning(sharedShotSeHandle, kAudioShot, 1.0f);
 }

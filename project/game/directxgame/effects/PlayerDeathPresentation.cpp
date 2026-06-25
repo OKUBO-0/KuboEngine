@@ -36,19 +36,20 @@ void PlayerDeathPresentation::Start(
 	player.StartDeathPresentation();
 
 	const GameParticleEffects::Tuning& tuning = particleEffects.GetTuning();
+	const GameParticleEffects::Handles& handles = particleEffects.GetHandles();
 	Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance();
 	const Vector3& position = player.GetWorldPosition();
 	particleManager->Emit(
-		"DirectXGame.PlayerDeathSpark",
+		handles.playerDeathSpark,
 		position,
 		static_cast<uint32_t>((std::max)(0, tuning.playerDeathSparkCount)));
 	particleManager->Emit(
-		"DirectXGame.DeathSmoke",
+		handles.deathSmoke,
 		position,
 		static_cast<uint32_t>((std::max)(0, tuning.playerDeathSmokeCount)));
 	particleManager->Emit(
-		"DirectXGame.Ripple",
+		handles.ripple,
 		position,
 		static_cast<uint32_t>((std::max)(0, tuning.playerDeathRippleCount)));
 }

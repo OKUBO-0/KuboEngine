@@ -3,8 +3,10 @@
 #include "game/directxgame/core/GameplayFlowController.h"
 #include "game/directxgame/enemy/EnemyManager.h"
 #include "game/directxgame/core/GameTextureCache.h"
+#include "game/directxgame/core/GameSpriteFactory.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/PlayerManager.h"
+#include "game/directxgame/ui/common/DigitSpriteUtil.h"
 #include <algorithm>
 
 namespace {
@@ -50,6 +52,7 @@ void GameplayHudPresentation::Initialize(
 	const PlayerManager* playerManager)
 {
 	PreloadGameplayHudTextures();
+	coinDigitTexture_ = GameTextureCache::Load("ui/number/numbers.png");
 
 	timer_.Initialize();
 	hpGauge_.Initialize();
@@ -75,6 +78,14 @@ void GameplayHudPresentation::Initialize(
 	deathOverlay_.SetSize({ 1280.0f, 720.0f });
 	deathOverlay_.SetAlpha(0.0f);
 	deathOverlay_.SetVisible(false);
+	for (int32_t index = 0; index < kCoinDigitCount; ++index) {
+		coinDigits_[index] = GameSpriteFactory::Create(
+			coinDigitTexture_,
+			{ coinDigitPosition_.x + coinDigitSize_.x * static_cast<float>(index),
+				coinDigitPosition_.y });
+		coinDigits_[index]->SetSize(coinDigitSize_);
+		coinDigits_[index]->SetTextureSize({ 24.0f, 32.0f });
+	}
 
 	hpGauge_.SetHP(
 		playerManager ? playerManager->GetHP() : 1,
@@ -94,9 +105,11 @@ void GameplayHudPresentation::Update(
 	PlayerManager* playerManager,
 	EnemyManager* enemyManager,
 	Engine::InputSystem::Input* input,
-	float deathOverlayAlpha)
+	float deathOverlayAlpha,
+	int32_t runCoins)
 {
 	animationTime_ += deltaTime;
+	UpdateCoinDisplay(runCoins);
 
 	if (playerManager) {
 		const int32_t currentHp = playerManager->GetHP();
@@ -147,9 +160,6 @@ void GameplayHudPresentation::Update(
 	if (flow.IsCursorHidden() && player && enemyManager) {
 		gameplayMiniMap_.Update(player, *enemyManager);
 	}
-	if (flow.Is(GameplayState::Paused) && player && enemyManager) {
-		pauseMiniMap_.Update(player, *enemyManager);
-	}
 	if (flow.Is(GameplayState::Playing) && !gameplayFrozen) {
 		timer_.Update(deltaTime);
 	}
@@ -162,6 +172,7 @@ void GameplayHudPresentation::Draw(
 	hpGauge_.Draw();
 	expGauge_.Draw();
 	if (flow.IsWorldHudVisible()) {
+		DrawCoinDisplay();
 		gameplayMiniMap_.Draw();
 		keyUi_.Draw();
 	}
@@ -172,14 +183,50 @@ void GameplayHudPresentation::Draw(
 	deathOverlay_.Draw();
 }
 
-void GameplayHudPresentation::DrawPauseMap()
-{
-	pauseMiniMap_.Draw();
-}
-
 void GameplayHudPresentation::TriggerHitFlash(float duration)
 {
 	hitFlashTimer_ = (std::max)(hitFlashTimer_, duration);
+}
+
+void GameplayHudPresentation::UpdateCoinDisplay(int32_t runCoins)
+{
+	const int32_t clampedCoins = std::clamp(runCoins, 0, 999999);
+	int32_t divisor = 100000;
+	bool nonZeroSeen = false;
+	for (int32_t index = 0; index < kCoinDigitCount; ++index) {
+		if (!coinDigits_[index]) {
+			divisor /= 10;
+			continue;
+		}
+		const int32_t digit = divisor > 0 ? (clampedCoins / divisor) % 10 : 0;
+		nonZeroSeen = nonZeroSeen || digit > 0 || index == kCoinDigitCount - 1;
+		DigitSpriteUtil::SetDigitSprite(
+			*coinDigits_[index],
+			24.0f,
+			{ 24.0f, 32.0f },
+			digit);
+		coinDigits_[index]->SetPosition({
+			coinDigitPosition_.x + coinDigitSize_.x * static_cast<float>(index),
+			coinDigitPosition_.y });
+		coinDigits_[index]->SetSize(coinDigitSize_);
+		coinDigits_[index]->SetColor({
+			1.0f,
+			0.86f,
+			0.22f,
+			nonZeroSeen ? 1.0f : 0.0f });
+		divisor /= 10;
+	}
+}
+
+void GameplayHudPresentation::DrawCoinDisplay()
+{
+	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : coinDigits_) {
+		if (!digit) {
+			continue;
+		}
+		digit->Update();
+		digit->Draw();
+	}
 }
 
 }

@@ -1,7 +1,6 @@
 #include "game/directxgame/player/weapons/Drone.h"
 #include "game/directxgame/core/GameModelCache.h"
 #include "Object3DCommon.h"
-#include "TextureManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -17,7 +16,6 @@ void Drone::Initialize(const Vector3& offset)
 {
 	offset_ = offset;
 
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(kEnvironmentTexturePath);
 	const ModelHandle droneHandle = GameModelCache::Load("cube.obj");
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
@@ -59,12 +57,7 @@ void Drone::Update(
 	for (std::unique_ptr<NormalBullet>& bullet : bullets_) {
 		bullet->Update(position_, deltaTime);
 	}
-	bullets_.erase(
-		std::remove_if(
-			bullets_.begin(),
-			bullets_.end(),
-			[](const std::unique_ptr<NormalBullet>& bullet) { return !bullet->IsActive(); }),
-		bullets_.end());
+	RecycleInactiveBullets();
 
 	ApplyTransform();
 	if (object_) {
@@ -99,20 +92,58 @@ void Drone::FireForward(float angle, int32_t shotCount, float bulletSpeed, float
 		const float spread = (static_cast<float>(i) - centerOffset) * kSpreadRadians;
 		const float shotAngle = angle + spread;
 		Vector3 shotDirection{ std::sin(shotAngle), 0.0f, std::cos(shotAngle) };
-		auto bullet = std::make_unique<NormalBullet>();
-		bullet->InitializeForward(
+		NormalBullet& bullet = AcquireBullet();
+		bullet.InitializeForward(
 			position_,
 			shotDirection,
 			bulletSpeed,
 			bulletRange,
 			bulletPierceCount,
 			{ 0.45f, 0.88f, 1.0f, 0.82f });
-		bullets_.push_back(std::move(bullet));
 		peakBulletCount_ = (std::max)(peakBulletCount_, bullets_.size());
 		if (bullets_.size() > Drone::kMaxActiveBullets) {
-			bullets_.erase(bullets_.begin());
+			RecycleBullet(0);
 			++bulletPruneCount_;
 		}
+	}
+}
+
+NormalBullet& Drone::AcquireBullet()
+{
+	if (bulletPool_.empty()) {
+		bullets_.push_back(std::make_unique<NormalBullet>());
+		return *bullets_.back();
+	}
+
+	bullets_.push_back(std::move(bulletPool_.back()));
+	bulletPool_.pop_back();
+	return *bullets_.back();
+}
+
+void Drone::RecycleBullet(size_t index)
+{
+	if (index >= bullets_.size()) {
+		return;
+	}
+
+	if (bullets_[index]) {
+		bullets_[index]->Deactivate();
+		bulletPool_.push_back(std::move(bullets_[index]));
+	}
+	if (index != bullets_.size() - 1) {
+		bullets_[index] = std::move(bullets_.back());
+	}
+	bullets_.pop_back();
+}
+
+void Drone::RecycleInactiveBullets()
+{
+	for (size_t index = 0; index < bullets_.size();) {
+		if (bullets_[index] && bullets_[index]->IsActive()) {
+			++index;
+			continue;
+		}
+		RecycleBullet(index);
 	}
 }
 

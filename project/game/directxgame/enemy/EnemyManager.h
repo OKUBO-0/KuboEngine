@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -15,12 +16,15 @@ namespace DirectXGame {
 
 class Player;
 class PlayerManager;
+class GameSession;
 
 class EnemyManager {
 public:
 	void Initialize(const std::string& enemyTypesPath, Player* player, PlayerManager* playerManager);
 	void LoadEnemyTypes(const std::string& filePath);
 	void LoadSpawnSettings(const std::string& filePath);
+	void SetRandomSeed(uint32_t seed);
+	void SetSession(GameSession* session) { session_ = session; }
 	void Update(float deltaTime);
 	void Draw();
 	void DrawShadow();
@@ -64,6 +68,7 @@ private:
 	EnemySpawnController spawnController_{};
 	Player* player_ = nullptr;
 	PlayerManager* playerManager_ = nullptr;
+	GameSession* session_ = nullptr;
 
 	int32_t totalKillCount_ = 0;
 	size_t peakExpOrbCount_ = 0;
@@ -74,6 +79,7 @@ private:
 	Enemy* bossEnemy_ = nullptr;
 	bool bossPhase_ = false;
 	bool bossDefeated_ = false;
+	mutable std::mt19937 randomEngine_{ std::random_device{}() };
 };
 
 } // namespace DirectXGame

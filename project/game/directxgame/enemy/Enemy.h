@@ -48,6 +48,8 @@ public:
 
 	void SetEXP(int32_t exp) { exp_ = exp; }
 	int32_t GetEXP() const { return exp_; }
+	void SetCoinValue(int32_t coinValue) { coinValue_ = coinValue; }
+	int32_t GetCoinValue() const { return coinValue_; }
 	bool JustDied() const { return justDied_; }
 	void ResetJustDied() { justDied_ = false; }
 
@@ -74,6 +76,7 @@ private:
 	int32_t hp_ = 0;
 	int32_t maxHp_ = 0;
 	int32_t exp_ = 0;
+	int32_t coinValue_ = 0;
 	int32_t type_ = 0;
 	bool active_ = true;
 	bool justDied_ = false;

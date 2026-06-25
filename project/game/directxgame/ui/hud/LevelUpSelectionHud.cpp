@@ -3,11 +3,11 @@
 #include "Input.h"
 #include "MyMath.h"
 #include "ParticleManager.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/core/GameTextureCache.h"
 #include "game/directxgame/core/ScreenUtil.h"
 #include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/effects/DirectXGameParticleBehaviors.h"
+#include "game/directxgame/effects/ParticleBehaviors.h"
 #include "game/directxgame/effects/GameParticleEffects.h"
 #include "game/directxgame/player/Player.h"
 #include "game/directxgame/player/PlayerManager.h"
@@ -337,11 +337,13 @@ void LevelUpSelectionHud::SpawnConfetti(
 
 	Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance();
+	const Engine::Particle::ParticleGroupHandle confettiHandle =
+		particleEffects.GetHandles().confetti;
 	particleManager->SetBehavior(
-		"DirectXGame.Confetti",
+		confettiHandle,
 		std::make_unique<ConfettiParticleBehavior>(settings));
 	particleManager->Emit(
-		"DirectXGame.Confetti",
+		confettiHandle,
 		spawnArea.center,
 		confettiCount);
 }

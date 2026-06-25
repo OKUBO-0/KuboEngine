@@ -1,5 +1,5 @@
 #include "game/directxgame/ui/hud/PauseBuildHud.h"
-#include "game/directxgame/core/DirectXGameDataPaths.h"
+#include "game/directxgame/core/DataPaths.h"
 #include "game/directxgame/core/ScreenUtil.h"
 #include "game/directxgame/core/UILayoutIO.h"
 #include "game/directxgame/player/PlayerManager.h"
@@ -214,7 +214,7 @@ void PauseBuildHud::ApplyLayout()
 }
 
 #ifdef _DEBUG
-void PauseBuildHud::DrawDebugUi()
+void PauseBuildHud::DrawDebugUI()
 {
 	ImGui::Checkbox("Show Pause Build Icons", &layout_.visible);
 	ImGui::Checkbox("Enable HUD Debug##PauseBuildIcons", &layout_.debugEnabled);

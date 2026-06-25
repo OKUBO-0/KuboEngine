@@ -1,5 +1,7 @@
 #include "Model.h"
 #include "DirectXCommon.h"
+#include "ModelAssetResolver.h"
+#include "ModelMeshConverter.h"
 #include "HResult.h"
 #include "ModelCommon.h"
 #include "MyMath.h"
@@ -31,47 +33,6 @@ float ResolveAnimationTicksPerSecond(const aiAnimation& animation)
     return std::isfinite(ticksPerSecond) && ticksPerSecond > 0.0f
         ? ticksPerSecond
         : kDefaultAnimationTicksPerSecond;
-}
-
-std::string ResolveModelFilePath(const std::string& directoryPath, const std::string& filename)
-{
-    const std::filesystem::path resourceRoot = directoryPath;
-    const std::filesystem::path resourceDirectPath = resourceRoot / filename;
-    if (std::filesystem::exists(resourceDirectPath)) {
-        return resourceDirectPath.generic_string();
-    }
-
-    const std::filesystem::path modelRoot = std::filesystem::path(directoryPath) / "models";
-    const std::filesystem::path directPath = modelRoot / filename;
-    if (std::filesystem::exists(directPath)) {
-        return directPath.generic_string();
-    }
-
-    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(modelRoot)) {
-        if (entry.is_regular_file() && entry.path().filename() == filename) {
-            return entry.path().generic_string();
-        }
-    }
-
-    return directPath.generic_string();
-}
-
-std::string ResolveResourceFilePath(const std::string& directoryPath, const std::string& filename)
-{
-    const std::filesystem::path resourceRoot = directoryPath;
-    const std::filesystem::path directPath = resourceRoot / filename;
-    if (std::filesystem::exists(directPath)) {
-        return directPath.generic_string();
-    }
-
-    const std::filesystem::path targetFilename = std::filesystem::path(filename).filename();
-    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(resourceRoot)) {
-        if (entry.is_regular_file() && entry.path().filename() == targetFilename) {
-            return entry.path().generic_string();
-        }
-    }
-
-    return directPath.generic_string();
 }
 
 void FailModelLoad(const std::string& operation, const std::string& path, const std::string& detail)
@@ -309,7 +270,7 @@ MaterialData Model::LoadMaterialTemplateFile(const std::string& directorypath, c
         if (identifier == "map_Kd") {
             std::string textureFilename;
             s >> textureFilename;
-            materialData.textureFilePath = ResolveResourceFilePath(directorypath, textureFilename);
+            materialData.textureFilePath = ResolveModelResourcePath(directorypath, textureFilename);
         }
     }
     return materialData;
@@ -319,7 +280,7 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
 {
     ModelData modelData; // 構築するモデルデータ
     Assimp::Importer importer;
-    std::string path = ResolveModelFilePath(directoryPath, filename);
+    std::string path = ResolveModelAssetPath(directoryPath, filename);
 
     // 頂点、法線、UV を揃えたうえでエンジン形式へ変換する
     // Assimpでモデルファイル読み込み
@@ -379,7 +340,7 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
 {
     Animation animation;
     Assimp::Importer importer;
-    std::string filepath = ResolveModelFilePath(directoryPath, filename);
+    std::string filepath = ResolveModelAssetPath(directoryPath, filename);
     const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
     if (scene == nullptr) {
         FailModelLoad("LoadAnimationFile", filepath, std::string("Assimp::ReadFile failed: ") + importer.GetErrorString());
@@ -407,67 +368,12 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
 
 void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
 {
-    const size_t baseVertex = modelData.vertices.size();
-    modelData.vertices.resize(baseVertex + mesh->mNumVertices);
-
-    // 頂点情報の読み込み
-    for (uint32_t vertexIndex = 0; vertexIndex < mesh->mNumVertices; ++vertexIndex) {
-        aiVector3D& position = mesh->mVertices[vertexIndex];
-        const aiVector3D normal = mesh->HasNormals() ? mesh->mNormals[vertexIndex] : aiVector3D{ 0.0f, 1.0f, 0.0f };
-        const aiVector3D texcoord = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][vertexIndex] : aiVector3D{ 0.0f, 0.0f, 0.0f };
-
-        // 右手系 → 左手系変換
-        VertexData& vertex = modelData.vertices[baseVertex + vertexIndex];
-        vertex.position = { -position.x, position.y, position.z, 1.0f };
-        vertex.normal = { -normal.x, normal.y, normal.z };
-        vertex.texcoord = { texcoord.x, texcoord.y };
-    }
+    AppendVerticesFromMesh(*mesh, modelData);
 }
 
 void Model::CalculateBounds(ModelData& modelData)
 {
-    if (modelData.vertices.empty()) {
-        modelData.localAabbMin = { 0.0f, 0.0f, 0.0f };
-        modelData.localAabbMax = { 0.0f, 0.0f, 0.0f };
-        modelData.localAabbCenter = { 0.0f, 0.0f, 0.0f };
-        modelData.localBoundingRadius = 1.0f;
-        modelData.hasBounds = false;
-        return;
-    }
-
-    Vector3 min{
-        modelData.vertices.front().position.x,
-        modelData.vertices.front().position.y,
-        modelData.vertices.front().position.z,
-    };
-    Vector3 max = min;
-    for (const VertexData& vertex : modelData.vertices) {
-        min.x = (std::min)(min.x, vertex.position.x);
-        min.y = (std::min)(min.y, vertex.position.y);
-        min.z = (std::min)(min.z, vertex.position.z);
-        max.x = (std::max)(max.x, vertex.position.x);
-        max.y = (std::max)(max.y, vertex.position.y);
-        max.z = (std::max)(max.z, vertex.position.z);
-    }
-
-    const Vector3 center{
-        (min.x + max.x) * 0.5f,
-        (min.y + max.y) * 0.5f,
-        (min.z + max.z) * 0.5f,
-    };
-    float radiusSq = 0.0f;
-    for (const VertexData& vertex : modelData.vertices) {
-        const float dx = vertex.position.x - center.x;
-        const float dy = vertex.position.y - center.y;
-        const float dz = vertex.position.z - center.z;
-        radiusSq = (std::max)(radiusSq, dx * dx + dy * dy + dz * dz);
-    }
-
-    modelData.localAabbMin = min;
-    modelData.localAabbMax = max;
-    modelData.localAabbCenter = center;
-    modelData.localBoundingRadius = std::sqrt(radiusSq);
-    modelData.hasBounds = true;
+    CalculateModelBounds(modelData);
 }
 
 void Model::LoadIndicesFromMesh(
@@ -475,18 +381,7 @@ void Model::LoadIndicesFromMesh(
     uint32_t baseVertex,
     ModelData& modelData)
 {
-    // インデックス情報の読み込み（三角形のみ対応）
-    for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
-        aiFace& face = mesh->mFaces[faceIndex];
-        if (face.mNumIndices != 3) {
-            LogSkippedNonTriangleFace(mesh->mName.C_Str(), faceIndex, face.mNumIndices);
-            continue;
-        }
-        for (uint32_t element = 0; element < face.mNumIndices; ++element) {
-            modelData.indices.push_back(
-                baseVertex + face.mIndices[element]);
-        }
-    }
+    AppendIndicesFromMesh(*mesh, baseVertex, modelData, LogSkippedNonTriangleFace);
 }
 
 void Model::LoadSkinClusterDataFromMesh(
@@ -494,33 +389,7 @@ void Model::LoadSkinClusterDataFromMesh(
     uint32_t baseVertex,
     ModelData& modelData)
 {
-    // ボーンごとの逆バインド姿勢と頂点ウェイトを収集する
-    for (uint32_t boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
-        aiBone* bone = mesh->mBones[boneIndex];
-        std::string jointName = bone->mName.C_Str();
-        JointWeightData& jointWeightData = modelData.skinClusterData[jointName];
-
-        // バインドポーズ行列を分解する
-        aiMatrix4x4 bindPoseMatrixAssimp = bone->mOffsetMatrix.Inverse();
-        aiVector3D scale, translate;
-        aiQuaternion rotation;
-        bindPoseMatrixAssimp.Decompose(scale, rotation, translate);
-
-        Matrix4x4 bindposeMatrix = MyMath::MakeAffineMatrix(
-            { scale.x, scale.y, scale.z },
-            { rotation.x, -rotation.y, -rotation.z, rotation.w },
-            { -translate.x, translate.y, translate.z }
-        );
-        jointWeightData.inverseBindPoseMatrix = bindposeMatrix.Inverse();
-
-        // 頂点ごとの重みを格納する
-        for (uint32_t weightIndex = 0; weightIndex < bone->mNumWeights; ++weightIndex) {
-            jointWeightData.vertexWeights.push_back({
-                bone->mWeights[weightIndex].mWeight,
-                baseVertex + bone->mWeights[weightIndex].mVertexId
-                });
-        }
-    }
+    AppendSkinClusterDataFromMesh(*mesh, baseVertex, modelData);
 }
 
 void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& directoryPath, ModelData& modelData)
@@ -533,7 +402,7 @@ void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& direc
 
         aiString texturePath;
         material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath);
-        modelData.material.textureFilePath = ResolveResourceFilePath(directoryPath, texturePath.C_Str());
+        modelData.material.textureFilePath = ResolveModelResourcePath(directoryPath, texturePath.C_Str());
     }
 }
 

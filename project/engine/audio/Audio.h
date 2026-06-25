@@ -122,11 +122,13 @@ public:
     bool IsSoundPlaying(SoundData* soundData) const; // 指定音が鳴っているか
 
 private:
+    void PruneFinishedVoices();
+
     ComPtr<IXAudio2> xAudio2 = nullptr;
     IXAudio2MasteringVoice* masterVoice = nullptr;
 
     // 複数の SourceVoice を管理
-    std::unordered_map<SoundData*, IXAudio2SourceVoice*> activeVoices;
+    std::unordered_map<const SoundData*, std::vector<IXAudio2SourceVoice*>> activeVoices;
 };
 
 }
