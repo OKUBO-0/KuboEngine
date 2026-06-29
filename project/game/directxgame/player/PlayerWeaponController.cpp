@@ -1,10 +1,10 @@
-#include "game/directxgame/player/PlayerWeaponController.h"
-#include "game/directxgame/player/WeaponUpgradeData.h"
+#include "PlayerWeaponController.h"
+#include "WeaponUpgradeData.h"
 
-#include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/GameplayRules.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/player/Player.h"
+#include "CsvReader.h"
+#include "GameplayRules.h"
+#include "EnemyManager.h"
+#include "Player.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -41,10 +41,6 @@ bool PlayerWeaponController::LoadStatusValue(
 		normalBulletInterval_ = CsvReader::ParseFloat(
 			value,
 			"playerStatus.normalBulletInterval");
-	} else if (key == "normalBulletUpgradeMultiplier") {
-		normalBulletUpgradeMultiplier_ = CsvReader::ParseFloat(
-			value,
-			"playerStatus.normalBulletUpgradeMultiplier");
 	} else if (key == "normalBulletMinInterval") {
 		normalBulletMinInterval_ = CsvReader::ParseFloat(
 			value,
@@ -53,18 +49,17 @@ bool PlayerWeaponController::LoadStatusValue(
 		droneInterval_ = CsvReader::ParseFloat(
 			value,
 			"playerStatus.droneInterval");
-	} else if (key == "droneUpgradeMultiplier") {
-		droneUpgradeMultiplier_ = CsvReader::ParseFloat(
+	} else if (key == "explosiveBulletInterval") {
+		explosiveBulletInterval_ = CsvReader::ParseFloat(
 			value,
-			"playerStatus.droneUpgradeMultiplier");
+			"playerStatus.explosiveBulletInterval");
 	} else {
 		return false;
 	}
 	if (normalBulletInterval_ <= 0.0f ||
-		normalBulletUpgradeMultiplier_ <= 0.0f ||
 		normalBulletMinInterval_ <= 0.0f ||
 		droneInterval_ <= 0.0f ||
-		droneUpgradeMultiplier_ <= 0.0f) {
+		explosiveBulletInterval_ <= 0.0f) {
 		throw std::runtime_error(
 			"playerStatus contains an invalid weapon interval value");
 	}
@@ -76,6 +71,9 @@ bool PlayerWeaponController::LoadStatusValue(
 		normalBulletMinInterval_);
 	droneInterval_ = GameplayRules::NormalizeWeaponInterval(
 		droneInterval_,
+		kMinWeaponInterval);
+	explosiveBulletInterval_ = GameplayRules::NormalizeWeaponInterval(
+		explosiveBulletInterval_,
 		kMinWeaponInterval);
 	return true;
 }
@@ -113,6 +111,7 @@ void PlayerWeaponController::Update(
 	UpdateOrbitBullets(deltaTime, player);
 	UpdateDrone(deltaTime, player, enemyManager);
 	UpdateLightning(deltaTime, enemyManager, attackPower);
+	UpdateExplosiveBullets(deltaTime, player);
 }
 
 void PlayerWeaponController::Draw()
@@ -126,6 +125,9 @@ void PlayerWeaponController::Draw()
 	if (hasDrone_ && drone_) {
 		drone_->Draw();
 	}
+	for (std::unique_ptr<NormalBullet>& bullet : explosiveBullets_) {
+		bullet->Draw();
+	}
 }
 
 void PlayerWeaponController::UpgradeNormalBullets(Player*)
@@ -134,54 +136,7 @@ void PlayerWeaponController::UpgradeNormalBullets(Player*)
 		return;
 	}
 	++normalBulletLevel_;
-	switch (normalBulletLevel_) {
-	case 2:
-		normalBulletAmount_ = static_cast<int32_t>(
-			GetUpgradeSetting("normal.lv2.amount", 2.0f));
-		break;
-	case 3:
-		normalBulletSpeed_ *= GetUpgradeSetting(
-			"normal.lv3.speedMultiplier",
-			1.2f);
-		normalBulletInterval_ *= GetUpgradeSetting(
-			"normal.lv3.intervalMultiplier",
-			normalBulletUpgradeMultiplier_);
-		break;
-	case 4:
-		normalBulletAmount_ = static_cast<int32_t>(
-			GetUpgradeSetting("normal.lv4.amount", 3.0f));
-		break;
-	case 5:
-		normalBulletDamageBonus_ += static_cast<int32_t>(
-			GetUpgradeSetting(
-				"normal.lv5.damageBonusAdd",
-				1.0f));
-		break;
-	case 6:
-		normalBulletAmount_ = static_cast<int32_t>(
-			GetUpgradeSetting("normal.lv6.amount", 4.0f));
-		break;
-	case 7:
-		normalBulletPierceCount_ = static_cast<int32_t>(
-			GetUpgradeSetting(
-				"normal.lv7.pierceCount",
-				2.0f));
-		break;
-	case 8:
-		normalBulletDamageBonus_ += static_cast<int32_t>(
-			GetUpgradeSetting(
-				"normal.lv8.damageBonusAdd",
-				1.0f));
-		normalBulletSpeed_ *= GetUpgradeSetting(
-			"normal.lv8.speedMultiplier",
-			1.15f);
-		normalBulletInterval_ *= GetUpgradeSetting(
-			"normal.lv8.intervalMultiplier",
-			normalBulletUpgradeMultiplier_);
-		break;
-	default:
-		break;
-	}
+	ApplyNormalBulletUpgradeLevel(normalBulletLevel_);
 	normalBulletInterval_ = (std::max)(
 		normalBulletMinInterval_,
 		PositiveFiniteOr(
@@ -193,12 +148,7 @@ void PlayerWeaponController::AddOrbitBullets(Player* player)
 {
 	hasOrbitBullets_ = true;
 	orbitBulletLevel_ = 1;
-	orbitBulletCount_ = static_cast<int32_t>(
-		GetUpgradeSetting("orbit.lv1.count", 1.0f));
-	orbitBulletScale_ =
-		GetUpgradeSetting("orbit.lv1.scale", 1.0f);
-	orbitHitInterval_ =
-		GetUpgradeSetting("orbit.lv1.hitInterval", 0.5f);
+	ApplyOrbitUpgradeLevel(orbitBulletLevel_);
 	RebuildOrbitBullets(player);
 }
 
@@ -212,54 +162,7 @@ void PlayerWeaponController::UpgradeOrbitBullets(Player* player)
 		return;
 	}
 	++orbitBulletLevel_;
-	switch (orbitBulletLevel_) {
-	case 2:
-		orbitBulletCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("orbit.lv2.count", 2.0f));
-		break;
-	case 3:
-		orbitRadius_ += GetUpgradeSetting(
-			"orbit.lv3.radiusAdd",
-			orbitRadiusUpgradeStep_);
-		orbitAngularSpeed_ += GetUpgradeSetting(
-			"orbit.lv3.angularSpeedAdd",
-			orbitAngularSpeedUpgradeStep_);
-		orbitBulletScale_ += GetUpgradeSetting(
-			"orbit.lv3.scaleAdd",
-			orbitBulletScaleUpgradeStep_);
-		break;
-	case 4:
-		orbitHitInterval_ *= GetUpgradeSetting(
-			"orbit.lv4.hitIntervalMultiplier",
-			orbitHitIntervalUpgradeMultiplier_);
-		break;
-	case 5:
-		orbitBulletCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("orbit.lv5.count", 3.0f));
-		break;
-	case 6:
-		orbitRadius_ += GetUpgradeSetting(
-			"orbit.lv6.radiusAdd",
-			orbitRadiusUpgradeStep_);
-		orbitAngularSpeed_ += GetUpgradeSetting(
-			"orbit.lv6.angularSpeedAdd",
-			orbitAngularSpeedUpgradeStep_);
-		orbitBulletScale_ += GetUpgradeSetting(
-			"orbit.lv6.scaleAdd",
-			orbitBulletScaleUpgradeStep_);
-		break;
-	case 7:
-		orbitHitInterval_ *= GetUpgradeSetting(
-			"orbit.lv7.hitIntervalMultiplier",
-			orbitHitIntervalUpgradeMultiplier_);
-		break;
-	case 8:
-		orbitBulletCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("orbit.lv8.count", 4.0f));
-		break;
-	default:
-		break;
-	}
+	ApplyOrbitUpgradeLevel(orbitBulletLevel_);
 	RebuildOrbitBullets(player);
 }
 
@@ -267,12 +170,7 @@ void PlayerWeaponController::AddDrone()
 {
 	hasDrone_ = true;
 	droneLevel_ = 1;
-	droneShotCount_ = static_cast<int32_t>(
-		GetUpgradeSetting("drone.lv1.shotCount", 1.0f));
-	droneDamageBonus_ = static_cast<int32_t>(
-		GetUpgradeSetting("drone.lv1.damageBonus", 0.0f));
-	dronePierceCount_ = static_cast<int32_t>(
-		GetUpgradeSetting("drone.lv1.pierceCount", 1.0f));
+	ApplyDroneUpgradeLevel(droneLevel_);
 	drone_ = std::make_unique<Drone>();
 	drone_->Initialize({ 3.0f, 2.0f, 0.0f });
 }
@@ -287,46 +185,7 @@ void PlayerWeaponController::UpgradeDrone()
 		return;
 	}
 	++droneLevel_;
-	switch (droneLevel_) {
-	case 2:
-		droneShotCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("drone.lv2.shotCount", 2.0f));
-		break;
-	case 3:
-		droneInterval_ *= GetUpgradeSetting(
-			"drone.lv3.intervalMultiplier",
-			droneUpgradeMultiplier_);
-		break;
-	case 4:
-		droneShotCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("drone.lv4.shotCount", 3.0f));
-		break;
-	case 5:
-		droneDamageBonus_ += static_cast<int32_t>(
-			GetUpgradeSetting(
-				"drone.lv5.damageBonusAdd",
-				1.0f));
-		break;
-	case 6:
-		droneShotCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("drone.lv6.shotCount", 4.0f));
-		break;
-	case 7:
-		dronePierceCount_ = static_cast<int32_t>(
-			GetUpgradeSetting("drone.lv7.pierceCount", 2.0f));
-		break;
-	case 8:
-		droneDamageBonus_ += static_cast<int32_t>(
-			GetUpgradeSetting(
-				"drone.lv8.damageBonusAdd",
-				1.0f));
-		droneInterval_ *= GetUpgradeSetting(
-			"drone.lv8.intervalMultiplier",
-			droneUpgradeMultiplier_);
-		break;
-	default:
-		break;
-	}
+	ApplyDroneUpgradeLevel(droneLevel_);
 	droneInterval_ = (std::max)(
 		kMinWeaponInterval,
 		PositiveFiniteOr(droneInterval_, kMinWeaponInterval));
@@ -336,21 +195,7 @@ void PlayerWeaponController::AddLightning()
 {
 	hasLightning_ = true;
 	lightningLevel_ = 1;
-	lightningStrikeCount_ = static_cast<int32_t>(
-		GetUpgradeSetting(
-			"lightning.lv1.strikeCount",
-			1.0f));
-	lightningDamageBonus_ = static_cast<int32_t>(
-		GetUpgradeSetting(
-			"lightning.lv1.damageBonus",
-			0.0f));
-	lightningRadius_ =
-		GetUpgradeSetting("lightning.lv1.radius", 6.0f);
-	lightningInterval_ = (std::max)(
-		kMinWeaponInterval,
-		PositiveFiniteOr(
-			GetUpgradeSetting("lightning.lv1.interval", 2.4f),
-			2.4f));
+	ApplyLightningUpgradeLevel(lightningLevel_);
 }
 
 void PlayerWeaponController::UpgradeLightning()
@@ -363,56 +208,33 @@ void PlayerWeaponController::UpgradeLightning()
 		return;
 	}
 	++lightningLevel_;
-	switch (lightningLevel_) {
-	case 2:
-		lightningDamageBonus_ += static_cast<int32_t>(
-			GetUpgradeSetting(
-				"lightning.lv2.damageBonusAdd",
-				1.0f));
-		break;
-	case 3:
-		lightningStrikeCount_ = static_cast<int32_t>(
-			GetUpgradeSetting(
-				"lightning.lv3.strikeCount",
-				2.0f));
-		break;
-	case 4:
-		lightningRadius_ += GetUpgradeSetting(
-			"lightning.lv4.radiusAdd",
-			1.5f);
-		break;
-	case 5:
-		lightningDamageBonus_ += static_cast<int32_t>(
-			GetUpgradeSetting(
-				"lightning.lv5.damageBonusAdd",
-				1.0f));
-		break;
-	case 6:
-		lightningStrikeCount_ = static_cast<int32_t>(
-			GetUpgradeSetting(
-				"lightning.lv6.strikeCount",
-				3.0f));
-		break;
-	case 7:
-		lightningInterval_ *= GetUpgradeSetting(
-			"lightning.lv7.intervalMultiplier",
-			0.82f);
-		break;
-	case 8:
-		lightningStrikeCount_ = static_cast<int32_t>(
-			GetUpgradeSetting(
-				"lightning.lv8.strikeCount",
-				4.0f));
-		lightningRadius_ += GetUpgradeSetting(
-			"lightning.lv8.radiusAdd",
-			1.5f);
-		break;
-	default:
-		break;
-	}
+	ApplyLightningUpgradeLevel(lightningLevel_);
 	lightningInterval_ = (std::max)(
 		kMinWeaponInterval,
 		PositiveFiniteOr(lightningInterval_, kMinWeaponInterval));
+}
+
+void PlayerWeaponController::AddExplosiveBullets()
+{
+	hasExplosiveBullets_ = true;
+	explosiveBulletLevel_ = 1;
+	ApplyExplosiveBulletUpgradeLevel(explosiveBulletLevel_);
+}
+
+void PlayerWeaponController::UpgradeExplosiveBullets()
+{
+	if (!hasExplosiveBullets_) {
+		AddExplosiveBullets();
+		return;
+	}
+	if (IsExplosiveBulletMaxLevel()) {
+		return;
+	}
+	++explosiveBulletLevel_;
+	ApplyExplosiveBulletUpgradeLevel(explosiveBulletLevel_);
+	explosiveBulletInterval_ = (std::max)(
+		kMinWeaponInterval,
+		PositiveFiniteOr(explosiveBulletInterval_, kMinWeaponInterval));
 }
 
 void PlayerWeaponController::UpgradeWeapon(WeaponType type, Player* player)
@@ -430,6 +252,9 @@ void PlayerWeaponController::UpgradeWeapon(WeaponType type, Player* player)
 	case WeaponType::Lightning:
 		UpgradeLightning();
 		break;
+	case WeaponType::ExplosiveBullet:
+		UpgradeExplosiveBullets();
+		break;
 	}
 }
 
@@ -444,6 +269,8 @@ bool PlayerWeaponController::IsWeaponMaxLevel(WeaponType type) const
 		return IsDroneMaxLevel();
 	case WeaponType::Lightning:
 		return IsLightningMaxLevel();
+	case WeaponType::ExplosiveBullet:
+		return IsExplosiveBulletMaxLevel();
 	}
 	return true;
 }
@@ -579,6 +406,85 @@ void PlayerWeaponController::RecycleInactiveNormalBullets()
 	}
 }
 
+void PlayerWeaponController::UpdateExplosiveBullets(
+	float deltaTime,
+	Player* player)
+{
+	if (hasExplosiveBullets_ && player) {
+		explosiveBulletTimer_ += deltaTime;
+		int32_t catchUpAttackCount = 0;
+		while (explosiveBulletTimer_ >= explosiveBulletInterval_ &&
+			catchUpAttackCount < kMaxCatchUpAttacksPerFrame) {
+			const float angle = player->GetWorldRotationY();
+			const Vector3 forward{
+				std::sin(angle),
+				0.0f,
+				std::cos(angle),
+			};
+			NormalBullet& bullet = AcquireExplosiveBullet();
+			bullet.InitializeForward(
+				player->GetWorldPosition(),
+				forward,
+				explosiveBulletSpeed_,
+				explosiveBulletRange_,
+				1);
+			explosiveBulletTimer_ -= explosiveBulletInterval_;
+			++catchUpAttackCount;
+		}
+		if (explosiveBulletTimer_ >= explosiveBulletInterval_) {
+			explosiveBulletTimer_ = std::fmod(
+				explosiveBulletTimer_,
+				explosiveBulletInterval_);
+		}
+	}
+
+	for (std::unique_ptr<NormalBullet>& bullet : explosiveBullets_) {
+		bullet->Update(
+			player ? player->GetWorldPosition() : Vector3{},
+			deltaTime);
+	}
+	RecycleInactiveExplosiveBullets();
+}
+
+NormalBullet& PlayerWeaponController::AcquireExplosiveBullet()
+{
+	if (explosiveBulletPool_.empty()) {
+		explosiveBullets_.push_back(std::make_unique<NormalBullet>());
+		return *explosiveBullets_.back();
+	}
+
+	explosiveBullets_.push_back(std::move(explosiveBulletPool_.back()));
+	explosiveBulletPool_.pop_back();
+	return *explosiveBullets_.back();
+}
+
+void PlayerWeaponController::RecycleExplosiveBullet(size_t index)
+{
+	if (index >= explosiveBullets_.size()) {
+		return;
+	}
+
+	if (explosiveBullets_[index]) {
+		explosiveBullets_[index]->Deactivate();
+		explosiveBulletPool_.push_back(std::move(explosiveBullets_[index]));
+	}
+	if (index != explosiveBullets_.size() - 1) {
+		explosiveBullets_[index] = std::move(explosiveBullets_.back());
+	}
+	explosiveBullets_.pop_back();
+}
+
+void PlayerWeaponController::RecycleInactiveExplosiveBullets()
+{
+	for (size_t index = 0; index < explosiveBullets_.size();) {
+		if (explosiveBullets_[index] && explosiveBullets_[index]->IsActive()) {
+			++index;
+			continue;
+		}
+		RecycleExplosiveBullet(index);
+	}
+}
+
 void PlayerWeaponController::UpdateOrbitBullets(
 	float deltaTime,
 	Player* player)
@@ -701,6 +607,216 @@ void PlayerWeaponController::RebuildOrbitBullets(Player* player)
 			orbitHitInterval_);
 		orbitBullets_.push_back(std::move(bullet));
 	}
+}
+
+void PlayerWeaponController::ApplyNormalBulletUpgradeLevel(int32_t level)
+{
+	normalBulletAmount_ = GetLevelUpgradeSettingInt(
+		"normal",
+		level,
+		"amount",
+		normalBulletAmount_);
+	normalBulletDamageBonus_ += GetLevelUpgradeSettingInt(
+		"normal",
+		level,
+		"damageBonusAdd",
+		0);
+	normalBulletPierceCount_ = GetLevelUpgradeSettingInt(
+		"normal",
+		level,
+		"pierceCount",
+		normalBulletPierceCount_);
+	normalBulletSpeed_ *= GetLevelUpgradeSetting(
+		"normal",
+		level,
+		"speedMultiplier",
+		1.0f);
+	normalBulletInterval_ *= GetLevelUpgradeSetting(
+		"normal",
+		level,
+		"intervalMultiplier",
+		1.0f);
+}
+
+void PlayerWeaponController::ApplyOrbitUpgradeLevel(int32_t level)
+{
+	orbitBulletCount_ = GetLevelUpgradeSettingInt(
+		"orbit",
+		level,
+		"count",
+		orbitBulletCount_);
+	orbitRadius_ += GetLevelUpgradeSetting(
+		"orbit",
+		level,
+		"radiusAdd",
+		0.0f);
+	orbitAngularSpeed_ += GetLevelUpgradeSetting(
+		"orbit",
+		level,
+		"angularSpeedAdd",
+		0.0f);
+	orbitBulletScale_ += GetLevelUpgradeSetting(
+		"orbit",
+		level,
+		"scaleAdd",
+		0.0f);
+	orbitBulletScale_ = GetLevelUpgradeSetting(
+		"orbit",
+		level,
+		"scale",
+		orbitBulletScale_);
+	orbitHitInterval_ = GetLevelUpgradeSetting(
+		"orbit",
+		level,
+		"hitInterval",
+		orbitHitInterval_);
+	orbitHitInterval_ *= GetLevelUpgradeSetting(
+		"orbit",
+		level,
+		"hitIntervalMultiplier",
+		1.0f);
+}
+
+void PlayerWeaponController::ApplyDroneUpgradeLevel(int32_t level)
+{
+	droneShotCount_ = GetLevelUpgradeSettingInt(
+		"drone",
+		level,
+		"shotCount",
+		droneShotCount_);
+	droneDamageBonus_ = GetLevelUpgradeSettingInt(
+		"drone",
+		level,
+		"damageBonus",
+		droneDamageBonus_);
+	droneDamageBonus_ += GetLevelUpgradeSettingInt(
+		"drone",
+		level,
+		"damageBonusAdd",
+		0);
+	dronePierceCount_ = GetLevelUpgradeSettingInt(
+		"drone",
+		level,
+		"pierceCount",
+		dronePierceCount_);
+	droneInterval_ *= GetLevelUpgradeSetting(
+		"drone",
+		level,
+		"intervalMultiplier",
+		1.0f);
+}
+
+void PlayerWeaponController::ApplyLightningUpgradeLevel(int32_t level)
+{
+	lightningStrikeCount_ = GetLevelUpgradeSettingInt(
+		"lightning",
+		level,
+		"strikeCount",
+		lightningStrikeCount_);
+	lightningDamageBonus_ = GetLevelUpgradeSettingInt(
+		"lightning",
+		level,
+		"damageBonus",
+		lightningDamageBonus_);
+	lightningDamageBonus_ += GetLevelUpgradeSettingInt(
+		"lightning",
+		level,
+		"damageBonusAdd",
+		0);
+	lightningRadius_ = GetLevelUpgradeSetting(
+		"lightning",
+		level,
+		"radius",
+		lightningRadius_);
+	lightningRadius_ += GetLevelUpgradeSetting(
+		"lightning",
+		level,
+		"radiusAdd",
+		0.0f);
+	lightningInterval_ = GetLevelUpgradeSetting(
+		"lightning",
+		level,
+		"interval",
+		lightningInterval_);
+	lightningInterval_ *= GetLevelUpgradeSetting(
+		"lightning",
+		level,
+		"intervalMultiplier",
+		1.0f);
+	lightningInterval_ = (std::max)(
+		kMinWeaponInterval,
+		PositiveFiniteOr(lightningInterval_, kMinWeaponInterval));
+}
+
+void PlayerWeaponController::ApplyExplosiveBulletUpgradeLevel(int32_t level)
+{
+	explosiveBulletDamageBonus_ = GetLevelUpgradeSettingInt(
+		"explosive",
+		level,
+		"damageBonus",
+		explosiveBulletDamageBonus_);
+	explosiveBulletDamageBonus_ += GetLevelUpgradeSettingInt(
+		"explosive",
+		level,
+		"damageBonusAdd",
+		0);
+	explosiveBulletRadius_ = GetLevelUpgradeSetting(
+		"explosive",
+		level,
+		"radius",
+		explosiveBulletRadius_);
+	explosiveBulletRadius_ += GetLevelUpgradeSetting(
+		"explosive",
+		level,
+		"radiusAdd",
+		0.0f);
+	explosiveBulletInterval_ = GetLevelUpgradeSetting(
+		"explosive",
+		level,
+		"interval",
+		explosiveBulletInterval_);
+	explosiveBulletInterval_ *= GetLevelUpgradeSetting(
+		"explosive",
+		level,
+		"intervalMultiplier",
+		1.0f);
+	explosiveBulletSpeed_ *= GetLevelUpgradeSetting(
+		"explosive",
+		level,
+		"speedMultiplier",
+		1.0f);
+	explosiveBulletRange_ += GetLevelUpgradeSetting(
+		"explosive",
+		level,
+		"rangeAdd",
+		0.0f);
+	explosiveBulletInterval_ = (std::max)(
+		kMinWeaponInterval,
+		PositiveFiniteOr(explosiveBulletInterval_, kMinWeaponInterval));
+}
+
+int32_t PlayerWeaponController::GetLevelUpgradeSettingInt(
+	const std::string& prefix,
+	int32_t level,
+	const std::string& suffix,
+	int32_t fallback) const
+{
+	return static_cast<int32_t>(GetLevelUpgradeSetting(
+		prefix,
+		level,
+		suffix,
+		static_cast<float>(fallback)));
+}
+
+float PlayerWeaponController::GetLevelUpgradeSetting(
+	const std::string& prefix,
+	int32_t level,
+	const std::string& suffix,
+	float fallback) const
+{
+	return GetUpgradeSetting(
+		prefix + ".lv" + std::to_string(level) + "." + suffix,
+		fallback);
 }
 
 float PlayerWeaponController::GetUpgradeSetting(

@@ -1,6 +1,6 @@
-#include "game/directxgame/player/weapons/NormalBullet.h"
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "NormalBullet.h"
+#include "GameAudioCache.h"
+#include "GameModelCache.h"
 #include "Object3DCommon.h"
 #include <algorithm>
 #include <cmath>
@@ -30,13 +30,11 @@ void NormalBullet::InitializeForward(
 	const Vector3& forward,
 	float speed,
 	float range,
-	int32_t maxHits,
-	const Vector4& trailColor)
+	int32_t maxHits)
 {
 	position_ = startPosition;
 	previousPosition_ = startPosition;
 	direction_ = NormalizeOrForward(forward);
-	trailColor_ = trailColor;
 	rotationY_ = std::atan2(direction_.x, direction_.z);
 	speed_ = speed;
 	range_ = range;

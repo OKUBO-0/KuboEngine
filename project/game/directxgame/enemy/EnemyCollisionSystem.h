@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector3.h"
+#include "FloatingNumberEvent.h"
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
@@ -30,19 +31,22 @@ public:
 		PlayerManager& playerManager,
 		std::vector<std::unique_ptr<Enemy>>& enemies,
 		std::vector<Vector3>& hitEffectPositions,
-		std::vector<Vector3>& deathEffectPositions);
+		std::vector<Vector3>& deathEffectPositions,
+		std::vector<FloatingNumberEvent>& numberEvents);
 	static void CheckCollisions(
 		Player& player,
 		PlayerManager& playerManager,
 		EnemyCollisionContext& context,
 		std::vector<Vector3>& hitEffectPositions,
-		std::vector<Vector3>& deathEffectPositions);
+		std::vector<Vector3>& deathEffectPositions,
+		std::vector<FloatingNumberEvent>& numberEvents);
 	static void ApplyAreaDamage(
 		const Vector3& center,
 		float radius,
 		int32_t damage,
 		std::vector<std::unique_ptr<Enemy>>& enemies,
-		std::vector<Vector3>& hitEffectPositions);
+		std::vector<Vector3>& hitEffectPositions,
+		std::vector<FloatingNumberEvent>& numberEvents);
 	static void ResolveEnemySeparation(
 		std::vector<std::unique_ptr<Enemy>>& enemies);
 	static void ResolveEnemySeparation(

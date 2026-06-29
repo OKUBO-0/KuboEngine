@@ -6,6 +6,7 @@ namespace DirectXGame {
 
 class ExpGauge;
 class GameParticleEffects;
+class GameplayHudPresentation;
 class HpGauge;
 class KeyUI;
 class MiniMap;
@@ -24,6 +25,7 @@ void Draw(
 	float deathTimer,
 	Player* player,
 	GameParticleEffects& particleEffects,
+	GameplayHudPresentation& gameplayHud,
 	Timer& timer,
 	HpGauge& hpGauge,
 	ExpGauge& expGauge,

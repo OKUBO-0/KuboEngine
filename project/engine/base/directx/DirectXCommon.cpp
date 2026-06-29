@@ -25,6 +25,10 @@ namespace Engine::Base {
 DirectXCommon::~DirectXCommon()
 {
 	WaitForAllFrames();
+	if (gpuTimestampReadback_ && gpuTimestampCpuData_) {
+		gpuTimestampReadback_->Unmap(0, nullptr);
+		gpuTimestampCpuData_ = nullptr;
+	}
 	for (FrameContext& frameContext : frameContexts_) {
 		if (frameContext.uploadArena && frameContext.uploadCpuAddress) {
 			frameContext.uploadArena->Unmap(0, nullptr);
@@ -332,6 +336,7 @@ void DirectXCommon::InitializeGraphicsResources()
 	// 描画基盤を依存順に初期化し、後段のリソース生成が前段の結果に依存できるようにする
 	DeviceInitialize();
 	CommandInitialize();
+	InitializeGpuTiming();
 	SwapChainInitialize();
 	DepthBufferInitialize();
 	DescriptorHeapInitialize();
@@ -475,12 +480,145 @@ void DirectXCommon::Begin()
 void DirectXCommon::End()
 {
 	FrameContext& submittedFrame = frameContexts_[currentFrameIndex_];
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase + 1);
+	commandList->ResolveQueryData(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase,
+		4,
+		gpuTimestampReadback_.Get(),
+		static_cast<uint64_t>(timestampBase) * sizeof(uint64_t));
+	submittedFrame.gpuTimestampSubmitted = true;
+	submittedFrame.shadowTimestampSubmitted =
+		submittedFrame.shadowTimestampRecording;
 	FinalizeFrameTransition();
 	SignalFrame(submittedFrame);
 	UpdateFixFPS();
 	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 	WaitForFrame(frameContexts_[currentFrameIndex_]);
 	ResetCommandObjects(currentFrameIndex_);
+}
+
+void DirectXCommon::BeginGpuFrameTiming()
+{
+	CollectCompletedGpuTiming(currentFrameIndex_);
+	FrameContext& frameContext = frameContexts_[currentFrameIndex_];
+	frameContext.shadowTimestampRecording = false;
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase);
+}
+
+void DirectXCommon::InitializeGpuTiming()
+{
+	D3D12_QUERY_HEAP_DESC queryHeapDesc{};
+	queryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+	queryHeapDesc.Count = kFrameCount * 4;
+	ThrowIfFailed(
+		device->CreateQueryHeap(
+			&queryHeapDesc, IID_PPV_ARGS(&gpuTimestampQueryHeap_)),
+		"ID3D12Device::CreateQueryHeap GPU timing");
+
+	D3D12_HEAP_PROPERTIES heapProperties{};
+	heapProperties.Type = D3D12_HEAP_TYPE_READBACK;
+	D3D12_RESOURCE_DESC resourceDesc{};
+	resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resourceDesc.Width = sizeof(uint64_t) * queryHeapDesc.Count;
+	resourceDesc.Height = 1;
+	resourceDesc.DepthOrArraySize = 1;
+	resourceDesc.MipLevels = 1;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	ThrowIfFailed(
+		device->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&gpuTimestampReadback_)),
+		"ID3D12Device::CreateCommittedResource GPU timing readback");
+	ThrowIfFailed(
+		gpuTimestampReadback_->Map(
+			0, nullptr, reinterpret_cast<void**>(&gpuTimestampCpuData_)),
+		"ID3D12Resource::Map GPU timing readback");
+	ThrowIfFailed(
+		commandQueue->GetTimestampFrequency(&gpuTimestampFrequency_),
+		"ID3D12CommandQueue::GetTimestampFrequency");
+}
+
+void DirectXCommon::CollectCompletedGpuTiming(uint32_t frameIndex)
+{
+	FrameContext& frameContext = frameContexts_[frameIndex];
+	if (!frameContext.gpuTimestampSubmitted || !gpuTimestampCpuData_ ||
+		gpuTimestampFrequency_ == 0) {
+		return;
+	}
+	const uint32_t timestampBase = frameIndex * 4;
+	const double millisecondsPerTick =
+		1000.0 / static_cast<double>(gpuTimestampFrequency_);
+	const uint64_t frameStart = gpuTimestampCpuData_[timestampBase];
+	const uint64_t frameEnd = gpuTimestampCpuData_[timestampBase + 1];
+	if (frameEnd >= frameStart) {
+		frameGpuMillisecondsTotal_ +=
+			static_cast<double>(frameEnd - frameStart) * millisecondsPerTick;
+		++frameGpuSampleCount_;
+	}
+	if (frameContext.shadowTimestampSubmitted) {
+		const uint64_t shadowStart = gpuTimestampCpuData_[timestampBase + 2];
+		const uint64_t shadowEnd = gpuTimestampCpuData_[timestampBase + 3];
+		if (shadowEnd >= shadowStart) {
+			shadowGpuMillisecondsTotal_ +=
+				static_cast<double>(shadowEnd - shadowStart) * millisecondsPerTick;
+			++shadowGpuSampleCount_;
+		}
+	}
+	frameContext.gpuTimestampSubmitted = false;
+}
+
+void DirectXCommon::BeginShadowGpuTiming()
+{
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase + 2);
+	frameContexts_[currentFrameIndex_].shadowTimestampRecording = true;
+}
+
+void DirectXCommon::EndShadowGpuTiming()
+{
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase + 3);
+}
+
+void DirectXCommon::ResetGpuTimingStatistics()
+{
+	frameGpuMillisecondsTotal_ = 0.0;
+	shadowGpuMillisecondsTotal_ = 0.0;
+	frameGpuSampleCount_ = 0;
+	shadowGpuSampleCount_ = 0;
+}
+
+double DirectXCommon::GetAverageFrameGpuMilliseconds() const
+{
+	return frameGpuSampleCount_ > 0
+		? frameGpuMillisecondsTotal_ / static_cast<double>(frameGpuSampleCount_)
+		: 0.0;
+}
+
+double DirectXCommon::GetAverageShadowGpuMilliseconds() const
+{
+	return shadowGpuSampleCount_ > 0
+		? shadowGpuMillisecondsTotal_ / static_cast<double>(shadowGpuSampleCount_)
+		: 0.0;
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetRTVCPUDescriptorHandle(uint32_t index)

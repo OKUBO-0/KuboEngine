@@ -1,4 +1,4 @@
-#include "game/directxgame/player/Player.h"
+#include "Player.h"
 #include "CameraManager.h"
 
 namespace {
@@ -125,11 +125,6 @@ float Player::GetDodgeCooldownRatio() const
 void Player::RequestCameraShake(float duration, float strength)
 {
 	cameraController_.RequestShake(duration, strength);
-}
-
-void Player::SetCombatCameraTarget(float distance, float height)
-{
-	cameraController_.SetCombatTarget(distance, height);
 }
 
 void Player::ApplyTransforms()

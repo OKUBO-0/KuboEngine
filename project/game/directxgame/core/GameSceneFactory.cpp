@@ -1,10 +1,10 @@
 #include "GameSceneFactory.h"
 
-#include "game/directxgame/core/SceneId.h"
-#include "game/directxgame/core/GameSession.h"
-#include "game/directxgame/scene/ResultScene.h"
-#include "game/directxgame/scene/PlayScene.h"
-#include "game/directxgame/scene/GameTitleScene.h"
+#include "SceneId.h"
+#include "GameSession.h"
+#include "ResultScene.h"
+#include "PlayScene.h"
+#include "GameTitleScene.h"
 #include <cassert>
 
 namespace DirectXGame {

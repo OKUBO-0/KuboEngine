@@ -2,8 +2,8 @@
 
 #include "Sprite.h"
 #include "Vector4.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/ui/common/UIElement.h"
+#include "GameTextureCache.h"
+#include "UIElement.h"
 #include <memory>
 #include <string>
 

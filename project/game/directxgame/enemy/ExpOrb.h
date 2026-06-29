@@ -10,7 +10,10 @@ namespace DirectXGame {
 class ExpOrb {
 public:
 	void Initialize(const Vector3& position, int32_t expValue);
-	void Update(const Vector3& playerPosition, float deltaTime);
+	void Update(
+		const Vector3& playerPosition,
+		float deltaTime,
+		float pickupRangeMultiplier = 1.0f);
 	void Draw();
 
 	bool IsActive() const { return active_; }

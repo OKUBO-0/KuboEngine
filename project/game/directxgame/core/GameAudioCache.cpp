@@ -1,5 +1,5 @@
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/ResourcePaths.h"
+#include "GameAudioCache.h"
+#include "ResourcePaths.h"
 #include "Audio.h"
 #include <Windows.h>
 #include <algorithm>

@@ -2,14 +2,12 @@ titlePosition,0,0
 cursorSize,1280,720
 debug.statisticsView,1
 titleSize,1280,720
-guidePosition,0,0
 menuHitboxSize,300,88
 menuHitboxStepY,128
 cursorBasePosition,0,0
 menuHitboxPosition,145,340
-modelBasePosition,-18,-2,8
+modelBasePosition,-18,0,8
 cursorStepY,120
-guideSize,1280,720
 modelScale,4.5,4.5,4.5
 cameraTarget,0,4.5,0
 cameraDistance,76

@@ -1,5 +1,5 @@
-#include "game/directxgame/core/GameModelCache.h"
-#include "game/directxgame/core/ResourcePaths.h"
+#include "GameModelCache.h"
+#include "ResourcePaths.h"
 #include "ModelManager.h"
 #include "Object3D.h"
 #include <algorithm>

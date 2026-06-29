@@ -109,6 +109,7 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 	dxCommon_->GetDevice()->CreateShaderResourceView(
 		shadowMapResource_.Get(), &srvDesc,
 		srvManager_->GetCPUDescriptorHandle(shadowSrvIndex_));
+	srvManager_->LabelUsage(shadowSrvIndex_, "ShadowMap");
 
 	shadowMapData_.lightViewProjection = MyMath::MakeIdentity4x4();
 	shadowMapData_.settings = {
@@ -143,6 +144,7 @@ bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 		shadowMapData_.settings.x = 0.0f;
 		return false;
 	}
+	dxCommon_->BeginShadowGpuTiming();
 	const Vector3 direction = MyMath::Normalize(sceneLightData_.direction);
 	const Vector3 eye = focusPosition - direction * 95.0f;
 	const Matrix4x4 view = MakeLookAtMatrix(eye, focusPosition);
@@ -234,6 +236,19 @@ void Object3DCommon::EndShadowPass()
 			Engine::Base::OffscreenRenderManager::GetInstance()) {
 		offscreen->BindRenderTarget();
 	}
+	dxCommon_->EndShadowGpuTiming();
+	++measuredShadowPassCount_;
+	totalShadowCandidateCount_ += shadowPassStats_.candidateCount;
+	totalShadowSubmittedCount_ += shadowPassStats_.submittedCount;
+	totalShadowCulledCount_ += shadowPassStats_.culledCount;
+}
+
+void Object3DCommon::ResetShadowPassStatistics()
+{
+	measuredShadowPassCount_ = 0;
+	totalShadowCandidateCount_ = 0;
+	totalShadowSubmittedCount_ = 0;
+	totalShadowCulledCount_ = 0;
 }
 
 void Object3DCommon::BindSceneLighting(bool skinning)

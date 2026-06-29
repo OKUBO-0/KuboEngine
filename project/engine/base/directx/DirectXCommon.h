@@ -44,6 +44,9 @@ private:
 		std::byte* uploadCpuAddress = nullptr;
 		size_t uploadOffset = 0;
 		uint64_t fenceValue = 0;
+		bool gpuTimestampSubmitted = false;
+		bool shadowTimestampSubmitted = false;
+		bool shadowTimestampRecording = false;
 	};
 
 	void DeviceInitialize();
@@ -70,6 +73,8 @@ private:
 	void WaitForFrame(const FrameContext& frameContext);
 	void ResetCommandObjects(uint32_t frameIndex);
 	void InitializeFrameUploadArenas();
+	void InitializeGpuTiming();
+	void CollectCompletedGpuTiming(uint32_t frameIndex);
 
 public:
 	~DirectXCommon();
@@ -83,6 +88,7 @@ public:
 	/// @param なし
 	/// @return なし
 	void Begin();
+	void BeginGpuFrameTiming();
 
 	/// @brief フレーム描画後の表示反映と同期を行う
 	/// @param なし
@@ -140,6 +146,13 @@ public:
 	uint64_t GetPendingSubmissionFenceValue() const { return nextFenceValue_ + 1; }
 	uint64_t GetCompletedFenceValue() const { return fence ? fence->GetCompletedValue() : 0; }
 	void WaitForAllFrames();
+	void BeginShadowGpuTiming();
+	void EndShadowGpuTiming();
+	void ResetGpuTimingStatistics();
+	double GetAverageFrameGpuMilliseconds() const;
+	double GetAverageShadowGpuMilliseconds() const;
+	uint64_t GetFrameGpuSampleCount() const { return frameGpuSampleCount_; }
+	uint64_t GetShadowGpuSampleCount() const { return shadowGpuSampleCount_; }
 
 	/// @brief RTV のビュー記述子を取得する
 	/// @param なし
@@ -248,6 +261,14 @@ private:
 	uint32_t currentFrameIndex_ = 0;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12QueryHeap> gpuTimestampQueryHeap_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuTimestampReadback_;
+	uint64_t* gpuTimestampCpuData_ = nullptr;
+	uint64_t gpuTimestampFrequency_ = 0;
+	double frameGpuMillisecondsTotal_ = 0.0;
+	double shadowGpuMillisecondsTotal_ = 0.0;
+	uint64_t frameGpuSampleCount_ = 0;
+	uint64_t shadowGpuSampleCount_ = 0;
 	// スワップチェーン
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
 	Microsoft::WRL::ComPtr<IDXGISwapChain4> swapChain = nullptr;

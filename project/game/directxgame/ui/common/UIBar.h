@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Vector4.h"
-#include "game/directxgame/ui/common/UIElement.h"
-#include "game/directxgame/ui/common/UIPanel.h"
+#include "UIElement.h"
+#include "UIPanel.h"
 
 namespace DirectXGame {
 

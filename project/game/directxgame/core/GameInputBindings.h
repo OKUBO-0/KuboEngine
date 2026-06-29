@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Input.h"
-#include "game/directxgame/core/ScreenUtil.h"
+#include "ScreenUtil.h"
 #include "Vector2.h"
 #include <Windows.h>
 #include <algorithm>

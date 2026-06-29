@@ -1,5 +1,5 @@
-#include "game/directxgame/core/DebugScene.h"
-#include "game/directxgame/enemy/EnemyManager.h"
+#include "DebugScene.h"
+#include "EnemyManager.h"
 #ifdef _DEBUG
 #include <imgui.h>
 #endif

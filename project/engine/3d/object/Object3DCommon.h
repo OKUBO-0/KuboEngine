@@ -59,6 +59,16 @@ public:
 	bool IsInsideShadowFrustum(const Vector3& worldCenter, float boundingRadius) const;
 	void RecordShadowCandidate(bool submitted);
 	const ShadowPassStats& GetShadowPassStats() const { return shadowPassStats_; }
+	void ResetShadowPassStatistics();
+	uint64_t GetMeasuredShadowPassCount() const { return measuredShadowPassCount_; }
+	uint64_t GetTotalShadowCandidateCount() const { return totalShadowCandidateCount_; }
+	uint64_t GetTotalShadowSubmittedCount() const { return totalShadowSubmittedCount_; }
+	uint64_t GetTotalShadowCulledCount() const { return totalShadowCulledCount_; }
+	uint32_t GetShadowMapSize() const { return kShadowMapSize; }
+	uint64_t GetShadowMapMemoryBytes() const
+	{
+		return static_cast<uint64_t>(kShadowMapSize) * kShadowMapSize * sizeof(float);
+	}
 	void SetSceneLight(const SceneLightData& light);
 	const SceneLightData& GetSceneLight() const { return sceneLightData_; }
 	void SetShadowEnabled(bool enabled);
@@ -103,6 +113,10 @@ private:
 	bool shadowEnabled_ = true;
 	float shadowArea_ = 72.0f;
 	ShadowPassStats shadowPassStats_{};
+	uint64_t measuredShadowPassCount_ = 0;
+	uint64_t totalShadowCandidateCount_ = 0;
+	uint64_t totalShadowSubmittedCount_ = 0;
+	uint64_t totalShadowCulledCount_ = 0;
 	static constexpr uint32_t kShadowMapSize = 2048;
 };
 

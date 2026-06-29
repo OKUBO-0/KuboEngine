@@ -1,9 +1,10 @@
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameSession.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
+#include "EnemyManager.h"
+#include "DataPaths.h"
+#include "GameSession.h"
+#include "Player.h"
+#include "PlayerManager.h"
 #include <algorithm>
+#include <cmath>
 
 namespace DirectXGame {
 
@@ -12,6 +13,7 @@ void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player,
 	player_ = player;
 	playerManager_ = playerManager;
 	bossEnemy_ = nullptr;
+	deathBombs_.clear();
 	bossPhase_ = false;
 	bossDefeated_ = false;
 	if (playerManager_) {
@@ -46,6 +48,7 @@ void EnemyManager::Update(float deltaTime)
 		enemies_,
 		bossPhase_);
 	UpdateEnemies(deltaTime);
+	UpdateDeathBombs(deltaTime);
 	RemoveInactiveEnemies();
 	spawnController_.RelocateFarEnemies(
 		player_,
@@ -66,6 +69,11 @@ void EnemyManager::Draw()
 	}
 	for (std::unique_ptr<ExpOrb>& orb : expOrbs_) {
 		orb->Draw();
+	}
+	for (const std::unique_ptr<EnemyDeathBomb>& bomb : deathBombs_) {
+		if (bomb) {
+			bomb->Draw();
+		}
 	}
 }
 
@@ -89,6 +97,8 @@ void EnemyManager::ClearRecentEffectPositions()
 {
 	recentHitEffectPositions_.clear();
 	recentDeathEffectPositions_.clear();
+	recentExplosionEffectPositions_.clear();
+	recentFloatingNumberEvents_.clear();
 }
 
 void EnemyManager::DamageAllEnemies(int32_t damage)
@@ -96,6 +106,11 @@ void EnemyManager::DamageAllEnemies(int32_t damage)
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
 		if (enemy && enemy->IsActive()) {
 			recentHitEffectPositions_.push_back(enemy->GetPosition());
+			recentFloatingNumberEvents_.push_back({
+				{ enemy->GetPosition().x, enemy->GetPosition().y + 1.2f, enemy->GetPosition().z },
+				damage,
+				{ 1.0f, 0.28f, 0.18f, 1.0f },
+				});
 			enemy->TakeDamage(damage);
 		}
 	}
@@ -113,7 +128,8 @@ void EnemyManager::CheckCollisions(Player* player, PlayerManager* playerManager)
 		*playerManager,
 		collisionContext_,
 		recentHitEffectPositions_,
-		recentDeathEffectPositions_);
+		recentDeathEffectPositions_,
+		recentFloatingNumberEvents_);
 }
 
 bool EnemyManager::FindNearestEnemyPosition(const Vector3& origin, float maxDistance, Vector3& outPosition) const
@@ -177,7 +193,8 @@ void EnemyManager::ApplyLightningDamage(const Vector3& center, float radius, int
 		radius,
 		damage,
 		enemies_,
-		recentHitEffectPositions_);
+		recentHitEffectPositions_,
+		recentFloatingNumberEvents_);
 }
 
 void EnemyManager::StartBossPhase()
@@ -243,8 +260,56 @@ void EnemyManager::UpdateEnemies(float deltaTime)
 				enemy->StartDeathPresentation();
 			}
 			SpawnDeathDrop(*enemy);
+			SpawnDeathBomb(*enemy);
 			enemy->ResetJustDied();
 		}
+	}
+}
+
+void EnemyManager::SpawnDeathBomb(const Enemy& enemy)
+{
+	if (!enemy.IsDeathBombType()) {
+		return;
+	}
+	auto bomb = std::make_unique<EnemyDeathBomb>();
+	bomb->Initialize(
+		enemy.GetPosition(),
+		enemy.GetDeathBombDelay(),
+		enemy.GetDeathBombRadius(),
+		enemy.GetDeathBombDamage());
+	deathBombs_.push_back(std::move(bomb));
+}
+
+void EnemyManager::UpdateDeathBombs(float deltaTime)
+{
+	for (auto it = deathBombs_.begin(); it != deathBombs_.end();) {
+		EnemyDeathBomb* bomb = it->get();
+		if (!bomb || !bomb->Update(deltaTime)) {
+			++it;
+			continue;
+		}
+
+		const Vector3 position = bomb->GetPosition();
+		const float radius = bomb->GetRadius();
+		const int32_t damage = bomb->GetDamage();
+		EnemyCollisionSystem::ApplyAreaDamage(
+			position,
+			radius,
+			damage,
+			enemies_,
+			recentHitEffectPositions_,
+			recentFloatingNumberEvents_);
+
+		if (player_ && playerManager_) {
+			const Vector3 playerPosition = player_->GetWorldPosition();
+			const float dx = playerPosition.x - position.x;
+			const float dz = playerPosition.z - position.z;
+			if (dx * dx + dz * dz <= radius * radius) {
+				playerManager_->TakeDamage(damage);
+			}
+		}
+		recentExplosionEffectPositions_.push_back(position);
+		it = deathBombs_.erase(it);
 	}
 }
 
@@ -264,11 +329,22 @@ void EnemyManager::UpdateExpOrbs(float deltaTime)
 	}
 
 	const Vector3 playerPosition = player_->GetWorldPosition();
+	const float expPickupRangeMultiplier = playerManager_
+		? playerManager_->GetExpPickupRangeMultiplier()
+		: 1.0f;
 	for (auto it = expOrbs_.begin(); it != expOrbs_.end();) {
-		(*it)->Update(playerPosition, deltaTime);
+		(*it)->Update(
+			playerPosition,
+			deltaTime,
+			expPickupRangeMultiplier);
 		if (!(*it)->IsActive()) {
 			if (playerManager_) {
 				playerManager_->AddEXP((*it)->GetEXP());
+				recentFloatingNumberEvents_.push_back({
+					{ playerPosition.x, playerPosition.y + 1.0f, playerPosition.z },
+					(*it)->GetEXP(),
+					{ 0.35f, 1.0f, 0.58f, 1.0f },
+					});
 			}
 			it = expOrbs_.erase(it);
 		} else {
@@ -282,6 +358,11 @@ void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 	++totalKillCount_;
 	if (session_) {
 		session_->AddRunCoins(enemy.GetCoinValue());
+		recentFloatingNumberEvents_.push_back({
+			{ enemy.GetPosition().x + 1.15f, enemy.GetPosition().y + 2.85f, enemy.GetPosition().z },
+			enemy.GetCoinValue(),
+			{ 1.0f, 0.86f, 0.22f, 1.0f },
+			});
 	}
 	recentDeathEffectPositions_.push_back(enemy.GetPosition());
 	auto orb = std::make_unique<ExpOrb>();

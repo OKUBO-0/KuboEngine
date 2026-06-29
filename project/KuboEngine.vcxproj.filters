@@ -288,6 +288,9 @@
     <ClCompile Include="game\directxgame\effects\CombatEffectsPresentation.cpp">
       <Filter>game\directxgame\effects</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\effects\FloatingNumberPresentation.cpp">
+      <Filter>game\directxgame\effects</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\effects\ParticleBehaviors.cpp">
       <Filter>game\directxgame\effects</Filter>
     </ClCompile>
@@ -319,6 +322,9 @@
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\ui\common\DigitSpriteUtil.cpp">
+      <Filter>game\directxgame\ui\common</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\ui\common\BitmapText.cpp">
       <Filter>game\directxgame\ui\common</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\ui\common\UIBar.cpp">
@@ -364,6 +370,9 @@
       <Filter>game\directxgame\enemy</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\enemy\EnemyBehavior.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\EnemyDeathBomb.cpp">
       <Filter>game\directxgame\enemy</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\enemy\EnemyCollisionSystem.cpp">
@@ -668,6 +677,12 @@
     <ClInclude Include="game\directxgame\effects\CombatEffectsPresentation.h">
       <Filter>game\directxgame\effects</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\effects\FloatingNumberEvent.h">
+      <Filter>game\directxgame\effects</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\effects\FloatingNumberPresentation.h">
+      <Filter>game\directxgame\effects</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\effects\ParticleBehaviors.h">
       <Filter>game\directxgame\effects</Filter>
     </ClInclude>
@@ -702,6 +717,9 @@
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\ui\common\DigitSpriteUtil.h">
+      <Filter>game\directxgame\ui\common</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\ui\common\BitmapText.h">
       <Filter>game\directxgame\ui\common</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\ui\common\UIBar.h">
@@ -758,9 +776,15 @@
     <ClInclude Include="game\directxgame\enemy\Enemy.h">
       <Filter>game\directxgame\enemy</Filter>
     </ClInclude>
-    <ClInclude Include="game\directxgame\enemy\EnemyBehavior.h">
-      <Filter>game\directxgame\enemy</Filter>
-    </ClInclude>
+	<ClInclude Include="game\directxgame\enemy\EnemyBehavior.h">
+	  <Filter>game\directxgame\enemy</Filter>
+	</ClInclude>
+	<ClInclude Include="game\directxgame\enemy\EnemyDefinition.h">
+	  <Filter>game\directxgame\enemy</Filter>
+	</ClInclude>
+	<ClInclude Include="game\directxgame\enemy\EnemyDeathBomb.h">
+	  <Filter>game\directxgame\enemy</Filter>
+	</ClInclude>
     <ClInclude Include="game\directxgame\enemy\EnemyCollisionSystem.h">
       <Filter>game\directxgame\enemy</Filter>
     </ClInclude>

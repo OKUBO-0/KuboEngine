@@ -2,11 +2,11 @@
 
 #include "BaseScene.h"
 #include "Sprite.h"
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/effects/CurtainTransition.h"
-#include "game/directxgame/ui/common/UILabel.h"
+#include "GameAudioCache.h"
+#include "GameInputBindings.h"
+#include "GameTextureCache.h"
+#include "CurtainTransition.h"
+#include "UILabel.h"
 #include <array>
 #include <memory>
 #include <string>

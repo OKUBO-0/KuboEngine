@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EnemyDefinition.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -33,15 +34,6 @@ public:
 	std::unique_ptr<Enemy> CreateBossEnemy(Player* player) const;
 
 private:
-	struct EnemyTypeData {
-		int type = 0;
-		int baseHP = 2;
-		float baseSpeed = 0.16f;
-		int baseEXP = 8;
-		int coinValue = 0;
-		int spawnCount = 1;
-	};
-
 	static constexpr size_t kDefaultMaxActiveEnemies = 84;
 	static constexpr float kDefaultSpawnUnlockInterval = 18.0f;
 	static constexpr float kDefaultSpawnDistance = 50.0f;
@@ -55,14 +47,14 @@ private:
 		Player& player,
 		std::vector<std::unique_ptr<Enemy>>& enemies);
 	void SpawnOneEnemy(
-		const EnemyTypeData& data,
+		const EnemyDefinition& data,
 		Player& player,
 		std::vector<std::unique_ptr<Enemy>>& enemies);
 	float RandomAngle();
 	static size_t CountActiveEnemies(
 		const std::vector<std::unique_ptr<Enemy>>& enemies);
 
-	std::vector<EnemyTypeData> enemyTypes_;
+	std::vector<EnemyDefinition> enemyTypes_;
 	float elapsedTime_ = 0.0f;
 	float spawnTimer_ = 0.0f;
 	float spawnInterval_ = kDefaultBaseSpawnInterval;

@@ -1,5 +1,5 @@
-#include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/DataPaths.h"
+#include "CsvReader.h"
+#include "DataPaths.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>

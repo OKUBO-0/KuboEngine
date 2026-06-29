@@ -15,6 +15,7 @@ public:
 		float strength);
 
 	void SetBoss(bool boss);
+	void SetKnockbackResistance(float resistance);
 	bool IsBoss() const { return boss_; }
 	int32_t GetBossPhase() const { return bossPhase_; }
 	bool ConsumeBossPhaseChanged();
@@ -27,6 +28,7 @@ private:
 	float hitFlashTimer_ = 0.0f;
 	float knockbackTimer_ = 0.0f;
 	float knockbackCooldownTimer_ = 0.0f;
+	float knockbackResistance_ = 0.0f;
 	bool knockbackAppliedThisFrame_ = false;
 	bool boss_ = false;
 	int32_t bossPhase_ = 1;

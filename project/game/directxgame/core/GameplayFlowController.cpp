@@ -1,4 +1,4 @@
-#include "game/directxgame/core/GameplayFlowController.h"
+#include "GameplayFlowController.h"
 #include <algorithm>
 
 namespace DirectXGame {

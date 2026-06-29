@@ -1,8 +1,8 @@
-#include "game/directxgame/core/PlayerGizmoDebugPanel.h"
+#include "PlayerGizmoDebugPanel.h"
 #include "CameraManager.h"
 #include "ImGuizmoManager.h"
 #include "MyMath.h"
-#include "game/directxgame/player/Player.h"
+#include "Player.h"
 #include <algorithm>
 #include <iterator>
 #ifdef _DEBUG

@@ -1,4 +1,4 @@
-#include "game/directxgame/ui/common/UIElement.h"
+#include "UIElement.h"
 #include <algorithm>
 
 namespace DirectXGame {

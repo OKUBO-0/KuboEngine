@@ -1,7 +1,7 @@
-#include "game/directxgame/core/RenderingDebugPanel.h"
+#include "RenderingDebugPanel.h"
 #include "CameraManager.h"
 #include "OffscreenRenderManager.h"
-#include "game/directxgame/core/SceneLighting.h"
+#include "SceneLighting.h"
 #ifdef _DEBUG
 #include <imgui.h>
 #endif

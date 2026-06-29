@@ -1,7 +1,7 @@
-#include "game/directxgame/core/DebugEditorShell.h"
+#include "DebugEditorShell.h"
 #include "DebugEditorManager.h"
 #include "IconsFontAwesome5.h"
-#include "game/directxgame/core/ScreenUtil.h"
+#include "ScreenUtil.h"
 #include <iterator>
 #ifdef _DEBUG
 #include <imgui.h>

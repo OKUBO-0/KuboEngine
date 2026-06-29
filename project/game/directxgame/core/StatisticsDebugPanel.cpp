@@ -1,13 +1,13 @@
-#include "game/directxgame/core/StatisticsDebugPanel.h"
+#include "StatisticsDebugPanel.h"
 #include "CameraManager.h"
 #include "DirectXCommon.h"
 #include "Object3DCommon.h"
 #include "ParticleManager.h"
 #include "SpriteCommon.h"
 #include "SrvManager.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/player/PlayerManager.h"
-#include "game/directxgame/player/weapons/Drone.h"
+#include "EnemyManager.h"
+#include "PlayerManager.h"
+#include "Drone.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -172,9 +172,6 @@ void StatisticsDebugPanel::Draw(
 				"DirectXGame.PlayerDeathSpark",
 				"DirectXGame.DeathSmoke",
 				"DirectXGame.Confetti",
-				"DirectXGame.NormalTrail",
-				"DirectXGame.DroneTrail",
-				"DirectXGame.OrbitTrail",
 				"DirectXGame.SuicideEnemyTrail",
 			};
 			for (const char* groupName : kParticleGroups) {

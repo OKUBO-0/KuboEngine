@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/directxgame/core/GameInputBindings.h"
+#include "GameInputBindings.h"
 #include <string_view>
 
 namespace DirectXGame {

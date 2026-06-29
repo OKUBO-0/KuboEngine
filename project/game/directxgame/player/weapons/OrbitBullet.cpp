@@ -1,5 +1,5 @@
-#include "game/directxgame/player/weapons/OrbitBullet.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "OrbitBullet.h"
+#include "GameModelCache.h"
 #include "Object3DCommon.h"
 #include <algorithm>
 #include <cmath>

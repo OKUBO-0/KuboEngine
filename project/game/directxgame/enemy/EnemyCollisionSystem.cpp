@@ -1,11 +1,11 @@
-#include "game/directxgame/enemy/EnemyCollisionSystem.h"
-#include "game/directxgame/core/GameplayRules.h"
+#include "EnemyCollisionSystem.h"
+#include "GameplayRules.h"
 
 #include "MyMath.h"
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
+#include "GameAudioCache.h"
+#include "Enemy.h"
+#include "Player.h"
+#include "PlayerManager.h"
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -216,7 +216,8 @@ void ApplyEnemyHit(
 	const Vector3& impactPosition,
 	int32_t damage,
 	float knockStrength,
-	std::vector<Vector3>& hitEffectPositions)
+	std::vector<Vector3>& hitEffectPositions,
+	std::vector<DirectXGame::FloatingNumberEvent>& numberEvents)
 {
 	static DirectXGame::SoundHandle sharedHitSeHandle{};
 	if (!sharedHitSeHandle) {
@@ -247,6 +248,11 @@ void ApplyEnemyHit(
 
 	enemy.TakeDamage(damage, knockDirection, knockStrength);
 	hitEffectPositions.push_back(enemyPosition);
+	numberEvents.push_back({
+		{ enemyPosition.x, enemyPosition.y + 1.2f, enemyPosition.z },
+		damage,
+		{ 1.0f, 0.28f, 0.18f, 1.0f },
+		});
 }
 
 void PlayPlayerDamageSound()
@@ -271,7 +277,8 @@ void CheckNormalBulletCollisions(
 	DirectXGame::PlayerManager& playerManager,
 	const EnemyCellMap& spatialMap,
 	std::vector<DirectXGame::Enemy*>& nearbyEnemies,
-	std::vector<Vector3>& hitEffectPositions)
+	std::vector<Vector3>& hitEffectPositions,
+	std::vector<DirectXGame::FloatingNumberEvent>& numberEvents)
 {
 	const int32_t damage =
 		playerManager.GetNormalBulletDamage();
@@ -306,10 +313,81 @@ void CheckNormalBulletCollisions(
 				bulletPosition,
 				damage,
 				0.8f + static_cast<float>(damage) * 0.18f,
-				hitEffectPositions);
+				hitEffectPositions,
+				numberEvents);
 			if (!bullet->ConsumeHit()) {
 				break;
 			}
+		}
+	}
+}
+
+void CheckExplosiveBulletCollisions(
+	DirectXGame::PlayerManager& playerManager,
+	const EnemyCellMap& spatialMap,
+	std::vector<DirectXGame::Enemy*>& nearbyEnemies,
+	std::vector<Vector3>& hitEffectPositions,
+	std::vector<DirectXGame::FloatingNumberEvent>& numberEvents)
+{
+	if (!playerManager.HasExplosiveBullets()) {
+		return;
+	}
+
+	const int32_t damage =
+		playerManager.GetExplosiveBulletDamage();
+	const float blastRadius =
+		(std::max)(0.0f, playerManager.GetExplosiveBulletRadius());
+	std::vector<DirectXGame::Enemy*> blastEnemies;
+	for (const std::unique_ptr<DirectXGame::NormalBullet>& bullet :
+		playerManager.GetExplosiveBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		const Vector3 bulletPosition = bullet->GetPosition();
+		const float bulletRadius = bullet->GetCollisionRadius();
+		const Engine::Math::OBB bulletObb =
+			bullet->GetCollisionObb();
+		CollectNearbyEnemies(
+			spatialMap,
+			bulletPosition,
+			bulletRadius + kEnemyQueryPadding,
+			nearbyEnemies);
+		for (DirectXGame::Enemy* enemy : nearbyEnemies) {
+			if (!enemy || !enemy->IsActive()) {
+				continue;
+			}
+			if (!Engine::Math::MyMath::IsCollision(
+					bulletObb,
+					enemy->GetCollisionObb())) {
+				continue;
+			}
+
+			CollectNearbyEnemies(
+				spatialMap,
+				bulletPosition,
+				blastRadius,
+				blastEnemies);
+			const float blastRadiusSq = blastRadius * blastRadius;
+			for (DirectXGame::Enemy* blastEnemy : blastEnemies) {
+				if (!blastEnemy || !blastEnemy->IsActive()) {
+					continue;
+				}
+				const Vector3 enemyPosition = blastEnemy->GetPosition();
+				const float dx = enemyPosition.x - bulletPosition.x;
+				const float dz = enemyPosition.z - bulletPosition.z;
+				if (dx * dx + dz * dz > blastRadiusSq) {
+					continue;
+				}
+				ApplyEnemyHit(
+					*blastEnemy,
+					bulletPosition,
+					damage,
+					1.1f + static_cast<float>(damage) * 0.16f,
+					hitEffectPositions,
+					numberEvents);
+			}
+			bullet->Deactivate();
+			break;
 		}
 	}
 }
@@ -318,7 +396,8 @@ void CheckOrbitBulletCollisions(
 	DirectXGame::PlayerManager& playerManager,
 	const EnemyCellMap& spatialMap,
 	std::vector<DirectXGame::Enemy*>& nearbyEnemies,
-	std::vector<Vector3>& hitEffectPositions)
+	std::vector<Vector3>& hitEffectPositions,
+	std::vector<DirectXGame::FloatingNumberEvent>& numberEvents)
 {
 	const int32_t damage =
 		playerManager.GetOrbitBulletDamage();
@@ -351,7 +430,8 @@ void CheckOrbitBulletCollisions(
 				position,
 				damage,
 				0.7f + static_cast<float>(damage) * 0.12f,
-				hitEffectPositions);
+				hitEffectPositions,
+				numberEvents);
 		}
 	}
 }
@@ -360,7 +440,8 @@ void CheckDroneBulletCollisions(
 	DirectXGame::PlayerManager& playerManager,
 	const EnemyCellMap& spatialMap,
 	std::vector<DirectXGame::Enemy*>& nearbyEnemies,
-	std::vector<Vector3>& hitEffectPositions)
+	std::vector<Vector3>& hitEffectPositions,
+	std::vector<DirectXGame::FloatingNumberEvent>& numberEvents)
 {
 	if (!playerManager.HasDrone() || !playerManager.GetDrone()) {
 		return;
@@ -396,7 +477,8 @@ void CheckDroneBulletCollisions(
 				position,
 				damage,
 				0.65f,
-				hitEffectPositions);
+				hitEffectPositions,
+				numberEvents);
 			if (!bullet->ConsumeHit()) {
 				break;
 			}
@@ -437,7 +519,7 @@ void CheckPlayerCollisions(
 			const Vector3 impactPosition = enemy->GetPosition();
 			if (!player.IsDodging() &&
 				!playerManager.IsInvincible()) {
-				playerManager.TakeDamage();
+				playerManager.TakeDamage(enemy->GetAttackPower());
 				PlayPlayerDamageSound();
 			}
 			deathEffectPositions.push_back(impactPosition);
@@ -462,7 +544,7 @@ void CheckPlayerCollisions(
 
 		if (!player.IsDodging() &&
 			!playerManager.IsInvincible()) {
-			playerManager.TakeDamage();
+			playerManager.TakeDamage(enemy->GetAttackPower());
 			PlayPlayerDamageSound();
 		}
 	}
@@ -488,7 +570,8 @@ void EnemyCollisionSystem::CheckCollisions(
 	PlayerManager& playerManager,
 	std::vector<std::unique_ptr<Enemy>>& enemies,
 	std::vector<Vector3>& hitEffectPositions,
-	std::vector<Vector3>& deathEffectPositions)
+	std::vector<Vector3>& deathEffectPositions,
+	std::vector<FloatingNumberEvent>& numberEvents)
 {
 	EnemyCollisionContext context;
 	RebuildContext(enemies, context);
@@ -497,7 +580,8 @@ void EnemyCollisionSystem::CheckCollisions(
 		playerManager,
 		context,
 		hitEffectPositions,
-		deathEffectPositions);
+		deathEffectPositions,
+		numberEvents);
 }
 
 void EnemyCollisionSystem::CheckCollisions(
@@ -505,23 +589,33 @@ void EnemyCollisionSystem::CheckCollisions(
 	PlayerManager& playerManager,
 	EnemyCollisionContext& context,
 	std::vector<Vector3>& hitEffectPositions,
-	std::vector<Vector3>& deathEffectPositions)
+	std::vector<Vector3>& deathEffectPositions,
+	std::vector<FloatingNumberEvent>& numberEvents)
 {
 	CheckNormalBulletCollisions(
 		playerManager,
 		context.spatialMap,
 		context.nearbyEnemies,
-		hitEffectPositions);
+		hitEffectPositions,
+		numberEvents);
 	CheckOrbitBulletCollisions(
 		playerManager,
 		context.spatialMap,
 		context.nearbyEnemies,
-		hitEffectPositions);
+		hitEffectPositions,
+		numberEvents);
+	CheckExplosiveBulletCollisions(
+		playerManager,
+		context.spatialMap,
+		context.nearbyEnemies,
+		hitEffectPositions,
+		numberEvents);
 	CheckDroneBulletCollisions(
 		playerManager,
 		context.spatialMap,
 		context.nearbyEnemies,
-		hitEffectPositions);
+		hitEffectPositions,
+		numberEvents);
 	CheckPlayerCollisions(
 		player,
 		playerManager,
@@ -535,7 +629,8 @@ void EnemyCollisionSystem::ApplyAreaDamage(
 	float radius,
 	int32_t damage,
 	std::vector<std::unique_ptr<Enemy>>& enemies,
-	std::vector<Vector3>& hitEffectPositions)
+	std::vector<Vector3>& hitEffectPositions,
+	std::vector<FloatingNumberEvent>& numberEvents)
 {
 	const float radiusSq = radius * radius;
 	EnemyCollisionContext context;
@@ -558,7 +653,8 @@ void EnemyCollisionSystem::ApplyAreaDamage(
 				center,
 				damage,
 				0.9f + static_cast<float>(damage) * 0.1f,
-				hitEffectPositions);
+				hitEffectPositions,
+				numberEvents);
 		}
 	}
 }

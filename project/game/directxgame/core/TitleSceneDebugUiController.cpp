@@ -1,14 +1,14 @@
-#include "game/directxgame/core/TitleSceneDebugUIController.h"
+#include "TitleSceneDebugUIController.h"
 
 #include "DebugEditorManager.h"
 #include "Input.h"
 #include "OffscreenRenderManager.h"
-#include "game/directxgame/core/ResourceProbe.h"
-#include "game/directxgame/core/AudioDebugPanel.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/SceneLighting.h"
-#include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/scene/GameTitleScene.h"
+#include "ResourceProbe.h"
+#include "AudioDebugPanel.h"
+#include "GameInputBindings.h"
+#include "SceneLighting.h"
+#include "ScreenUtil.h"
+#include "GameTitleScene.h"
 #include <array>
 #include <iterator>
 #include <string>
@@ -257,40 +257,6 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				16.0f,
 				320.0f);
 
-			float guidePosition[2]{
-				layout.guidePosition.x,
-				layout.guidePosition.y,
-			};
-			if (ImGui::DragFloat2(
-					"Guide Position",
-					guidePosition,
-					1.0f,
-					-400.0f,
-					1280.0f)) {
-				layout.guidePosition = {
-					guidePosition[0],
-					guidePosition[1],
-				};
-				scene.ApplyLayout();
-			}
-
-			float guideSize[2]{
-				layout.guideSize.x,
-				layout.guideSize.y,
-			};
-			if (ImGui::DragFloat2(
-					"Guide Size",
-					guideSize,
-					1.0f,
-					64.0f,
-					1280.0f)) {
-				layout.guideSize = {
-					guideSize[0],
-					guideSize[1],
-				};
-				scene.ApplyLayout();
-			}
-
 			float modelPosition[3]{
 				layout.modelBasePosition.x,
 				layout.modelBasePosition.y,
@@ -416,9 +382,6 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 			GameInputBindings::GetCancelLabel(
 				scene.navigationInputDevice_));
 		ImGui::Text("Menu Index: %d", scene.menuIndex_);
-		ImGui::Text(
-			"Guide Active: %s",
-			scene.guideActive_ ? "true" : "false");
 		ImGui::End();
 	}
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/UILayoutIO.h"
+#include "GameAudioCache.h"
+#include "UILayoutIO.h"
 #include <span>
 #include <string_view>
 #include <vector>

@@ -1,8 +1,8 @@
-#include "game/directxgame/ui/hud/PauseBuildHud.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/player/PlayerManager.h"
+#include "PauseBuildHud.h"
+#include "DataPaths.h"
+#include "ScreenUtil.h"
+#include "UILayoutIO.h"
+#include "PlayerManager.h"
 #include "Input.h"
 #include <algorithm>
 #include <cmath>
@@ -48,11 +48,11 @@ void PauseBuildHud::Initialize()
 		values, "menuHitboxSize", menuLayout_.hitboxSize);
 
 	const std::array<const char*, 5> iconPaths{
-		"ui/game/normal/icon.png",
-		"ui/game/orbit/icon.png",
-		"ui/game/drone/icon.png",
-		"ui/game/lightning/icon.png",
-		"ui/game/lvup_attack_icon.png",
+		"ui/game/lvup/normal_icon.png",
+		"ui/game/lvup/orbit_icon.png",
+		"ui/game/lvup/drone_icon.png",
+		"ui/game/lvup/lightning_icon.png",
+		"ui/game/lvup/attack_icon.png",
 	};
 	for (size_t index = 0; index < icons_.size(); ++index) {
 		icons_[index].Initialize(iconPaths[index], {});

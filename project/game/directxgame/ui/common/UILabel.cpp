@@ -1,6 +1,6 @@
-#include "game/directxgame/ui/common/UILabel.h"
+#include "UILabel.h"
 #include "Sprite.h"
-#include "game/directxgame/core/GameSpriteFactory.h"
+#include "GameSpriteFactory.h"
 
 namespace DirectXGame {
 

@@ -1,6 +1,6 @@
-#include "game/directxgame/enemy/ExpOrb.h"
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "ExpOrb.h"
+#include "GameAudioCache.h"
+#include "GameModelCache.h"
 #include "Object3DCommon.h"
 #include <algorithm>
 #include <cmath>
@@ -47,18 +47,24 @@ void ExpOrb::Initialize(const Vector3& position, int32_t expValue)
 	object_->Update();
 }
 
-void ExpOrb::Update(const Vector3& playerPosition, float deltaTime)
+void ExpOrb::Update(
+	const Vector3& playerPosition,
+	float deltaTime,
+	float pickupRangeMultiplier)
 {
 	if (!active_) {
 		return;
 	}
+	const float rangeMultiplier = (std::max)(1.0f, pickupRangeMultiplier);
+	const float attractRadiusSq = kAttractRadiusSq * rangeMultiplier * rangeMultiplier;
+	const float collectRadiusSq = kCollectRadiusSq * rangeMultiplier * rangeMultiplier;
 
 	const float velocityScale = deltaTime / kFrameDeltaBaseline;
 	const float dx = playerPosition.x - position_.x;
 	const float dz = playerPosition.z - position_.z;
 	const float distanceSq = dx * dx + dz * dz;
 
-	if (distanceSq < kAttractRadiusSq) {
+	if (distanceSq < attractRadiusSq) {
 		const float distance = std::sqrt(distanceSq);
 		if (distance > 0.001f) {
 			const float attractSpeed = kAttractBaseSpeed + distance * kAttractDistanceSpeed;
@@ -82,7 +88,7 @@ void ExpOrb::Update(const Vector3& playerPosition, float deltaTime)
 
 	const float collectDx = playerPosition.x - position_.x;
 	const float collectDz = playerPosition.z - position_.z;
-	if (collectDx * collectDx + collectDz * collectDz < kCollectRadiusSq) {
+	if (collectDx * collectDx + collectDz * collectDz < collectRadiusSq) {
 		Collect();
 		return;
 	}

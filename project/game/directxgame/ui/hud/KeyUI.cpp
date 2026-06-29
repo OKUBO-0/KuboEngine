@@ -1,9 +1,9 @@
-#include "game/directxgame/ui/hud/KeyUI.h"
+#include "KeyUI.h"
 #include "Input.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/GameSpriteFactory.h"
-#include "game/directxgame/core/UILayoutIO.h"
+#include "DataPaths.h"
+#include "GameInputBindings.h"
+#include "GameSpriteFactory.h"
+#include "UILayoutIO.h"
 #include <algorithm>
 #ifdef _DEBUG
 #include <imgui.h>

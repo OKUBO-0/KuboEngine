@@ -1,5 +1,5 @@
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/effects/ParticleBehaviors.h"
+#include "GameParticleEffects.h"
+#include "ParticleBehaviors.h"
 #include "ParticleManager.h"
 #include <algorithm>
 #include <memory>
@@ -45,25 +45,6 @@ void GameParticleEffects::Initialize()
 		"DirectXGame.Confetti", "Resources/DirectXGame/white1x1.png",
 		Engine::Particle::VerticesType::Quad,
 		std::make_unique<ConfettiParticleBehavior>(), 384);
-	handles_.normalTrail = particleManager->CreateParticleGroup(
-		"DirectXGame.NormalTrail", "Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(Vector4{ 1.0f, 0.62f, 0.16f, 0.9f }), 320);
-	handles_.droneTrail = particleManager->CreateParticleGroup(
-		"DirectXGame.DroneTrail", "Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(Vector4{ 0.3f, 0.84f, 1.0f, 0.9f }), 256);
-
-	TrailParticleBehavior::Settings orbitTrailSettings{};
-	orbitTrailSettings.lifetime = 0.22f;
-	orbitTrailSettings.scaleMin = 0.26f;
-	orbitTrailSettings.scaleMax = 0.42f;
-	handles_.orbitTrail = particleManager->CreateParticleGroup(
-		"DirectXGame.OrbitTrail", "Resources/DirectXGame/white1x1.png",
-		Engine::Particle::VerticesType::Quad,
-		std::make_unique<TrailParticleBehavior>(
-			Vector4{ 0.68f, 0.38f, 1.0f, 0.88f }, orbitTrailSettings), 256);
-
 	TrailParticleBehavior::Settings suicideTrailSettings{};
 	suicideTrailSettings.lifetime = 0.48f;
 	suicideTrailSettings.shrinkRate = 0.94f;

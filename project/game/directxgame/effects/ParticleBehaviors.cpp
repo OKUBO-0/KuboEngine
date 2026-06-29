@@ -1,4 +1,4 @@
-#include "game/directxgame/effects/ParticleBehaviors.h"
+#include "ParticleBehaviors.h"
 #include "ParticleManager.h"
 #include <array>
 #include <cmath>

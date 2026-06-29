@@ -2,7 +2,6 @@
 
 #include "Object3D.h"
 #include "Vector3.h"
-#include "Vector4.h"
 #include <memory>
 #include <unordered_map>
 
@@ -15,16 +14,17 @@ public:
 		const Vector3& forward,
 		float speed = 1.0f,
 		float range = 30.0f,
-		int32_t maxHits = 1,
-		const Vector4& trailColor = { 1.0f, 0.68f, 0.18f, 0.82f });
+		int32_t maxHits = 1);
 	void Update(const Vector3& playerPosition, float deltaTime);
 	void Draw();
 
 	bool IsActive() const { return active_; }
-	void Deactivate() { active_ = false; }
+	void Deactivate()
+	{
+		active_ = false;
+	}
 	const Vector3& GetPosition() const { return position_; }
 	const Vector3& GetPreviousPosition() const { return previousPosition_; }
-	const Vector4& GetTrailColor() const { return trailColor_; }
 	float GetCollisionRadius() const;
 	Engine::Math::AABB GetCollisionAabb() const;
 	Engine::Math::OBB GetCollisionObb() const;
@@ -39,7 +39,6 @@ private:
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	Vector3 previousPosition_{ 0.0f, 0.0f, 0.0f };
 	Vector3 direction_{ 0.0f, 0.0f, 1.0f };
-	Vector4 trailColor_{ 1.0f, 0.68f, 0.18f, 0.82f };
 	float rotationY_ = 0.0f;
 	float speed_ = 1.0f;
 	float range_ = 30.0f;

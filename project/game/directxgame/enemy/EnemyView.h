@@ -49,6 +49,7 @@ private:
 	std::unique_ptr<Engine::Graphics3D::Object3D> floatingShadowObject_;
 	Vector4 behaviorColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
 	float behaviorScaleMultiplier_ = 1.0f;
+	float modelVerticalOffsetY_ = 0.0f;
 	bool floatingEnabled_ = false;
 };
 

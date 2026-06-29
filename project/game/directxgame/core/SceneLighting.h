@@ -1,7 +1,7 @@
 #pragma once
 
 #include "RenderingData.h"
-#include "game/directxgame/core/UILayoutIO.h"
+#include "UILayoutIO.h"
 #include <string_view>
 #include <vector>
 

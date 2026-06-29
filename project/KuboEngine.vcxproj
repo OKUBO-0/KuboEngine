@@ -67,7 +67,7 @@
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\editor;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\IconFontCppHeaders;$(ProjectDir)externals\ImGuizmo;$(ProjectDir)externals\implot;$(ProjectDir)externals\imgui_node_editor;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)game\directxgame\core;$(ProjectDir)game\directxgame\effects;$(ProjectDir)game\directxgame\enemy;$(ProjectDir)game\directxgame\player;$(ProjectDir)game\directxgame\player\weapons;$(ProjectDir)game\directxgame\scene;$(ProjectDir)game\directxgame\ui\common;$(ProjectDir)game\directxgame\ui\gauge;$(ProjectDir)game\directxgame\ui\hud;$(ProjectDir)game\directxgame\world;$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\editor;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\IconFontCppHeaders;$(ProjectDir)externals\ImGuizmo;$(ProjectDir)externals\implot;$(ProjectDir)externals\imgui_node_editor;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -97,7 +97,7 @@ exit /B 0</Command>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\editor;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\IconFontCppHeaders;$(ProjectDir)externals\ImGuizmo;$(ProjectDir)externals\implot;$(ProjectDir)externals\imgui_node_editor;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)game\directxgame\core;$(ProjectDir)game\directxgame\effects;$(ProjectDir)game\directxgame\enemy;$(ProjectDir)game\directxgame\player;$(ProjectDir)game\directxgame\player\weapons;$(ProjectDir)game\directxgame\scene;$(ProjectDir)game\directxgame\ui\common;$(ProjectDir)game\directxgame\ui\gauge;$(ProjectDir)game\directxgame\ui\hud;$(ProjectDir)game\directxgame\world;$(ProjectDir)engine\2d;$(ProjectDir)engine\3d;$(ProjectDir)engine\3d\model;$(ProjectDir)engine\3d\object;$(ProjectDir)engine\audio;$(ProjectDir)engine\base;$(ProjectDir)engine\base\core;$(ProjectDir)engine\base\directx;$(ProjectDir)engine\base\render;$(ProjectDir)engine\base\utility;$(ProjectDir)engine\editor;$(ProjectDir)engine\input;$(ProjectDir)engine\math;$(ProjectDir)engine\math\types;$(ProjectDir)engine\math\data;$(ProjectDir)engine\scene;$(ProjectDir)engine\scene\core;$(ProjectDir)engine\scene\game;$(ProjectDir)engine\scene\screens;$(ProjectDir)engine\scene\states;$(ProjectDir)engine\camera;$(ProjectDir)engine\particle;$(ProjectDir)engine\particle\core;$(ProjectDir)engine\particle\behaviors;$(ProjectDir)externals\assimp\include;$(ProjectDir)externals\IconFontCppHeaders;$(ProjectDir)externals\ImGuizmo;$(ProjectDir)externals\implot;$(ProjectDir)externals\imgui_node_editor;$(ProjectDir)engine\Line;$(ProjectDir)engine\skybox;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>MinSpace</Optimization>
     </ClCompile>
     <Link>
@@ -186,6 +186,7 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\effects\CurtainTransition.cpp" />
     <ClCompile Include="game\directxgame\effects\BossPresentation.cpp" />
     <ClCompile Include="game\directxgame\effects\CombatEffectsPresentation.cpp" />
+    <ClCompile Include="game\directxgame\effects\FloatingNumberPresentation.cpp" />
     <ClCompile Include="game\directxgame\effects\ParticleBehaviors.cpp" />
     <ClCompile Include="game\directxgame\effects\GameParticleEffects.cpp" />
     <ClCompile Include="game\directxgame\effects\PlayerDeathPresentation.cpp" />
@@ -197,6 +198,7 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\core\GameTextureCache.cpp" />
     <ClCompile Include="game\directxgame\core\UILayoutIO.cpp" />
     <ClCompile Include="game\directxgame\ui\common\DigitSpriteUtil.cpp" />
+    <ClCompile Include="game\directxgame\ui\common\BitmapText.cpp" />
     <ClCompile Include="game\directxgame\ui\common\UIBar.cpp" />
     <ClCompile Include="game\directxgame\ui\common\UIElement.cpp" />
     <ClCompile Include="game\directxgame\ui\common\UILabel.cpp" />
@@ -213,6 +215,7 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\core\GameSession.cpp" />
     <ClCompile Include="game\directxgame\enemy\Enemy.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyBehavior.cpp" />
+    <ClCompile Include="game\directxgame\enemy\EnemyDeathBomb.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyCollisionSystem.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyManager.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyReactionController.cpp" />
@@ -428,6 +431,8 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\effects\CurtainTransition.h" />
     <ClInclude Include="game\directxgame\effects\BossPresentation.h" />
     <ClInclude Include="game\directxgame\effects\CombatEffectsPresentation.h" />
+    <ClInclude Include="game\directxgame\effects\FloatingNumberEvent.h" />
+    <ClInclude Include="game\directxgame\effects\FloatingNumberPresentation.h" />
     <ClInclude Include="game\directxgame\effects\ParticleBehaviors.h" />
     <ClInclude Include="game\directxgame\effects\GameParticleEffects.h" />
     <ClInclude Include="game\directxgame\effects\PlayerDeathPresentation.h" />
@@ -440,6 +445,7 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\core\GameTextureCache.h" />
     <ClInclude Include="game\directxgame\core\UILayoutIO.h" />
     <ClInclude Include="game\directxgame\ui\common\DigitSpriteUtil.h" />
+    <ClInclude Include="game\directxgame\ui\common\BitmapText.h" />
     <ClInclude Include="game\directxgame\ui\common\UIBar.h" />
     <ClInclude Include="game\directxgame\ui\common\UIElement.h" />
     <ClInclude Include="game\directxgame\ui\common\UILabel.h" />
@@ -459,7 +465,9 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\core\GameSession.h" />
     <ClInclude Include="game\directxgame\core\GameplayRules.h" />
     <ClInclude Include="game\directxgame\enemy\Enemy.h" />
-    <ClInclude Include="game\directxgame\enemy\EnemyBehavior.h" />
+	<ClInclude Include="game\directxgame\enemy\EnemyBehavior.h" />
+	<ClInclude Include="game\directxgame\enemy\EnemyDefinition.h" />
+	<ClInclude Include="game\directxgame\enemy\EnemyDeathBomb.h" />
     <ClInclude Include="game\directxgame\enemy\EnemyCollisionSystem.h" />
     <ClInclude Include="game\directxgame\enemy\EnemyManager.h" />
     <ClInclude Include="game\directxgame\enemy\EnemyReactionController.h" />

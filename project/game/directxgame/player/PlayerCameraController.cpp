@@ -1,4 +1,4 @@
-#include "game/directxgame/player/PlayerCameraController.h"
+#include "PlayerCameraController.h"
 
 #include "Camera.h"
 #include "CameraManager.h"
@@ -37,9 +37,6 @@ void PlayerCameraController::Update(
 	}
 
 	if (advanceFollow) {
-		const float zoomRate = 1.0f - std::exp(-3.6f * kFixedDeltaTime);
-		combatDistance_ += (combatTargetDistance_ - combatDistance_) * zoomRate;
-		combatHeight_ += (combatTargetHeight_ - combatHeight_) * zoomRate;
 		shakeCooldownTimer_ = (std::max)(0.0f, shakeCooldownTimer_ - kFixedDeltaTime);
 		shakeTimer_ = (std::max)(0.0f, shakeTimer_ - kFixedDeltaTime);
 		shakePhase_ += 2.1f;
@@ -125,24 +122,16 @@ void PlayerCameraController::RequestShake(float duration, float strength)
 	shakePhase_ = 0.0f;
 }
 
-void PlayerCameraController::SetCombatTarget(float distance, float height)
-{
-	combatTargetDistance_ = std::clamp(distance, 30.0f, 62.0f);
-	combatTargetHeight_ = std::clamp(height, 54.0f, 96.0f);
-}
-
 void PlayerCameraController::SetHeight(float height)
 {
 	height_ = height;
 	combatHeight_ = height;
-	combatTargetHeight_ = height;
 }
 
 void PlayerCameraController::SetDistance(float distance)
 {
 	distance_ = distance;
 	combatDistance_ = distance;
-	combatTargetDistance_ = distance;
 }
 
 } // namespace DirectXGame

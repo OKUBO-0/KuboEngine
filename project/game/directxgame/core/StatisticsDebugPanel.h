@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/directxgame/core/SoftCapTelemetry.h"
+#include "SoftCapTelemetry.h"
 #include <array>
 #include <cstdint>
 

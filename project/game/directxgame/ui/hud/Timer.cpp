@@ -1,10 +1,10 @@
-#include "game/directxgame/ui/hud/Timer.h"
+#include "Timer.h"
 #include "Sprite.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameSpriteFactory.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/ui/common/DigitSpriteUtil.h"
+#include "DataPaths.h"
+#include "GameSpriteFactory.h"
+#include "GameTextureCache.h"
+#include "UILayoutIO.h"
+#include "DigitSpriteUtil.h"
 #include <algorithm>
 #ifdef _DEBUG
 #include <imgui.h>

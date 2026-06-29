@@ -24,7 +24,6 @@ public:
 		bool advanceFollow);
 	void ResetFocus(const Vector3& playerPosition);
 	void RequestShake(float duration, float strength);
-	void SetCombatTarget(float distance, float height);
 
 	float GetHeight() const { return height_; }
 	float GetDistance() const { return distance_; }
@@ -45,8 +44,6 @@ private:
 	float followSmoothness_ = 8.0f;
 	float combatDistance_ = 45.0f;
 	float combatHeight_ = 80.0f;
-	float combatTargetDistance_ = 45.0f;
-	float combatTargetHeight_ = 80.0f;
 	Vector3 focusPosition_{ 0.0f, 0.0f, 0.0f };
 	bool followInitialized_ = false;
 	Mode mode_ = Mode::WorldBack;

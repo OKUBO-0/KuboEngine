@@ -3,7 +3,7 @@
 #include "Sprite.h"
 #include "Vector2.h"
 #include "Vector3.h"
-#include "game/directxgame/core/GameTextureCache.h"
+#include "GameTextureCache.h"
 #include <memory>
 #include <vector>
 

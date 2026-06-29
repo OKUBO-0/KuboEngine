@@ -1,5 +1,5 @@
-#include "game/directxgame/core/GameAudioTuning.h"
-#include "game/directxgame/core/DataPaths.h"
+#include "GameAudioTuning.h"
+#include "DataPaths.h"
 #include <array>
 #include <string>
 

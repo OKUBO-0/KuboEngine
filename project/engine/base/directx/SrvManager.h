@@ -26,6 +26,13 @@ public:
 		uint32_t index = 0;
 		uint64_t fenceValue = 0;
 	};
+	struct UsageSummary {
+		uint32_t texture2D = 0;
+		uint32_t textureCube = 0;
+		uint32_t structuredBuffer = 0;
+		uint32_t shadowMap = 0;
+		uint32_t other = 0;
+	};
 
 	/// @brief SRV管理を初期化する
 	/// @param dxCommon DirectX共通管理
@@ -55,6 +62,8 @@ public:
 	uint32_t GetMaxCount() const { return kMaxSRVCount; }
 	uint32_t GetRemainingCount();
 	const std::vector<UsageRecord>& GetUsageRecords() const { return usageRecords_; }
+	UsageSummary GetUsageSummary() const;
+	void LabelUsage(uint32_t srvIndex, const std::string& usage);
 private:
 	void SetUsage(uint32_t srvIndex, const std::string& usage);
 	void ReclaimCompletedDescriptors();

@@ -1,4 +1,4 @@
-#include "game/directxgame/enemy/EnemyReactionController.h"
+#include "EnemyReactionController.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,6 +20,7 @@ void EnemyReactionController::Reset()
 	hitFlashTimer_ = 0.0f;
 	knockbackTimer_ = 0.0f;
 	knockbackCooldownTimer_ = 0.0f;
+	knockbackResistance_ = 0.0f;
 	knockbackAppliedThisFrame_ = false;
 	boss_ = false;
 	bossPhase_ = 1;
@@ -85,7 +86,8 @@ void EnemyReactionController::ApplyHit(
 		return;
 	}
 
-	const float resistance = boss_ ? 0.18f : 1.0f;
+	const float resistance =
+		(boss_ ? 0.18f : 1.0f) * (1.0f - knockbackResistance_);
 	knockbackVelocity_.x =
 		(knockDirection.x / length) * strength * resistance;
 	knockbackVelocity_.z =
@@ -103,6 +105,11 @@ void EnemyReactionController::SetBoss(bool boss)
 		bossPhaseChanged_ = false;
 		bossPhaseTransitionTimer_ = 0.0f;
 	}
+}
+
+void EnemyReactionController::SetKnockbackResistance(float resistance)
+{
+	knockbackResistance_ = std::clamp(resistance, 0.0f, 1.0f);
 }
 
 bool EnemyReactionController::ConsumeBossPhaseChanged()

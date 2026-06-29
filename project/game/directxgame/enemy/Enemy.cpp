@@ -1,5 +1,5 @@
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/core/GameAudioCache.h"
+#include "Enemy.h"
+#include "GameAudioCache.h"
 #include <algorithm>
 
 namespace {
@@ -118,11 +118,10 @@ void Enemy::SetModelByType(int32_t type)
 	view_.SetModelByType(type);
 }
 
-void Enemy::SetBehaviorByType(int32_t type)
+void Enemy::SetBehavior(EnemyBehaviorType type)
 {
-	type_ = type;
-	behavior_ = CreateEnemyBehaviorByType(type);
-	view_.SetFloatingEnabled(type == 4);
+	behavior_ = CreateEnemyBehavior(type);
+	view_.SetFloatingEnabled(false);
 }
 
 void Enemy::SetBoss(bool boss)

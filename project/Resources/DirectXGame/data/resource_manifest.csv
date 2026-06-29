@@ -1,13 +1,13 @@
 type,path
 texture,white1x1.png
 texture,ui/title/title.png
-texture,ui/title/guideUI.png
 texture,ui/title/cursor.png
 texture,ui/game/start.png
 texture,ui/game/pause.png
 texture,ui/game/pause_arrow.png
 texture,ui/game/death.png
 texture,ui/game/levelup.png
+texture,ui/font/hud_ascii.png
 texture,ui/game/lvup_attack.png
 texture,ui/game/lvup_attack_icon.png
 texture,ui/game/lvup_maxhp.png

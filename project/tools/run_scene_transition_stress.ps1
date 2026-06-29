@@ -1,5 +1,6 @@
 param(
 	[int]$Cycles = 3,
+	[int]$GameFrames = 600,
 	[int]$TimeoutSeconds = 120
 )
 
@@ -7,6 +8,9 @@ $ErrorActionPreference = "Stop"
 
 if ($Cycles -lt 1) {
 	throw "Cycles must be at least 1"
+}
+if ($GameFrames -lt 1) {
+	throw "GameFrames must be at least 1"
 }
 
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
@@ -22,8 +26,10 @@ if (Test-Path $report) {
 }
 
 $previousCycles = $env:KUBO_SCENE_STRESS_CYCLES
+$previousGameFrames = $env:KUBO_SCENE_STRESS_GAME_FRAMES
 try {
 	$env:KUBO_SCENE_STRESS_CYCLES = [string]$Cycles
+	$env:KUBO_SCENE_STRESS_GAME_FRAMES = [string]$GameFrames
 	$process = Start-Process `
 		-FilePath $executable `
 		-WorkingDirectory $projectRoot `
@@ -51,5 +57,10 @@ try {
 		Remove-Item Env:KUBO_SCENE_STRESS_CYCLES -ErrorAction SilentlyContinue
 	} else {
 		$env:KUBO_SCENE_STRESS_CYCLES = $previousCycles
+	}
+	if ($null -eq $previousGameFrames) {
+		Remove-Item Env:KUBO_SCENE_STRESS_GAME_FRAMES -ErrorAction SilentlyContinue
+	} else {
+		$env:KUBO_SCENE_STRESS_GAME_FRAMES = $previousGameFrames
 	}
 }

@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Vector3.h"
-#include "game/directxgame/player/WeaponType.h"
-#include "game/directxgame/player/weapons/Drone.h"
-#include "game/directxgame/player/weapons/NormalBullet.h"
-#include "game/directxgame/player/weapons/OrbitBullet.h"
+#include "WeaponType.h"
+#include "Drone.h"
+#include "NormalBullet.h"
+#include "OrbitBullet.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -22,6 +22,7 @@ public:
 	static constexpr int32_t kOrbitBulletMaxLevel = 8;
 	static constexpr int32_t kDroneMaxLevel = 8;
 	static constexpr int32_t kLightningMaxLevel = 8;
+	static constexpr int32_t kExplosiveBulletMaxLevel = 8;
 	static constexpr size_t kMaxActiveNormalBullets = 96;
 
 	void Initialize(const std::string& upgradeSettingsPath);
@@ -43,6 +44,8 @@ public:
 	void UpgradeDrone();
 	void AddLightning();
 	void UpgradeLightning();
+	void AddExplosiveBullets();
+	void UpgradeExplosiveBullets();
 	void UpgradeWeapon(WeaponType type, Player* player);
 	void MaxAllWeapons(Player* player);
 
@@ -60,6 +63,11 @@ public:
 	const std::vector<Vector3>& GetLightningEffectTargets() const
 	{
 		return lightningEffectTargets_;
+	}
+	const std::vector<std::unique_ptr<NormalBullet>>&
+		GetExplosiveBullets() const
+	{
+		return explosiveBullets_;
 	}
 	float GetLightningEffectTimer() const
 	{
@@ -79,6 +87,7 @@ public:
 	}
 	int32_t GetDroneLevel() const { return droneLevel_; }
 	int32_t GetLightningLevel() const { return lightningLevel_; }
+	int32_t GetExplosiveBulletLevel() const { return explosiveBulletLevel_; }
 	int32_t GetLightningStrikeCount() const
 	{
 		return lightningStrikeCount_;
@@ -87,6 +96,7 @@ public:
 	bool HasOrbitBullets() const { return hasOrbitBullets_; }
 	bool HasDrone() const { return hasDrone_; }
 	bool HasLightning() const { return hasLightning_; }
+	bool HasExplosiveBullets() const { return hasExplosiveBullets_; }
 	bool IsNormalBulletMaxLevel() const
 	{
 		return normalBulletLevel_ >= kNormalBulletMaxLevel;
@@ -105,6 +115,11 @@ public:
 		return hasLightning_ &&
 			lightningLevel_ >= kLightningMaxLevel;
 	}
+	bool IsExplosiveBulletMaxLevel() const
+	{
+		return hasExplosiveBullets_ &&
+			explosiveBulletLevel_ >= kExplosiveBulletMaxLevel;
+	}
 	bool IsWeaponMaxLevel(WeaponType type) const;
 	int32_t GetNormalBulletDamage(int32_t attackPower) const
 	{
@@ -119,6 +134,11 @@ public:
 	{
 		return attackPower + lightningDamageBonus_;
 	}
+	int32_t GetExplosiveBulletDamage(int32_t attackPower) const
+	{
+		return attackPower + explosiveBulletDamageBonus_;
+	}
+	float GetExplosiveBulletRadius() const { return explosiveBulletRadius_; }
 	size_t GetPeakNormalBulletCount() const
 	{
 		return peakNormalBulletCount_;
@@ -143,7 +163,26 @@ private:
 		float deltaTime,
 		EnemyManager* enemyManager,
 		int32_t attackPower);
+	void UpdateExplosiveBullets(float deltaTime, Player* player);
+	NormalBullet& AcquireExplosiveBullet();
+	void RecycleExplosiveBullet(size_t index);
+	void RecycleInactiveExplosiveBullets();
 	void RebuildOrbitBullets(Player* player);
+	void ApplyNormalBulletUpgradeLevel(int32_t level);
+	void ApplyOrbitUpgradeLevel(int32_t level);
+	void ApplyDroneUpgradeLevel(int32_t level);
+	void ApplyLightningUpgradeLevel(int32_t level);
+	void ApplyExplosiveBulletUpgradeLevel(int32_t level);
+	int32_t GetLevelUpgradeSettingInt(
+		const std::string& prefix,
+		int32_t level,
+		const std::string& suffix,
+		int32_t fallback) const;
+	float GetLevelUpgradeSetting(
+		const std::string& prefix,
+		int32_t level,
+		const std::string& suffix,
+		float fallback) const;
 	float GetUpgradeSetting(
 		const std::string& key,
 		float fallback) const;
@@ -161,7 +200,6 @@ private:
 	float normalBulletRange_ = 30.0f;
 	size_t peakNormalBulletCount_ = 0;
 	size_t normalBulletPruneCount_ = 0;
-	float normalBulletUpgradeMultiplier_ = 0.84f;
 	float normalBulletMinInterval_ = 0.18f;
 
 	std::vector<std::unique_ptr<OrbitBullet>> orbitBullets_;
@@ -185,7 +223,6 @@ private:
 	int32_t dronePierceCount_ = 1;
 	float droneInterval_ = 2.0f;
 	float droneTimer_ = 0.0f;
-	float droneUpgradeMultiplier_ = 0.8f;
 	float droneBulletSpeed_ = 1.0f;
 	float droneBulletRange_ = 30.0f;
 
@@ -198,6 +235,17 @@ private:
 	float lightningTimer_ = 0.0f;
 	std::vector<Vector3> lightningEffectTargets_;
 	float lightningEffectTimer_ = 0.0f;
+
+	std::vector<std::unique_ptr<NormalBullet>> explosiveBullets_;
+	std::vector<std::unique_ptr<NormalBullet>> explosiveBulletPool_;
+	bool hasExplosiveBullets_ = false;
+	int32_t explosiveBulletLevel_ = 0;
+	int32_t explosiveBulletDamageBonus_ = 4;
+	float explosiveBulletInterval_ = 2.0f;
+	float explosiveBulletTimer_ = 0.0f;
+	float explosiveBulletSpeed_ = 0.82f;
+	float explosiveBulletRange_ = 28.0f;
+	float explosiveBulletRadius_ = 4.2f;
 
 	std::unordered_map<std::string, float> upgradeSettings_;
 };

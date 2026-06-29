@@ -1,4 +1,4 @@
-#include "game/directxgame/ui/common/UIBar.h"
+#include "UIBar.h"
 #include <algorithm>
 
 namespace DirectXGame {

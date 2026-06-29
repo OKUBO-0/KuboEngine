@@ -1,5 +1,5 @@
-#include "game/directxgame/world/SkyDome.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "SkyDome.h"
+#include "GameModelCache.h"
 #include "Object3DCommon.h"
 #include <cmath>
 

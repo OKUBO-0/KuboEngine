@@ -1,7 +1,8 @@
-#include "game/directxgame/enemy/EnemyView.h"
+#include "EnemyView.h"
+#include "EnemyDefinition.h"
 
 #include "Object3DCommon.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "GameModelCache.h"
 #include <algorithm>
 #include <cmath>
 
@@ -11,6 +12,7 @@ constexpr char kEnvironmentTexturePath[] =
 	"Resources/textures/skybox/test.dds";
 constexpr float kEnemyFallbackCollisionRadius = 1.35f;
 constexpr float kFloatingShadowGroundY = -1.84f;
+constexpr float kOctopusModelGroundOffsetY = 2.12f;
 
 }
 
@@ -80,7 +82,7 @@ void EnemyView::ApplyDeathPose(
 		});
 	object_->SetTranslate({
 		position.x,
-		position.y - progress * 1.15f,
+		position.y + modelVerticalOffsetY_ - progress * 1.15f,
 		position.z,
 		});
 	object_->SetColor({
@@ -94,16 +96,21 @@ void EnemyView::ApplyDeathPose(
 
 void EnemyView::SetModelByType(int32_t type)
 {
-	const char* modelName = "octopus.obj";
+	const char* modelName = "Enemy1.obj";
 	switch (type) {
-	case 0: modelName = "Enemy1.obj"; break;
-	case 1: modelName = "Enemy2.obj"; break;
-	case 2: modelName = "Enemy3.obj"; break;
-	case 3:
-	case 4: modelName = "Enemy4.obj"; break;
-	case 5: modelName = "octopus.obj"; break;
+	case static_cast<int32_t>(EnemyType::Standard): modelName = "Enemy1.obj"; break;
+	case static_cast<int32_t>(EnemyType::Tackler): modelName = "Enemy2.obj"; break;
+	case static_cast<int32_t>(EnemyType::Bomb): modelName = "Enemy4.obj"; break;
+	case static_cast<int32_t>(EnemyType::Fast): modelName = "Enemy2.obj"; break;
+	case static_cast<int32_t>(EnemyType::Heavy): modelName = "Enemy3.obj"; break;
+	case static_cast<int32_t>(EnemyType::Gold): modelName = "Enemy3.obj"; break;
+	case static_cast<int32_t>(EnemyType::Boss): modelName = "octopus.obj"; break;
 	default: break;
 	}
+	modelVerticalOffsetY_ =
+		std::string_view(modelName) == "octopus.obj"
+			? kOctopusModelGroundOffsetY
+			: 0.0f;
 
 	if (object_) {
 		const ModelHandle modelHandle =
@@ -222,7 +229,11 @@ void EnemyView::ApplyTransform(
 		behaviorScaleMultiplier_,
 		});
 	object_->SetRotate({ 0.0f, rotationY, 0.0f });
-	object_->SetTranslate(position);
+	object_->SetTranslate({
+		position.x,
+		position.y + modelVerticalOffsetY_,
+		position.z,
+		});
 }
 
 void EnemyView::UpdateFloatingShadow(

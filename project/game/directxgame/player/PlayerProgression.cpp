@@ -1,9 +1,9 @@
-#include "game/directxgame/player/PlayerProgression.h"
+#include "PlayerProgression.h"
 
-#include "game/directxgame/player/Player.h"
+#include "Player.h"
 #include <algorithm>
 
-#include "game/directxgame/core/CsvReader.h"
+#include "CsvReader.h"
 #include <stdexcept>
 
 namespace DirectXGame {
@@ -47,6 +47,16 @@ bool PlayerProgression::LoadStatusValue(
 	} else if (key == "moveSpeedMax") {
 		moveSpeedMax_ =
 			CsvReader::ParseFloat(value, "playerStatus.moveSpeedMax");
+	} else if (key == "expPickupRangeUpgradeCap") {
+		expPickupRangeUpgradeCap_ =
+			CsvReader::ParseInt32(
+				value,
+				"playerStatus.expPickupRangeUpgradeCap");
+	} else if (key == "expPickupRangeUpgradeStep") {
+		expPickupRangeUpgradeStep_ =
+			CsvReader::ParseFloat(
+				value,
+				"playerStatus.expPickupRangeUpgradeStep");
 	} else {
 		return false;
 	}
@@ -62,16 +72,18 @@ void PlayerProgression::ValidateLoadedStatus() const
 		totalExp_ < 0 || attackPower_ < 1 ||
 		maxLifeStockCap_ < maxLifeStock_ ||
 		moveSpeedUpgradeCap_ < 0 ||
+		expPickupRangeUpgradeCap_ < 0 ||
 		moveSpeedUpgradeStep_ < 0.0f ||
-		moveSpeedMax_ <= 0.0f) {
+		moveSpeedMax_ <= 0.0f ||
+		expPickupRangeUpgradeStep_ < 0.0f) {
 		throw std::runtime_error(
 			"playerStatus contains an invalid progression value");
 	}
 }
 
-void PlayerProgression::TakeDamage()
+void PlayerProgression::TakeDamage(int32_t damage)
 {
-	--lifeStock_;
+	lifeStock_ -= (std::max)(1, damage);
 }
 
 void PlayerProgression::RecoverHP()
@@ -98,13 +110,16 @@ void PlayerProgression::IncreaseMaxHP()
 		RecoverHP();
 		return;
 	}
-	++maxLifeStock_;
+	maxLifeStock_ += 20;
+	if (maxLifeStock_ > maxLifeStockCap_) {
+		maxLifeStock_ = maxLifeStockCap_;
+	}
 	lifeStock_ = maxLifeStock_;
 }
 
 void PlayerProgression::UpgradeAttackPower()
 {
-	++attackPower_;
+	attackPower_ += 5;
 }
 
 void PlayerProgression::UpgradeMoveSpeed(Player* player)
@@ -123,11 +138,24 @@ void PlayerProgression::UpgradeMoveSpeed(Player* player)
 	++moveSpeedLevel_;
 }
 
+void PlayerProgression::UpgradeExpPickupRange()
+{
+	if (expPickupRangeLevel_ >= expPickupRangeUpgradeCap_) {
+		UpgradeAttackPower();
+		return;
+	}
+	++expPickupRangeLevel_;
+	expPickupRangeMultiplier_ =
+		1.0f + expPickupRangeUpgradeStep_ *
+			static_cast<float>(expPickupRangeLevel_);
+}
+
 #ifdef _DEBUG
 void PlayerProgression::ForceDebugDeath()
 {
 	lifeStock_ = 0;
 }
+#endif
 
 void PlayerProgression::MakeDebugStrongest(Player* player)
 {
@@ -140,6 +168,5 @@ void PlayerProgression::MakeDebugStrongest(Player* player)
 	}
 	ClearLevelUpRequest();
 }
-#endif
 
 }

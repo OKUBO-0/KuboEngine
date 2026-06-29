@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/directxgame/core/GameAudioTuning.h"
+#include "GameAudioTuning.h"
 #include <functional>
 #include <span>
 #include <string_view>

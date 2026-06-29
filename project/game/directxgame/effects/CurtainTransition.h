@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/directxgame/ui/common/UILabel.h"
+#include "UILabel.h"
 #include <memory>
 
 namespace DirectXGame {

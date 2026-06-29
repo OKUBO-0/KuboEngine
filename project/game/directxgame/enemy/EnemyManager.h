@@ -1,10 +1,11 @@
 #pragma once
 
 #include "Vector3.h"
-#include "game/directxgame/enemy/EnemyCollisionSystem.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/enemy/EnemySpawnController.h"
-#include "game/directxgame/enemy/ExpOrb.h"
+#include "EnemyCollisionSystem.h"
+#include "EnemyDeathBomb.h"
+#include "Enemy.h"
+#include "EnemySpawnController.h"
+#include "ExpOrb.h"
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -44,6 +45,8 @@ public:
 	static constexpr size_t kMaxExpOrbs = 160;
 	const std::vector<Vector3>& GetRecentHitEffectPositions() const { return recentHitEffectPositions_; }
 	const std::vector<Vector3>& GetRecentDeathEffectPositions() const { return recentDeathEffectPositions_; }
+	const std::vector<Vector3>& GetRecentExplosionEffectPositions() const { return recentExplosionEffectPositions_; }
+	const std::vector<FloatingNumberEvent>& GetRecentFloatingNumberEvents() const { return recentFloatingNumberEvents_; }
 	void ClearRecentEffectPositions();
 	void DamageAllEnemies(int32_t damage);
 	void CheckCollisions(Player* player, PlayerManager* playerManager);
@@ -62,9 +65,12 @@ private:
 	void RemoveInactiveEnemies();
 	void UpdateExpOrbs(float deltaTime);
 	void SpawnDeathDrop(const Enemy& enemy);
+	void SpawnDeathBomb(const Enemy& enemy);
+	void UpdateDeathBombs(float deltaTime);
 
 	std::vector<std::unique_ptr<Enemy>> enemies_;
 	std::list<std::unique_ptr<ExpOrb>> expOrbs_;
+	std::vector<std::unique_ptr<EnemyDeathBomb>> deathBombs_;
 	EnemySpawnController spawnController_{};
 	Player* player_ = nullptr;
 	PlayerManager* playerManager_ = nullptr;
@@ -75,6 +81,8 @@ private:
 	size_t expOrbPruneCount_ = 0;
 	std::vector<Vector3> recentHitEffectPositions_;
 	std::vector<Vector3> recentDeathEffectPositions_;
+	std::vector<Vector3> recentExplosionEffectPositions_;
+	std::vector<FloatingNumberEvent> recentFloatingNumberEvents_;
 	EnemyCollisionContext collisionContext_;
 	Enemy* bossEnemy_ = nullptr;
 	bool bossPhase_ = false;

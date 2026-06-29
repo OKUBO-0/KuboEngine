@@ -300,6 +300,7 @@ void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGr
 	particleGroup.srvIndices.fill(UINT32_MAX);
 	for (uint32_t& srvIndex : particleGroup.srvIndices) {
 		srvIndex = srvManager_->Allocate();
+		srvManager_->LabelUsage(srvIndex, "ParticleInstanceBuffer");
 	}
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/directxgame/core/ResourcePaths.h"
+#include "ResourcePaths.h"
 #include <string>
 #include <string_view>
 

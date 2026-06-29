@@ -1,9 +1,9 @@
-#include "game/directxgame/core/ResourceProbe.h"
-#include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameModelCache.h"
-#include "game/directxgame/core/ResourcePaths.h"
-#include "game/directxgame/core/UILayoutIO.h"
+#include "ResourceProbe.h"
+#include "CsvReader.h"
+#include "DataPaths.h"
+#include "GameModelCache.h"
+#include "ResourcePaths.h"
+#include "UILayoutIO.h"
 #include "TextureManager.h"
 #include <cassert>
 #include <array>
@@ -57,28 +57,23 @@ std::vector<std::string> BuildRequiredAssetPaths()
 	paths = {
 		ResourcePaths::MakeTexturePath("white1x1.png"),
 		ResourcePaths::MakeTexturePath("ui/title/title.png"),
-		ResourcePaths::MakeTexturePath("ui/title/guideUI.png"),
 		ResourcePaths::MakeTexturePath("ui/title/cursor.png"),
 		ResourcePaths::MakeTexturePath("ui/game/start.png"),
 		ResourcePaths::MakeTexturePath("ui/game/pause.png"),
 		ResourcePaths::MakeTexturePath("ui/game/pause_arrow.png"),
 		ResourcePaths::MakeTexturePath("ui/game/death.png"),
-		ResourcePaths::MakeTexturePath("ui/game/levelup.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_attack.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_attack_icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_maxhp.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_maxhp_icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_speed.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_speed_icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_heal.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup_heal_icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/normal/icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/orbit/icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/orbit/add.png"),
-		ResourcePaths::MakeTexturePath("ui/game/drone/icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/drone/add.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lightning/icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lightning/add.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/levelup.png"),
+		ResourcePaths::MakeTexturePath("ui/font/hud_ascii.png"),
+		ResourcePaths::MakeTexturePath("ui/font/noto_sans_jp_black.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/levelup_frame.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/attack_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/maxhp_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/speed_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/heal_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/normal_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/orbit_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/drone_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/lightning_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/result/Result.png"),
 		ResourcePaths::MakeTexturePath("ui/result/finish_ui.png"),
 		ResourcePaths::MakeTexturePath("ui/number/numbers.png"),

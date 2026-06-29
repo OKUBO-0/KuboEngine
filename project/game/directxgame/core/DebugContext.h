@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Camera.h"
-#include "game/directxgame/core/DebugEditorShell.h"
-#include "game/directxgame/core/StatisticsDebugPanel.h"
-#include "game/directxgame/core/PlayerGizmoDebugPanel.h"
+#include "DebugEditorShell.h"
+#include "StatisticsDebugPanel.h"
+#include "PlayerGizmoDebugPanel.h"
 
 namespace DirectXGame {
 

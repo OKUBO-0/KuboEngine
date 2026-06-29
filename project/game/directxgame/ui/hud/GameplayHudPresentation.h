@@ -1,13 +1,13 @@
 #pragma once
 
-#include "game/directxgame/ui/common/UILabel.h"
-#include "game/directxgame/ui/gauge/ExpGauge.h"
-#include "game/directxgame/ui/gauge/HpGauge.h"
-#include "game/directxgame/ui/hud/KeyUI.h"
-#include "game/directxgame/ui/hud/MiniMap.h"
-#include "game/directxgame/ui/hud/Timer.h"
+#include "UILabel.h"
+#include "ExpGauge.h"
+#include "HpGauge.h"
+#include "KeyUI.h"
+#include "MiniMap.h"
+#include "Timer.h"
 #include "Sprite.h"
-#include "game/directxgame/core/GameTextureCache.h"
+#include "GameTextureCache.h"
 #include <array>
 #include <memory>
 
@@ -37,6 +37,8 @@ public:
 		int32_t runCoins);
 	void Draw(const GameplayFlowController& flow);
 	void TriggerHitFlash(float duration);
+	void DebugDrawImGui();
+	void SaveLayout() const;
 
 	float GetAnimationTime() const { return animationTime_; }
 	float GetHitFlashTimer() const { return hitFlashTimer_; }
@@ -48,7 +50,11 @@ public:
 
 private:
 	void UpdateCoinDisplay(int32_t runCoins);
+	void UpdateKillDisplay(int32_t killCount);
 	void DrawCoinDisplay();
+	void DrawKillDisplay();
+	void ApplyCounterLayout();
+	void ApplyGameplayMiniMapLayout();
 
 	Timer timer_;
 	HpGauge hpGauge_;
@@ -62,8 +68,13 @@ private:
 	TextureHandle coinDigitTexture_ = 0;
 	static constexpr int32_t kCoinDigitCount = 6;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kCoinDigitCount> coinDigits_;
-	Vector2 coinDigitPosition_{ 52.0f, 612.0f };
-	Vector2 coinDigitSize_{ 20.0f, 26.0f };
+	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kCoinDigitCount> killDigits_;
+	Vector2 coinDigitPosition_{ 70.0f, 58.0f };
+	Vector2 killDigitPosition_{ 150.0f, 58.0f };
+	Vector2 coinDigitSize_{ 14.0f, 20.0f };
+	Vector2 gameplayMiniMapPosition_{ 1094.0f, 72.0f };
+	float gameplayMiniMapScale_ = 0.21f;
+	bool layoutDebugEnabled_ = false;
 	int32_t previousHp_ = 0;
 	float hitFlashTimer_ = 0.0f;
 	float animationTime_ = 0.0f;

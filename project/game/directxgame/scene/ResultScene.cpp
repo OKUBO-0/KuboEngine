@@ -1,12 +1,13 @@
-#include "game/directxgame/scene/ResultScene.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameMenuController.h"
-#include "game/directxgame/core/SceneId.h"
-#include "game/directxgame/core/GameSession.h"
-#include "game/directxgame/core/GameSpriteFactory.h"
-#include "game/directxgame/core/ResultSceneDebugUIController.h"
-#include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/ui/common/DigitSpriteUtil.h"
+#include "ResultScene.h"
+#include "DirectXCommon.h"
+#include "DataPaths.h"
+#include "GameMenuController.h"
+#include "SceneId.h"
+#include "GameSession.h"
+#include "GameSpriteFactory.h"
+#include "ResultSceneDebugUIController.h"
+#include "UILayoutIO.h"
+#include "DigitSpriteUtil.h"
 #include "CameraManager.h"
 #include "Input.h"
 #include "Object3DCommon.h"
@@ -67,15 +68,44 @@ void ResultScene::Finalize()
 void ResultScene::Update()
 {
 	if (sessionContext_ && sessionContext_->IsSceneStressEnabled()) {
+		if (sessionContext_->IsSceneStressReportWritten()) {
+			PostQuitMessage(0);
+			return;
+		}
 		sessionContext_->AdvanceSceneStressFrame();
 		if (Engine::Base::SrvManager* srvManager =
 			Engine::Graphics3D::Object3DCommon::GetInstance()->GetSrvManager()) {
+			const Engine::Base::SrvManager::UsageSummary usage =
+				srvManager->GetUsageSummary();
 			sessionContext_->RecordSrvUsage(
+				GameSession::SceneStressStage::Result,
 				srvManager->GetUsedCount(),
-				srvManager->GetHighWatermark());
+				srvManager->GetHighWatermark(),
+				usage.texture2D,
+				usage.textureCube,
+				usage.structuredBuffer,
+				usage.shadowMap,
+				usage.other);
 		}
 		if (sessionContext_->GetSceneStressFrameCount() >= 30) {
 			if (sessionContext_->IsSceneStressComplete()) {
+				Engine::Base::DirectXCommon* dxCommon =
+					Engine::Graphics3D::Object3DCommon::GetInstance()->GetDxCommon();
+				sessionContext_->RecordGpuTimingSummary(
+					dxCommon->GetAverageFrameGpuMilliseconds(),
+					dxCommon->GetAverageShadowGpuMilliseconds(),
+					dxCommon->GetFrameGpuSampleCount(),
+					dxCommon->GetShadowGpuSampleCount());
+				Engine::Graphics3D::Object3DCommon* objectCommon =
+					Engine::Graphics3D::Object3DCommon::GetInstance();
+				sessionContext_->RecordShadowPassSummary(
+					objectCommon->GetMeasuredShadowPassCount(),
+					objectCommon->GetTotalShadowCandidateCount(),
+					objectCommon->GetTotalShadowSubmittedCount(),
+					objectCommon->GetTotalShadowCulledCount(),
+					objectCommon->GetShadowMapSize(),
+					objectCommon->GetShadowMapMemoryBytes(),
+					objectCommon->GetShadowArea());
 				sessionContext_->WriteSceneStressReport();
 				PostQuitMessage(0);
 			} else {

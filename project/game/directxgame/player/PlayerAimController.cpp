@@ -1,11 +1,11 @@
-#include "game/directxgame/player/PlayerAimController.h"
+#include "PlayerAimController.h"
 
 #include "Camera.h"
 #include "Input.h"
 #include "MyMath.h"
 #include "Object3D.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/ScreenUtil.h"
+#include "GameInputBindings.h"
+#include "ScreenUtil.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>

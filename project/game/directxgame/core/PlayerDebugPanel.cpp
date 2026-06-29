@@ -1,6 +1,6 @@
-#include "game/directxgame/core/PlayerDebugPanel.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
+#include "PlayerDebugPanel.h"
+#include "Player.h"
+#include "PlayerManager.h"
 #include <iterator>
 #ifdef _DEBUG
 #include <imgui.h>

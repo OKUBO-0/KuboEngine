@@ -1,12 +1,13 @@
-#include "game/directxgame/core/VisualDebugPanel.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/ui/gauge/ExpGauge.h"
-#include "game/directxgame/ui/gauge/HpGauge.h"
-#include "game/directxgame/ui/hud/KeyUI.h"
-#include "game/directxgame/ui/hud/MiniMap.h"
-#include "game/directxgame/ui/hud/PauseBuildHud.h"
-#include "game/directxgame/ui/hud/Timer.h"
+#include "VisualDebugPanel.h"
+#include "GameParticleEffects.h"
+#include "GameplayHudPresentation.h"
+#include "Player.h"
+#include "ExpGauge.h"
+#include "HpGauge.h"
+#include "KeyUI.h"
+#include "MiniMap.h"
+#include "PauseBuildHud.h"
+#include "Timer.h"
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -22,6 +23,7 @@ void DebugUI::Visual::Draw(
 	float deathTimer,
 	Player* player,
 	GameParticleEffects& particleEffects,
+	GameplayHudPresentation& gameplayHud,
 	Timer& timer,
 	HpGauge& hpGauge,
 	ExpGauge& expGauge,
@@ -66,6 +68,7 @@ void DebugUI::Visual::Draw(
 				}
 			}
 		}
+		gameplayHud.DebugDrawImGui();
 		timer.DebugDrawImGui();
 		hpGauge.DebugDrawImGui();
 		expGauge.DebugDrawImGui();
@@ -85,6 +88,7 @@ void DebugUI::Visual::Draw(
 	(void)deathTimer;
 	(void)player;
 	(void)particleEffects;
+	(void)gameplayHud;
 	(void)timer;
 	(void)hpGauge;
 	(void)expGauge;

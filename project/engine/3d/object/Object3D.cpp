@@ -377,6 +377,7 @@ void Object3D::InitializeSkinningState()
 	SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
 	for (uint32_t& srvIndex : skinPaletteSrvIndices_) {
 		srvIndex = object3DCommon_->GetSrvManager()->Allocate();
+		object3DCommon_->GetSrvManager()->LabelUsage(srvIndex, "SkinPalette");
 	}
 }
 

@@ -1,6 +1,10 @@
-buildIconSize,128,72
+pauseBuildIconSize,256,256
+pauseBuildStepX,32
 buildStepX,128
+buildIconSize,128,72
+menuHitbox1,840,462
 buildRowLocalPosition,-400,-193
 menuHitbox0,840,294
-menuHitbox1,840,462
 menuHitboxSize,280,92
+pauseBuildPosition,10,-22
+pauseBuildVisible,1

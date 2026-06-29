@@ -1,4 +1,4 @@
-#include "game/directxgame/effects/SceneTransitionPresentation.h"
+#include "SceneTransitionPresentation.h"
 
 namespace DirectXGame {
 

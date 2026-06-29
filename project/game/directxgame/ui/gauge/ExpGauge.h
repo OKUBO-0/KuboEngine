@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Sprite.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/ui/common/UIBar.h"
-#include "game/directxgame/ui/common/UILabel.h"
-#include "game/directxgame/ui/common/UIPanel.h"
+#include "GameTextureCache.h"
+#include "UIBar.h"
+#include "UILabel.h"
+#include "UIPanel.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -30,9 +30,9 @@ private:
 		Vector2 frameSize{ 1280.0f, 50.0f };
 		Vector2 gaugePosition{ 5.0f, 6.0f };
 		Vector2 gaugeSize{ 1270.0f, 40.0f };
-		Vector2 lvLabelPosition{ 1175.0f, 10.0f };
+		Vector2 lvLabelPosition{ 1168.0f, 10.0f };
 		Vector2 lvLabelSize{ 48.0f, 32.0f };
-		Vector2 lvDigitsPosition{ 1225.0f, 10.0f };
+		Vector2 lvDigitsPosition{ 1214.0f, 10.0f };
 		Vector2 lvDigitSize{ 24.0f, 32.0f };
 		float lvScale = 1.0f;
 		bool debugEnabled = false;

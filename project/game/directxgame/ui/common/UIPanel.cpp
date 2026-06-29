@@ -1,6 +1,6 @@
-#include "game/directxgame/ui/common/UIPanel.h"
+#include "UIPanel.h"
 #include "Sprite.h"
-#include "game/directxgame/core/GameSpriteFactory.h"
+#include "GameSpriteFactory.h"
 #include <cmath>
 
 namespace DirectXGame {

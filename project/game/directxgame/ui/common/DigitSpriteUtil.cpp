@@ -1,4 +1,4 @@
-#include "game/directxgame/ui/common/DigitSpriteUtil.h"
+#include "DigitSpriteUtil.h"
 #include <algorithm>
 
 namespace DirectXGame::DigitSpriteUtil {

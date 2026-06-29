@@ -1,4 +1,4 @@
-#include "game/directxgame/core/SceneLighting.h"
+#include "SceneLighting.h"
 #include "Object3DCommon.h"
 #include <string>
 #ifdef _DEBUG

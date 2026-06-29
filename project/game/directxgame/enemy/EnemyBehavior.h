@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EnemyDefinition.h"
 #include <cstdint>
 #include <memory>
 
@@ -13,6 +14,6 @@ public:
 	virtual void Update(Enemy& enemy, float deltaTime) = 0;
 };
 
-std::unique_ptr<IEnemyBehavior> CreateEnemyBehaviorByType(int32_t type);
+std::unique_ptr<IEnemyBehavior> CreateEnemyBehavior(EnemyBehaviorType type);
 
 } // namespace DirectXGame

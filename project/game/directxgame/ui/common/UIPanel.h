@@ -2,7 +2,7 @@
 
 #include "Sprite.h"
 #include "Vector4.h"
-#include "game/directxgame/ui/common/UIElement.h"
+#include "UIElement.h"
 #include <memory>
 
 namespace DirectXGame {

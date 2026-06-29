@@ -1,7 +1,7 @@
-#include "game/directxgame/player/PlayerView.h"
+#include "PlayerView.h"
 
 #include "Object3DCommon.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "GameModelCache.h"
 
 namespace {
 

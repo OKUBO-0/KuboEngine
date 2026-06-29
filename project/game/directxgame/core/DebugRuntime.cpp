@@ -1,7 +1,7 @@
-#include "game/directxgame/core/DebugRuntime.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/player/PlayerManager.h"
+#include "DebugRuntime.h"
+#include "Enemy.h"
+#include "EnemyManager.h"
+#include "PlayerManager.h"
 #include <algorithm>
 #ifdef _DEBUG
 #include <imgui.h>

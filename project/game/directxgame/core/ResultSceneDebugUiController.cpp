@@ -1,13 +1,13 @@
-#include "game/directxgame/core/ResultSceneDebugUIController.h"
+#include "ResultSceneDebugUIController.h"
 
 #include "DebugEditorManager.h"
 #include "Input.h"
-#include "game/directxgame/core/SceneId.h"
-#include "game/directxgame/core/GameSession.h"
-#include "game/directxgame/core/AudioDebugPanel.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/scene/ResultScene.h"
+#include "SceneId.h"
+#include "GameSession.h"
+#include "AudioDebugPanel.h"
+#include "GameInputBindings.h"
+#include "ScreenUtil.h"
+#include "ResultScene.h"
 #include <array>
 #include <iterator>
 #ifdef _DEBUG

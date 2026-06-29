@@ -1,26 +1,26 @@
-#include "game/directxgame/core/DebugUI.h"
+#include "DebugUI.h"
 #include "Input.h"
-#include "game/directxgame/core/GameSession.h"
-#include "game/directxgame/core/AudioDebugPanel.h"
-#include "game/directxgame/core/GameAudioTuning.h"
-#include "game/directxgame/core/DebugContext.h"
-#include "game/directxgame/core/DebugEditorShell.h"
-#include "game/directxgame/core/GameplayFlowController.h"
-#include "game/directxgame/core/DebugInput.h"
-#include "game/directxgame/core/PlayerDebugPanel.h"
-#include "game/directxgame/core/RenderingDebugPanel.h"
-#include "game/directxgame/core/DebugRuntime.h"
-#include "game/directxgame/core/DebugScene.h"
-#include "game/directxgame/core/VisualDebugPanel.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/effects/SceneTransitionPresentation.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
-#include "game/directxgame/ui/hud/GameplayHudPresentation.h"
-#include "game/directxgame/ui/hud/PauseBuildHud.h"
-#include "game/directxgame/world/GridPlane.h"
-#include "game/directxgame/world/SkyDome.h"
+#include "GameSession.h"
+#include "AudioDebugPanel.h"
+#include "GameAudioTuning.h"
+#include "DebugContext.h"
+#include "DebugEditorShell.h"
+#include "GameplayFlowController.h"
+#include "DebugInput.h"
+#include "PlayerDebugPanel.h"
+#include "RenderingDebugPanel.h"
+#include "DebugRuntime.h"
+#include "DebugScene.h"
+#include "VisualDebugPanel.h"
+#include "GameParticleEffects.h"
+#include "SceneTransitionPresentation.h"
+#include "EnemyManager.h"
+#include "Player.h"
+#include "PlayerManager.h"
+#include "GameplayHudPresentation.h"
+#include "PauseBuildHud.h"
+#include "GridPlane.h"
+#include "SkyDome.h"
 #include <string_view>
 #ifdef _DEBUG
 #include <imgui.h>
@@ -155,6 +155,7 @@ DebugUIAction DebugUI::Update(
 			deathPresentationElapsed,
 			player,
 			particleEffects,
+			gameplayHud,
 			gameplayHud.GetTimer(),
 			gameplayHud.GetHpGauge(),
 			gameplayHud.GetExpGauge(),

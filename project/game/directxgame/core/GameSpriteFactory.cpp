@@ -1,4 +1,4 @@
-#include "game/directxgame/core/GameSpriteFactory.h"
+#include "GameSpriteFactory.h"
 #include "Sprite.h"
 #include "SpriteCommon.h"
 

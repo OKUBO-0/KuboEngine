@@ -1,15 +1,12 @@
-#include "game/directxgame/effects/CombatEffectsPresentation.h"
+#include "CombatEffectsPresentation.h"
 #include "Object3DCommon.h"
 #include "ParticleManager.h"
-#include "game/directxgame/core/GameModelCache.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
-#include "game/directxgame/player/weapons/Drone.h"
-#include "game/directxgame/player/weapons/NormalBullet.h"
-#include "game/directxgame/player/weapons/OrbitBullet.h"
+#include "GameModelCache.h"
+#include "GameParticleEffects.h"
+#include "Enemy.h"
+#include "EnemyManager.h"
+#include "Player.h"
+#include "PlayerManager.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -86,6 +83,12 @@ bool CombatEffectsPresentation::Update(
 				deathPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSmokeCount)));
 		}
+		for (const Vector3& explosionPosition :
+			enemyManager->GetRecentExplosionEffectPositions()) {
+			particleManager->Emit(handles.enemyHitSpark, explosionPosition, 36u);
+			particleManager->Emit(handles.deathSmoke, explosionPosition, 14u);
+			particleManager->Emit(handles.ripple, explosionPosition, 3u);
+		}
 		enemyManager->ClearRecentEffectPositions();
 
 		Vector3 phasePosition{};
@@ -151,39 +154,6 @@ bool CombatEffectsPresentation::Update(
 	}
 	previousLightningTimer_ = lightningTimer;
 	UpdateLightningVisuals(playerManager);
-
-	for (const std::unique_ptr<NormalBullet>& bullet :
-		playerManager.GetNormalBullets()) {
-		if (bullet && bullet->IsActive()) {
-			particleManager->EmitTrailSegment(
-				handles.normalTrail,
-				bullet->GetPreviousPosition(),
-				bullet->GetPosition(),
-				0.28f);
-		}
-	}
-	for (const std::unique_ptr<OrbitBullet>& bullet :
-		playerManager.GetOrbitBullets()) {
-		if (bullet && bullet->IsActive()) {
-			particleManager->EmitTrailSegment(
-				handles.orbitTrail,
-				bullet->GetPreviousPosition(),
-				bullet->GetPosition(),
-				0.42f);
-		}
-	}
-	if (playerManager.HasDrone() && playerManager.GetDrone()) {
-		for (const std::unique_ptr<NormalBullet>& bullet :
-			playerManager.GetDrone()->GetBullets()) {
-			if (bullet && bullet->IsActive()) {
-				particleManager->EmitTrailSegment(
-					handles.droneTrail,
-					bullet->GetPreviousPosition(),
-					bullet->GetPosition(),
-					0.24f);
-			}
-		}
-	}
 
 	return bossPhaseChanged;
 }

@@ -1,14 +1,48 @@
-#include "game/directxgame/core/DebugDraw.h"
+#include "DebugDraw.h"
 #include "Line.h"
 #include "Object3DCommon.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/enemy/ExpOrb.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
-#include "game/directxgame/player/weapons/Drone.h"
-#include "game/directxgame/player/weapons/NormalBullet.h"
-#include "game/directxgame/player/weapons/OrbitBullet.h"
+#include "Enemy.h"
+#include "EnemyManager.h"
+#include "ExpOrb.h"
+#include "Player.h"
+#include "PlayerManager.h"
+#include "Drone.h"
+#include "NormalBullet.h"
+#include "OrbitBullet.h"
+#include <cmath>
+
+namespace {
+
+bool BuildClampedDebugSegment(
+	const Vector3& start,
+	const Vector3& end,
+	float maxLength,
+	Vector3& clampedEnd)
+{
+	const Vector3 delta{
+		end.x - start.x,
+		end.y - start.y,
+		end.z - start.z,
+	};
+	const float length = std::sqrt(
+		delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+	if (length <= 0.001f) {
+		return false;
+	}
+	if (length <= maxLength) {
+		clampedEnd = end;
+		return true;
+	}
+	const float scale = maxLength / length;
+	clampedEnd = {
+		start.x + delta.x * scale,
+		start.y + delta.y * scale,
+		start.z + delta.z * scale,
+	};
+	return true;
+}
+
+}
 
 namespace DirectXGame {
 
@@ -79,10 +113,17 @@ void DebugDraw::Queue(
 				line.DrawOBB(
 					bullet->GetCollisionObb(),
 					{ 1.0f, 0.65f, 0.15f, 1.0f });
-				line.Draw(
-					bullet->GetPreviousPosition(),
-					bullet->GetPosition(),
-					{ 1.0f, 0.65f, 0.15f, 0.75f });
+				Vector3 clampedEnd{};
+				if (BuildClampedDebugSegment(
+						bullet->GetPreviousPosition(),
+						bullet->GetPosition(),
+						4.0f,
+						clampedEnd)) {
+					line.Draw(
+						bullet->GetPreviousPosition(),
+						clampedEnd,
+						{ 1.0f, 0.65f, 0.15f, 0.75f });
+				}
 			}
 		}
 		for (const std::unique_ptr<OrbitBullet>& bullet :
@@ -100,10 +141,17 @@ void DebugDraw::Queue(
 					line.DrawOBB(
 						bullet->GetCollisionObb(),
 						{ 0.25f, 0.85f, 1.0f, 1.0f });
-					line.Draw(
-						bullet->GetPreviousPosition(),
-						bullet->GetPosition(),
-						{ 0.25f, 0.85f, 1.0f, 0.75f });
+					Vector3 clampedEnd{};
+					if (BuildClampedDebugSegment(
+							bullet->GetPreviousPosition(),
+							bullet->GetPosition(),
+							4.0f,
+							clampedEnd)) {
+						line.Draw(
+							bullet->GetPreviousPosition(),
+							clampedEnd,
+							{ 0.25f, 0.85f, 1.0f, 0.75f });
+					}
 				}
 			}
 		}

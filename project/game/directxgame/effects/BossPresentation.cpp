@@ -1,9 +1,9 @@
-#include "game/directxgame/effects/BossPresentation.h"
+#include "BossPresentation.h"
 #include "Camera.h"
 #include "CameraManager.h"
 #include "ParticleManager.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/enemy/EnemyManager.h"
+#include "GameParticleEffects.h"
+#include "EnemyManager.h"
 #include <algorithm>
 #include <cstdint>
 

@@ -1,4 +1,4 @@
-#include "game/directxgame/core/DebugInput.h"
+#include "DebugInput.h"
 #include "Model.h"
 #ifdef _DEBUG
 #include <imgui.h>

@@ -2,7 +2,7 @@
 
 #include "ParticleManager.h"
 #include "Vector3.h"
-#include "game/directxgame/core/UILayoutIO.h"
+#include "UILayoutIO.h"
 #include <cstdint>
 #include <vector>
 
@@ -19,9 +19,6 @@ public:
 		Engine::Particle::ParticleGroupHandle playerDeathSpark{};
 		Engine::Particle::ParticleGroupHandle deathSmoke{};
 		Engine::Particle::ParticleGroupHandle confetti{};
-		Engine::Particle::ParticleGroupHandle normalTrail{};
-		Engine::Particle::ParticleGroupHandle droneTrail{};
-		Engine::Particle::ParticleGroupHandle orbitTrail{};
 		Engine::Particle::ParticleGroupHandle suicideEnemyTrail{};
 	};
 

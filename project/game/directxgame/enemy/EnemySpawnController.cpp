@@ -1,14 +1,34 @@
-#include "game/directxgame/enemy/EnemySpawnController.h"
+#include "EnemySpawnController.h"
 
-#include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/player/Player.h"
+#include "CsvReader.h"
+#include "Enemy.h"
+#include "Player.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
 
 namespace DirectXGame {
+
+namespace {
+
+bool IsSupportedEnemyType(int32_t value)
+{
+	return value == static_cast<int32_t>(EnemyType::Standard) ||
+		value == static_cast<int32_t>(EnemyType::Tackler) ||
+		value == static_cast<int32_t>(EnemyType::Bomb) ||
+		value == static_cast<int32_t>(EnemyType::Fast) ||
+		value == static_cast<int32_t>(EnemyType::Heavy) ||
+		value == static_cast<int32_t>(EnemyType::Gold);
+}
+
+bool IsSupportedBehavior(int32_t value)
+{
+	return value == static_cast<int32_t>(EnemyBehaviorType::Chase) ||
+		value == static_cast<int32_t>(EnemyBehaviorType::Tackle);
+}
+
+} // namespace
 
 void EnemySpawnController::Initialize(
 	const std::string& enemyTypesPath,
@@ -26,16 +46,17 @@ void EnemySpawnController::LoadEnemyTypes(const std::string& filePath)
 	const CsvReader::CsvTable rows = CsvReader::LoadRows(filePath);
 	for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
 		const CsvReader::CsvRow& row = rows[rowIndex];
-		if (row.size() < 5) {
+		if (row.size() < 12) {
 			throw std::runtime_error(
 				"enemyTypes row " + std::to_string(rowIndex + 1) +
-				" requires at least 5 columns");
+				" requires 12 columns");
 		}
 
-		EnemyTypeData data{};
+		EnemyDefinition data{};
 		const std::string context =
 			"enemyTypes row " + std::to_string(rowIndex + 1);
-		data.type = CsvReader::ParseInt32(row[0], context + " type");
+		const int32_t type = CsvReader::ParseInt32(row[0], context + " type");
+		data.type = static_cast<EnemyType>(type);
 		data.baseHP = CsvReader::ParseInt32(row[1], context + " baseHP");
 		data.baseSpeed =
 			CsvReader::ParseFloat(row[2], context + " baseSpeed");
@@ -43,12 +64,30 @@ void EnemySpawnController::LoadEnemyTypes(const std::string& filePath)
 			CsvReader::ParseInt32(row[3], context + " baseEXP");
 		data.spawnCount =
 			CsvReader::ParseInt32(row[4], context + " spawnCount");
-		data.coinValue = row.size() >= 6
-			? CsvReader::ParseInt32(row[5], context + " coinValue")
-			: (std::max)(1, data.baseEXP / 2);
-		if (data.type < 0 || data.baseHP < 1 ||
+		data.coinReward = CsvReader::ParseInt32(row[5], context + " coinReward");
+		data.damage = CsvReader::ParseInt32(row[6], context + " damage");
+		data.knockbackResistance =
+			CsvReader::ParseFloat(row[7], context + " knockbackResistance");
+		const int32_t behavior =
+			CsvReader::ParseInt32(row[8], context + " behavior");
+		data.behavior = static_cast<EnemyBehaviorType>(behavior);
+		data.deathBombDelay =
+			CsvReader::ParseFloat(row[9], context + " deathBombDelay");
+		data.deathBombRadius =
+			CsvReader::ParseFloat(row[10], context + " deathBombRadius");
+		data.deathBombDamage =
+			CsvReader::ParseInt32(row[11], context + " deathBombDamage");
+		if (!IsSupportedEnemyType(type) || !IsSupportedBehavior(behavior) ||
+			data.baseHP < 1 ||
 			data.baseSpeed <= 0.0f || data.baseEXP < 0 ||
-			data.spawnCount < 1 || data.coinValue < 0) {
+			data.spawnCount < 1 || data.coinReward < 0 ||
+			data.damage < 1 || data.knockbackResistance < 0.0f ||
+			data.knockbackResistance > 1.0f ||
+			data.deathBombDelay < 0.0f || data.deathBombRadius < 0.0f ||
+			data.deathBombDamage < 0 ||
+			(data.type == EnemyType::Bomb &&
+				(data.deathBombDelay <= 0.0f || data.deathBombRadius <= 0.0f ||
+					data.deathBombDamage <= 0))) {
 			throw std::runtime_error(
 				context + " contains an out-of-range value");
 		}
@@ -185,15 +224,17 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 		return nullptr;
 	}
 
-	EnemyTypeData data{};
+	EnemyDefinition data{};
 	if (!enemyTypes_.empty()) {
 		data = enemyTypes_.back();
 	}
-	data.type = 5;
+	data.type = EnemyType::Boss;
+	data.behavior = EnemyBehaviorType::Boss;
 	data.baseHP = (std::max)(data.baseHP, 140);
 	data.baseSpeed = (std::max)(data.baseSpeed, 0.18f);
 	data.baseEXP = (std::max)(data.baseEXP, 80);
-	data.coinValue = (std::max)(data.coinValue, 50);
+	data.coinReward = (std::max)(data.coinReward, 50);
+	data.damage = (std::max)(data.damage, 30);
 
 	const Vector3 playerPosition = player->GetWorldPosition();
 	auto enemy = std::make_unique<Enemy>();
@@ -204,12 +245,17 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 		4.0f,
 		playerPosition.z + 34.0f,
 	});
-	enemy->SetModelByType(data.type);
-	enemy->SetBehaviorByType(data.type);
+	enemy->SetType(data.type);
+	enemy->SetModelByType(static_cast<int32_t>(data.type));
+	enemy->SetBehavior(data.behavior);
 	enemy->SetBoss(true);
 	enemy->SetHP(data.baseHP);
 	enemy->SetEXP(data.baseEXP);
-	enemy->SetCoinValue(data.coinValue);
+	enemy->SetCoinValue(data.coinReward);
+	enemy->SetAttackPower(data.damage);
+	enemy->SetKnockbackResistance(data.knockbackResistance);
+	enemy->SetDeathBomb(
+		data.deathBombDelay, data.deathBombRadius, data.deathBombDamage);
 	enemy->SetSpeed(data.baseSpeed);
 	return enemy;
 }
@@ -229,7 +275,7 @@ void EnemySpawnController::SpawnEnemies(
 		maxIndex,
 		0,
 		static_cast<int>(enemyTypes_.size()) - 1);
-	const EnemyTypeData& data =
+	const EnemyDefinition& data =
 		enemyTypes_[static_cast<size_t>(
 			std::uniform_int_distribution<int>(0, maxIndex)(randomEngine_))];
 
@@ -242,7 +288,7 @@ void EnemySpawnController::SpawnEnemies(
 }
 
 void EnemySpawnController::SpawnOneEnemy(
-	const EnemyTypeData& data,
+	const EnemyDefinition& data,
 	Player& player,
 	std::vector<std::unique_ptr<Enemy>>& enemies)
 {
@@ -257,14 +303,20 @@ void EnemySpawnController::SpawnOneEnemy(
 		0.0f,
 		playerPosition.z + std::sin(angle) * spawnDistance_,
 	});
-	enemy->SetModelByType(data.type);
-	enemy->SetBehaviorByType(data.type);
+	enemy->SetType(data.type);
+	enemy->SetModelByType(static_cast<int32_t>(data.type));
+	enemy->SetBehavior(data.behavior);
 	enemy->SetHP(
 		data.baseHP + static_cast<int>(elapsedTime_ / 45.0f));
 	enemy->SetEXP(
 		data.baseEXP + static_cast<int>(elapsedTime_ / 35.0f));
 	enemy->SetCoinValue(
-		data.coinValue + static_cast<int>(elapsedTime_ / 75.0f));
+		data.coinReward + static_cast<int>(elapsedTime_ / 75.0f));
+	enemy->SetAttackPower(
+		data.damage + static_cast<int>(elapsedTime_ / 90.0f));
+	enemy->SetKnockbackResistance(data.knockbackResistance);
+	enemy->SetDeathBomb(
+		data.deathBombDelay, data.deathBombRadius, data.deathBombDamage);
 	enemy->SetSpeed(
 		data.baseSpeed + elapsedTime_ * 0.0015f);
 	enemies.push_back(std::move(enemy));

@@ -1,24 +1,25 @@
 #pragma once
 
 #include "BaseScene.h"
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/core/DebugContext.h"
-#include "game/directxgame/core/GameplayFlowController.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/effects/BossPresentation.h"
-#include "game/directxgame/effects/CombatEffectsPresentation.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/effects/PlayerDeathPresentation.h"
-#include "game/directxgame/effects/SceneTransitionPresentation.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
-#include "game/directxgame/ui/common/UILabel.h"
-#include "game/directxgame/ui/hud/GameplayHudPresentation.h"
-#include "game/directxgame/ui/hud/LevelUpSelectionHud.h"
-#include "game/directxgame/ui/hud/PauseBuildHud.h"
-#include "game/directxgame/world/GridPlane.h"
-#include "game/directxgame/world/SkyDome.h"
+#include "GameAudioCache.h"
+#include "GameInputBindings.h"
+#include "DebugContext.h"
+#include "GameplayFlowController.h"
+#include "EnemyManager.h"
+#include "BossPresentation.h"
+#include "CombatEffectsPresentation.h"
+#include "FloatingNumberPresentation.h"
+#include "GameParticleEffects.h"
+#include "PlayerDeathPresentation.h"
+#include "SceneTransitionPresentation.h"
+#include "Player.h"
+#include "PlayerManager.h"
+#include "UILabel.h"
+#include "GameplayHudPresentation.h"
+#include "LevelUpSelectionHud.h"
+#include "PauseBuildHud.h"
+#include "GridPlane.h"
+#include "SkyDome.h"
 #include <cstdint>
 #include <memory>
 
@@ -75,6 +76,7 @@ private:
 	LevelUpSelectionHud levelUpSelectionHud_{};
 	GameParticleEffects particleEffects_{};
 	CombatEffectsPresentation combatEffectsPresentation_{};
+	FloatingNumberPresentation floatingNumberPresentation_{};
 	BossPresentation bossPresentation_{};
 	PlayerDeathPresentation playerDeathPresentation_{};
 	SoundHandle startSeHandle_{};

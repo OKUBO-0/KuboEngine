@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/directxgame/effects/CurtainTransition.h"
+#include "CurtainTransition.h"
 #include <string>
 #include <string_view>
 

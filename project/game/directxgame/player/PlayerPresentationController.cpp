@@ -1,9 +1,9 @@
-#include "game/directxgame/player/PlayerPresentationController.h"
+#include "PlayerPresentationController.h"
 
 #include "Camera.h"
 #include "CameraManager.h"
 #include "Object3D.h"
-#include "game/directxgame/player/PlayerCameraController.h"
+#include "PlayerCameraController.h"
 #include <algorithm>
 
 namespace {

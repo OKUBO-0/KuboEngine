@@ -8,6 +8,7 @@ enum class WeaponType
 	OrbitBullet,
 	Drone,
 	Lightning,
+	ExplosiveBullet,
 };
 
 }

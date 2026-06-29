@@ -1,8 +1,8 @@
-#include "game/directxgame/effects/CurtainTransition.h"
+#include "CurtainTransition.h"
 #include "Vector2.h"
 #include "Vector4.h"
-#include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/ui/common/UILabel.h"
+#include "ScreenUtil.h"
+#include "UILabel.h"
 #include <algorithm>
 
 namespace DirectXGame {

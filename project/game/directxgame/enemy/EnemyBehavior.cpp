@@ -1,6 +1,6 @@
-#include "game/directxgame/enemy/EnemyBehavior.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/player/Player.h"
+#include "EnemyBehavior.h"
+#include "Enemy.h"
+#include "Player.h"
 #include <algorithm>
 #include <cmath>
 
@@ -334,21 +334,12 @@ private:
 
 } // namespace
 
-std::unique_ptr<IEnemyBehavior> CreateEnemyBehaviorByType(int32_t type)
+std::unique_ptr<IEnemyBehavior> CreateEnemyBehavior(EnemyBehaviorType type)
 {
-	if (type == 1) {
+	if (type == EnemyBehaviorType::Tackle) {
 		return std::make_unique<BurstChaseEnemyBehavior>();
 	}
-	if (type == 2) {
-		return std::make_unique<CircleApproachEnemyBehavior>();
-	}
-	if (type == 3) {
-		return std::make_unique<KeepDistanceRushEnemyBehavior>();
-	}
-	if (type == 4) {
-		return std::make_unique<FloatingDiveEnemyBehavior>();
-	}
-	if (type == 5) {
+	if (type == EnemyBehaviorType::Boss) {
 		return std::make_unique<BossEnemyBehavior>();
 	}
 	return std::make_unique<ChaseEnemyBehavior>();

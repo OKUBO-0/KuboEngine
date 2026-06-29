@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Vector3.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerProgression.h"
-#include "game/directxgame/player/PlayerWeaponController.h"
+#include "Player.h"
+#include "PlayerProgression.h"
+#include "PlayerWeaponController.h"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,10 +25,11 @@ public:
 	void Update(float deltaTime);
 	void Draw();
 
-	void TakeDamage();
+	void TakeDamage(int32_t damage = 10);
 	void RecoverHP();
 	int32_t GetHP() const { return progression_.GetHP(); }
 	int32_t GetMaxHP() const { return progression_.GetMaxHP(); }
+	bool IsMaxHPAtCap() const { return progression_.IsMaxHPAtCap(); }
 	bool IsInvincible() const { return invincible_; }
 	bool IsDead() const { return progression_.IsDead(); }
 #ifdef _DEBUG
@@ -38,8 +39,8 @@ public:
 		invincible_ = false;
 		invincibleTimer_ = 0.0f;
 	}
-	void MakeDebugStrongest();
 #endif
+	void MakeDebugStrongest();
 
 	void AddEXP(int32_t amount);
 	int32_t GetEXP() const { return progression_.GetEXP(); }
@@ -53,7 +54,17 @@ public:
 	void UpgradeAttackPower() { progression_.UpgradeAttackPower(); }
 	void IncreaseMaxHP();
 	void UpgradeMoveSpeed();
+	void ApplyPermanentUpgrades(
+		int32_t maxHPLevel,
+		int32_t attackLevel,
+		int32_t moveSpeedLevel,
+		int32_t expPickupRangeLevel);
 	int32_t GetMoveSpeedLevel() const { return progression_.GetMoveSpeedLevel(); }
+	bool IsMoveSpeedMaxLevel() const { return progression_.IsMoveSpeedMaxLevel(); }
+	float GetExpPickupRangeMultiplier() const
+	{
+		return progression_.GetExpPickupRangeMultiplier();
+	}
 
 	void UpgradeNormalBullets();
 	const std::vector<std::unique_ptr<NormalBullet>>&
@@ -175,6 +186,33 @@ public:
 	bool IsLightningMaxLevel() const
 	{
 		return weapons_.IsLightningMaxLevel();
+	}
+
+	void AddExplosiveBullets();
+	void UpgradeExplosiveBullets();
+	bool HasExplosiveBullets() const { return weapons_.HasExplosiveBullets(); }
+	const std::vector<std::unique_ptr<NormalBullet>>&
+		GetExplosiveBullets() const
+	{
+		return weapons_.GetExplosiveBullets();
+	}
+	int32_t GetExplosiveBulletLevel() const
+	{
+		return weapons_.GetExplosiveBulletLevel();
+	}
+	static constexpr int32_t kExplosiveBulletMaxLevel =
+		PlayerWeaponController::kExplosiveBulletMaxLevel;
+	bool IsExplosiveBulletMaxLevel() const
+	{
+		return weapons_.IsExplosiveBulletMaxLevel();
+	}
+	int32_t GetExplosiveBulletDamage() const
+	{
+		return weapons_.GetExplosiveBulletDamage(GetAttackPower());
+	}
+	float GetExplosiveBulletRadius() const
+	{
+		return weapons_.GetExplosiveBulletRadius();
 	}
 
 	void MaxAllWeapons();

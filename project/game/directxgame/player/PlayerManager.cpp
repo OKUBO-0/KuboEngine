@@ -1,7 +1,7 @@
-#include "game/directxgame/player/PlayerManager.h"
+#include "PlayerManager.h"
 
-#include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/ResourcePaths.h"
+#include "CsvReader.h"
+#include "ResourcePaths.h"
 #include <stdexcept>
 
 namespace DirectXGame {
@@ -68,13 +68,13 @@ void PlayerManager::Draw()
 	weapons_.Draw();
 }
 
-void PlayerManager::TakeDamage()
+void PlayerManager::TakeDamage(int32_t damage)
 {
 	if (invincible_) {
 		return;
 	}
 
-	progression_.TakeDamage();
+	progression_.TakeDamage(damage);
 	invincible_ = true;
 	invincibleTimer_ = invincibilityDuration_;
 	visible_ = false;
@@ -101,6 +101,26 @@ void PlayerManager::IncreaseMaxHP()
 void PlayerManager::UpgradeMoveSpeed()
 {
 	progression_.UpgradeMoveSpeed(player_);
+}
+
+void PlayerManager::ApplyPermanentUpgrades(
+	int32_t maxHPLevel,
+	int32_t attackLevel,
+	int32_t moveSpeedLevel,
+	int32_t expPickupRangeLevel)
+{
+	for (int32_t index = 0; index < maxHPLevel; ++index) {
+		IncreaseMaxHP();
+	}
+	for (int32_t index = 0; index < attackLevel; ++index) {
+		UpgradeAttackPower();
+	}
+	for (int32_t index = 0; index < moveSpeedLevel; ++index) {
+		UpgradeMoveSpeed();
+	}
+	for (int32_t index = 0; index < expPickupRangeLevel; ++index) {
+		progression_.UpgradeExpPickupRange();
+	}
 }
 
 void PlayerManager::UpgradeNormalBullets()
@@ -138,13 +158,22 @@ void PlayerManager::UpgradeLightning()
 	weapons_.UpgradeLightning();
 }
 
+void PlayerManager::AddExplosiveBullets()
+{
+	weapons_.AddExplosiveBullets();
+}
+
+void PlayerManager::UpgradeExplosiveBullets()
+{
+	weapons_.UpgradeExplosiveBullets();
+}
+
 void PlayerManager::MaxAllWeapons()
 {
 	weapons_.MaxAllWeapons(player_);
 	ClearLevelUpRequest();
 }
 
-#ifdef _DEBUG
 void PlayerManager::MakeDebugStrongest()
 {
 	MaxAllWeapons();
@@ -157,7 +186,6 @@ void PlayerManager::MakeDebugStrongest()
 	visible_ = true;
 	ClearLevelUpRequest();
 }
-#endif
 
 void PlayerManager::PlayLevelUpEffect()
 {

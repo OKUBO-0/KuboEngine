@@ -2,7 +2,7 @@
 
 #include "Object3D.h"
 #include "Vector3.h"
-#include "game/directxgame/player/weapons/NormalBullet.h"
+#include "NormalBullet.h"
 #include <memory>
 #include <vector>
 

@@ -180,6 +180,37 @@ bool SrvManager::IsAllocated(uint32_t srvIndex) const
 	return srvIndex < allocated_.size() && allocated_[srvIndex] != 0;
 }
 
+SrvManager::UsageSummary SrvManager::GetUsageSummary() const
+{
+	UsageSummary summary;
+	for (const UsageRecord& record : usageRecords_) {
+		if (!IsAllocated(record.index)) {
+			continue;
+		}
+		if (record.usage == "Texture2D") {
+			++summary.texture2D;
+		} else if (record.usage == "TextureCube") {
+			++summary.textureCube;
+		} else if (record.usage.starts_with("StructuredBuffer") ||
+			record.usage == "LineInstanceBuffer" ||
+			record.usage == "ParticleInstanceBuffer" ||
+			record.usage == "SkinPalette") {
+			++summary.structuredBuffer;
+		} else if (record.usage == "ShadowMap") {
+			++summary.shadowMap;
+		} else {
+			++summary.other;
+		}
+	}
+	return summary;
+}
+
+void SrvManager::LabelUsage(uint32_t srvIndex, const std::string& usage)
+{
+	ValidateAllocated(srvIndex);
+	SetUsage(srvIndex, usage);
+}
+
 void SrvManager::ValidateIndex(uint32_t srvIndex) const
 {
 	if (srvIndex >= kMaxSRVCount) {

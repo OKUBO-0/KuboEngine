@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Vector2.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/ui/common/UILabel.h"
+#include "GameInputBindings.h"
+#include "UILabel.h"
 #include <array>
 #include <cstdint>
 

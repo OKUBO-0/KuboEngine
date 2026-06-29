@@ -1,5 +1,5 @@
-#include "game/directxgame/world/GridPlane.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "GridPlane.h"
+#include "GameModelCache.h"
 #include "Object3DCommon.h"
 #include <algorithm>
 #include <cmath>
@@ -7,6 +7,7 @@
 namespace {
 
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
+constexpr float kGroundY = 0.0f;
 
 }
 
@@ -26,7 +27,7 @@ void GridPlane::Initialize()
 		tile->SetTextureInfluence(0.12f);
 		tile->SetCastsShadow(false);
 		tile->SetScale({ kGroundScale, 1.0f, kGroundScale });
-		tile->SetTranslate({ 0.0f, -2.0f, 0.0f });
+		tile->SetTranslate({ 0.0f, kGroundY, 0.0f });
 		tile->SetColor({ 0.43f, 0.44f, 0.47f, 1.0f });
 	}
 }
@@ -46,7 +47,7 @@ void GridPlane::Update(const Vector3& focusPosition)
 			}
 			tiles_[index]->SetTranslate({
 				centerX + static_cast<float>(x) * kTileSpan,
-				-2.0f,
+				kGroundY,
 				centerZ + static_cast<float>(z) * kTileSpan,
 				});
 			const float centerDistance = std::sqrt(static_cast<float>(x * x + z * z));

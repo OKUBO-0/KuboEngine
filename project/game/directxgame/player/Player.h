@@ -2,11 +2,11 @@
 
 #include "Camera.h"
 #include "Vector3.h"
-#include "game/directxgame/player/PlayerAimController.h"
-#include "game/directxgame/player/PlayerCameraController.h"
-#include "game/directxgame/player/PlayerMovementController.h"
-#include "game/directxgame/player/PlayerPresentationController.h"
-#include "game/directxgame/player/PlayerView.h"
+#include "PlayerAimController.h"
+#include "PlayerCameraController.h"
+#include "PlayerMovementController.h"
+#include "PlayerPresentationController.h"
+#include "PlayerView.h"
 #include <memory>
 
 namespace DirectXGame {
@@ -52,7 +52,6 @@ public:
 	bool IsDodging() const { return movementController_.IsDodging(); }
 	float GetDodgeCooldownRatio() const;
 	void RequestCameraShake(float duration, float strength);
-	void SetCombatCameraTarget(float distance, float height);
 	void SuppressNextDodgeTrigger()
 	{
 		movementController_.SuppressNextDodgeTrigger();

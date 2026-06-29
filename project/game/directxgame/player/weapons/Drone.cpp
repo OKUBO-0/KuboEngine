@@ -1,5 +1,5 @@
-#include "game/directxgame/player/weapons/Drone.h"
-#include "game/directxgame/core/GameModelCache.h"
+#include "Drone.h"
+#include "GameModelCache.h"
 #include "Object3DCommon.h"
 #include <algorithm>
 #include <cmath>
@@ -98,8 +98,7 @@ void Drone::FireForward(float angle, int32_t shotCount, float bulletSpeed, float
 			shotDirection,
 			bulletSpeed,
 			bulletRange,
-			bulletPierceCount,
-			{ 0.45f, 0.88f, 1.0f, 0.82f });
+			bulletPierceCount);
 		peakBulletCount_ = (std::max)(peakBulletCount_, bullets_.size());
 		if (bullets_.size() > Drone::kMaxActiveBullets) {
 			RecycleBullet(0);

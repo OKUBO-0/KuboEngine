@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Sprite.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/ui/common/UIElement.h"
+#include "GameTextureCache.h"
+#include "UIElement.h"
 #include <array>
 #include <memory>
 

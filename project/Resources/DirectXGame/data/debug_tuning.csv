@@ -43,7 +43,7 @@ particle.confettiScaleMultiplier,1.25
 camera.followSmoothness,8
 particle.smokeScaleMultiplier,1
 particle.rippleExpandSpeed,4.5
-debugWindow.spriteManager,0
+debugWindow.spriteManager,1
 camera.pitch,1
 particle.confettiVelocityScale,1.15
 debugCamera.enabled,0
@@ -77,8 +77,8 @@ debugWindow.motionEditor,0
 debugWindow.colliderTagManager,1
 debugWindow.audio,1
 debugWindow.sceneSettings,1
-debugWindow.sceneSpecificDebug,0
-debugWindow.objectSettings,0
+debugWindow.sceneSpecificDebug,1
+debugWindow.objectSettings,1
 sun.enabled,1
 sun.color,1,0.94,0.88
 sun.direction,-0.448327,-0.815139,-0.366813

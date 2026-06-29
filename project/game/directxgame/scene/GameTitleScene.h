@@ -6,12 +6,12 @@
 #include "Sprite.h"
 #include "Vector2.h"
 #include "Vector3.h"
-#include "game/directxgame/core/GameAudioCache.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/core/GameInputBindings.h"
-#include "game/directxgame/effects/CurtainTransition.h"
-#include "game/directxgame/ui/common/UILabel.h"
-#include "game/directxgame/world/GridPlane.h"
+#include "GameAudioCache.h"
+#include "GameTextureCache.h"
+#include "GameInputBindings.h"
+#include "CurtainTransition.h"
+#include "UILabel.h"
+#include "GridPlane.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -33,12 +33,6 @@ public:
 	void Draw() override;
 
 private:
-	enum class GuideTransitionState {
-		None,
-		FadeIn,
-		FadeOut,
-	};
-
 	struct LayoutSettings {
 		Vector2 titlePosition{ 0.0f, 0.0f };
 		Vector2 titleSize{ 1280.0f, 720.0f };
@@ -48,9 +42,7 @@ private:
 		Vector2 menuHitboxPosition{ 145.0f, 340.0f };
 		Vector2 menuHitboxSize{ 300.0f, 88.0f };
 		float menuHitboxStepY = 128.0f;
-		Vector2 guidePosition{ 0.0f, 0.0f };
-		Vector2 guideSize{ 1280.0f, 720.0f };
-		Vector3 modelBasePosition{ -18.0f, -2.0f, 8.0f };
+		Vector3 modelBasePosition{ -18.0f, 0.0f, 8.0f };
 		Vector3 modelScale{ 4.5f, 4.5f, 4.5f };
 		Vector3 cameraTarget{ 0.0f, 4.5f, 0.0f };
 		float cameraDistance = 76.0f;
@@ -79,28 +71,44 @@ private:
 	void ReloadDebugData();
 	void SaveLayout() const;
 	void UpdateCurtain();
-	void UpdateGuide();
 	void UpdateNavigation();
+	void UpdatePermanentUpgradeInput();
 	void UpdateAudio();
 	void UpdateModelAnimation();
 	void UpdateCameraAnimation();
 	void QueueDebugDraw();
 	void DrawDebugUI();
 	void UpdateCoinDisplay();
+	void UpdatePermanentUpgradeDisplay();
+	void UpdateCharacterSelectionInput();
+	void UpdateCharacterSelectionDisplay();
 	void DrawCoinDisplay();
+	void DrawPermanentUpgradeDisplay();
+	void DrawCharacterSelectionDisplay();
 
 	bool IsMouseMenuConfirm(int32_t hoveredMenuIndex) const;
 	void StartGameTransition();
-	void CloseGuide();
 
 	std::shared_ptr<GameSession> sessionContext_;
 
 	UILabel titleSprite_;
 	UILabel cursorSprite_;
-	UILabel guideSprite_;
 	TextureHandle coinDigitTexture_ = 0;
 	static constexpr int32_t kCoinDigitCount = 6;
+	static constexpr int32_t kPermanentUpgradeCount = 4;
+	static constexpr int32_t kPermanentUpgradeCostDigitCount = 4;
+	static constexpr int32_t kCharacterCount = 4;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kCoinDigitCount> coinDigits_;
+	std::array<UILabel, kPermanentUpgradeCount> permanentUpgradeIcons_;
+	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCount> permanentUpgradeLevelDigits_;
+	std::array<
+		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCostDigitCount>,
+		kPermanentUpgradeCount> permanentUpgradeCostDigits_;
+	std::array<float, kPermanentUpgradeCount> permanentUpgradePurchaseFlashTimers_{};
+	std::array<UILabel, kCharacterCount> characterIcons_;
+	std::array<
+		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCostDigitCount>,
+		kCharacterCount> characterCostDigits_;
 	std::unique_ptr<CurtainTransition> curtain_;
 
 	std::unique_ptr<Engine::CameraSystem::Camera> titleCamera_;
@@ -117,9 +125,6 @@ private:
 	bool curtainStarted_ = false;
 	bool curtainOpening_ = true;
 	bool finished_ = false;
-	bool guideActive_ = false;
-	GuideTransitionState guideTransitionState_ = GuideTransitionState::None;
-	float guideAlpha_ = 0.0f;
 	float animationTime_ = 0.0f;
 	DirectXGame::GameInputBindings::NavigationInputDevice navigationInputDevice_ =
 		DirectXGame::GameInputBindings::NavigationInputDevice::Mouse;

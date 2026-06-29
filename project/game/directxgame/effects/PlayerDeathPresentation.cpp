@@ -1,7 +1,7 @@
-#include "game/directxgame/effects/PlayerDeathPresentation.h"
+#include "PlayerDeathPresentation.h"
 #include "ParticleManager.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/player/Player.h"
+#include "GameParticleEffects.h"
+#include "Player.h"
 #include <algorithm>
 #include <cstdint>
 

@@ -1,16 +1,16 @@
-#include "game/directxgame/ui/hud/LevelUpSelectionHud.h"
+#include "LevelUpSelectionHud.h"
 #include "CameraManager.h"
 #include "Input.h"
 #include "MyMath.h"
 #include "ParticleManager.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameTextureCache.h"
-#include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/effects/ParticleBehaviors.h"
-#include "game/directxgame/effects/GameParticleEffects.h"
-#include "game/directxgame/player/Player.h"
-#include "game/directxgame/player/PlayerManager.h"
+#include "DataPaths.h"
+#include "GameTextureCache.h"
+#include "ScreenUtil.h"
+#include "UILayoutIO.h"
+#include "ParticleBehaviors.h"
+#include "GameParticleEffects.h"
+#include "Player.h"
+#include "PlayerManager.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -26,56 +26,41 @@ constexpr float kDefaultChoiceStepY = 140.0f;
 constexpr Vector2 kDefaultHitboxOffset{ 465.0f, 214.0f };
 constexpr Vector2 kDefaultHitboxSize{ 435.0f, 68.0f };
 
-std::string WeaponLevelTexturePath(
-	const char* weaponDirectory,
-	int32_t nextLevel)
-{
-	return std::string("ui/game/") +
-		weaponDirectory +
-		"/lv" +
-		std::to_string(nextLevel) +
-		".png";
-}
-
 void PreloadTextures()
 {
-	const std::array<const char*, 16> staticTextures{
-		"ui/game/lvup_attack.png",
-		"ui/game/lvup_attack_icon.png",
-		"ui/game/lvup_maxhp.png",
-		"ui/game/lvup_maxhp_icon.png",
-		"ui/game/lvup_speed.png",
-		"ui/game/lvup_speed_icon.png",
-		"ui/game/lvup_heal.png",
-		"ui/game/lvup_heal_icon.png",
-		"ui/game/normal/icon.png",
-		"ui/game/orbit/icon.png",
-		"ui/game/orbit/add.png",
-		"ui/game/drone/icon.png",
-		"ui/game/drone/add.png",
-		"ui/game/lightning/icon.png",
-		"ui/game/lightning/add.png",
-		"ui/game/levelup.png",
+	const std::array<const char*, 11> staticTextures{
+		"ui/font/noto_sans_jp_black.png",
+		"ui/game/lvup/levelup.png",
+		"ui/game/lvup/levelup_frame.png",
+		"ui/game/lvup/attack_icon.png",
+		"ui/game/lvup/maxhp_icon.png",
+		"ui/game/lvup/speed_icon.png",
+		"ui/game/lvup/heal_icon.png",
+		"ui/game/lvup/normal_icon.png",
+		"ui/game/lvup/orbit_icon.png",
+		"ui/game/lvup/drone_icon.png",
+		"ui/game/lvup/lightning_icon.png",
 	};
 
 	std::vector<std::string> texturePaths;
-	texturePaths.reserve(staticTextures.size() + 28);
+	texturePaths.reserve(staticTextures.size());
 	for (const char* texture : staticTextures) {
 		texturePaths.emplace_back(texture);
 	}
-	const std::array<const char*, 4> weaponDirectories{
-		"normal",
-		"orbit",
-		"drone",
-		"lightning",
-	};
-	for (const char* weaponDirectory : weaponDirectories) {
-		for (int32_t level = 2; level <= 8; ++level) {
-			texturePaths.push_back(
-				WeaponLevelTexturePath(weaponDirectory, level));
-		}
-	}
 	DirectXGame::GameTextureCache::LoadBatch(texturePaths);
+}
+
+const std::string& NotoSansJpGlyphOrder()
+{
+	static const std::string glyphs = [] {
+		std::string value;
+		for (char character = 32; character <= 126; ++character) {
+			value.push_back(character);
+		}
+		value += "通常弾軌道雷撃爆発追加攻力最大移動速度回復数個になります。ダメージ間隔貫通周囲半径転サイズ対象体基礎全短縮範囲連射威上昇武器ランダム敵命中時";
+		return value;
+	}();
+	return glyphs;
 }
 
 bool IsPointInRect(
@@ -167,7 +152,7 @@ namespace DirectXGame {
 void LevelUpSelectionHud::Initialize()
 {
 	PreloadTextures();
-	overlay_.Initialize("ui/game/levelup.png", { 0.0f, 0.0f });
+	overlay_.Initialize("ui/game/lvup/levelup.png", { 0.0f, 0.0f });
 	overlay_.SetSize({ kScreenWidth, 720.0f });
 
 	const UILayoutIO::LayoutMap layout =
@@ -187,16 +172,36 @@ void LevelUpSelectionHud::Initialize()
 
 	for (UILabel& choiceSprite : choiceSprites_) {
 		choiceSprite.Initialize(
-			"ui/game/lvup_attack.png",
+			"ui/game/lvup/levelup_frame.png",
 			{ 0.0f, 0.0f });
 		choiceSprite.SetSize(choiceSize_);
 	}
 	for (UILabel& choiceIcon : choiceIcons_) {
 		choiceIcon.Initialize(
-			"ui/game/lvup_attack_icon.png",
+			"ui/game/lvup/attack_icon.png",
 			{ 0.0f, 0.0f });
 		choiceIcon.SetSize(choiceSize_);
 		choiceIcon.SetVisible(false);
+	}
+	for (BitmapText& text : choiceTitleTexts_) {
+		text.Initialize(
+			"ui/font/noto_sans_jp_black.png",
+			{ 96.0f, 96.0f },
+			16,
+			NotoSansJpGlyphOrder());
+		text.SetScale(0.30f);
+		text.SetAdvanceMultiplier(0.85f);
+		text.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	}
+	for (BitmapText& text : choiceDetailTexts_) {
+		text.Initialize(
+			"ui/font/noto_sans_jp_black.png",
+			{ 96.0f, 96.0f },
+			16,
+			NotoSansJpGlyphOrder());
+		text.SetScale(0.24f);
+		text.SetAdvanceMultiplier(0.72f);
+		text.SetColor({ 0.82f, 0.9f, 1.0f, 0.95f });
 	}
 	ApplyLayout();
 }
@@ -278,6 +283,10 @@ bool LevelUpSelectionHud::Update(
 		choiceIcons_[index].SetColor(choiceColor);
 		choiceSprites_[index].SetAlpha(selected ? 1.0f : 0.78f);
 		choiceIcons_[index].SetAlpha(selected ? 1.0f : 0.78f);
+		const Vector4 titleColor = selected
+			? Vector4{ 1.0f, 1.0f, 0.72f, 1.0f }
+			: Vector4{ 0.86f, 0.9f, 1.0f, 0.9f };
+		choiceTitleTexts_[index].SetColor(titleColor);
 	}
 
 	const bool mouseConfirm =
@@ -303,6 +312,12 @@ void LevelUpSelectionHud::Draw()
 	}
 	for (UILabel& choiceIcon : choiceIcons_) {
 		choiceIcon.Draw();
+	}
+	for (BitmapText& text : choiceTitleTexts_) {
+		text.Draw();
+	}
+	for (BitmapText& text : choiceDetailTexts_) {
+		text.Draw();
 	}
 }
 
@@ -357,16 +372,18 @@ void LevelUpSelectionHud::BuildChoices(
 	for (size_t index = 0; index < choiceSprites_.size(); ++index) {
 		const bool hasChoice = index < choices_.size();
 		choiceSprites_[index].SetTexture(
-			hasChoice
-			? choices_[index].texturePath
-			: "ui/game/lvup_attack.png");
+			"ui/game/lvup/levelup_frame.png");
 		choiceSprites_[index].SetSize(choiceSize_);
 		choiceIcons_[index].SetTexture(
 			hasChoice
 			? choices_[index].iconPath
-			: "ui/game/lvup_attack_icon.png");
+			: "ui/game/lvup/attack_icon.png");
 		choiceIcons_[index].SetSize(choiceSize_);
 		choiceIcons_[index].SetVisible(hasChoice);
+		choiceTitleTexts_[index].SetText(
+			hasChoice ? choices_[index].titleText : "");
+		choiceDetailTexts_[index].SetText(
+			hasChoice ? choices_[index].detailText : "");
 	}
 	ApplyLayout();
 }
@@ -383,6 +400,14 @@ void LevelUpSelectionHud::ApplyLayout()
 		choiceSprites_[index].SetSize(choiceSize_);
 		choiceIcons_[index].SetPosition(position);
 		choiceIcons_[index].SetSize(choiceSize_);
+		choiceTitleTexts_[index].SetPosition({
+			slideOffsetX_ + choiceHitboxOffset_.x + 48.0f,
+			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index) - 10.0f,
+			});
+		choiceDetailTexts_[index].SetPosition({
+			slideOffsetX_ + choiceHitboxOffset_.x + 49.0f,
+			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index) + 21.0f,
+			});
 	}
 }
 

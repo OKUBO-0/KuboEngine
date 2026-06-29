@@ -1,11 +1,11 @@
-#include "game/directxgame/ui/hud/MiniMap.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/GameSpriteFactory.h"
-#include "game/directxgame/core/UILayoutIO.h"
-#include "game/directxgame/enemy/Enemy.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/enemy/ExpOrb.h"
-#include "game/directxgame/player/Player.h"
+#include "MiniMap.h"
+#include "DataPaths.h"
+#include "GameSpriteFactory.h"
+#include "UILayoutIO.h"
+#include "Enemy.h"
+#include "EnemyManager.h"
+#include "ExpOrb.h"
+#include "Player.h"
 #include <algorithm>
 #include <cmath>
 #ifdef _DEBUG
@@ -100,6 +100,7 @@ void MiniMap::SetIconSizeMultiplier(float multiplier)
 	layoutSettings_.playerIconSize *= multiplier;
 	layoutSettings_.enemyIconSize *= multiplier;
 	layoutSettings_.orbIconSize *= multiplier;
+	ApplyLayout();
 }
 
 void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
@@ -120,7 +121,16 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 			layoutSettings_.center.x + relative.x,
 			layoutSettings_.center.y + relative.y,
 		};
-		const float iconSafeRadius = (std::max)(0.0f, layoutSettings_.radius - iconSize * 0.5f);
+		const float halfIconSize = iconSize * 0.5f;
+		const float rectSafeRadius = (std::max)(0.0f, (std::min)({
+			layoutSettings_.center.x - layoutSettings_.backgroundPosition.x,
+			layoutSettings_.center.y - layoutSettings_.backgroundPosition.y,
+			layoutSettings_.backgroundPosition.x + layoutSettings_.backgroundSize.x - layoutSettings_.center.x,
+			layoutSettings_.backgroundPosition.y + layoutSettings_.backgroundSize.y - layoutSettings_.center.y,
+			}) - halfIconSize);
+		const float iconSafeRadius = (std::max)(
+			0.0f,
+			(std::min)(layoutSettings_.radius - halfIconSize, rectSafeRadius));
 		Vector2 position = ClampToCircle(layoutSettings_.center, unclamped, iconSafeRadius);
 		if (enemy) {
 			enemyIconPositions_.push_back(position);

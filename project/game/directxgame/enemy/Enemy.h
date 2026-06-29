@@ -2,9 +2,9 @@
 
 #include "Vector3.h"
 #include "Vector4.h"
-#include "game/directxgame/enemy/EnemyBehavior.h"
-#include "game/directxgame/enemy/EnemyReactionController.h"
-#include "game/directxgame/enemy/EnemyView.h"
+#include "EnemyBehavior.h"
+#include "EnemyReactionController.h"
+#include "EnemyView.h"
 #include <cstdint>
 #include <memory>
 
@@ -25,8 +25,23 @@ public:
 	void SetRotationY(float rotationY);
 	void SetPlayer(Player* player) { player_ = player; }
 	void SetModelByType(int32_t type);
-	void SetBehaviorByType(int32_t type);
-	bool IsSuicideType() const { return type_ == 4; }
+	void SetType(EnemyType type) { type_ = type; }
+	bool IsDeathBombType() const { return type_ == EnemyType::Bomb; }
+	void SetBehavior(EnemyBehaviorType type);
+	void SetDeathBomb(float delay, float radius, int32_t damage)
+	{
+		deathBombDelay_ = delay;
+		deathBombRadius_ = radius;
+		deathBombDamage_ = damage;
+	}
+	float GetDeathBombDelay() const { return deathBombDelay_; }
+	float GetDeathBombRadius() const { return deathBombRadius_; }
+	int32_t GetDeathBombDamage() const { return deathBombDamage_; }
+	void SetKnockbackResistance(float resistance)
+	{
+		reactionController_.SetKnockbackResistance(resistance);
+	}
+	bool IsSuicideType() const { return false; }
 
 	const Vector3& GetPosition() const { return position_; }
 	const Vector3& GetPreviousPosition() const { return previousPosition_; }
@@ -48,6 +63,8 @@ public:
 
 	void SetEXP(int32_t exp) { exp_ = exp; }
 	int32_t GetEXP() const { return exp_; }
+	void SetAttackPower(int32_t attackPower) { attackPower_ = attackPower; }
+	int32_t GetAttackPower() const { return attackPower_; }
 	void SetCoinValue(int32_t coinValue) { coinValue_ = coinValue; }
 	int32_t GetCoinValue() const { return coinValue_; }
 	bool JustDied() const { return justDied_; }
@@ -76,8 +93,12 @@ private:
 	int32_t hp_ = 0;
 	int32_t maxHp_ = 0;
 	int32_t exp_ = 0;
+	int32_t attackPower_ = 10;
 	int32_t coinValue_ = 0;
-	int32_t type_ = 0;
+	EnemyType type_ = EnemyType::Standard;
+	float deathBombDelay_ = 0.0f;
+	float deathBombRadius_ = 0.0f;
+	int32_t deathBombDamage_ = 0;
 	bool active_ = true;
 	bool justDied_ = false;
 	bool deathPresentationActive_ = false;

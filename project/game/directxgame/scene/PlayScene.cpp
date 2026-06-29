@@ -1,13 +1,13 @@
-#include "game/directxgame/scene/PlayScene.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/core/DebugDraw.h"
-#include "game/directxgame/core/DebugUI.h"
-#include "game/directxgame/core/GameMenuController.h"
-#include "game/directxgame/core/GameModelCache.h"
-#include "game/directxgame/core/SceneId.h"
-#include "game/directxgame/core/GameSession.h"
-#include "game/directxgame/core/ScreenUtil.h"
-#include "game/directxgame/core/SceneLighting.h"
+#include "PlayScene.h"
+#include "DataPaths.h"
+#include "DebugDraw.h"
+#include "DebugUI.h"
+#include "GameMenuController.h"
+#include "GameModelCache.h"
+#include "SceneId.h"
+#include "GameSession.h"
+#include "ScreenUtil.h"
+#include "SceneLighting.h"
 #include "CameraManager.h"
 #include "Input.h"
 #include "LineCommon.h"
@@ -31,10 +31,6 @@ constexpr char kAudioPauseToggle[] = "game.pauseToggle";
 constexpr char kAudioLevelUp[] = "game.levelUp";
 constexpr char kAudioDeath[] = "game.death";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
-float Clamp01(float value)
-{
-	return std::clamp(value, 0.0f, 1.0f);
-}
 
 }
 
@@ -64,6 +60,7 @@ void PlayScene::Initialize()
 	}
 	InitializeUi();
 	combatEffectsPresentation_.Initialize();
+	floatingNumberPresentation_.Initialize();
 	if (playerManager_) {
 		combatEffectsPresentation_.Reset(*playerManager_);
 	}
@@ -101,6 +98,10 @@ void PlayScene::Update()
 	const bool gameplayFrozen = debugContext_.IsGameplayFrozen();
 #else
 	const bool gameplayFrozen = false;
+	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	if (input && input->TriggerKey(DIK_F9) && playerManager_) {
+		playerManager_->MakeDebugStrongest();
+	}
 #endif
 
 	UpdateGameplayPhase(kFixedDeltaTime, gameplayFrozen);
@@ -171,6 +172,7 @@ void PlayScene::Draw()
 	Engine::LineSystem::LineCommon::GetInstance()->Draw();
 
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
+	floatingNumberPresentation_.Draw();
 	DrawUi();
 	sceneTransition_.Draw();
 }
@@ -213,7 +215,26 @@ void PlayScene::InitializeWorld()
 	playerManager_ = std::make_unique<PlayerManager>();
 	playerManager_->Initialize(player_.get());
 	playerManager_->LoadStatusFromCSV(DataPaths::kPlayerStatus);
+	if (sessionContext_) {
+		playerManager_->ApplyPermanentUpgrades(
+			sessionContext_->GetPermanentMaxHPLevel(),
+			sessionContext_->GetPermanentAttackLevel(),
+			sessionContext_->GetPermanentMoveSpeedLevel(),
+			sessionContext_->GetPermanentExpPickupRangeLevel());
+	}
 	playerManager_->LoadWeaponUpgradeSettings(DataPaths::kWeaponUpgradeSettings);
+	if (sessionContext_) {
+		switch (sessionContext_->GetSelectedCharacterId()) {
+		case CharacterId::Storm:
+			playerManager_->AddLightning();
+			break;
+		case CharacterId::Octopus:
+		case CharacterId::Flame:
+		case CharacterId::Blade:
+		default:
+			break;
+		}
+	}
 
 	enemyManager_ = std::make_unique<EnemyManager>();
 	if (sessionContext_) {
@@ -253,13 +274,28 @@ bool PlayScene::UpdateSceneStressTelemetry()
 	}
 
 	sessionContext_->AdvanceSceneStressFrame();
+	if (enemyManager_) {
+		sessionContext_->RecordSceneObjectCounts(
+			static_cast<uint32_t>(enemyManager_->GetActiveEnemyCount()),
+			static_cast<uint32_t>(enemyManager_->GetEnemies().size()),
+			static_cast<uint32_t>(enemyManager_->GetExpOrbCount()));
+	}
 	if (Engine::Base::SrvManager* srvManager =
 		Engine::Graphics3D::Object3DCommon::GetInstance()->GetSrvManager()) {
+		const Engine::Base::SrvManager::UsageSummary usage =
+			srvManager->GetUsageSummary();
 		sessionContext_->RecordSrvUsage(
+			GameSession::SceneStressStage::Game,
 			srvManager->GetUsedCount(),
-			srvManager->GetHighWatermark());
+			srvManager->GetHighWatermark(),
+			usage.texture2D,
+			usage.textureCube,
+			usage.structuredBuffer,
+			usage.shadowMap,
+			usage.other);
 	}
-	if (sessionContext_->GetSceneStressFrameCount() < 60) {
+	if (sessionContext_->GetSceneStressFrameCount() <
+		sessionContext_->GetSceneStressGameFrameTarget()) {
 		return false;
 	}
 
@@ -310,18 +346,6 @@ void PlayScene::UpdateGameplayPhase(float deltaTime, bool gameplayFrozen)
 
 void PlayScene::UpdateGamePlay(float deltaTime)
 {
-	if (player_ && enemyManager_) {
-		Vector3 nearestEnemy{};
-		float nearestDistance = 80.0f;
-		if (enemyManager_->FindNearestEnemyPosition(player_->GetWorldPosition(), 120.0f, nearestEnemy)) {
-			const Vector3 delta = nearestEnemy - player_->GetWorldPosition();
-			nearestDistance = std::sqrt(delta.x * delta.x + delta.z * delta.z);
-		}
-		const float distanceRatio = Clamp01((nearestDistance - 8.0f) / 52.0f);
-		player_->SetCombatCameraTarget(
-			36.0f + distanceRatio * 20.0f,
-			62.0f + distanceRatio * 26.0f);
-	}
 	if (player_) {
 		player_->Update(deltaTime);
 	}
@@ -355,6 +379,10 @@ void PlayScene::UpdateEffects()
 	if (!playerManager_ || !player_) {
 		return;
 	}
+	if (enemyManager_) {
+		floatingNumberPresentation_.AddEvents(
+			enemyManager_->GetRecentFloatingNumberEvents());
+	}
 	if (combatEffectsPresentation_.Update(
 		*player_,
 		*playerManager_,
@@ -362,6 +390,7 @@ void PlayScene::UpdateEffects()
 		particleEffects_)) {
 		gameplayHud_.TriggerHitFlash(0.18f);
 	}
+	floatingNumberPresentation_.Update(1.0f / 60.0f);
 }
 
 void PlayScene::UpdateUi(float deltaTime)

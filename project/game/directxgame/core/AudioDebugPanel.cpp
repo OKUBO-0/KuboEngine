@@ -1,4 +1,4 @@
-#include "game/directxgame/core/AudioDebugPanel.h"
+#include "AudioDebugPanel.h"
 #include <string>
 #ifdef _DEBUG
 #include <imgui.h>

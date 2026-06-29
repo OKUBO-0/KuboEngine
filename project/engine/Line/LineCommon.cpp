@@ -51,6 +51,7 @@ void LineCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base:
 	InitializeVertexResources();
 	for (uint32_t& srvIndex : instanceSrvIndices_) {
 		srvIndex = srvManager_->Allocate();
+		srvManager_->LabelUsage(srvIndex, "LineInstanceBuffer");
 	}
 }
 

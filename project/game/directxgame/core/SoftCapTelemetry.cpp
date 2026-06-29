@@ -1,9 +1,9 @@
-#include "game/directxgame/core/SoftCapTelemetry.h"
+#include "SoftCapTelemetry.h"
 #include "ParticleManager.h"
-#include "game/directxgame/core/DataPaths.h"
-#include "game/directxgame/enemy/EnemyManager.h"
-#include "game/directxgame/player/PlayerManager.h"
-#include "game/directxgame/player/weapons/Drone.h"
+#include "DataPaths.h"
+#include "EnemyManager.h"
+#include "PlayerManager.h"
+#include "Drone.h"
 #include <algorithm>
 #include <fstream>
 #include <string>

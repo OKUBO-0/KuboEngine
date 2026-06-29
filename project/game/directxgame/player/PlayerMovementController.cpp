@@ -1,7 +1,7 @@
-#include "game/directxgame/player/PlayerMovementController.h"
+#include "PlayerMovementController.h"
 
 #include "Input.h"
-#include "game/directxgame/core/GameInputBindings.h"
+#include "GameInputBindings.h"
 #include <algorithm>
 #include <cmath>
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Vector2.h"
-#include "game/directxgame/core/GameTextureCache.h"
+#include "GameTextureCache.h"
 #include <memory>
 #include <string>
 
