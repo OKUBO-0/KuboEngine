@@ -16,6 +16,7 @@ if ($GameFrames -lt 1) {
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $executable = Join-Path $projectRoot "..\generated\outputs\Debug\KuboEngine.exe"
 $report = Join-Path $projectRoot "generated\outputs\scene_transition_stress.txt"
+$summaryCsv = Join-Path $projectRoot "generated\outputs\scene_transition_stress_summary.csv"
 
 if (-not (Test-Path $executable)) {
 	throw "Debug executable was not found: $executable"
@@ -23,6 +24,9 @@ if (-not (Test-Path $executable)) {
 
 if (Test-Path $report) {
 	Remove-Item -LiteralPath $report -Force
+}
+if (Test-Path $summaryCsv) {
+	Remove-Item -LiteralPath $summaryCsv -Force
 }
 
 $previousCycles = $env:KUBO_SCENE_STRESS_CYCLES
@@ -46,12 +50,16 @@ try {
 	if (-not (Test-Path $report)) {
 		throw "Scene transition stress report was not generated"
 	}
+	if (-not (Test-Path $summaryCsv)) {
+		throw "Scene transition stress summary CSV was not generated"
+	}
 
 	$contents = Get-Content -LiteralPath $report
 	if ($contents -notcontains "status=PASS") {
 		throw "Scene transition stress report did not contain status=PASS"
 	}
 	$contents
+	"summaryCsv=$summaryCsv"
 } finally {
 	if ($null -eq $previousCycles) {
 		Remove-Item Env:KUBO_SCENE_STRESS_CYCLES -ErrorAction SilentlyContinue

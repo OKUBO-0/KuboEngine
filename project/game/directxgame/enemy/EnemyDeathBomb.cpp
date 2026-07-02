@@ -6,6 +6,13 @@
 #include <algorithm>
 #include <cmath>
 
+namespace {
+
+constexpr char kEnvironmentTexturePath[] =
+	"Resources/textures/skybox/test.dds";
+
+}
+
 namespace DirectXGame {
 
 void EnemyDeathBomb::Initialize(
@@ -24,6 +31,7 @@ void EnemyDeathBomb::Initialize(
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
 	GameModelCache::ApplyToObject(*object_, GameModelCache::Load("cube.obj"));
+	object_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	object_->SetLighting(false);
 	object_->SetEnvironmentReflectionStrength(0.0f);
 	object_->SetEnvironmentRoughness(1.0f);

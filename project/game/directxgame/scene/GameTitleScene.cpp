@@ -36,11 +36,13 @@ namespace {
 constexpr float kFixedDeltaTime = 1.0f / 60.0f;
 constexpr char kTitleTexturePath[] = "ui/title/title.png";
 constexpr char kCursorTexturePath[] = "ui/title/cursor.png";
+constexpr char kShopTexturePath[] = "ui/title/shop.png";
 constexpr char kNumberTexturePath[] = "ui/number/numbers.png";
 constexpr char kPermanentMaxHPIconPath[] = "ui/game/lvup/maxhp_icon.png";
 constexpr char kPermanentAttackIconPath[] = "ui/game/lvup/attack_icon.png";
 constexpr char kPermanentMoveSpeedIconPath[] = "ui/game/lvup/speed_icon.png";
 constexpr char kPermanentExpPickupRangeIconPath[] = "ui/game/lvup/heal_icon.png";
+constexpr char kPermanentCoinGainIconPath[] = "ui/game/lvup/normal_icon.png";
 constexpr char kTitleBgmPath[] = "audio/bgm/title.wav";
 constexpr char kSelectSePath[] = "audio/se/se_pause.wav";
 constexpr char kDecideSePath[] = "audio/se/se_exp.wav";
@@ -58,6 +60,7 @@ constexpr Vector2 kPermanentUpgradeCostOffset{ 78.0f, 11.0f };
 constexpr Vector2 kPermanentUpgradeCostDigitSize{ 15.0f, 20.0f };
 constexpr float kPermanentUpgradeCostDigitStepX = 14.0f;
 constexpr float kPermanentUpgradePurchaseFlashDuration = 0.42f;
+constexpr std::array<int32_t, 5> kShopLevelCaps{ 3, 5, 3, 3, 3 };
 constexpr Vector2 kCharacterIconBasePosition{ 1016.0f, 96.0f };
 constexpr Vector2 kCharacterIconSize{ 48.0f, 48.0f };
 constexpr Vector2 kCharacterRowHitboxSize{ 160.0f, 52.0f };
@@ -69,6 +72,7 @@ enum class PermanentUpgradeType {
 	Attack,
 	MoveSpeed,
 	ExpPickupRange,
+	CoinGain,
 };
 
 enum class PermanentUpgradeCategory {
@@ -84,11 +88,12 @@ struct PermanentUpgradeDefinition {
 	const char* iconPath;
 };
 
-constexpr std::array<PermanentUpgradeDefinition, 4> kPermanentUpgradeDefinitions{ {
+constexpr std::array<PermanentUpgradeDefinition, 5> kPermanentUpgradeDefinitions{ {
 	{ PermanentUpgradeType::MaxHP, PermanentUpgradeCategory::Survival, kPermanentMaxHPIconPath },
 	{ PermanentUpgradeType::Attack, PermanentUpgradeCategory::Offense, kPermanentAttackIconPath },
 	{ PermanentUpgradeType::MoveSpeed, PermanentUpgradeCategory::Mobility, kPermanentMoveSpeedIconPath },
 	{ PermanentUpgradeType::ExpPickupRange, PermanentUpgradeCategory::Utility, kPermanentExpPickupRangeIconPath },
+	{ PermanentUpgradeType::CoinGain, PermanentUpgradeCategory::Utility, kPermanentCoinGainIconPath },
 } };
 
 struct CharacterUiDefinition {
@@ -254,13 +259,13 @@ void TitleScene::Update()
 
 	UpdateAudio();
 	UpdateNavigation();
-	UpdatePermanentUpgradeInput();
-	UpdateCharacterSelectionInput();
+	if (showingUpgradeScreen_) {
+		UpdatePermanentUpgradeInput();
+	}
 	UpdateModelAnimation();
 	UpdateCameraAnimation();
 	UpdateCoinDisplay();
-	UpdatePermanentUpgradeDisplay();
-	UpdateCharacterSelectionDisplay();
+	UpdateShopLevelDisplay();
 
 	if (titleObject_) {
 		titleObject_->Update();
@@ -305,10 +310,14 @@ void TitleScene::Draw()
 
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
 	titleSprite_.Draw();
+	if (showingUpgradeScreen_) {
+		shopSprite_.Draw();
+	}
 	cursorSprite_.Draw();
-	DrawCoinDisplay();
-	DrawPermanentUpgradeDisplay();
-	DrawCharacterSelectionDisplay();
+	if (showingUpgradeScreen_) {
+		DrawCoinDisplay();
+		DrawShopDisplay();
+	}
 	if (curtain_) {
 		curtain_->Draw();
 	}
@@ -321,10 +330,27 @@ void TitleScene::InitializeResources()
 	layoutSettings_.titleSize = UILayoutIO::GetVector2(titleLayout, "titleSize", layoutSettings_.titleSize);
 	layoutSettings_.cursorBasePosition = UILayoutIO::GetVector2(titleLayout, "cursorBasePosition", layoutSettings_.cursorBasePosition);
 	layoutSettings_.cursorSize = UILayoutIO::GetVector2(titleLayout, "cursorSize", layoutSettings_.cursorSize);
-	layoutSettings_.cursorStepY = UILayoutIO::GetFloat(titleLayout, "cursorStepY", layoutSettings_.cursorStepY);
+	layoutSettings_.cursorShopOffset = UILayoutIO::GetVector2(titleLayout, "cursorShopOffset", layoutSettings_.cursorShopOffset);
+	layoutSettings_.cursorQuitOffset = UILayoutIO::GetVector2(titleLayout, "cursorQuitOffset", layoutSettings_.cursorQuitOffset);
+	layoutSettings_.cursorEasingSpeed = UILayoutIO::GetFloat(titleLayout, "cursorEasingSpeed", layoutSettings_.cursorEasingSpeed);
 	layoutSettings_.menuHitboxPosition = UILayoutIO::GetVector2(titleLayout, "menuHitboxPosition", layoutSettings_.menuHitboxPosition);
 	layoutSettings_.menuHitboxSize = UILayoutIO::GetVector2(titleLayout, "menuHitboxSize", layoutSettings_.menuHitboxSize);
-	layoutSettings_.menuHitboxStepY = UILayoutIO::GetFloat(titleLayout, "menuHitboxStepY", layoutSettings_.menuHitboxStepY);
+	for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
+		layoutSettings_.shopItemPositions[static_cast<size_t>(index)] = UILayoutIO::GetVector2(
+			titleLayout,
+			"shopItemPosition" + std::to_string(index),
+			layoutSettings_.shopItemPositions[static_cast<size_t>(index)]);
+	}
+	layoutSettings_.shopItemHitboxSize = UILayoutIO::GetVector2(titleLayout, "shopItemHitboxSize", layoutSettings_.shopItemHitboxSize);
+	layoutSettings_.shopLevelSquareSize = UILayoutIO::GetVector2(titleLayout, "shopLevelSquareSize", layoutSettings_.shopLevelSquareSize);
+	layoutSettings_.shopLevelSquareStepX = UILayoutIO::GetFloat(titleLayout, "shopLevelSquareStepX", layoutSettings_.shopLevelSquareStepX);
+	layoutSettings_.shopLevelSquareOffsetY = UILayoutIO::GetFloat(titleLayout, "shopLevelSquareOffsetY", layoutSettings_.shopLevelSquareOffsetY);
+	layoutSettings_.shopPriceOffset = UILayoutIO::GetVector2(titleLayout, "shopPriceOffset", layoutSettings_.shopPriceOffset);
+	layoutSettings_.shopPriceDigitSize = UILayoutIO::GetVector2(titleLayout, "shopPriceDigitSize", layoutSettings_.shopPriceDigitSize);
+	layoutSettings_.shopPriceDigitStepX = UILayoutIO::GetFloat(titleLayout, "shopPriceDigitStepX", layoutSettings_.shopPriceDigitStepX);
+	layoutSettings_.shopCoinPosition = UILayoutIO::GetVector2(titleLayout, "shopCoinPosition", layoutSettings_.shopCoinPosition);
+	layoutSettings_.shopCoinDigitSize = UILayoutIO::GetVector2(titleLayout, "shopCoinDigitSize", layoutSettings_.shopCoinDigitSize);
+	layoutSettings_.shopCoinDigitStepX = UILayoutIO::GetFloat(titleLayout, "shopCoinDigitStepX", layoutSettings_.shopCoinDigitStepX);
 	layoutSettings_.modelBasePosition = UILayoutIO::GetVector3(titleLayout, "modelBasePosition", layoutSettings_.modelBasePosition);
 	layoutSettings_.modelScale = UILayoutIO::GetVector3(titleLayout, "modelScale", layoutSettings_.modelScale);
 	layoutSettings_.cameraTarget = UILayoutIO::GetVector3(titleLayout, "cameraTarget", layoutSettings_.cameraTarget);
@@ -351,14 +377,18 @@ void TitleScene::InitializeResources()
 		ResourcePaths::MakeTexturePath(kTitleTexturePath);
 	const std::string cursorTexturePath =
 		ResourcePaths::MakeTexturePath(kCursorTexturePath);
+	const std::string shopTexturePath =
+		ResourcePaths::MakeTexturePath(kShopTexturePath);
 	Engine::Base::TextureManager::GetInstance()->LoadTextures({
 		titleTexturePath,
 		cursorTexturePath,
+		shopTexturePath,
 		ResourcePaths::MakeTexturePath(kNumberTexturePath),
 		ResourcePaths::MakeTexturePath(kPermanentMaxHPIconPath),
 		ResourcePaths::MakeTexturePath(kPermanentAttackIconPath),
 		ResourcePaths::MakeTexturePath(kPermanentMoveSpeedIconPath),
 		ResourcePaths::MakeTexturePath(kPermanentExpPickupRangeIconPath),
+		ResourcePaths::MakeTexturePath(kPermanentCoinGainIconPath),
 		ResourcePaths::MakeTexturePath(kCharacterUiDefinitions[0].iconPath),
 		ResourcePaths::MakeTexturePath(kCharacterUiDefinitions[1].iconPath),
 		ResourcePaths::MakeTexturePath(kCharacterUiDefinitions[2].iconPath),
@@ -367,12 +397,32 @@ void TitleScene::InitializeResources()
 		});
 	titleSprite_.Initialize(titleTexturePath, layoutSettings_.titlePosition);
 	cursorSprite_.Initialize(cursorTexturePath, layoutSettings_.cursorBasePosition);
+	shopSprite_.Initialize(shopTexturePath, { 0.0f, 0.0f });
+	shopSprite_.SetSize({ 1280.0f, 720.0f });
+	for (int32_t itemIndex = 0; itemIndex < kPermanentUpgradeCount; ++itemIndex) {
+		const int32_t cap = kShopLevelCaps[static_cast<size_t>(itemIndex)];
+		const float rowWidth = layoutSettings_.shopLevelSquareSize.x +
+			layoutSettings_.shopLevelSquareStepX * static_cast<float>(cap - 1);
+		const float startX = layoutSettings_.shopItemPositions[static_cast<size_t>(itemIndex)].x +
+			(layoutSettings_.shopItemHitboxSize.x - rowWidth) * 0.5f;
+		shopHighlights_[static_cast<size_t>(itemIndex)].Initialize();
+		for (int32_t levelIndex = 0; levelIndex < kShopMaxLevelSlots; ++levelIndex) {
+			UIPanel& square = shopLevelSquares_[static_cast<size_t>(itemIndex)][static_cast<size_t>(levelIndex)];
+			square.Initialize();
+			square.SetPosition({
+				startX + layoutSettings_.shopLevelSquareStepX * static_cast<float>(levelIndex),
+				layoutSettings_.shopItemPositions[static_cast<size_t>(itemIndex)].y + layoutSettings_.shopLevelSquareOffsetY,
+			});
+			square.SetSize(layoutSettings_.shopLevelSquareSize);
+			square.SetVisible(levelIndex < cap);
+		}
+	}
 	coinDigitTexture_ = GameTextureCache::Load(kNumberTexturePath);
 	for (int32_t index = 0; index < kCoinDigitCount; ++index) {
 		coinDigits_[index] = GameSpriteFactory::Create(
 			coinDigitTexture_,
-			{ 48.0f + 20.0f * static_cast<float>(index), 42.0f });
-		coinDigits_[index]->SetSize({ 20.0f, 26.0f });
+			{ layoutSettings_.shopCoinPosition.x + layoutSettings_.shopCoinDigitStepX * static_cast<float>(index), layoutSettings_.shopCoinPosition.y });
+		coinDigits_[index]->SetSize(layoutSettings_.shopCoinDigitSize);
 		coinDigits_[index]->SetTextureSize({ 24.0f, 32.0f });
 	}
 	for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
@@ -491,10 +541,8 @@ void TitleScene::ApplyLayout()
 {
 	titleSprite_.SetPosition(layoutSettings_.titlePosition);
 	titleSprite_.SetSize(layoutSettings_.titleSize);
-	cursorSprite_.SetPosition({
-		layoutSettings_.cursorBasePosition.x,
-		layoutSettings_.cursorBasePosition.y + layoutSettings_.cursorStepY * static_cast<float>(menuIndex_)
-		});
+	cursorPosition_ = layoutSettings_.cursorBasePosition;
+	cursorSprite_.SetPosition(cursorPosition_);
 	cursorSprite_.SetSize(layoutSettings_.cursorSize);
 
 	if (titleObject_) {
@@ -524,15 +572,30 @@ void TitleScene::UpdateCurtain()
 void TitleScene::UpdateNavigation()
 {
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	const GameMenuInputState menuInput = GameMenuController::Update(input, navigationInputDevice_);
+	navigationInputDevice_ = menuInput.device;
+
+	if (showingUpgradeScreen_) {
+		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		if (menuInput.cancel) {
+			showingUpgradeScreen_ = false;
+			cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
+		return;
+	}
+
 	const bool mouseInsideScene = ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos());
 	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 
 	int32_t hoveredMenuIndex = -1;
 	if (mouseInsideScene) {
-		for (int32_t index = 0; index < 2; ++index) {
+		for (int32_t index = 0; index < 3; ++index) {
+			const Vector2 offset = index == 1
+				? layoutSettings_.cursorShopOffset
+				: (index == 2 ? layoutSettings_.cursorQuitOffset : Vector2{});
 			const Vector2 rectPosition{
-				layoutSettings_.menuHitboxPosition.x,
-				layoutSettings_.menuHitboxPosition.y + layoutSettings_.menuHitboxStepY * static_cast<float>(index),
+				layoutSettings_.menuHitboxPosition.x + offset.x,
+				layoutSettings_.menuHitboxPosition.y + offset.y,
 			};
 			if (IsPointInRect(mousePosition, rectPosition, layoutSettings_.menuHitboxSize)) {
 				hoveredMenuIndex = index;
@@ -540,9 +603,6 @@ void TitleScene::UpdateNavigation()
 			}
 		}
 	}
-
-	const GameMenuInputState menuInput = GameMenuController::Update(input, navigationInputDevice_);
-	navigationInputDevice_ = menuInput.device;
 
 	const int32_t previousIndex = menuIndex_;
 	switch (navigationInputDevice_) {
@@ -553,9 +613,10 @@ void TitleScene::UpdateNavigation()
 		break;
 	case GameInputBindings::NavigationInputDevice::Keyboard:
 	case GameInputBindings::NavigationInputDevice::Gamepad:
-		if (menuInput.moveDelta != 0) {
-			menuIndex_ = std::clamp(menuIndex_ + menuInput.moveDelta, 0, 1);
-		}
+		if (GameInputBindings::IsMenuRightTriggered(input)) { menuIndex_ = 1; }
+		if (GameInputBindings::IsMenuLeftTriggered(input)) { menuIndex_ = 0; }
+		if (GameInputBindings::IsMenuDownTriggered(input)) { menuIndex_ = 2; }
+		if (GameInputBindings::IsMenuUpTriggered(input)) { menuIndex_ = 0; }
 		break;
 	case GameInputBindings::NavigationInputDevice::None:
 	default:
@@ -567,10 +628,17 @@ void TitleScene::UpdateNavigation()
 		GameAudioCache::SetVolumeFromTuning(selectSeHandle_, kAudioTitleSelect, 1.0f);
 	}
 
-	cursorSprite_.SetPosition({
-		layoutSettings_.cursorBasePosition.x,
-		layoutSettings_.cursorBasePosition.y + layoutSettings_.cursorStepY * static_cast<float>(menuIndex_)
-		});
+	const Vector2 cursorOffset = menuIndex_ == 1
+		? layoutSettings_.cursorShopOffset
+		: (menuIndex_ == 2 ? layoutSettings_.cursorQuitOffset : Vector2{});
+	const Vector2 cursorTarget{
+		layoutSettings_.cursorBasePosition.x + cursorOffset.x,
+		layoutSettings_.cursorBasePosition.y + cursorOffset.y,
+	};
+	const float easing = 1.0f - std::exp(-layoutSettings_.cursorEasingSpeed * kFixedDeltaTime);
+	cursorPosition_.x += (cursorTarget.x - cursorPosition_.x) * easing;
+	cursorPosition_.y += (cursorTarget.y - cursorPosition_.y) * easing;
+	cursorSprite_.SetPosition(cursorPosition_);
 
 	const bool confirmTriggered =
 		navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse
@@ -591,6 +659,10 @@ void TitleScene::UpdateNavigation()
 		StartGameTransition();
 		break;
 	case 1:
+		showingUpgradeScreen_ = true;
+		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		break;
+	case 2:
 		PostQuitMessage(0);
 		break;
 	default:
@@ -605,8 +677,7 @@ void TitleScene::UpdatePermanentUpgradeInput()
 	}
 
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (!input->TriggerMouse(0) ||
-		!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
 		return;
 	}
 
@@ -614,9 +685,13 @@ void TitleScene::UpdatePermanentUpgradeInput()
 	for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
 		if (!IsPointInRect(
 			mousePosition,
-			PermanentUpgradeIconPosition(index),
-			kPermanentUpgradeRowHitboxSize)) {
+			layoutSettings_.shopItemPositions[static_cast<size_t>(index)],
+			layoutSettings_.shopItemHitboxSize)) {
 			continue;
+		}
+		shopItemIndex_ = index;
+		if (!input->TriggerMouse(0)) {
+			break;
 		}
 
 		bool purchased = false;
@@ -632,6 +707,9 @@ void TitleScene::UpdatePermanentUpgradeInput()
 			break;
 		case PermanentUpgradeType::ExpPickupRange:
 			purchased = sessionContext_->TryPurchasePermanentExpPickupRange();
+			break;
+		case PermanentUpgradeType::CoinGain:
+			purchased = sessionContext_->TryPurchasePermanentCoinGain();
 			break;
 		default:
 			break;
@@ -773,9 +851,9 @@ void TitleScene::UpdateCoinDisplay()
 			{ 24.0f, 32.0f },
 			digit);
 		coinDigits_[index]->SetPosition({
-			48.0f + 20.0f * static_cast<float>(index),
-			42.0f });
-		coinDigits_[index]->SetSize({ 20.0f, 26.0f });
+			layoutSettings_.shopCoinPosition.x + layoutSettings_.shopCoinDigitStepX * static_cast<float>(index),
+			layoutSettings_.shopCoinPosition.y });
+		coinDigits_[index]->SetSize(layoutSettings_.shopCoinDigitSize);
 		coinDigits_[index]->SetColor({
 			1.0f,
 			0.86f,
@@ -792,12 +870,14 @@ void TitleScene::UpdatePermanentUpgradeDisplay()
 		sessionContext_ ? sessionContext_->GetPermanentAttackLevel() : 0,
 		sessionContext_ ? sessionContext_->GetPermanentMoveSpeedLevel() : 0,
 		sessionContext_ ? sessionContext_->GetPermanentExpPickupRangeLevel() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentCoinGainLevel() : 0,
 	};
 	const std::array<int32_t, kPermanentUpgradeCount> costs{
 		sessionContext_ ? sessionContext_->GetPermanentMaxHPCost() : 0,
 		sessionContext_ ? sessionContext_->GetPermanentAttackCost() : 0,
 		sessionContext_ ? sessionContext_->GetPermanentMoveSpeedCost() : 0,
 		sessionContext_ ? sessionContext_->GetPermanentExpPickupRangeCost() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentCoinGainCost() : 0,
 	};
 	const int32_t ownedCoins = sessionContext_ ? sessionContext_->GetOwnedCoins() : 0;
 	for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
@@ -974,6 +1054,99 @@ void TitleScene::DrawCharacterSelectionDisplay()
 	}
 }
 
+void TitleScene::UpdateShopLevelDisplay()
+{
+	const std::array<int32_t, kPermanentUpgradeCount> levels{
+		sessionContext_ ? sessionContext_->GetPermanentMaxHPLevel() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentAttackLevel() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentMoveSpeedLevel() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentExpPickupRangeLevel() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentCoinGainLevel() : 0,
+	};
+	const std::array<int32_t, kPermanentUpgradeCount> costs{
+		sessionContext_ ? sessionContext_->GetPermanentMaxHPCost() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentAttackCost() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentMoveSpeedCost() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentExpPickupRangeCost() : 0,
+		sessionContext_ ? sessionContext_->GetPermanentCoinGainCost() : 0,
+	};
+	const int32_t ownedCoins = sessionContext_ ? sessionContext_->GetOwnedCoins() : 0;
+	for (int32_t itemIndex = 0; itemIndex < kPermanentUpgradeCount; ++itemIndex) {
+		const int32_t cap = kShopLevelCaps[static_cast<size_t>(itemIndex)];
+		const Vector2 itemPosition = layoutSettings_.shopItemPositions[static_cast<size_t>(itemIndex)];
+		const float rowWidth = layoutSettings_.shopLevelSquareSize.x +
+			layoutSettings_.shopLevelSquareStepX * static_cast<float>(cap - 1);
+		const float squareStartX = itemPosition.x +
+			(layoutSettings_.shopItemHitboxSize.x - rowWidth) * 0.5f;
+		UIPanel& highlight = shopHighlights_[static_cast<size_t>(itemIndex)];
+		highlight.SetPosition(itemPosition);
+		highlight.SetSize(layoutSettings_.shopItemHitboxSize);
+		highlight.SetColor(itemIndex == shopItemIndex_
+			? Vector4{ 1.0f, 0.88f, 0.12f, 0.22f }
+			: Vector4{ 0.0f, 0.0f, 0.0f, 0.0f });
+		for (int32_t levelIndex = 0; levelIndex < kShopMaxLevelSlots; ++levelIndex) {
+			UIPanel& square = shopLevelSquares_[static_cast<size_t>(itemIndex)][static_cast<size_t>(levelIndex)];
+			square.SetPosition({
+				squareStartX + layoutSettings_.shopLevelSquareStepX * static_cast<float>(levelIndex),
+				itemPosition.y + layoutSettings_.shopLevelSquareOffsetY,
+			});
+			square.SetSize(layoutSettings_.shopLevelSquareSize);
+			square.SetVisible(levelIndex < cap);
+			square.SetColor(levelIndex < levels[static_cast<size_t>(itemIndex)]
+				? Vector4{ 0.12f, 0.42f, 1.0f, 1.0f }
+				: Vector4{ 0.95f, 0.12f, 0.12f, 1.0f });
+		}
+
+		const bool maxed = costs[static_cast<size_t>(itemIndex)] <= 0;
+		const int32_t displayCost = std::clamp(costs[static_cast<size_t>(itemIndex)], 0, 9999);
+		int32_t divisor = 1000;
+		bool nonZeroSeen = false;
+		for (int32_t digitIndex = 0; digitIndex < kPermanentUpgradeCostDigitCount; ++digitIndex) {
+			auto& digit = permanentUpgradeCostDigits_[static_cast<size_t>(itemIndex)][static_cast<size_t>(digitIndex)];
+			if (!digit) {
+				divisor /= 10;
+				continue;
+			}
+			const int32_t value = divisor > 0 ? (displayCost / divisor) % 10 : 0;
+			nonZeroSeen = nonZeroSeen || value > 0 || digitIndex == kPermanentUpgradeCostDigitCount - 1;
+			DigitSpriteUtil::SetDigitSprite(*digit, 24.0f, { 24.0f, 32.0f }, value);
+			digit->SetPosition({
+				itemPosition.x + layoutSettings_.shopPriceOffset.x +
+					layoutSettings_.shopPriceDigitStepX * static_cast<float>(digitIndex),
+				itemPosition.y + layoutSettings_.shopPriceOffset.y,
+			});
+			digit->SetSize(layoutSettings_.shopPriceDigitSize);
+			const bool affordable = ownedCoins >= displayCost;
+			digit->SetColor({
+				affordable ? 1.0f : 0.7f,
+				affordable ? 0.86f : 0.3f,
+				affordable ? 0.2f : 0.3f,
+				maxed ? 0.0f : (nonZeroSeen ? 1.0f : 0.0f),
+			});
+			divisor /= 10;
+		}
+	}
+}
+
+void TitleScene::DrawShopDisplay()
+{
+	for (UIPanel& highlight : shopHighlights_) {
+		highlight.Draw();
+	}
+	for (size_t itemIndex = 0; itemIndex < shopLevelSquares_.size(); ++itemIndex) {
+		auto& itemSquares = shopLevelSquares_[itemIndex];
+		for (UIPanel& square : itemSquares) {
+			square.Draw();
+		}
+		for (auto& digit : permanentUpgradeCostDigits_[itemIndex]) {
+			if (digit) {
+				digit->Update();
+				digit->Draw();
+			}
+		}
+	}
+}
+
 void TitleScene::SaveLayout() const
 {
 	UILayoutIO::Save(DataPaths::kTitleLayout,
@@ -982,10 +1155,26 @@ void TitleScene::SaveLayout() const
 			{ "titleSize", { layoutSettings_.titleSize.x, layoutSettings_.titleSize.y } },
 			{ "cursorBasePosition", { layoutSettings_.cursorBasePosition.x, layoutSettings_.cursorBasePosition.y } },
 			{ "cursorSize", { layoutSettings_.cursorSize.x, layoutSettings_.cursorSize.y } },
-			{ "cursorStepY", { layoutSettings_.cursorStepY } },
+			{ "cursorShopOffset", { layoutSettings_.cursorShopOffset.x, layoutSettings_.cursorShopOffset.y } },
+			{ "cursorQuitOffset", { layoutSettings_.cursorQuitOffset.x, layoutSettings_.cursorQuitOffset.y } },
+			{ "cursorEasingSpeed", { layoutSettings_.cursorEasingSpeed } },
 			{ "menuHitboxPosition", { layoutSettings_.menuHitboxPosition.x, layoutSettings_.menuHitboxPosition.y } },
 			{ "menuHitboxSize", { layoutSettings_.menuHitboxSize.x, layoutSettings_.menuHitboxSize.y } },
-			{ "menuHitboxStepY", { layoutSettings_.menuHitboxStepY } },
+			{ "shopItemPosition0", { layoutSettings_.shopItemPositions[0].x, layoutSettings_.shopItemPositions[0].y } },
+			{ "shopItemPosition1", { layoutSettings_.shopItemPositions[1].x, layoutSettings_.shopItemPositions[1].y } },
+			{ "shopItemPosition2", { layoutSettings_.shopItemPositions[2].x, layoutSettings_.shopItemPositions[2].y } },
+			{ "shopItemPosition3", { layoutSettings_.shopItemPositions[3].x, layoutSettings_.shopItemPositions[3].y } },
+			{ "shopItemPosition4", { layoutSettings_.shopItemPositions[4].x, layoutSettings_.shopItemPositions[4].y } },
+			{ "shopItemHitboxSize", { layoutSettings_.shopItemHitboxSize.x, layoutSettings_.shopItemHitboxSize.y } },
+			{ "shopLevelSquareSize", { layoutSettings_.shopLevelSquareSize.x, layoutSettings_.shopLevelSquareSize.y } },
+			{ "shopLevelSquareStepX", { layoutSettings_.shopLevelSquareStepX } },
+			{ "shopLevelSquareOffsetY", { layoutSettings_.shopLevelSquareOffsetY } },
+			{ "shopPriceOffset", { layoutSettings_.shopPriceOffset.x, layoutSettings_.shopPriceOffset.y } },
+			{ "shopPriceDigitSize", { layoutSettings_.shopPriceDigitSize.x, layoutSettings_.shopPriceDigitSize.y } },
+			{ "shopPriceDigitStepX", { layoutSettings_.shopPriceDigitStepX } },
+			{ "shopCoinPosition", { layoutSettings_.shopCoinPosition.x, layoutSettings_.shopCoinPosition.y } },
+			{ "shopCoinDigitSize", { layoutSettings_.shopCoinDigitSize.x, layoutSettings_.shopCoinDigitSize.y } },
+			{ "shopCoinDigitStepX", { layoutSettings_.shopCoinDigitStepX } },
 			{ "modelBasePosition", { layoutSettings_.modelBasePosition.x, layoutSettings_.modelBasePosition.y, layoutSettings_.modelBasePosition.z } },
 			{ "modelScale", { layoutSettings_.modelScale.x, layoutSettings_.modelScale.y, layoutSettings_.modelScale.z } },
 			{ "cameraTarget", { layoutSettings_.cameraTarget.x, layoutSettings_.cameraTarget.y, layoutSettings_.cameraTarget.z } },
@@ -1014,10 +1203,27 @@ void TitleScene::ReloadDebugData()
 	layoutSettings_.titleSize = UILayoutIO::GetVector2(titleLayout, "titleSize", layoutSettings_.titleSize);
 	layoutSettings_.cursorBasePosition = UILayoutIO::GetVector2(titleLayout, "cursorBasePosition", layoutSettings_.cursorBasePosition);
 	layoutSettings_.cursorSize = UILayoutIO::GetVector2(titleLayout, "cursorSize", layoutSettings_.cursorSize);
-	layoutSettings_.cursorStepY = UILayoutIO::GetFloat(titleLayout, "cursorStepY", layoutSettings_.cursorStepY);
+	layoutSettings_.cursorShopOffset = UILayoutIO::GetVector2(titleLayout, "cursorShopOffset", layoutSettings_.cursorShopOffset);
+	layoutSettings_.cursorQuitOffset = UILayoutIO::GetVector2(titleLayout, "cursorQuitOffset", layoutSettings_.cursorQuitOffset);
+	layoutSettings_.cursorEasingSpeed = UILayoutIO::GetFloat(titleLayout, "cursorEasingSpeed", layoutSettings_.cursorEasingSpeed);
 	layoutSettings_.menuHitboxPosition = UILayoutIO::GetVector2(titleLayout, "menuHitboxPosition", layoutSettings_.menuHitboxPosition);
 	layoutSettings_.menuHitboxSize = UILayoutIO::GetVector2(titleLayout, "menuHitboxSize", layoutSettings_.menuHitboxSize);
-	layoutSettings_.menuHitboxStepY = UILayoutIO::GetFloat(titleLayout, "menuHitboxStepY", layoutSettings_.menuHitboxStepY);
+	for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
+		layoutSettings_.shopItemPositions[static_cast<size_t>(index)] = UILayoutIO::GetVector2(
+			titleLayout,
+			"shopItemPosition" + std::to_string(index),
+			layoutSettings_.shopItemPositions[static_cast<size_t>(index)]);
+	}
+	layoutSettings_.shopItemHitboxSize = UILayoutIO::GetVector2(titleLayout, "shopItemHitboxSize", layoutSettings_.shopItemHitboxSize);
+	layoutSettings_.shopLevelSquareSize = UILayoutIO::GetVector2(titleLayout, "shopLevelSquareSize", layoutSettings_.shopLevelSquareSize);
+	layoutSettings_.shopLevelSquareStepX = UILayoutIO::GetFloat(titleLayout, "shopLevelSquareStepX", layoutSettings_.shopLevelSquareStepX);
+	layoutSettings_.shopLevelSquareOffsetY = UILayoutIO::GetFloat(titleLayout, "shopLevelSquareOffsetY", layoutSettings_.shopLevelSquareOffsetY);
+	layoutSettings_.shopPriceOffset = UILayoutIO::GetVector2(titleLayout, "shopPriceOffset", layoutSettings_.shopPriceOffset);
+	layoutSettings_.shopPriceDigitSize = UILayoutIO::GetVector2(titleLayout, "shopPriceDigitSize", layoutSettings_.shopPriceDigitSize);
+	layoutSettings_.shopPriceDigitStepX = UILayoutIO::GetFloat(titleLayout, "shopPriceDigitStepX", layoutSettings_.shopPriceDigitStepX);
+	layoutSettings_.shopCoinPosition = UILayoutIO::GetVector2(titleLayout, "shopCoinPosition", layoutSettings_.shopCoinPosition);
+	layoutSettings_.shopCoinDigitSize = UILayoutIO::GetVector2(titleLayout, "shopCoinDigitSize", layoutSettings_.shopCoinDigitSize);
+	layoutSettings_.shopCoinDigitStepX = UILayoutIO::GetFloat(titleLayout, "shopCoinDigitStepX", layoutSettings_.shopCoinDigitStepX);
 	layoutSettings_.modelBasePosition = UILayoutIO::GetVector3(titleLayout, "modelBasePosition", layoutSettings_.modelBasePosition);
 	layoutSettings_.modelScale = UILayoutIO::GetVector3(titleLayout, "modelScale", layoutSettings_.modelScale);
 	layoutSettings_.cameraTarget = UILayoutIO::GetVector3(titleLayout, "cameraTarget", layoutSettings_.cameraTarget);

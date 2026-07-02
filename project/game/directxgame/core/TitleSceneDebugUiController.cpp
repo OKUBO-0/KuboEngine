@@ -36,6 +36,59 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 	if (input && input->TriggerKey(DIK_F5)) {
 		scene.ReloadDebugData();
 	}
+	if (scene.titleDebugDrawEnabled_ && scene.showingUpgradeScreen_) {
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		for (int32_t index = 0; index < 5; ++index) {
+			const Vector2 gameMin = layout.shopItemPositions[static_cast<size_t>(index)];
+			const Vector2 gameMax{
+				gameMin.x + layout.shopItemHitboxSize.x,
+				gameMin.y + layout.shopItemHitboxSize.y,
+			};
+			const Vector2 screenMin = ScreenUtil::ToWindowPosition(gameMin);
+			const Vector2 screenMax = ScreenUtil::ToWindowPosition(gameMax);
+			const ImU32 color = index == scene.shopItemIndex_
+				? IM_COL32(64, 255, 96, 230)
+				: IM_COL32(255, 80, 80, 220);
+			drawList->AddRect(
+				{ screenMin.x, screenMin.y },
+				{ screenMax.x, screenMax.y },
+				color, 0.0f, 0, 2.0f);
+		}
+	}
+
+	if (scene.titleDebugDrawEnabled_ && !scene.showingUpgradeScreen_) {
+		constexpr const char* kMenuNames[]{ "PLAY", "SHOP", "QUIT" };
+		ImDrawList* drawList = ImGui::GetForegroundDrawList();
+		for (int32_t index = 0; index < 3; ++index) {
+			const Vector2 offset = index == 1
+				? layout.cursorShopOffset
+				: (index == 2 ? layout.cursorQuitOffset : Vector2{});
+			const Vector2 gameMin{
+				layout.menuHitboxPosition.x + offset.x,
+				layout.menuHitboxPosition.y + offset.y,
+			};
+			const Vector2 gameMax{
+				gameMin.x + layout.menuHitboxSize.x,
+				gameMin.y + layout.menuHitboxSize.y,
+			};
+			const Vector2 screenMin = ScreenUtil::ToWindowPosition(gameMin);
+			const Vector2 screenMax = ScreenUtil::ToWindowPosition(gameMax);
+			const ImU32 color = index == scene.menuIndex_
+				? IM_COL32(64, 255, 96, 230)
+				: IM_COL32(255, 200, 48, 210);
+			drawList->AddRect(
+				{ screenMin.x, screenMin.y },
+				{ screenMax.x, screenMax.y },
+				color,
+				0.0f,
+				0,
+				2.0f);
+			drawList->AddText(
+				{ screenMin.x + 4.0f, screenMin.y + 4.0f },
+				color,
+				kMenuNames[index]);
+		}
+	}
 
 	const TitleScene::DebugWindowVisibility previousWindows = windows;
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
@@ -210,14 +263,17 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				scene.ApplyLayout();
 			}
 
-			if (ImGui::DragFloat(
-					"Cursor Step",
-					&layout.cursorStepY,
-					1.0f,
-					16.0f,
-					320.0f)) {
+			float cursorShopOffset[2]{ layout.cursorShopOffset.x, layout.cursorShopOffset.y };
+			if (ImGui::DragFloat2("Cursor Shop Offset", cursorShopOffset, 1.0f, -1280.0f, 1280.0f)) {
+				layout.cursorShopOffset = { cursorShopOffset[0], cursorShopOffset[1] };
 				scene.ApplyLayout();
 			}
+			float cursorQuitOffset[2]{ layout.cursorQuitOffset.x, layout.cursorQuitOffset.y };
+			if (ImGui::DragFloat2("Cursor Quit Offset", cursorQuitOffset, 1.0f, -1280.0f, 1280.0f)) {
+				layout.cursorQuitOffset = { cursorQuitOffset[0], cursorQuitOffset[1] };
+				scene.ApplyLayout();
+			}
+			ImGui::DragFloat("Cursor Easing Speed", &layout.cursorEasingSpeed, 0.1f, 1.0f, 40.0f);
 
 			float hitboxPosition[2]{
 				layout.menuHitboxPosition.x,
@@ -250,12 +306,47 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 					hitboxSize[1],
 				};
 			}
-			ImGui::DragFloat(
-				"Menu Hitbox Step",
-				&layout.menuHitboxStepY,
-				1.0f,
-				16.0f,
-				320.0f);
+
+			if (ImGui::CollapsingHeader("Shop Layout")) {
+				for (int32_t index = 0; index < 5; ++index) {
+					float position[2]{
+						layout.shopItemPositions[static_cast<size_t>(index)].x,
+						layout.shopItemPositions[static_cast<size_t>(index)].y,
+					};
+					const std::string label = "Shop Item " + std::to_string(index) + " Position";
+					if (ImGui::DragFloat2(label.c_str(), position, 1.0f, -200.0f, 1280.0f)) {
+						layout.shopItemPositions[static_cast<size_t>(index)] = { position[0], position[1] };
+					}
+				}
+				float shopHitboxSize[2]{ layout.shopItemHitboxSize.x, layout.shopItemHitboxSize.y };
+				if (ImGui::DragFloat2("Shop Hitbox Size", shopHitboxSize, 1.0f, 8.0f, 640.0f)) {
+					layout.shopItemHitboxSize = { shopHitboxSize[0], shopHitboxSize[1] };
+				}
+				float squareSize[2]{ layout.shopLevelSquareSize.x, layout.shopLevelSquareSize.y };
+				if (ImGui::DragFloat2("Level Square Size", squareSize, 0.5f, 2.0f, 80.0f)) {
+					layout.shopLevelSquareSize = { squareSize[0], squareSize[1] };
+				}
+				ImGui::DragFloat("Level Square Spacing", &layout.shopLevelSquareStepX, 0.5f, 2.0f, 100.0f);
+				ImGui::DragFloat("Level Square Offset Y", &layout.shopLevelSquareOffsetY, 0.5f, -100.0f, 300.0f);
+				float priceOffset[2]{ layout.shopPriceOffset.x, layout.shopPriceOffset.y };
+				if (ImGui::DragFloat2("Price Offset", priceOffset, 0.5f, -200.0f, 400.0f)) {
+					layout.shopPriceOffset = { priceOffset[0], priceOffset[1] };
+				}
+				float priceSize[2]{ layout.shopPriceDigitSize.x, layout.shopPriceDigitSize.y };
+				if (ImGui::DragFloat2("Price Digit Size", priceSize, 0.5f, 4.0f, 80.0f)) {
+					layout.shopPriceDigitSize = { priceSize[0], priceSize[1] };
+				}
+				ImGui::DragFloat("Price Digit Spacing", &layout.shopPriceDigitStepX, 0.5f, 2.0f, 80.0f);
+				float coinPosition[2]{ layout.shopCoinPosition.x, layout.shopCoinPosition.y };
+				if (ImGui::DragFloat2("Owned Coin Position", coinPosition, 1.0f, -200.0f, 1280.0f)) {
+					layout.shopCoinPosition = { coinPosition[0], coinPosition[1] };
+				}
+				float coinSize[2]{ layout.shopCoinDigitSize.x, layout.shopCoinDigitSize.y };
+				if (ImGui::DragFloat2("Owned Coin Digit Size", coinSize, 0.5f, 4.0f, 80.0f)) {
+					layout.shopCoinDigitSize = { coinSize[0], coinSize[1] };
+				}
+				ImGui::DragFloat("Owned Coin Digit Spacing", &layout.shopCoinDigitStepX, 0.5f, 2.0f, 80.0f);
+			}
 
 			float modelPosition[3]{
 				layout.modelBasePosition.x,

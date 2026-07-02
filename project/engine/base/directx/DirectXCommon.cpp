@@ -18,6 +18,23 @@ constexpr float kMinTargetFrameRate = 15.0f;
 constexpr float kMaxTargetFrameRate = 1000.0f;
 constexpr float kDefaultClearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
 
+double P95(std::vector<double> samples)
+{
+	if (samples.empty()) {
+		return 0.0;
+	}
+	std::sort(samples.begin(), samples.end());
+	const size_t index = ((samples.size() * 95 + 99) / 100) - 1;
+	return samples[index];
+}
+
+double Maximum(const std::vector<double>& samples)
+{
+	return samples.empty()
+		? 0.0
+		: *std::max_element(samples.begin(), samples.end());
+}
+
 }
 
 namespace Engine::Base {
@@ -564,16 +581,20 @@ void DirectXCommon::CollectCompletedGpuTiming(uint32_t frameIndex)
 	const uint64_t frameStart = gpuTimestampCpuData_[timestampBase];
 	const uint64_t frameEnd = gpuTimestampCpuData_[timestampBase + 1];
 	if (frameEnd >= frameStart) {
-		frameGpuMillisecondsTotal_ +=
+		const double frameMilliseconds =
 			static_cast<double>(frameEnd - frameStart) * millisecondsPerTick;
+		frameGpuMillisecondsTotal_ += frameMilliseconds;
+		frameGpuMillisecondsSamples_.push_back(frameMilliseconds);
 		++frameGpuSampleCount_;
 	}
 	if (frameContext.shadowTimestampSubmitted) {
 		const uint64_t shadowStart = gpuTimestampCpuData_[timestampBase + 2];
 		const uint64_t shadowEnd = gpuTimestampCpuData_[timestampBase + 3];
 		if (shadowEnd >= shadowStart) {
-			shadowGpuMillisecondsTotal_ +=
+			const double shadowMilliseconds =
 				static_cast<double>(shadowEnd - shadowStart) * millisecondsPerTick;
+			shadowGpuMillisecondsTotal_ += shadowMilliseconds;
+			shadowGpuMillisecondsSamples_.push_back(shadowMilliseconds);
 			++shadowGpuSampleCount_;
 		}
 	}
@@ -605,6 +626,8 @@ void DirectXCommon::ResetGpuTimingStatistics()
 	shadowGpuMillisecondsTotal_ = 0.0;
 	frameGpuSampleCount_ = 0;
 	shadowGpuSampleCount_ = 0;
+	frameGpuMillisecondsSamples_.clear();
+	shadowGpuMillisecondsSamples_.clear();
 }
 
 double DirectXCommon::GetAverageFrameGpuMilliseconds() const
@@ -619,6 +642,26 @@ double DirectXCommon::GetAverageShadowGpuMilliseconds() const
 	return shadowGpuSampleCount_ > 0
 		? shadowGpuMillisecondsTotal_ / static_cast<double>(shadowGpuSampleCount_)
 		: 0.0;
+}
+
+double DirectXCommon::GetFrameGpuP95Milliseconds() const
+{
+	return P95(frameGpuMillisecondsSamples_);
+}
+
+double DirectXCommon::GetShadowGpuP95Milliseconds() const
+{
+	return P95(shadowGpuMillisecondsSamples_);
+}
+
+double DirectXCommon::GetFrameGpuMaxMilliseconds() const
+{
+	return Maximum(frameGpuMillisecondsSamples_);
+}
+
+double DirectXCommon::GetShadowGpuMaxMilliseconds() const
+{
+	return Maximum(shadowGpuMillisecondsSamples_);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetRTVCPUDescriptorHandle(uint32_t index)

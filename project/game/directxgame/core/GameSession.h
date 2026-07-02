@@ -83,6 +83,10 @@ public:
 	void RecordGpuTimingSummary(
 		double averageFrameMilliseconds,
 		double averageShadowMilliseconds,
+		double frameP95Milliseconds,
+		double shadowP95Milliseconds,
+		double frameMaxMilliseconds,
+		double shadowMaxMilliseconds,
 		uint64_t frameSampleCount,
 		uint64_t shadowSampleCount);
 	void RecordShadowPassSummary(
@@ -114,6 +118,7 @@ public:
 	bool TryPurchasePermanentAttack();
 	bool TryPurchasePermanentMoveSpeed();
 	bool TryPurchasePermanentExpPickupRange();
+	bool TryPurchasePermanentCoinGain();
 	bool TrySelectCharacter(CharacterId id);
 	bool TryUnlockCharacter(CharacterId id);
 	bool IsCharacterUnlocked(CharacterId id) const;
@@ -125,10 +130,12 @@ public:
 	int32_t GetPermanentAttackLevel() const { return permanentAttackLevel_; }
 	int32_t GetPermanentMoveSpeedLevel() const { return permanentMoveSpeedLevel_; }
 	int32_t GetPermanentExpPickupRangeLevel() const { return permanentExpPickupRangeLevel_; }
+	int32_t GetPermanentCoinGainLevel() const { return permanentCoinGainLevel_; }
 	int32_t GetPermanentMaxHPCost() const;
 	int32_t GetPermanentAttackCost() const;
 	int32_t GetPermanentMoveSpeedCost() const;
 	int32_t GetPermanentExpPickupRangeCost() const;
+	int32_t GetPermanentCoinGainCost() const;
 
 	uint32_t GetRunCount() const { return runCount_; }
 	uint32_t GetTitleVisitCount() const { return titleVisitCount_; }
@@ -161,6 +168,10 @@ private:
 	std::vector<SceneStressSample> sceneStressSamples_;
 	double stressAverageFrameGpuMilliseconds_ = 0.0;
 	double stressAverageShadowGpuMilliseconds_ = 0.0;
+	double stressFrameGpuP95Milliseconds_ = 0.0;
+	double stressShadowGpuP95Milliseconds_ = 0.0;
+	double stressFrameGpuMaxMilliseconds_ = 0.0;
+	double stressShadowGpuMaxMilliseconds_ = 0.0;
 	uint64_t stressFrameGpuSampleCount_ = 0;
 	uint64_t stressShadowGpuSampleCount_ = 0;
 	uint64_t stressShadowPassCount_ = 0;
@@ -182,6 +193,7 @@ private:
 	int32_t permanentAttackLevel_ = 0;
 	int32_t permanentMoveSpeedLevel_ = 0;
 	int32_t permanentExpPickupRangeLevel_ = 0;
+	int32_t permanentCoinGainLevel_ = 0;
 	RunResult resultData_{};
 };
 

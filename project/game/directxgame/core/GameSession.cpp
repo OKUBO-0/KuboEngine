@@ -23,16 +23,18 @@ constexpr int32_t kPermanentMaxHPLevelCap = 3;
 constexpr int32_t kPermanentAttackLevelCap = 5;
 constexpr int32_t kPermanentMoveSpeedLevelCap = 3;
 constexpr int32_t kPermanentExpPickupRangeLevelCap = 3;
-constexpr int32_t kPermanentMaxHPBaseCost = 120;
-constexpr int32_t kPermanentAttackBaseCost = 90;
-constexpr int32_t kPermanentMoveSpeedBaseCost = 100;
-constexpr int32_t kPermanentExpPickupRangeBaseCost = 110;
+constexpr int32_t kPermanentCoinGainLevelCap = 3;
+constexpr int32_t kPermanentMaxHPBaseCost = 240;
+constexpr int32_t kPermanentAttackBaseCost = 180;
+constexpr int32_t kPermanentMoveSpeedBaseCost = 200;
+constexpr int32_t kPermanentExpPickupRangeBaseCost = 220;
+constexpr int32_t kPermanentCoinGainBaseCost = 300;
 constexpr int32_t kDefaultUnlockedCharacterMask = 1 << static_cast<int32_t>(DirectXGame::CharacterId::Octopus);
 constexpr std::array<DirectXGame::CharacterDefinition, 4> kCharacterDefinitions{ {
 	{ DirectXGame::CharacterId::Octopus, 0, true },
-	{ DirectXGame::CharacterId::Flame, 220, false },
-	{ DirectXGame::CharacterId::Blade, 260, false },
-	{ DirectXGame::CharacterId::Storm, 240, false },
+	{ DirectXGame::CharacterId::Flame, 440, false },
+	{ DirectXGame::CharacterId::Blade, 520, false },
+	{ DirectXGame::CharacterId::Storm, 480, false },
 } };
 
 bool StartsWith(std::string_view text, std::string_view prefix)
@@ -309,6 +311,10 @@ void GameSession::WriteSceneStressReport()
 		<< stressAverageFrameGpuMilliseconds_ << '\n';
 	output << "averageShadowGpuMilliseconds="
 		<< stressAverageShadowGpuMilliseconds_ << '\n';
+	output << "frameGpuP95Milliseconds=" << stressFrameGpuP95Milliseconds_ << '\n';
+	output << "shadowGpuP95Milliseconds=" << stressShadowGpuP95Milliseconds_ << '\n';
+	output << "frameGpuMaxMilliseconds=" << stressFrameGpuMaxMilliseconds_ << '\n';
+	output << "shadowGpuMaxMilliseconds=" << stressShadowGpuMaxMilliseconds_ << '\n';
 	output << "shadowGpuFramePercent="
 		<< shadowGpuFramePercent << '\n';
 	output << "frameGpuSampleCount=" << stressFrameGpuSampleCount_ << '\n';
@@ -388,6 +394,10 @@ void GameSession::WriteSceneStressReport()
 	writeMetric("recorded_frames", sceneStressSamples_.size(), "frames");
 	writeMetric("average_frame_gpu_ms", stressAverageFrameGpuMilliseconds_, "ms");
 	writeMetric("average_shadow_gpu_ms", stressAverageShadowGpuMilliseconds_, "ms");
+	writeMetric("frame_gpu_p95_ms", stressFrameGpuP95Milliseconds_, "ms");
+	writeMetric("shadow_gpu_p95_ms", stressShadowGpuP95Milliseconds_, "ms");
+	writeMetric("frame_gpu_max_ms", stressFrameGpuMaxMilliseconds_, "ms");
+	writeMetric("shadow_gpu_max_ms", stressShadowGpuMaxMilliseconds_, "ms");
 	writeMetric("shadow_gpu_frame_percent", shadowGpuFramePercent, "percent");
 	writeMetric("frame_gpu_sample_count", stressFrameGpuSampleCount_, "samples");
 	writeMetric("shadow_gpu_sample_count", stressShadowGpuSampleCount_, "samples");
@@ -423,11 +433,19 @@ void GameSession::WriteSceneStressReport()
 void GameSession::RecordGpuTimingSummary(
 	double averageFrameMilliseconds,
 	double averageShadowMilliseconds,
+	double frameP95Milliseconds,
+	double shadowP95Milliseconds,
+	double frameMaxMilliseconds,
+	double shadowMaxMilliseconds,
 	uint64_t frameSampleCount,
 	uint64_t shadowSampleCount)
 {
 	stressAverageFrameGpuMilliseconds_ = averageFrameMilliseconds;
 	stressAverageShadowGpuMilliseconds_ = averageShadowMilliseconds;
+	stressFrameGpuP95Milliseconds_ = frameP95Milliseconds;
+	stressShadowGpuP95Milliseconds_ = shadowP95Milliseconds;
+	stressFrameGpuMaxMilliseconds_ = frameMaxMilliseconds;
+	stressShadowGpuMaxMilliseconds_ = shadowMaxMilliseconds;
 	stressFrameGpuSampleCount_ = frameSampleCount;
 	stressShadowGpuSampleCount_ = shadowSampleCount;
 }
@@ -486,7 +504,12 @@ void GameSession::AddRunCoins(int32_t amount)
 	if (amount <= 0) {
 		return;
 	}
-	runCoins_ += amount;
+	constexpr int32_t kCoinGainPercentPerLevel = 25;
+	const int32_t gainPercent = 100 +
+		kCoinGainPercentPerLevel * permanentCoinGainLevel_;
+	const int32_t adjustedAmount = static_cast<int32_t>(
+		(static_cast<int64_t>(amount) * gainPercent + 50) / 100);
+	runCoins_ += adjustedAmount;
 }
 
 void GameSession::CommitRunCoinsToProfile()
@@ -545,6 +568,19 @@ bool GameSession::TryPurchasePermanentExpPickupRange()
 		permanentExpPickupRangeLevel_,
 		kPermanentExpPickupRangeLevelCap,
 		kPermanentExpPickupRangeBaseCost);
+	if (purchased) {
+		SaveProfile();
+	}
+	return purchased;
+}
+
+bool GameSession::TryPurchasePermanentCoinGain()
+{
+	const bool purchased = TryPurchaseUpgrade(
+		ownedCoins_,
+		permanentCoinGainLevel_,
+		kPermanentCoinGainLevelCap,
+		kPermanentCoinGainBaseCost);
 	if (purchased) {
 		SaveProfile();
 	}
@@ -627,6 +663,14 @@ int32_t GameSession::GetPermanentExpPickupRangeCost() const
 		kPermanentExpPickupRangeLevelCap);
 }
 
+int32_t GameSession::GetPermanentCoinGainCost() const
+{
+	return UpgradeCost(
+		kPermanentCoinGainBaseCost,
+		permanentCoinGainLevel_,
+		kPermanentCoinGainLevelCap);
+}
+
 void GameSession::LoadProfile()
 {
 	std::ifstream input(kProfilePath);
@@ -645,6 +689,8 @@ void GameSession::LoadProfile()
 			"permanentMoveSpeedLevel=";
 		constexpr std::string_view kPermanentExpPickupRangeLevelPrefix =
 			"permanentExpPickupRangeLevel=";
+		constexpr std::string_view kPermanentCoinGainLevelPrefix =
+			"permanentCoinGainLevel=";
 		constexpr std::string_view kSelectedCharacterIdPrefix =
 			"selectedCharacterId=";
 		constexpr std::string_view kUnlockedCharacterMaskPrefix =
@@ -700,6 +746,16 @@ void GameSession::LoadProfile()
 				permanentExpPickupRangeLevel_,
 				0,
 				kPermanentExpPickupRangeLevelCap);
+			continue;
+		}
+		if (ParseProfileInt(
+			line,
+			kPermanentCoinGainLevelPrefix,
+			permanentCoinGainLevel_)) {
+			permanentCoinGainLevel_ = std::clamp(
+				permanentCoinGainLevel_,
+				0,
+				kPermanentCoinGainLevelCap);
 		}
 	}
 	unlockedCharacterMask_ |= kDefaultUnlockedCharacterMask;
@@ -720,6 +776,7 @@ void GameSession::SaveProfile() const
 	output << "permanentAttackLevel=" << permanentAttackLevel_ << '\n';
 	output << "permanentMoveSpeedLevel=" << permanentMoveSpeedLevel_ << '\n';
 	output << "permanentExpPickupRangeLevel=" << permanentExpPickupRangeLevel_ << '\n';
+	output << "permanentCoinGainLevel=" << permanentCoinGainLevel_ << '\n';
 }
 
 }

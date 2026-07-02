@@ -94,6 +94,10 @@ void ResultScene::Update()
 				sessionContext_->RecordGpuTimingSummary(
 					dxCommon->GetAverageFrameGpuMilliseconds(),
 					dxCommon->GetAverageShadowGpuMilliseconds(),
+					dxCommon->GetFrameGpuP95Milliseconds(),
+					dxCommon->GetShadowGpuP95Milliseconds(),
+					dxCommon->GetFrameGpuMaxMilliseconds(),
+					dxCommon->GetShadowGpuMaxMilliseconds(),
 					dxCommon->GetFrameGpuSampleCount(),
 					dxCommon->GetShadowGpuSampleCount());
 				Engine::Graphics3D::Object3DCommon* objectCommon =

@@ -11,6 +11,7 @@
 #include "GameInputBindings.h"
 #include "CurtainTransition.h"
 #include "UILabel.h"
+#include "UIPanel.h"
 #include "GridPlane.h"
 #include <array>
 #include <cstdint>
@@ -38,10 +39,25 @@ private:
 		Vector2 titleSize{ 1280.0f, 720.0f };
 		Vector2 cursorBasePosition{ 0.0f, 0.0f };
 		Vector2 cursorSize{ 1280.0f, 720.0f };
-		float cursorStepY = 120.0f;
+		Vector2 cursorShopOffset{ 300.0f, 0.0f };
+		Vector2 cursorQuitOffset{ 0.0f, 128.0f };
+		float cursorEasingSpeed = 14.0f;
 		Vector2 menuHitboxPosition{ 145.0f, 340.0f };
 		Vector2 menuHitboxSize{ 300.0f, 88.0f };
-		float menuHitboxStepY = 128.0f;
+		std::array<Vector2, 5> shopItemPositions{ {
+			{ 227.0f, 164.0f }, { 400.0f, 164.0f }, { 573.0f, 164.0f },
+			{ 746.0f, 164.0f }, { 920.0f, 164.0f },
+		} };
+		Vector2 shopItemHitboxSize{ 134.0f, 134.0f };
+		Vector2 shopLevelSquareSize{ 14.0f, 14.0f };
+		float shopLevelSquareStepX = 19.0f;
+		float shopLevelSquareOffsetY = 116.0f;
+		Vector2 shopPriceOffset{ 31.0f, 150.0f };
+		Vector2 shopPriceDigitSize{ 18.0f, 24.0f };
+		float shopPriceDigitStepX = 17.0f;
+		Vector2 shopCoinPosition{ 48.0f, 42.0f };
+		Vector2 shopCoinDigitSize{ 20.0f, 26.0f };
+		float shopCoinDigitStepX = 20.0f;
 		Vector3 modelBasePosition{ -18.0f, 0.0f, 8.0f };
 		Vector3 modelScale{ 4.5f, 4.5f, 4.5f };
 		Vector3 cameraTarget{ 0.0f, 4.5f, 0.0f };
@@ -85,6 +101,8 @@ private:
 	void DrawCoinDisplay();
 	void DrawPermanentUpgradeDisplay();
 	void DrawCharacterSelectionDisplay();
+	void UpdateShopLevelDisplay();
+	void DrawShopDisplay();
 
 	bool IsMouseMenuConfirm(int32_t hoveredMenuIndex) const;
 	void StartGameTransition();
@@ -93,9 +111,11 @@ private:
 
 	UILabel titleSprite_;
 	UILabel cursorSprite_;
+	UILabel shopSprite_;
 	TextureHandle coinDigitTexture_ = 0;
 	static constexpr int32_t kCoinDigitCount = 6;
-	static constexpr int32_t kPermanentUpgradeCount = 4;
+	static constexpr int32_t kPermanentUpgradeCount = 5;
+	static constexpr int32_t kShopMaxLevelSlots = 5;
 	static constexpr int32_t kPermanentUpgradeCostDigitCount = 4;
 	static constexpr int32_t kCharacterCount = 4;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kCoinDigitCount> coinDigits_;
@@ -105,6 +125,8 @@ private:
 		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCostDigitCount>,
 		kPermanentUpgradeCount> permanentUpgradeCostDigits_;
 	std::array<float, kPermanentUpgradeCount> permanentUpgradePurchaseFlashTimers_{};
+	std::array<std::array<UIPanel, kShopMaxLevelSlots>, kPermanentUpgradeCount> shopLevelSquares_;
+	std::array<UIPanel, kPermanentUpgradeCount> shopHighlights_;
 	std::array<UILabel, kCharacterCount> characterIcons_;
 	std::array<
 		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCostDigitCount>,
@@ -122,8 +144,11 @@ private:
 	SoundHandle decideSeHandle_{};
 
 	int32_t menuIndex_ = 0;
+	int32_t shopItemIndex_ = 0;
+	Vector2 cursorPosition_{};
 	bool curtainStarted_ = false;
 	bool curtainOpening_ = true;
+	bool showingUpgradeScreen_ = false;
 	bool finished_ = false;
 	float animationTime_ = 0.0f;
 	DirectXGame::GameInputBindings::NavigationInputDevice navigationInputDevice_ =

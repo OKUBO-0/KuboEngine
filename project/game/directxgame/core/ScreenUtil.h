@@ -71,6 +71,24 @@ inline Vector2 ToGamePosition(const Vector2& windowPosition)
 	};
 }
 
+inline Vector2 ToWindowPosition(const Vector2& gamePosition)
+{
+	if (gDebugSceneViewportEnabled && gDebugSceneViewportSize.x > 0.0f && gDebugSceneViewportSize.y > 0.0f) {
+		return {
+			gDebugSceneViewportMin.x + gamePosition.x * gDebugSceneViewportSize.x /
+				static_cast<float>(Engine::Base::WinApp::kClientWidth),
+			gDebugSceneViewportMin.y + gamePosition.y * gDebugSceneViewportSize.y /
+				static_cast<float>(Engine::Base::WinApp::kClientHeight),
+		};
+	}
+
+	const Vector2 clientSize = GetClientSize();
+	return {
+		gamePosition.x * clientSize.x / static_cast<float>(Engine::Base::WinApp::kClientWidth),
+		gamePosition.y * clientSize.y / static_cast<float>(Engine::Base::WinApp::kClientHeight),
+	};
+}
+
 inline bool IsInsideDebugSceneViewport(const Vector2& windowPosition)
 {
 	if (!gDebugSceneViewportEnabled) {

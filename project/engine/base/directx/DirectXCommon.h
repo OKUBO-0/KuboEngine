@@ -151,6 +151,10 @@ public:
 	void ResetGpuTimingStatistics();
 	double GetAverageFrameGpuMilliseconds() const;
 	double GetAverageShadowGpuMilliseconds() const;
+	double GetFrameGpuP95Milliseconds() const;
+	double GetShadowGpuP95Milliseconds() const;
+	double GetFrameGpuMaxMilliseconds() const;
+	double GetShadowGpuMaxMilliseconds() const;
 	uint64_t GetFrameGpuSampleCount() const { return frameGpuSampleCount_; }
 	uint64_t GetShadowGpuSampleCount() const { return shadowGpuSampleCount_; }
 
@@ -269,6 +273,8 @@ private:
 	double shadowGpuMillisecondsTotal_ = 0.0;
 	uint64_t frameGpuSampleCount_ = 0;
 	uint64_t shadowGpuSampleCount_ = 0;
+	std::vector<double> frameGpuMillisecondsSamples_;
+	std::vector<double> shadowGpuMillisecondsSamples_;
 	// スワップチェーン
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
 	Microsoft::WRL::ComPtr<IDXGISwapChain4> swapChain = nullptr;

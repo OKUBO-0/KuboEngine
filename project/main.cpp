@@ -1,8 +1,8 @@
 #include "Game.h"
 #include "Framework.h"
 #include "D3DResourceLeakChecker.h"
-#include "game/directxgame/core/GameSceneFactory.h"
-#include "game/directxgame/core/SceneId.h"
+#include "GameSceneFactory.h"
+#include "SceneId.h"
 #include <Windows.h>
 #include <cstdlib>
 #include <exception>
