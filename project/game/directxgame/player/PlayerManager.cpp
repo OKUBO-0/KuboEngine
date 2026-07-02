@@ -109,18 +109,12 @@ void PlayerManager::ApplyPermanentUpgrades(
 	int32_t moveSpeedLevel,
 	int32_t expPickupRangeLevel)
 {
-	for (int32_t index = 0; index < maxHPLevel; ++index) {
-		IncreaseMaxHP();
-	}
-	for (int32_t index = 0; index < attackLevel; ++index) {
-		UpgradeAttackPower();
-	}
-	for (int32_t index = 0; index < moveSpeedLevel; ++index) {
-		UpgradeMoveSpeed();
-	}
-	for (int32_t index = 0; index < expPickupRangeLevel; ++index) {
-		progression_.UpgradeExpPickupRange();
-	}
+	progression_.ApplyPermanentBonuses(
+		player_,
+		maxHPLevel,
+		attackLevel,
+		moveSpeedLevel,
+		expPickupRangeLevel);
 }
 
 void PlayerManager::UpgradeNormalBullets()

@@ -51,6 +51,8 @@ public:
 	void ClearLevelUpRequest() { progression_.ClearLevelUpRequest(); }
 
 	int32_t GetAttackPower() const { return progression_.GetAttackPower(); }
+	int32_t GetMaxHPUpgradeLevel() const { return progression_.GetMaxHPUpgradeLevel(); }
+	int32_t GetAttackPowerUpgradeLevel() const { return progression_.GetAttackPowerUpgradeLevel(); }
 	void UpgradeAttackPower() { progression_.UpgradeAttackPower(); }
 	void IncreaseMaxHP();
 	void UpgradeMoveSpeed();

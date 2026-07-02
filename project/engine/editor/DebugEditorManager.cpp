@@ -390,8 +390,15 @@ DebugSceneViewportState DebugEditorManager::DrawSceneViewport(bool* open)
 			imageSize.x = imageSize.y * kSceneAspect;
 		}
 
+		const ImVec2 contentMin = ImGui::GetCursorScreenPos();
+		ImGui::GetWindowDrawList()->AddRectFilled(
+			contentMin,
+			ImVec2(contentMin.x + availableSize.x, contentMin.y + availableSize.y),
+			IM_COL32(0, 0, 0, 255));
 		const float cursorX = ImGui::GetCursorPosX() + (availableSize.x - imageSize.x) * 0.5f;
+		const float cursorY = ImGui::GetCursorPosY() + (availableSize.y - imageSize.y) * 0.5f;
 		ImGui::SetCursorPosX(cursorX);
+		ImGui::SetCursorPosY(cursorY);
 		const ImVec2 imageMin = ImGui::GetCursorScreenPos();
 		state.drawn = imageSize.x > 0.0f && imageSize.y > 0.0f;
 		state.min = { imageMin.x, imageMin.y };

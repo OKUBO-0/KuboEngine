@@ -6,10 +6,17 @@
 #include "EnemyManager.h"
 #include <algorithm>
 #include <cstdint>
+#include <cmath>
 
 namespace {
 
-constexpr float kEntranceDuration = 1.6f;
+constexpr float kEntranceDuration = 3.4f;
+constexpr float kEntranceApproachEnd = 0.32f;
+constexpr float kEntranceHoldEnd = 0.72f;
+constexpr float kEntranceCameraDistance = 32.0f;
+constexpr float kEntranceCameraHeight = 20.0f;
+constexpr float kEntranceFocusHeight = 5.0f;
+constexpr float kEntranceBossDropHeight = 14.0f;
 constexpr float kDefeatDuration = 1.45f;
 constexpr float kDefeatTransitionStartTime = 1.55f;
 constexpr float kDefeatCameraDistance = 30.0f;
@@ -27,6 +34,28 @@ Vector3 Lerp(const Vector3& start, const Vector3& end, float t)
 		start.x + (end.x - start.x) * t,
 		start.y + (end.y - start.y) * t,
 		start.z + (end.z - start.z) * t,
+	};
+}
+
+float SmoothStep(float value)
+{
+	const float t = Clamp01(value);
+	return t * t * (3.0f - 2.0f * t);
+}
+
+Vector3 LookAtRotation(const Vector3& cameraPosition, const Vector3& focusPosition)
+{
+	const Vector3 direction{
+		focusPosition.x - cameraPosition.x,
+		focusPosition.y - cameraPosition.y,
+		focusPosition.z - cameraPosition.z,
+	};
+	const float horizontalLength = std::sqrt(
+		direction.x * direction.x + direction.z * direction.z);
+	return {
+		std::atan2(-direction.y, horizontalLength),
+		std::atan2(direction.x, direction.z),
+		0.0f,
 	};
 }
 
@@ -48,6 +77,9 @@ void BossPresentation::StartEntrance(EnemyManager& enemyManager)
 	Reset();
 	enemyManager.StartBossPhase();
 	enemyManager.GetBossPresentationPosition(entranceFocusPosition_);
+	entranceStartBossPosition_ = entranceFocusPosition_;
+	entranceStartBossPosition_.y += kEntranceBossDropHeight;
+	enemyManager.SetBossPresentationPosition(entranceStartBossPosition_);
 	CaptureCamera(entranceStartCameraPosition_, entranceStartCameraRotation_);
 }
 
@@ -57,7 +89,10 @@ bool BossPresentation::UpdateEntrance(
 	float deltaTime)
 {
 	entranceTimer_ += deltaTime;
-	enemyManager.GetBossPresentationPosition(entranceFocusPosition_);
+	const float entranceProgress = Clamp01(entranceTimer_ / kEntranceDuration);
+	const float bossDropProgress = SmoothStep(entranceProgress / kEntranceApproachEnd);
+	enemyManager.SetBossPresentationPosition(Lerp(
+		entranceStartBossPosition_, entranceFocusPosition_, bossDropProgress));
 
 	if (!entranceEffectEmitted_) {
 		const GameParticleEffects::Handles& handles =
@@ -70,7 +105,7 @@ bool BossPresentation::UpdateEntrance(
 		entranceEffectEmitted_ = true;
 	}
 
-	UpdateEntranceCamera(Clamp01(entranceTimer_ / kEntranceDuration));
+	UpdateEntranceCamera(entranceProgress);
 	return entranceTimer_ >= kEntranceDuration;
 }
 
@@ -138,17 +173,33 @@ void BossPresentation::UpdateEntranceCamera(float progress)
 		return;
 	}
 
-	const float eased = progress * progress * (3.0f - 2.0f * progress);
-	const float blend =
-		progress < 0.72f ? eased : Clamp01((1.0f - progress) / 0.28f);
+	float blend = 1.0f;
+	float returnProgress = 0.0f;
+	if (progress < kEntranceApproachEnd) {
+		blend = SmoothStep(progress / kEntranceApproachEnd);
+	} else if (progress > kEntranceHoldEnd) {
+		returnProgress = Clamp01(
+			(progress - kEntranceHoldEnd) / (1.0f - kEntranceHoldEnd));
+		blend = 1.0f - SmoothStep(returnProgress);
+	}
+	const Vector3 focusPosition{
+		entranceFocusPosition_.x,
+		entranceFocusPosition_.y + kEntranceFocusHeight,
+		entranceFocusPosition_.z,
+	};
 	const Vector3 targetPosition{
 		entranceFocusPosition_.x,
-		entranceFocusPosition_.y + 18.0f,
-		entranceFocusPosition_.z - 24.0f,
+		entranceFocusPosition_.y + kEntranceCameraHeight,
+		entranceFocusPosition_.z - kEntranceCameraDistance,
 	};
-	camera->SetTranslate(Lerp(entranceStartCameraPosition_, targetPosition, blend));
+	const Vector3 targetRotation = LookAtRotation(targetPosition, focusPosition);
+	camera->SetTranslate(Lerp(
+		entranceStartCameraPosition_, targetPosition, blend));
 	camera->SetRotate(Lerp(
-		entranceStartCameraRotation_, Vector3{ 0.62f, 0.0f, 0.0f }, blend));
+		entranceStartCameraRotation_,
+		targetRotation,
+		blend));
+	camera->SetFarClip(500.0f);
 	camera->Update();
 }
 

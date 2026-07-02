@@ -111,6 +111,7 @@ void PlayerProgression::IncreaseMaxHP()
 		return;
 	}
 	maxLifeStock_ += 20;
+	++maxHPUpgradeLevel_;
 	if (maxLifeStock_ > maxLifeStockCap_) {
 		maxLifeStock_ = maxLifeStockCap_;
 	}
@@ -120,6 +121,7 @@ void PlayerProgression::IncreaseMaxHP()
 void PlayerProgression::UpgradeAttackPower()
 {
 	attackPower_ += 5;
+	++attackPowerUpgradeLevel_;
 }
 
 void PlayerProgression::UpgradeMoveSpeed(Player* player)
@@ -146,8 +148,36 @@ void PlayerProgression::UpgradeExpPickupRange()
 	}
 	++expPickupRangeLevel_;
 	expPickupRangeMultiplier_ =
-		1.0f + expPickupRangeUpgradeStep_ *
+		1.0f + permanentExpPickupRangeBonus_ + expPickupRangeUpgradeStep_ *
 			static_cast<float>(expPickupRangeLevel_);
+}
+
+void PlayerProgression::ApplyPermanentBonuses(
+	Player* player,
+	int32_t maxHPLevel,
+	int32_t attackLevel,
+	int32_t moveSpeedLevel,
+	int32_t expPickupRangeLevel)
+{
+	constexpr int32_t kMaxHPPerLevel = 20;
+	constexpr int32_t kAttackPerLevel = 5;
+	const int32_t maxHPBonus = kMaxHPPerLevel * (std::max)(0, maxHPLevel);
+	maxLifeStockCap_ += maxHPBonus;
+	maxLifeStock_ += maxHPBonus;
+	lifeStock_ = maxLifeStock_;
+	attackPower_ += kAttackPerLevel * (std::max)(0, attackLevel);
+
+	const float moveSpeedBonus = moveSpeedUpgradeStep_ *
+		static_cast<float>((std::max)(0, moveSpeedLevel));
+	moveSpeedMax_ += moveSpeedBonus;
+	if (player) {
+		player->SetMoveSpeed(player->GetMoveSpeed() + moveSpeedBonus);
+	}
+
+	permanentExpPickupRangeBonus_ = expPickupRangeUpgradeStep_ *
+		static_cast<float>((std::max)(0, expPickupRangeLevel));
+	expPickupRangeMultiplier_ = 1.0f + permanentExpPickupRangeBonus_ +
+		expPickupRangeUpgradeStep_ * static_cast<float>(expPickupRangeLevel_);
 }
 
 #ifdef _DEBUG

@@ -243,8 +243,9 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 	enemy->SetPosition({
 		playerPosition.x,
 		4.0f,
-		playerPosition.z + 34.0f,
+		playerPosition.z + 26.0f,
 	});
+	enemy->SetRotationY(std::numbers::pi_v<float>);
 	enemy->SetType(data.type);
 	enemy->SetModelByType(static_cast<int32_t>(data.type));
 	enemy->SetBehavior(data.behavior);

@@ -21,6 +21,12 @@ public:
 	void UpgradeAttackPower();
 	void UpgradeMoveSpeed(Player* player);
 	void UpgradeExpPickupRange();
+	void ApplyPermanentBonuses(
+		Player* player,
+		int32_t maxHPLevel,
+		int32_t attackLevel,
+		int32_t moveSpeedLevel,
+		int32_t expPickupRangeLevel);
 
 #ifdef _DEBUG
 	void ForceDebugDeath();
@@ -38,6 +44,8 @@ public:
 	bool IsLevelUpRequested() const { return levelUpRequested_; }
 	void ClearLevelUpRequest() { levelUpRequested_ = false; }
 	int32_t GetAttackPower() const { return attackPower_; }
+	int32_t GetMaxHPUpgradeLevel() const { return maxHPUpgradeLevel_; }
+	int32_t GetAttackPowerUpgradeLevel() const { return attackPowerUpgradeLevel_; }
 	int32_t GetMoveSpeedLevel() const { return moveSpeedLevel_; }
 	bool IsMoveSpeedMaxLevel() const { return moveSpeedLevel_ >= moveSpeedUpgradeCap_; }
 	int32_t GetExpPickupRangeLevel() const { return expPickupRangeLevel_; }
@@ -51,6 +59,8 @@ private:
 	int32_t exp_ = 0;
 	int32_t totalExp_ = 0;
 	int32_t attackPower_ = 10;
+	int32_t maxHPUpgradeLevel_ = 0;
+	int32_t attackPowerUpgradeLevel_ = 0;
 	int32_t moveSpeedLevel_ = 0;
 	int32_t expPickupRangeLevel_ = 0;
 	bool levelUpRequested_ = false;
@@ -62,6 +72,7 @@ private:
 	float moveSpeedMax_ = 45.0f;
 	float expPickupRangeUpgradeStep_ = 0.25f;
 	float expPickupRangeMultiplier_ = 1.0f;
+	float permanentExpPickupRangeBonus_ = 0.0f;
 };
 
 }

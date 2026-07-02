@@ -422,6 +422,9 @@ void PlayScene::UpdateUi(float deltaTime)
 		input,
 		playerDeathPresentation_.GetOverlayAlpha(),
 		sessionContext_ ? sessionContext_->GetRunCoins() : 0);
+	if (playerManager_) {
+		pauseBuildHud_.TrackAcquisitions(*playerManager_);
+	}
 
 	const GameMenuInputState menuInput = GameMenuController::Update(
 		Engine::InputSystem::Input::GetInstance(),
@@ -451,8 +454,13 @@ void PlayScene::UpdateUi(float deltaTime)
 			navigationInputDevice_);
 		if (action == PauseMenuAction::Resume) {
 			EnterPlaying();
-		} else if (action == PauseMenuAction::BackToTitle) {
-			RequestSceneChange(SceneId::kTitle);
+		} else if (action == PauseMenuAction::Restart) {
+			if (sessionContext_) {
+				sessionContext_->BeginNewRun();
+			}
+			RequestSceneChange(SceneId::kGame);
+		} else if (action == PauseMenuAction::Exit) {
+			RequestResultScene();
 		}
 		return;
 	}

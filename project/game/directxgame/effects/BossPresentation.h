@@ -30,6 +30,7 @@ private:
 	float entranceTimer_ = 0.0f;
 	float defeatTimer_ = 0.0f;
 	Vector3 entranceFocusPosition_{};
+	Vector3 entranceStartBossPosition_{};
 	Vector3 defeatFocusPosition_{};
 	Vector3 entranceStartCameraPosition_{};
 	Vector3 entranceStartCameraRotation_{};

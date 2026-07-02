@@ -4,7 +4,8 @@ texture,ui/title/title.png
 texture,ui/title/cursor.png
 texture,ui/game/start.png
 texture,ui/game/pause.png
-texture,ui/game/pause_arrow.png
+texture,ui/game/left_cursor.png
+texture,ui/game/right_corsor.png
 texture,ui/game/death.png
 texture,ui/game/levelup.png
 texture,ui/font/hud_ascii.png

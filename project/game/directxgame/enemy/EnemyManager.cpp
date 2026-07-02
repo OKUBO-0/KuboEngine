@@ -214,6 +214,8 @@ void EnemyManager::StartBossPhase()
 		return;
 	}
 	bossEnemy_ = enemy.get();
+	bossEnemy_->SetBehaviorVisual({ 0.58f, 0.3f, 1.0f, 1.0f }, 2.2f);
+	bossEnemy_->SetPosition(bossEnemy_->GetPosition());
 	enemies_.push_back(std::move(enemy));
 }
 
@@ -263,6 +265,13 @@ void EnemyManager::UpdateEnemies(float deltaTime)
 			SpawnDeathBomb(*enemy);
 			enemy->ResetJustDied();
 		}
+	}
+}
+
+void EnemyManager::SetBossPresentationPosition(const Vector3& position)
+{
+	if (bossEnemy_) {
+		bossEnemy_->SetPosition(position);
 	}
 }
 
