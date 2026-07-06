@@ -7,7 +7,6 @@
 #include "SrvManager.h"
 #include "EnemyManager.h"
 #include "PlayerManager.h"
-#include "Drone.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -96,23 +95,18 @@ void StatisticsDebugPanel::Draw(
 		softCap.expOrbPeak,
 		softCap.expOrbPrunes);
 	ImGui::Text(
-		"Bullets: Normal %zu / %zu | Orbit %zu | Drone %zu / %zu",
+		"Weapons: Bow Arrow %zu / %zu | Rock %zu",
 		softCap.normalBulletCount,
 		PlayerManager::kMaxActiveNormalBullets,
-		softCap.orbitBulletCount,
-		softCap.droneBulletCount,
-		Drone::kMaxActiveBullets);
+		softCap.orbitBulletCount);
 	ImGui::Text(
-		"Bullet Peaks: Normal %zu / Drone %zu  Pruned: Normal %zu / Drone %zu",
+		"Bow Arrow Projectile Peak: %zu  Pruned: %zu",
 		softCap.normalBulletPeak,
-		softCap.droneBulletPeak,
-		softCap.normalBulletPrunes,
-		softCap.droneBulletPrunes);
+		softCap.normalBulletPrunes);
 	ImGui::Text(
-		"Prune Rate/min: EXP %.1f | Normal %.1f | Drone %.1f",
+		"Prune Rate/min: EXP %.1f | Bow Arrow %.1f",
 		softCap.expOrbPrunesPerMinute,
-		softCap.normalBulletPrunesPerMinute,
-		softCap.droneBulletPrunesPerMinute);
+		softCap.normalBulletPrunesPerMinute);
 	softCapTelemetry_.DrawControls(
 		softCap,
 		stateName,
@@ -121,8 +115,7 @@ void StatisticsDebugPanel::Draw(
 		enemyManager,
 		playerManager);
 	if (softCap.expOrbCount >= EnemyManager::kMaxExpOrbs ||
-		softCap.normalBulletCount >= PlayerManager::kMaxActiveNormalBullets ||
-		softCap.droneBulletCount >= Drone::kMaxActiveBullets) {
+		softCap.normalBulletCount >= PlayerManager::kMaxActiveNormalBullets) {
 		ImGui::TextColored(
 			ImVec4(1.0f, 0.75f, 0.25f, 1.0f),
 			"Soft cap currently active");
@@ -214,16 +207,14 @@ void StatisticsDebugPanel::Draw(
 
 	if (playerManager) {
 		ImGui::Text(
-			"Weapons: Normal Lv%d Dmg%d Interval %.2f",
+			"Weapons: Bow Arrow Lv%d Dmg%d Interval %.2f",
 			playerManager->GetNormalBulletLevel(),
 			playerManager->GetNormalBulletDamage(),
 			playerManager->GetNormalBulletInterval());
 		ImGui::Text(
-			"Orbit Lv%d Dmg%d | Drone Lv%d Dmg%d | Lightning Lv%d Dmg%d Count%d Radius %.1f",
+			"Rock Lv%d Dmg%d | Thunder Staff Lv%d Dmg%d Count%d Radius %.1f",
 			playerManager->GetOrbitBulletLevel(),
 			playerManager->GetOrbitBulletDamage(),
-			playerManager->GetDroneLevel(),
-			playerManager->GetDroneDamage(),
 			playerManager->GetLightningLevel(),
 			playerManager->GetLightningDamage(),
 			playerManager->GetLightningStrikeCount(),

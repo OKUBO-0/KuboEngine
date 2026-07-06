@@ -22,7 +22,10 @@ namespace Engine::Skybox {
 
 SkyBox::~SkyBox()
 {
-
+	if (dxCommon_) {
+		dxCommon_->UntrackResourceState(vertexResource.Get());
+		dxCommon_->UntrackResourceState(indexResource.Get());
+	}
 }
 
 void SkyBox::Initialize(const std::string& textureFilePath)

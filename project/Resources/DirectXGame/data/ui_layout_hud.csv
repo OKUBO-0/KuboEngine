@@ -20,7 +20,7 @@ timerScale,1
 miniMapBackgroundPosition,0,0
 miniMapBackgroundSize,1280,720
 miniMapCenter,320,360
-miniMapRadius,360
+miniMapRadius,267
 miniMapScale,3
 miniMapPlayerIconSize,20
 miniMapOrbIconSize,20

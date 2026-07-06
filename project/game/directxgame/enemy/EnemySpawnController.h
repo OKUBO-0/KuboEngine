@@ -31,7 +31,9 @@ public:
 		std::vector<std::unique_ptr<Enemy>>& enemies,
 		const Enemy* bossEnemy,
 		bool bossPhase);
-	std::unique_ptr<Enemy> CreateBossEnemy(Player* player) const;
+	std::unique_ptr<Enemy> CreateBossEnemy(
+		Player* player,
+		int32_t playerLevel) const;
 
 private:
 	static constexpr size_t kDefaultMaxActiveEnemies = 84;

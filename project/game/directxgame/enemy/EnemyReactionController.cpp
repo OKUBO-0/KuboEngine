@@ -74,6 +74,7 @@ void EnemyReactionController::ApplyHit(
 			knockbackVelocity_ = { 0.0f, 0.0f, 0.0f };
 			knockbackTimer_ = 0.0f;
 		}
+		return;
 	}
 
 	const float length = std::sqrt(
@@ -121,8 +122,9 @@ bool EnemyReactionController::ConsumeBossPhaseChanged()
 
 bool EnemyReactionController::IsBehaviorBlocked() const
 {
-	return knockbackAppliedThisFrame_ ||
-		bossPhaseTransitionTimer_ > 0.0f;
+	return !boss_ && (
+		knockbackAppliedThisFrame_ ||
+		bossPhaseTransitionTimer_ > 0.0f);
 }
 
 bool EnemyReactionController::IsPhaseFlashActive() const

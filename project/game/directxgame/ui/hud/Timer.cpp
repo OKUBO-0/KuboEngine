@@ -1,41 +1,25 @@
 #include "Timer.h"
-#include "Sprite.h"
 #include "DataPaths.h"
-#include "GameSpriteFactory.h"
-#include "GameTextureCache.h"
 #include "UILayoutIO.h"
-#include "DigitSpriteUtil.h"
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
-
-namespace {
-
-constexpr char kHudNumberPath[] = "ui/number/numbers.png";
-constexpr char kHudColonPath[] = "ui/number/colon.png";
-
-}
 
 namespace DirectXGame {
 
 void Timer::Initialize()
 {
-	numberTexture_ = GameTextureCache::Load(kHudNumberPath);
-	colonTexture_ = GameTextureCache::Load(kHudColonPath);
-
 	const UILayoutIO::LayoutMap layout = UILayoutIO::LoadOrDefault(DataPaths::kHudLayout, {});
 	layoutSettings_.position = UILayoutIO::GetVector2(layout, "timerPosition", layoutSettings_.position);
 	layoutSettings_.scale = UILayoutIO::GetFloat(layout, "timerScale", layoutSettings_.scale);
 
-	for (int32_t index = 0; index < kDigitCount; ++index) {
-		sprite_[index] = GameSpriteFactory::Create(numberTexture_, { 0.0f, 0.0f });
-		sprite_[index]->SetSize(digitSize_);
-		sprite_[index]->SetTextureSize(digitSize_);
-	}
-
-	colonSprite_ = GameSpriteFactory::Create(colonTexture_, { 0.0f, 0.0f });
-	colonSprite_->SetSize(digitSize_);
+	timeText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
+	timeText_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 
 	UpdateBounds();
 	ApplyLayout();
@@ -54,18 +38,7 @@ void Timer::Draw()
 		return;
 	}
 
-	for (int32_t index = 0; index < kDigitCount; ++index) {
-		if (index == 2 || !sprite_[index]) {
-			continue;
-		}
-		sprite_[index]->Update();
-		sprite_[index]->Draw();
-	}
-
-	if (colonSprite_) {
-		colonSprite_->Update();
-		colonSprite_->Draw();
-	}
+	timeText_.Draw();
 }
 
 void Timer::SetPosition(const Vector2& position)
@@ -139,21 +112,14 @@ void Timer::RefreshLayout()
 	const Vector2 basePosition = { world.x + offset.x, world.y + offset.y };
 	const float worldScale = GetWorldScale();
 
-	for (int32_t index = 0; index < kDigitCount; ++index) {
-		if (!sprite_[index]) {
-			continue;
-		}
-		DigitSpriteUtil::UpdateDigitLayout(*sprite_[index], basePosition, digitSize_, worldScale, index);
-	}
-
-	if (colonSprite_) {
-		DigitSpriteUtil::UpdateDigitLayout(*colonSprite_, basePosition, digitSize_, worldScale, 2);
-	}
+	timeText_.SetPosition(basePosition);
+	timeText_.SetScale((digitSize_.y / 72.0f) * worldScale);
+	timeText_.SetAdvanceMultiplier(1.0f);
 }
 
 void Timer::UpdateBounds()
 {
-	size_ = { digitSize_.x * static_cast<float>(kDigitCount), digitSize_.y };
+	size_ = { digitSize_.x * 5.0f, digitSize_.y };
 }
 
 void Timer::ApplyLayout()
@@ -169,10 +135,10 @@ void Timer::UpdateDisplay()
 	const int minutes = totalSeconds / 60;
 	const int seconds = totalSeconds % 60;
 
-	DigitSpriteUtil::SetDigitSprite(*sprite_[0], digitSize_.x, digitSize_, minutes / 10);
-	DigitSpriteUtil::SetDigitSprite(*sprite_[1], digitSize_.x, digitSize_, minutes % 10);
-	DigitSpriteUtil::SetDigitSprite(*sprite_[3], digitSize_.x, digitSize_, seconds / 10);
-	DigitSpriteUtil::SetDigitSprite(*sprite_[4], digitSize_.x, digitSize_, seconds % 10);
+	std::ostringstream stream;
+	stream << std::setfill('0') << std::setw(2) << (minutes % 100)
+		<< ':' << std::setw(2) << seconds;
+	timeText_.SetText(stream.str());
 }
 
 }

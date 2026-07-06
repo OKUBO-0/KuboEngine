@@ -135,7 +135,9 @@ void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* win
 	srvDescriptorSize_ = dxCommon_->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	nextSrvDescriptorIndex_ = kImGuiFirstDynamicSrvIndex;
 	freeSrvDescriptorIndices_.clear();
-	defaultDockLayoutBuilt_ = io.IniFilename != nullptr && std::filesystem::exists(io.IniFilename);
+	// ウィンドウ名やDock構成の更新を確実に反映する。
+	// ユーザーによるリサイズはDock比率を保ったままImGui側で追従する。
+	defaultDockLayoutBuilt_ = false;
 
 	ImGui_ImplDX12_InitInfo initInfo{};
 	initInfo.Device = dxCommon_->GetDevice();

@@ -20,7 +20,7 @@ cameraTarget,0,4.5,0
 cameraDistance,76
 cameraHeight,44
 cameraPitch,0.48
-debug.audio,1
+debug.audio,0
 cameraYaw,0
 cameraOrbitSpeed,0.12
 debug.windowSwitcher,0
@@ -30,7 +30,7 @@ debug.titleSettings,1
 debug.offscreenSettings,1
 shopCoinPosition,940,100
 debug.lightSettings,1
-debug.keyInputDebug,1
+debug.keyInputDebug,0
 shopItemPosition0,227,164
 shopItemPosition1,400,164
 shopItemPosition3,746,164

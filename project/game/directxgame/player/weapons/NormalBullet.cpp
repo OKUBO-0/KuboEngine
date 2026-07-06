@@ -30,7 +30,9 @@ void NormalBullet::InitializeForward(
 	const Vector3& forward,
 	float speed,
 	float range,
-	int32_t maxHits)
+	int32_t maxHits,
+	float scale,
+	MovementMode movementMode)
 {
 	position_ = startPosition;
 	previousPosition_ = startPosition;
@@ -40,7 +42,10 @@ void NormalBullet::InitializeForward(
 	range_ = range;
 	traveled_ = 0.0f;
 	remainingHits_ = (std::max)(1, maxHits);
+	scale_ = (std::max)(0.05f, scale);
 	active_ = true;
+	movementMode_ = movementMode;
+	returning_ = false;
 	hitCooldowns_.clear();
 
 	if (!object_) {
@@ -52,7 +57,7 @@ void NormalBullet::InitializeForward(
 		object_->SetEnvironmentReflectionStrength(0.0f);
 		object_->SetEnvironmentRoughness(1.0f);
 	}
-	object_->SetScale({ 1.0f, 1.0f, 1.0f });
+	object_->SetScale({ scale_, scale_, scale_ });
 	ApplyTransform();
 	object_->Update();
 
@@ -66,13 +71,27 @@ void NormalBullet::InitializeForward(
 }
 }
 
-void NormalBullet::Update(const Vector3&, float deltaTime)
+void NormalBullet::Update(const Vector3& playerPosition, float deltaTime)
 {
 	if (!active_) {
 		return;
 	}
 
 	previousPosition_ = position_;
+	if (movementMode_ == MovementMode::ReturnToPlayer) {
+		if (!returning_ && traveled_ >= range_ * 0.5f) {
+			returning_ = true;
+		}
+		if (returning_) {
+			RedirectToward(playerPosition);
+			const float dx = playerPosition.x - position_.x;
+			const float dz = playerPosition.z - position_.z;
+			if (dx * dx + dz * dz <= 1.0f) {
+				active_ = false;
+				return;
+			}
+		}
+	}
 	const float distance = speed_ * (deltaTime / 0.016f);
 	position_.x += direction_.x * distance;
 	position_.y += direction_.y * distance;
@@ -147,6 +166,12 @@ bool NormalBullet::ConsumeHit()
 		return false;
 	}
 	return true;
+}
+
+void NormalBullet::RedirectToward(const Vector3& targetPosition)
+{
+	direction_ = NormalizeOrForward(targetPosition - position_);
+	rotationY_ = std::atan2(direction_.x, direction_.z);
 }
 
 void NormalBullet::ApplyTransform()

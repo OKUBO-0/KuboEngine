@@ -18,6 +18,7 @@ constexpr char kPlayerPath[] = "ui/game/minimap_player.png";
 constexpr char kEnemyPath[] = "ui/game/minimap_enemy.png";
 constexpr char kOrbPath[] = "ui/game/minimap_orb.png";
 constexpr char kBackgroundPath[] = "ui/game/minimap_bg.png";
+constexpr float kIconEdgePadding = 2.0f;
 
 }
 
@@ -130,7 +131,9 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 			}) - halfIconSize);
 		const float iconSafeRadius = (std::max)(
 			0.0f,
-			(std::min)(layoutSettings_.radius - halfIconSize, rectSafeRadius));
+			(std::min)(
+				layoutSettings_.radius - halfIconSize - kIconEdgePadding,
+				rectSafeRadius - kIconEdgePadding));
 		Vector2 position = ClampToCircle(layoutSettings_.center, unclamped, iconSafeRadius);
 		if (enemy) {
 			enemyIconPositions_.push_back(position);

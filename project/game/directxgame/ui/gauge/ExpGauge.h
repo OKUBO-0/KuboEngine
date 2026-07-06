@@ -1,13 +1,10 @@
 #pragma once
 
-#include "Sprite.h"
-#include "GameTextureCache.h"
+#include "BitmapText.h"
 #include "UIBar.h"
 #include "UILabel.h"
 #include "UIPanel.h"
-#include <array>
 #include <cstdint>
-#include <memory>
 
 namespace DirectXGame {
 
@@ -40,14 +37,12 @@ private:
 
 	void ApplyLayout();
 
-	TextureHandle lvDigitsHandle_ = 0;
 	UIBar glowBar_;
 	UIBar frameBar_;
 	UIBar gaugeBar_;
 	std::array<UIPanel, 4> lightSweeps_;
-	UILabel lvLabel_;
-	static constexpr int32_t kLvDigits = 2;
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kLvDigits> sprite_;
+	BitmapText lvLabelText_;
+	BitmapText lvDigitsText_;
 	int32_t displayedExp_ = 0;
 	int32_t targetExp_ = 0;
 	int32_t maxExp_ = 1;

@@ -25,10 +25,6 @@ public:
 		size_t normalBulletPrunes = 0;
 		float normalBulletPrunesPerMinute = 0.0f;
 		size_t orbitBulletCount = 0;
-		size_t droneBulletCount = 0;
-		size_t droneBulletPeak = 0;
-		size_t droneBulletPrunes = 0;
-		float droneBulletPrunesPerMinute = 0.0f;
 		size_t particleCount = 0;
 	};
 

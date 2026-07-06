@@ -5,6 +5,7 @@
 #include "Object3D.h"
 #include "PlayerCameraController.h"
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -13,6 +14,11 @@ constexpr float kPlayerModelScale = 1.0f;
 constexpr float kPresentationCameraDistance = 24.0f;
 constexpr float kPresentationCameraHeight = 24.0f;
 constexpr float kPresentationCameraPitch = 0.72f;
+
+float Clamp01(float value)
+{
+	return std::clamp(value, 0.0f, 1.0f);
+}
 
 float LerpFloat(float start, float end, float progress)
 {
@@ -52,11 +58,16 @@ void PlayerPresentationController::UpdateIntro(
 	const PlayerCameraController& cameraController)
 {
 	state_ = State::Intro;
-	const float progress =
-		SmoothStep(duration > 0.0f ? elapsedTime / duration : 1.0f);
+	const float rawProgress = Clamp01(
+		duration > 0.0f ? elapsedTime / duration : 1.0f);
+	const float orbitProgress = SmoothStep(Clamp01(rawProgress / 0.9f));
+	const float growProgress = SmoothStep(Clamp01(rawProgress / 0.86f));
 	if (playerObject) {
 		playerObject->SetRotate({ 0.0f, playerRotationY, 0.0f });
 		playerObject->SetTranslate(playerPosition);
+		const float playerScale = LerpFloat(0.02f, kPlayerModelScale, growProgress);
+		playerObject->SetScale({ playerScale, playerScale, playerScale });
+		playerObject->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 		playerObject->Update();
 	}
 
@@ -64,24 +75,17 @@ void PlayerPresentationController::UpdateIntro(
 		return;
 	}
 
-	const float distance = LerpFloat(
-		kPresentationCameraDistance,
-		cameraController.GetDistance(),
-		progress);
-	const float height = LerpFloat(
-		kPresentationCameraHeight,
-		cameraController.GetHeight(),
-		progress);
-	const float pitch = LerpFloat(
-		kPresentationCameraPitch,
-		cameraController.GetPitch(),
-		progress);
+	const float returnProgress = SmoothStep(Clamp01((rawProgress - 0.84f) / 0.16f));
+	const float distance = LerpFloat(18.0f, cameraController.GetDistance(), returnProgress);
+	const float height = LerpFloat(10.0f, cameraController.GetHeight(), returnProgress);
+	const float orbitAngle = LerpFloat(-1.55f, 0.0f, orbitProgress);
+	const float pitch = std::atan2(height - playerPosition.y, distance);
 	camera->SetTranslate({
-		playerPosition.x,
+		playerPosition.x + std::sin(orbitAngle) * distance,
 		height,
-		playerPosition.z - distance,
+		playerPosition.z - std::cos(orbitAngle) * distance,
 		});
-	camera->SetRotate({ pitch, 0.0f, 0.0f });
+	camera->SetRotate({ pitch, -orbitAngle, 0.0f });
 	SyncCamera(camera);
 }
 

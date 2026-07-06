@@ -77,6 +77,9 @@ void TextureManager::Finalize()
 	if (srvManager_) {
 		for (const auto& [path, textureData] : textureDatas) {
 			static_cast<void>(path);
+			if (dxCommon_ && textureData.resource) {
+				dxCommon_->UntrackResourceState(textureData.resource.Get());
+			}
 			if (textureData.srvIndex != UINT32_MAX) {
 				srvManager_->Free(textureData.srvIndex);
 			}
@@ -162,6 +165,9 @@ void TextureManager::LoadTextures(const std::vector<std::string>& filePaths)
 		}
 	} catch (...) {
 		for (const TexturData& textureData : textureDataBatch) {
+			if (textureData.resource) {
+				dxCommon_->UntrackResourceState(textureData.resource.Get());
+			}
 			if (textureData.srvIndex != UINT32_MAX) {
 				srvManager_->Free(textureData.srvIndex);
 			}
@@ -225,6 +231,7 @@ void TextureManager::UploadTextureResource(TexturData& textureData, const Direct
 			textureData.srvIndex = UINT32_MAX;
 		}
 		// The recorded copy still references the destination until this frame completes.
+		dxCommon_->UntrackResourceState(textureData.resource.Get());
 		dxCommon_->DeferResourceRelease(std::move(textureData.resource));
 		throw;
 	}

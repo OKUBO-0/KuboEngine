@@ -96,6 +96,7 @@ void EnemyView::ApplyDeathPose(
 
 void EnemyView::SetModelByType(int32_t type)
 {
+	const bool isBoss = type == static_cast<int32_t>(EnemyType::Boss);
 	const char* modelName = "Enemy1.obj";
 	switch (type) {
 	case static_cast<int32_t>(EnemyType::Standard): modelName = "Enemy1.obj"; break;
@@ -116,6 +117,8 @@ void EnemyView::SetModelByType(int32_t type)
 		const ModelHandle modelHandle =
 			GameModelCache::Load(modelName);
 		GameModelCache::ApplyToObject(*object_, modelHandle);
+		object_->SetEnvironmentReflectionStrength(isBoss ? 0.0f : 0.08f);
+		object_->SetEnvironmentRoughness(isBoss ? 1.0f : 0.65f);
 	}
 }
 

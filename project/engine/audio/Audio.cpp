@@ -179,14 +179,22 @@ void Audio::SoundUnload(SoundData* soundData)
     soundData->wfex = {};
 }
 
-void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
+void Audio::SoundPlayWave(
+	const SoundData& soundData,
+	bool loop,
+	float volume)
 {
     HRESULT hr;
     PruneFinishedVoices();
 
     IXAudio2SourceVoice* newVoice = nullptr;
-    hr = xAudio2->CreateSourceVoice(&newVoice, &soundData.wfex);
-    Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateSourceVoice");
+	hr = xAudio2->CreateSourceVoice(&newVoice, &soundData.wfex);
+	Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateSourceVoice");
+	hr = newVoice->SetVolume(std::clamp(volume, 0.0f, 1.0f));
+	if (FAILED(hr)) {
+		newVoice->DestroyVoice();
+		Engine::Base::ThrowIfFailed(hr, "IXAudio2Voice::SetVolume before start");
+	}
 
     // 読み込み済みバッファをそのまま SourceVoice へ渡して再生する
     XAUDIO2_BUFFER buf{};

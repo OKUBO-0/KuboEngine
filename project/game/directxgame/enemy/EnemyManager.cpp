@@ -3,8 +3,10 @@
 #include "GameSession.h"
 #include "Player.h"
 #include "PlayerManager.h"
+#include "Line.h"
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace DirectXGame {
 
@@ -14,6 +16,11 @@ void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player,
 	playerManager_ = playerManager;
 	bossEnemy_ = nullptr;
 	deathBombs_.clear();
+	bossInkProjectiles_.clear();
+	pendingBossInkWaves_ = 0;
+	bossInkWaveTimer_ = 0.0f;
+	bossInkNextWaveIndex_ = 0;
+	bossSlamCubes_.clear();
 	bossPhase_ = false;
 	bossDefeated_ = false;
 	if (playerManager_) {
@@ -48,6 +55,9 @@ void EnemyManager::Update(float deltaTime)
 		enemies_,
 		bossPhase_);
 	UpdateEnemies(deltaTime);
+	ProcessBossAttackEvents();
+	UpdateBossInkProjectiles(deltaTime);
+	UpdateBossAttackVisuals(deltaTime);
 	UpdateDeathBombs(deltaTime);
 	RemoveInactiveEnemies();
 	spawnController_.RelocateFarEnemies(
@@ -75,6 +85,19 @@ void EnemyManager::Draw()
 			bomb->Draw();
 		}
 	}
+	for (const std::unique_ptr<BossInkProjectile>& projectile :
+		bossInkProjectiles_) {
+		if (projectile) {
+			projectile->Draw();
+		}
+	}
+	bossRushTelegraph_.Draw();
+	for (const std::unique_ptr<BossSlamCube>& cube : bossSlamCubes_) {
+		if (cube) {
+			cube->Draw();
+		}
+	}
+	DrawBossAttackTelegraph();
 }
 
 void EnemyManager::DrawShadow()
@@ -188,13 +211,41 @@ std::vector<Vector3> EnemyManager::PickLightningTargets(int32_t count) const
 
 void EnemyManager::ApplyLightningDamage(const Vector3& center, float radius, int32_t damage)
 {
+	ApplyAreaDamage(center, radius, damage);
+}
+
+void EnemyManager::ApplyAreaDamage(
+	const Vector3& center,
+	float radius,
+	int32_t damage)
+{
 	EnemyCollisionSystem::ApplyAreaDamage(
 		center,
 		radius,
 		damage,
 		enemies_,
 		recentHitEffectPositions_,
-		recentFloatingNumberEvents_);
+		recentFloatingNumberEvents_,
+		playerManager_);
+}
+
+void EnemyManager::ApplyArcDamage(
+	const Vector3& center,
+	const Vector3& forward,
+	float radius,
+	float halfAngleRadians,
+	int32_t damage)
+{
+	EnemyCollisionSystem::ApplyArcDamage(
+		center,
+		forward,
+		radius,
+		halfAngleRadians,
+		damage,
+		enemies_,
+		recentHitEffectPositions_,
+		recentFloatingNumberEvents_,
+		playerManager_);
 }
 
 void EnemyManager::StartBossPhase()
@@ -208,7 +259,9 @@ void EnemyManager::StartBossPhase()
 	enemies_.clear();
 
 	std::unique_ptr<Enemy> enemy =
-		spawnController_.CreateBossEnemy(player_);
+		spawnController_.CreateBossEnemy(
+			player_,
+			playerManager_ ? playerManager_->GetLevel() : 1);
 	if (!enemy) {
 		bossPhase_ = false;
 		return;
@@ -322,6 +375,189 @@ void EnemyManager::UpdateDeathBombs(float deltaTime)
 	}
 }
 
+void EnemyManager::ProcessBossAttackEvents()
+{
+	if (!bossEnemy_ || !bossEnemy_->IsActive()) {
+		return;
+	}
+	BossAttackEvent event{};
+	while (bossEnemy_->ConsumeBossAttack(event)) {
+		if (event.type == BossAttackType::TentacleSlam) {
+			const Vector3 side{
+				-event.direction.z,
+				0.0f,
+				event.direction.x,
+			};
+			for (int32_t row = 1; row <= 6; ++row) {
+				const float forwardDistance = static_cast<float>(row) * 4.5f;
+				const float columnSpacing = 2.2f + static_cast<float>(row) * 1.8f;
+				for (int32_t column = -2; column <= 2; ++column) {
+					auto cube = std::make_unique<BossSlamCube>();
+					cube->Initialize(
+						event.position + event.direction * forwardDistance +
+							side * (columnSpacing * static_cast<float>(column)),
+						static_cast<float>(row - 1) * 0.045f);
+					bossSlamCubes_.push_back(std::move(cube));
+				}
+			}
+			if (!player_ || !playerManager_ || player_->IsDodging() ||
+				playerManager_->IsInvincible()) {
+				continue;
+			}
+			const Vector3 offset = player_->GetWorldPosition() - event.position;
+			const float distanceSq = offset.x * offset.x + offset.z * offset.z;
+			constexpr float kSlamRadius = 30.0f;
+			if (distanceSq > kSlamRadius * kSlamRadius) {
+				continue;
+			}
+			const float distance = std::sqrt(distanceSq);
+			const float directionDot = distance <= 0.001f
+				? 1.0f
+				: (offset.x * event.direction.x + offset.z * event.direction.z) /
+					distance;
+			if (directionDot >= std::cos(0.8f)) {
+				playerManager_->TakeDamage(bossEnemy_->GetAttackPower());
+				recentExplosionEffectPositions_.push_back(event.position);
+			}
+		} else if (event.type == BossAttackType::InkBurst) {
+			bossInkWavePosition_ = event.position;
+			SpawnBossInkWave(bossInkWavePosition_, 0);
+			pendingBossInkWaves_ = 2;
+			bossInkNextWaveIndex_ = 1;
+			bossInkWaveTimer_ = 0.5f;
+		}
+	}
+}
+
+void EnemyManager::UpdateBossInkProjectiles(float deltaTime)
+{
+	if (pendingBossInkWaves_ > 0) {
+		bossInkWaveTimer_ -= (std::max)(0.0f, deltaTime);
+		while (pendingBossInkWaves_ > 0 && bossInkWaveTimer_ <= 0.0f) {
+			SpawnBossInkWave(bossInkWavePosition_, bossInkNextWaveIndex_);
+			++bossInkNextWaveIndex_;
+			--pendingBossInkWaves_;
+			bossInkWaveTimer_ += 0.5f;
+		}
+	}
+	for (auto it = bossInkProjectiles_.begin();
+		it != bossInkProjectiles_.end();) {
+		BossInkProjectile* projectile = it->get();
+		if (!projectile) {
+			it = bossInkProjectiles_.erase(it);
+			continue;
+		}
+		projectile->Update(deltaTime);
+		if (projectile->IsActive() && player_ && playerManager_) {
+			const Vector3 offset =
+				player_->GetWorldPosition() - projectile->GetPosition();
+			const float radius =
+				player_->GetCollisionRadius() + projectile->GetCollisionRadius();
+			if (offset.x * offset.x + offset.z * offset.z <= radius * radius) {
+				if (!player_->IsDodging() && !playerManager_->IsInvincible()) {
+					const int32_t damage = bossEnemy_
+						? (std::max)(1, bossEnemy_->GetAttackPower() * 2 / 3)
+						: 20;
+					playerManager_->TakeDamage(damage);
+				}
+				projectile->Deactivate();
+			}
+		}
+		if (!projectile->IsActive()) {
+			it = bossInkProjectiles_.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
+void EnemyManager::SpawnBossInkWave(
+	const Vector3& position,
+	int32_t waveIndex)
+{
+	constexpr int32_t kProjectileCount = 12;
+	const float angleOffset =
+		static_cast<float>(waveIndex) * std::numbers::pi_v<float> / 12.0f;
+	for (int32_t index = 0; index < kProjectileCount; ++index) {
+		const float angle = angleOffset +
+			2.0f * std::numbers::pi_v<float> *
+			static_cast<float>(index) /
+			static_cast<float>(kProjectileCount);
+		auto projectile = std::make_unique<BossInkProjectile>();
+		projectile->Initialize(
+			position,
+			{ std::sin(angle), 0.0f, std::cos(angle) });
+		bossInkProjectiles_.push_back(std::move(projectile));
+	}
+}
+
+void EnemyManager::UpdateBossAttackVisuals(float deltaTime)
+{
+	const BossAttackTelegraph emptyTelegraph{};
+	bossRushTelegraph_.Update(
+		bossEnemy_ && bossEnemy_->IsActive()
+			? bossEnemy_->GetBossAttackTelegraph()
+			: emptyTelegraph);
+	for (auto it = bossSlamCubes_.begin(); it != bossSlamCubes_.end();) {
+		if (!*it || !(*it)->Update(deltaTime)) {
+			it = bossSlamCubes_.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
+
+void EnemyManager::DrawBossAttackTelegraph() const
+{
+	if (!bossEnemy_ || !bossEnemy_->IsActive()) {
+		return;
+	}
+	const BossAttackTelegraph& telegraph =
+		bossEnemy_->GetBossAttackTelegraph();
+	if (telegraph.type == BossAttackType::None) {
+		return;
+	}
+	Engine::LineSystem::Line line;
+	const float alpha = 0.35f + telegraph.progress * 0.65f;
+	if (telegraph.type == BossAttackType::TentacleSlam) {
+		constexpr float kLength = 30.0f;
+		constexpr float kHalfWidth = 31.0f;
+		const Vector3 origin{
+			telegraph.position.x,
+			0.15f,
+			telegraph.position.z,
+		};
+		const Vector3 end = origin + telegraph.direction * kLength;
+		const Vector3 side{
+			-telegraph.direction.z * kHalfWidth,
+			0.0f,
+			telegraph.direction.x * kHalfWidth,
+		};
+		const Vector4 color{ 1.0f, 0.18f, 0.05f, alpha };
+		line.Draw(origin, end - side, color);
+		line.Draw(origin, end + side, color);
+		line.Draw(end - side, end + side, color);
+		for (int32_t ray = -1; ray <= 1; ++ray) {
+			line.Draw(
+				origin,
+				end + side * (static_cast<float>(ray) * 0.5f),
+				color);
+		}
+		for (int32_t band = 1; band <= 4; ++band) {
+			const float progress = static_cast<float>(band) / 4.0f;
+			const Vector3 bandCenter =
+				origin + telegraph.direction * (kLength * progress);
+			const Vector3 bandSide = side * progress;
+			line.Draw(bandCenter - bandSide, bandCenter + bandSide, color);
+		}
+	} else if (telegraph.type == BossAttackType::InkBurst) {
+		line.DrawSphere(
+			{ telegraph.position.x, 0.25f, telegraph.position.z },
+			5.0f + telegraph.progress * 2.0f,
+			{ 0.46f, 0.08f, 0.7f, alpha });
+	}
+}
+
 void EnemyManager::RemoveInactiveEnemies()
 {
 	enemies_.erase(
@@ -348,10 +584,11 @@ void EnemyManager::UpdateExpOrbs(float deltaTime)
 			expPickupRangeMultiplier);
 		if (!(*it)->IsActive()) {
 			if (playerManager_) {
-				playerManager_->AddEXP((*it)->GetEXP());
+				const int32_t gainedExp =
+					playerManager_->AddEXP((*it)->GetEXP());
 				recentFloatingNumberEvents_.push_back({
 					{ playerPosition.x, playerPosition.y + 1.0f, playerPosition.z },
-					(*it)->GetEXP(),
+					gainedExp,
 					{ 0.35f, 1.0f, 0.58f, 1.0f },
 					});
 			}
@@ -366,10 +603,13 @@ void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 {
 	++totalKillCount_;
 	if (session_) {
-		session_->AddRunCoins(enemy.GetCoinValue());
+		const int32_t gainedCoins = (std::max)(1, static_cast<int32_t>(
+			std::lround(static_cast<float>(enemy.GetCoinValue()) *
+				(playerManager_ ? playerManager_->GetCoinGainMultiplier() : 1.0f))));
+		session_->AddRunCoins(gainedCoins);
 		recentFloatingNumberEvents_.push_back({
 			{ enemy.GetPosition().x + 1.15f, enemy.GetPosition().y + 2.85f, enemy.GetPosition().z },
-			enemy.GetCoinValue(),
+			gainedCoins,
 			{ 1.0f, 0.86f, 0.22f, 1.0f },
 			});
 	}

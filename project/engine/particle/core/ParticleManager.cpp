@@ -55,6 +55,10 @@ void ParticleManager::Finalize()
 	if (srvManager_) {
 		for (const auto& [name, particleGroup] : particleGroups) {
 			static_cast<void>(name);
+			if (dxCommon_) {
+				dxCommon_->UntrackResourceState(
+					particleGroup.vertexResource.Get());
+			}
 			for (uint32_t srvIndex : particleGroup.srvIndices) {
 				if (srvIndex != UINT32_MAX) {
 					srvManager_->Free(srvIndex);

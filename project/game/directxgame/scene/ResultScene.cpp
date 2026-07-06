@@ -7,7 +7,6 @@
 #include "GameSpriteFactory.h"
 #include "ResultSceneDebugUIController.h"
 #include "UILayoutIO.h"
-#include "DigitSpriteUtil.h"
 #include "CameraManager.h"
 #include "Input.h"
 #include "Object3DCommon.h"
@@ -25,7 +24,8 @@ namespace {
 constexpr char kAudioResultFinish[] = "result.finish";
 constexpr char kResultBackgroundTexture[] = "ui/result/Result.png";
 constexpr char kResultFinishTexture[] = "ui/result/finish_ui.png";
-constexpr char kResultNumberTexture[] = "ui/number/numbers.png";
+constexpr char kResultNumberTexture[] = "ui/font/noto_sans_jp_black.png";
+constexpr char kResultNumberMetadata[] = "ui/font/noto_sans_jp_black.json";
 constexpr int32_t kScorePerExp = 1;
 constexpr int32_t kScorePerKill = 100;
 constexpr int32_t kScorePerLevel = 1000;
@@ -157,10 +157,10 @@ void ResultScene::Draw()
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
 	background_.Draw();
 	resultUi_.Draw();
-	DrawNumber(expDigits_);
-	DrawNumber(levelDigits_);
-	DrawNumber(killDigits_);
-	DrawNumber(totalScoreDigits_);
+	expText_.Draw();
+	levelText_.Draw();
+	killText_.Draw();
+	totalScoreText_.Draw();
 	if (IsCountUpFinished()) {
 		finishUi_.Draw();
 	}
@@ -210,13 +210,9 @@ void ResultScene::InitializeUi()
 	curtain_->Initialize();
 	curtain_->StartOpen(20.0f);
 
-	numberTexture_ = GameTextureCache::Load(kResultNumberTexture);
 	finishSeHandle_ = GameAudioCache::LoadWave("audio/se/se_pause.wav");
-	for (size_t index = 0; index < expDigits_.size(); ++index) {
-		expDigits_[index] = GameSpriteFactory::Create(numberTexture_, { 0.0f, 0.0f });
-		levelDigits_[index] = GameSpriteFactory::Create(numberTexture_, { 0.0f, 0.0f });
-		killDigits_[index] = GameSpriteFactory::Create(numberTexture_, { 0.0f, 0.0f });
-		totalScoreDigits_[index] = GameSpriteFactory::Create(numberTexture_, { 0.0f, 0.0f });
+	for (BitmapText* text : { &expText_, &levelText_, &killText_, &totalScoreText_ }) {
+		text->Initialize(kResultNumberTexture, kResultNumberMetadata);
 	}
 
 	FinishCountUp();
@@ -226,10 +222,10 @@ void ResultScene::InitializeUi()
 	displayedTotalScore_ = 0.0f;
 	countUpFinished_ = false;
 	finishSePlayed_ = false;
-	SetNumberSprites(expDigits_, expPosition_, 0);
-	SetNumberSprites(levelDigits_, levelPosition_, 0);
-	SetNumberSprites(killDigits_, killPosition_, 0);
-	SetNumberSprites(totalScoreDigits_, totalScorePosition_, 0);
+	SetNumberText(expText_, expPosition_, 0);
+	SetNumberText(levelText_, levelPosition_, 0);
+	SetNumberText(killText_, killPosition_, 0);
+	SetNumberText(totalScoreText_, totalScorePosition_, 0);
 }
 
 void ResultScene::ApplyLayout()
@@ -240,10 +236,10 @@ void ResultScene::ApplyLayout()
 	resultUi_.SetSize(resultSize_);
 	finishUi_.SetPosition(finishPosition_);
 	finishUi_.SetSize(finishSize_);
-	SetNumberSprites(expDigits_, expPosition_, static_cast<int32_t>(displayedExp_));
-	SetNumberSprites(levelDigits_, levelPosition_, static_cast<int32_t>(displayedLevel_));
-	SetNumberSprites(killDigits_, killPosition_, static_cast<int32_t>(displayedKills_));
-	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
+	SetNumberText(expText_, expPosition_, static_cast<int32_t>(displayedExp_));
+	SetNumberText(levelText_, levelPosition_, static_cast<int32_t>(displayedLevel_));
+	SetNumberText(killText_, killPosition_, static_cast<int32_t>(displayedKills_));
+	SetNumberText(totalScoreText_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
 }
 
 void ResultScene::SaveLayout() const
@@ -317,10 +313,10 @@ void ResultScene::UpdateCountUp(float deltaTime)
 	displayedTotalScore_ = (std::min)(static_cast<float>(totalScore), displayedTotalScore_ + (std::max)(1.0f, static_cast<float>(totalScore) * stepScale));
 
 	const float countPulse = 1.0f + (0.5f + 0.5f * std::sin(resultAnimationTime_ * 12.0f)) * 0.055f;
-	SetNumberSprites(expDigits_, expPosition_, static_cast<int32_t>(displayedExp_), countPulse, 0.92f);
-	SetNumberSprites(levelDigits_, levelPosition_, static_cast<int32_t>(displayedLevel_), countPulse, 0.92f);
-	SetNumberSprites(killDigits_, killPosition_, static_cast<int32_t>(displayedKills_), countPulse, 0.92f);
-	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_), countPulse, 1.0f);
+	SetNumberText(expText_, expPosition_, static_cast<int32_t>(displayedExp_), countPulse, 0.92f);
+	SetNumberText(levelText_, levelPosition_, static_cast<int32_t>(displayedLevel_), countPulse, 0.92f);
+	SetNumberText(killText_, killPosition_, static_cast<int32_t>(displayedKills_), countPulse, 0.92f);
+	SetNumberText(totalScoreText_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_), countPulse, 1.0f);
 
 	countUpFinished_ =
 		static_cast<int32_t>(displayedExp_) >= resultData.totalExp &&
@@ -344,47 +340,28 @@ void ResultScene::UpdateFinishUiPulse()
 	const float pulse = 0.5f + 0.5f * std::sin(resultAnimationTime_ * 4.8f);
 	finishUi_.SetAlpha(0.62f + pulse * 0.38f);
 	finishUi_.SetScale(1.0f + pulse * 0.035f);
-	SetNumberSprites(expDigits_, expPosition_, static_cast<int32_t>(displayedExp_));
-	SetNumberSprites(levelDigits_, levelPosition_, static_cast<int32_t>(displayedLevel_));
-	SetNumberSprites(killDigits_, killPosition_, static_cast<int32_t>(displayedKills_));
-	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
+	SetNumberText(expText_, expPosition_, static_cast<int32_t>(displayedExp_));
+	SetNumberText(levelText_, levelPosition_, static_cast<int32_t>(displayedLevel_));
+	SetNumberText(killText_, killPosition_, static_cast<int32_t>(displayedKills_));
+	SetNumberText(totalScoreText_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
 }
 
-void ResultScene::DrawNumber(const std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites)
-{
-	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& sprite : sprites) {
-		if (!sprite) {
-			continue;
-		}
-		sprite->Update();
-		sprite->Draw();
-	}
-}
-
-void ResultScene::SetNumberSprites(
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites,
+void ResultScene::SetNumberText(
+	BitmapText& text,
 	const Vector2& basePosition,
 	int32_t value,
 	float scaleMultiplier,
 	float alpha)
 {
-	const Vector2 scaledSize{ digitSize_.x * scoreScale_ * scaleMultiplier, digitSize_.y * scoreScale_ * scaleMultiplier };
-	const float yOffset = (digitSize_.y * scoreScale_ - scaledSize.y) * 0.5f;
+	const float scale = (digitSize_.y / 72.0f) * scoreScale_ * scaleMultiplier;
+	const float yOffset = digitSize_.y * scoreScale_ * (1.0f - scaleMultiplier) * 0.5f;
 	value = std::clamp(value, 0, 999999);
-	for (size_t index = 0; index < sprites.size(); ++index) {
-		if (!sprites[index]) {
-			continue;
-		}
-		const int32_t divisor = static_cast<int32_t>(std::pow(10, static_cast<int32_t>(sprites.size() - index - 1)));
-		const int32_t digit = divisor > 0 ? (value / divisor) % 10 : 0;
-		sprites[index]->SetPosition({
-			basePosition.x + scaledSize.x * static_cast<float>(index),
-			basePosition.y + yOffset,
-		});
-		sprites[index]->SetSize(scaledSize);
-		sprites[index]->SetColor({ 1.0f, 1.0f, 1.0f, alpha });
-		DigitSpriteUtil::SetDigitSprite(*sprites[index], digitSize_.x, digitSize_, digit);
-	}
+	std::string digits = std::to_string(value);
+	digits.insert(digits.begin(), 6 - digits.size(), '0');
+	text.SetText(digits);
+	text.SetPosition({ basePosition.x, basePosition.y + yOffset });
+	text.SetScale(scale);
+	text.SetColor({ 1.0f, 1.0f, 1.0f, alpha });
 }
 
 bool ResultScene::IsCountUpFinished() const
@@ -404,10 +381,10 @@ void ResultScene::FinishCountUp()
 	displayedLevel_ = static_cast<float>(resultData.finalLevel);
 	displayedKills_ = static_cast<float>(resultData.totalKillCount);
 	displayedTotalScore_ = static_cast<float>(CalculateTotalScore(resultData.totalExp, resultData.finalLevel, resultData.totalKillCount));
-	SetNumberSprites(expDigits_, expPosition_, resultData.totalExp);
-	SetNumberSprites(levelDigits_, levelPosition_, resultData.finalLevel);
-	SetNumberSprites(killDigits_, killPosition_, resultData.totalKillCount);
-	SetNumberSprites(totalScoreDigits_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
+	SetNumberText(expText_, expPosition_, resultData.totalExp);
+	SetNumberText(levelText_, levelPosition_, resultData.finalLevel);
+	SetNumberText(killText_, killPosition_, resultData.totalKillCount);
+	SetNumberText(totalScoreText_, totalScorePosition_, static_cast<int32_t>(displayedTotalScore_));
 	countUpFinished_ = true;
 	finishSePlayed_ = true;
 }

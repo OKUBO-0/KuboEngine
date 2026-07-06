@@ -6,6 +6,7 @@
 #include <cassert>
 #include <format>
 #include <limits>
+#include <stdexcept>
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
 #include "Logger.h"
@@ -117,9 +118,9 @@ void DirectXCommon::ConfigureInfoQueue()
 	Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue = nullptr;
 
 	if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
-		// 破損レベルだけ即停止する。ERROR は Output に残すが、移行中の Scene 切り替え検証を止めない。
+		// リソース状態不整合を発生地点で検出する。
 		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, false);
+		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
 		// WARNING で毎回停止すると、終了時の live object レポートなどでも 0x87A が飛ぶ。
 		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, false);
 
@@ -216,8 +217,8 @@ void DirectXCommon::DepthBufferInitialize()
 {
 	// 深度バッファは毎フレームの 3D 描画で共通利用するため、画面サイズ固定で 1 枚確保する
 	D3D12_RESOURCE_DESC resourceDesc{};
-	resourceDesc.Width = Engine::Base::WinApp::kClientWidth;//Textureの幅
-	resourceDesc.Height = Engine::Base::WinApp::kClientHeight;//Textureの高さ
+	resourceDesc.Width = swapChainDesc.Width;//Textureの幅
+	resourceDesc.Height = swapChainDesc.Height;//Textureの高さ
 	resourceDesc.MipLevels = 1;//mipmapの数
 	resourceDesc.DepthOrArraySize = 1;//奥行きor配列Texturの配列数
 	resourceDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;//DetpthStencilとして利用可能なフォーマット
@@ -244,6 +245,8 @@ void DirectXCommon::DepthBufferInitialize()
 	ThrowIfFailed(hr, "ID3D12Device::CreateCommittedResource depth buffer");
 	//DepthStencilTextureをウィンドウサイズで作成
 	depthStenciResource = resource;
+	TrackResourceState(
+		depthStenciResource.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 }
 
@@ -268,6 +271,8 @@ void DirectXCommon::RTVInitialize()
 	ThrowIfFailed(hr, "IDXGISwapChain::GetBuffer 0");
 	hr = swapChain->GetBuffer(1, IID_PPV_ARGS(&swapChainResources[1]));
 	ThrowIfFailed(hr, "IDXGISwapChain::GetBuffer 1");
+	TrackResourceState(swapChainResources[0].Get(), D3D12_RESOURCE_STATE_PRESENT);
+	TrackResourceState(swapChainResources[1].Get(), D3D12_RESOURCE_STATE_PRESENT);
 
 #pragma region RTV
 	//RTVの設定
@@ -380,13 +385,9 @@ void DirectXCommon::Initialize(Engine::Base::WinApp* winApp)
 
 void DirectXCommon::PrepareBackBufferForRendering(uint32_t backBufferIndex)
 {
-	// Present 状態のバックバッファを描画可能状態へ遷移する
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = swapChainResources[backBufferIndex].Get();
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	commandList->ResourceBarrier(1, &barrier);
+	TransitionResource(
+		swapChainResources[backBufferIndex].Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	// 描画先の RTV を設定し、描画開始前にクリアする
 	commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, nullptr);
@@ -395,14 +396,55 @@ void DirectXCommon::PrepareBackBufferForRendering(uint32_t backBufferIndex)
 
 void DirectXCommon::FinalizeFrameTransition()
 {
-	// 描画完了後は Present 用状態へ戻してから実行キューへ送る
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-	commandList->ResourceBarrier(1, &barrier);
+	TransitionResource(
+		swapChainResources[currentFrameIndex_].Get(),
+		D3D12_RESOURCE_STATE_PRESENT);
 	CloseAndExecuteCommandList();
 	ThrowIfFailed(
 		swapChain->Present(vSyncEnabled_ ? 1 : 0, 0),
 		"IDXGISwapChain::Present");
+}
+
+void DirectXCommon::ResizeSwapChainIfNeeded()
+{
+	RECT clientRect{};
+	if (!winApp_ || !GetClientRect(winApp_->GetHwnd(), &clientRect)) {
+		return;
+	}
+	const uint32_t width = static_cast<uint32_t>(
+		(std::max)(0L, clientRect.right - clientRect.left));
+	const uint32_t height = static_cast<uint32_t>(
+		(std::max)(0L, clientRect.bottom - clientRect.top));
+	if (width == 0 || height == 0 ||
+		(width == swapChainDesc.Width && height == swapChainDesc.Height)) {
+		return;
+	}
+
+	WaitForAllFrames();
+	for (auto& resource : swapChainResources) {
+		UntrackResourceState(resource.Get());
+		resource.Reset();
+	}
+	UntrackResourceState(depthStenciResource.Get());
+	depthStenciResource.Reset();
+	ThrowIfFailed(
+		swapChain->ResizeBuffers(
+			kFrameCount,
+			width,
+			height,
+			swapChainDesc.Format,
+			0),
+		"IDXGISwapChain::ResizeBuffers");
+	swapChainDesc.Width = width;
+	swapChainDesc.Height = height;
+	RTVInitialize();
+	DepthBufferInitialize();
+	DSVInitialize();
+	viewport.Width = static_cast<float>(width);
+	viewport.Height = static_cast<float>(height);
+	scissorRect.right = static_cast<LONG>(width);
+	scissorRect.bottom = static_cast<LONG>(height);
+	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 }
 
 void DirectXCommon::CloseAndExecuteCommandList()
@@ -482,7 +524,6 @@ void DirectXCommon::ResetCommandObjects(uint32_t frameIndex)
 
 void DirectXCommon::Begin()
 {
-
 	//これから書き込むバックバッファのインデックスを取得する
 	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 	PrepareBackBufferForRendering(currentFrameIndex_);
@@ -518,6 +559,11 @@ void DirectXCommon::End()
 	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 	WaitForFrame(frameContexts_[currentFrameIndex_]);
 	ResetCommandObjects(currentFrameIndex_);
+}
+
+void DirectXCommon::PrepareForFrame()
+{
+	ResizeSwapChainIfNeeded();
 }
 
 void DirectXCommon::BeginGpuFrameTiming()
@@ -816,6 +862,8 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateDefaultBufferResourc
 			nullptr,
 			IID_PPV_ARGS(&defaultResource)),
 		"ID3D12Device::CreateCommittedResource default buffer");
+	TrackResourceState(
+		defaultResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> uploadResource =
 		CreateBufferResource(sizeInBytes);
@@ -831,10 +879,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateDefaultBufferResourc
 		uploadResource.Get(),
 		0,
 		sizeInBytes);
-	TransitionResource(
-		defaultResource.Get(),
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		finalState);
+	TransitionResource(defaultResource.Get(), finalState);
 	frameContexts_[currentFrameIndex_].deferredReleaseResources.push_back(
 		std::move(uploadResource));
 	return defaultResource;
@@ -917,6 +962,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateTextureResource(cons
 		IID_PPV_ARGS(&resource));
 
 	ThrowIfFailed(hr, "ID3D12Device::CreateCommittedResource texture");
+	TrackResourceState(resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
 	return resource;
 
 }
@@ -936,14 +982,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::UploadTextureData
 	UpdateSubresources(commandList.Get(), texture.Get(), intermediateResource.Get(), 0, 0, UINT(subresources.size()), subresources.data());
 
 	// 転送完了後はシェーダーから参照できる状態へ戻す
-	D3D12_RESOURCE_BARRIER barrier{};
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = texture.Get();
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_GENERIC_READ;
-	commandList->ResourceBarrier(1, &barrier);
+	TransitionResource(texture.Get(), D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
 	return intermediateResource;
@@ -957,12 +996,170 @@ void DirectXCommon::CommandKick()
 	ResetCommandObjects(currentFrameIndex_);
 }
 
-void DirectXCommon::TransitionResource(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+void DirectXCommon::TrackResourceState(
+	ID3D12Resource* resource,
+	D3D12_RESOURCE_STATES initialState,
+	UINT subresource)
 {
+	if (!resource) {
+		throw std::invalid_argument("TrackResourceState requires a resource");
+	}
+	if (subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		UntrackResourceState(resource);
+	} else {
+		ExpandWholeResourceState(resource);
+	}
+	resourceStates_[{ resource, subresource }] = initialState;
+}
 
+void DirectXCommon::UntrackResourceState(ID3D12Resource* resource)
+{
+	if (!resource) {
+		return;
+	}
+	for (auto it = resourceStates_.begin(); it != resourceStates_.end();) {
+		if (it->first.resource == resource) {
+			it = resourceStates_.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
 
+D3D12_RESOURCE_STATES DirectXCommon::GetTrackedResourceState(
+	ID3D12Resource* resource,
+	UINT subresource) const
+{
+	const auto exact = resourceStates_.find({ resource, subresource });
+	if (exact != resourceStates_.end()) {
+		return exact->second;
+	}
+	const auto whole = resourceStates_.find(
+		{ resource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES });
+	if (whole != resourceStates_.end()) {
+		return whole->second;
+	}
+	throw std::logic_error("Resource state is not tracked");
+}
 
+UINT DirectXCommon::GetResourceSubresourceCount(ID3D12Resource* resource) const
+{
+	const D3D12_RESOURCE_DESC desc = resource->GetDesc();
+	if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+		return 1;
+	}
+	UINT planeCount = 1;
+	if (device && desc.Format != DXGI_FORMAT_UNKNOWN) {
+		planeCount = D3D12GetFormatPlaneCount(device.Get(), desc.Format);
+		planeCount = (std::max)(1u, planeCount);
+	}
+	return static_cast<UINT>(desc.MipLevels) *
+		static_cast<UINT>(desc.DepthOrArraySize) * planeCount;
+}
 
+void DirectXCommon::ExpandWholeResourceState(ID3D12Resource* resource)
+{
+	const ResourceStateKey wholeKey{
+		resource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES };
+	const auto whole = resourceStates_.find(wholeKey);
+	if (whole == resourceStates_.end()) {
+		return;
+	}
+	const D3D12_RESOURCE_STATES state = whole->second;
+	resourceStates_.erase(whole);
+	const UINT count = GetResourceSubresourceCount(resource);
+	for (UINT index = 0; index < count; ++index) {
+		resourceStates_[{ resource, index }] = state;
+	}
+}
+
+void DirectXCommon::TransitionResource(
+	ID3D12Resource* resource,
+	D3D12_RESOURCE_STATES after,
+	UINT subresource)
+{
+	if (subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES &&
+		resourceStates_.find({ resource, subresource }) == resourceStates_.end()) {
+		bool found = false;
+		for (const auto& [key, state] : resourceStates_) {
+			if (key.resource != resource) {
+				continue;
+			}
+			found = true;
+			if (state == after) {
+				continue;
+			}
+			D3D12_RESOURCE_BARRIER transition{};
+			transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			transition.Transition.pResource = resource;
+			transition.Transition.Subresource = key.subresource;
+			transition.Transition.StateBefore = state;
+			transition.Transition.StateAfter = after;
+			commandList->ResourceBarrier(1, &transition);
+		}
+		if (!found) {
+			throw std::logic_error("Resource state is not tracked");
+		}
+		UntrackResourceState(resource);
+		resourceStates_[{ resource, subresource }] = after;
+		return;
+	}
+	if (subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		ExpandWholeResourceState(resource);
+	}
+	TransitionResource(resource,
+		GetTrackedResourceState(resource, subresource), after, subresource);
+}
+
+void DirectXCommon::TransitionResource(
+	ID3D12Resource* resource,
+	D3D12_RESOURCE_STATES before,
+	D3D12_RESOURCE_STATES after,
+	UINT subresource)
+{
+	if (!resource || !commandList) {
+		throw std::invalid_argument(
+			"TransitionResource requires resource and command list");
+	}
+	if (subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		ExpandWholeResourceState(resource);
+	}
+	if (GetTrackedResourceState(resource, subresource) != before) {
+		throw std::logic_error("Resource state mismatch before transition");
+	}
+	if (before == after) {
+		return;
+	}
+	D3D12_RESOURCE_BARRIER transition{};
+	transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	transition.Transition.pResource = resource;
+	transition.Transition.Subresource = subresource;
+	transition.Transition.StateBefore = before;
+	transition.Transition.StateAfter = after;
+	commandList->ResourceBarrier(1, &transition);
+	if (subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		UntrackResourceState(resource);
+	}
+	resourceStates_[{ resource, subresource }] = after;
+}
+
+void DirectXCommon::InsertUavBarrier(ID3D12Resource* resource)
+{
+	D3D12_RESOURCE_BARRIER uav{};
+	uav.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uav.UAV.pResource = resource;
+	commandList->ResourceBarrier(1, &uav);
+}
+
+void DirectXCommon::InsertAliasingBarrier(
+	ID3D12Resource* beforeResource,
+	ID3D12Resource* afterResource)
+{
+	D3D12_RESOURCE_BARRIER aliasing{};
+	aliasing.Type = D3D12_RESOURCE_BARRIER_TYPE_ALIASING;
+	aliasing.Aliasing.pResourceBefore = beforeResource;
+	aliasing.Aliasing.pResourceAfter = afterResource;
+	commandList->ResourceBarrier(1, &aliasing);
 }
 
 }

@@ -1,10 +1,9 @@
-orbit.unlockWeight,2.2
-normal.highLevelWeight,0.35
-normal.fastestIntervalWeight,0.5
-normal.fastIntervalWeight,0.7
-normal.midIntervalWeight,1.1
-drone.unlockWeight,1.8
-lightning.unlockWeight,1.4
+rock.unlockWeight,2.2
+bowArrow.highLevelWeight,0.35
+bowArrow.fastestIntervalWeight,0.5
+bowArrow.fastIntervalWeight,0.7
+bowArrow.midIntervalWeight,1.1
+thunderStaff.unlockWeight,1.4
 attack.lowWeight,1.5
 attack.midWeight,1.1
 attack.highWeight,0.75

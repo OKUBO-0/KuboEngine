@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include "PlayerStats.h"
 
 namespace DirectXGame {
 
@@ -13,20 +14,31 @@ public:
 		const std::string& key,
 		const std::string& value);
 	void ValidateLoadedStatus() const;
+	void LoadCharacterStats(
+		const std::string& filePath,
+		const std::string& characterKey,
+		Player* player);
 
 	void TakeDamage(int32_t damage);
-	void RecoverHP();
+	int32_t RecoverHP(int32_t amount = 1);
 	void AddEXP(int32_t amount);
 	void IncreaseMaxHP();
+	void IncreaseMaxHPBy(int32_t amount);
 	void UpgradeAttackPower();
+	void UpgradeStat(PlayerStatType type, float amount)
+	{
+		stats_.AddRunModifier(type, amount);
+	}
 	void UpgradeMoveSpeed(Player* player);
+	void ApplyCurrentMovementSpeed(Player* player) const;
 	void UpgradeExpPickupRange();
 	void ApplyPermanentBonuses(
 		Player* player,
 		int32_t maxHPLevel,
 		int32_t attackLevel,
 		int32_t moveSpeedLevel,
-		int32_t expPickupRangeLevel);
+		int32_t expPickupRangeLevel,
+		int32_t coinGainLevel);
 
 #ifdef _DEBUG
 	void ForceDebugDeath();
@@ -49,7 +61,9 @@ public:
 	int32_t GetMoveSpeedLevel() const { return moveSpeedLevel_; }
 	bool IsMoveSpeedMaxLevel() const { return moveSpeedLevel_ >= moveSpeedUpgradeCap_; }
 	int32_t GetExpPickupRangeLevel() const { return expPickupRangeLevel_; }
-	float GetExpPickupRangeMultiplier() const { return expPickupRangeMultiplier_; }
+	float GetExpPickupRangeMultiplier() const { return stats_.GetPickupRangeMultiplier(); }
+	const PlayerStats& GetStats() const { return stats_; }
+	PlayerStats& GetStats() { return stats_; }
 
 private:
 	int32_t level_ = 1;
@@ -73,6 +87,7 @@ private:
 	float expPickupRangeUpgradeStep_ = 0.25f;
 	float expPickupRangeMultiplier_ = 1.0f;
 	float permanentExpPickupRangeBonus_ = 0.0f;
+	PlayerStats stats_{};
 };
 
 }

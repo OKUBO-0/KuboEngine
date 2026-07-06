@@ -27,7 +27,7 @@ camera.mode,0
 particle.playerDamageRippleCount,1
 particle.enemyHitSparkCount,10
 particle.enemyDeathRippleCount,1
-debugWindow.keyInputDebug,1
+debugWindow.keyInputDebug,0
 particle.rippleLifetime,0.42
 particle.lightningSparkCount,14
 particle.levelUpConfettiCount,72
@@ -43,7 +43,7 @@ particle.confettiScaleMultiplier,1.25
 camera.followSmoothness,8
 particle.smokeScaleMultiplier,1
 particle.rippleExpandSpeed,4.5
-debugWindow.spriteManager,1
+debugWindow.spriteManager,0
 camera.pitch,1
 particle.confettiVelocityScale,1.15
 debugCamera.enabled,0
@@ -72,10 +72,10 @@ debugWindow.particleView,1
 debugWindow.statisticsView,1
 debugWindow.lightSettings,1
 debugWindow.gizmo,0
-debugWindow.objectManager,0
+debugWindow.objectManager,1
 debugWindow.motionEditor,0
 debugWindow.colliderTagManager,1
-debugWindow.audio,1
+debugWindow.audio,0
 debugWindow.sceneSettings,1
 debugWindow.sceneSpecificDebug,1
 debugWindow.objectSettings,1

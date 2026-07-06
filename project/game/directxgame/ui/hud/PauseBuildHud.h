@@ -4,6 +4,8 @@
 #include "GameInputBindings.h"
 #include "UILabel.h"
 #include "UIPanel.h"
+#include "BitmapText.h"
+#include "PassiveItemType.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -45,6 +47,9 @@ private:
 		float stepX = 62.0f;
 		float stepY = 190.0f;
 		Vector2 iconSize{ 58.0f, 58.0f };
+		Vector2 statusPosition{ 930.0f, 210.0f };
+		float statusLineStep = 23.0f;
+		float statusScale = 0.21f;
 		bool visible = true;
 		bool debugEnabled = false;
 	};
@@ -72,23 +77,30 @@ private:
 	void UpdateBuildIcons(
 		const PlayerManager& playerManager,
 		float animationTime);
+	void UpdateStatusTexts(const PlayerManager& playerManager);
 	void MoveSelection(int32_t delta);
 	int32_t GetHoveredMenuIndex() const;
 
 	UILabel overlay_;
 	UILabel leftCursor_;
 	UILabel rightCursor_;
-	static constexpr size_t kIconCount = 9;
+	static constexpr size_t kWeaponIconCount = 10;
+	static constexpr size_t kPassiveItemSlotCount = 6;
+	static constexpr size_t kIconCount =
+		kWeaponIconCount + kPassiveItemSlotCount;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kIconCount> icons_;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kIconCount> levelDigits_;
+	static constexpr size_t kStatusLineCount = 16;
+	std::array<BitmapText, kStatusLineCount> statusTexts_;
+	std::array<PassiveItemType, kPassiveItemSlotCount> displayedItemTypes_{
+		PassiveItemType::Count, PassiveItemType::Count,
+		PassiveItemType::Count, PassiveItemType::Count,
+		PassiveItemType::Count, PassiveItemType::Count };
 	std::vector<int32_t> weaponAcquisitionOrder_{ 0 };
-	std::vector<int32_t> itemAcquisitionOrder_;
-	std::array<bool, kIconCount> acquisitionRecorded_{ true, false, false, false, false, false, false, false, false };
-	bool acquisitionBaselineInitialized_ = false;
-	int32_t baselineMaxHP_ = 0;
-	int32_t baselineAttackPower_ = 0;
-	int32_t baselineMoveSpeedLevel_ = 0;
-	float baselineExpPickupRangeMultiplier_ = 1.0f;
+	std::array<bool, kIconCount> acquisitionRecorded_{
+		true, false, false, false, false, false, false,
+		false, false, false, false, false, false, false,
+		false, false };
 	UIPanel vignetteBase_;
 	static constexpr size_t kVignetteLayerCount = 8;
 	std::array<std::array<UIPanel, 4>, kVignetteLayerCount> vignettePanels_;

@@ -504,12 +504,7 @@ void GameSession::AddRunCoins(int32_t amount)
 	if (amount <= 0) {
 		return;
 	}
-	constexpr int32_t kCoinGainPercentPerLevel = 25;
-	const int32_t gainPercent = 100 +
-		kCoinGainPercentPerLevel * permanentCoinGainLevel_;
-	const int32_t adjustedAmount = static_cast<int32_t>(
-		(static_cast<int64_t>(amount) * gainPercent + 50) / 100);
-	runCoins_ += adjustedAmount;
+	runCoins_ += amount;
 }
 
 void GameSession::CommitRunCoinsToProfile()

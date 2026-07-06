@@ -93,9 +93,6 @@ private:
 	bool autoSceneEffectEnabled_ = true;
 	std::unique_ptr<GraphicsPipeline> graphicsPipeline_;
 
-	D3D12_RESOURCE_STATES currentState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
-
-
 };
 
 }

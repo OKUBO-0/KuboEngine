@@ -218,7 +218,8 @@ void EnemySpawnController::RelocateFarEnemies(
 }
 
 std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
-	Player* player) const
+	Player* player,
+	int32_t playerLevel) const
 {
 	if (!player) {
 		return nullptr;
@@ -230,7 +231,11 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 	}
 	data.type = EnemyType::Boss;
 	data.behavior = EnemyBehaviorType::Boss;
-	data.baseHP = (std::max)(data.baseHP, 140);
+	constexpr int32_t kBaseBossHP = 1200;
+	constexpr int32_t kHpPerPlayerLevel = 60;
+	const int32_t scaledPlayerLevel = std::clamp(playerLevel, 1, 100);
+	data.baseHP = kBaseBossHP +
+		(scaledPlayerLevel - 1) * kHpPerPlayerLevel;
 	data.baseSpeed = (std::max)(data.baseSpeed, 0.18f);
 	data.baseEXP = (std::max)(data.baseEXP, 80);
 	data.coinReward = (std::max)(data.coinReward, 50);

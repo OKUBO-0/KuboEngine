@@ -3,7 +3,6 @@
 #include "DataPaths.h"
 #include "EnemyManager.h"
 #include "PlayerManager.h"
-#include "Drone.h"
 #include <algorithm>
 #include <fstream>
 #include <string>
@@ -41,14 +40,6 @@ SoftCapTelemetry::Snapshot SoftCapTelemetry::Capture(
 		snapshot.normalBulletPrunesPerMinute =
 			static_cast<float>(snapshot.normalBulletPrunes) / rateDivisor;
 		snapshot.orbitBulletCount = playerManager->GetOrbitBullets().size();
-		if (playerManager->HasDrone() && playerManager->GetDrone()) {
-			const Drone* drone = playerManager->GetDrone().get();
-			snapshot.droneBulletCount = drone->GetBullets().size();
-			snapshot.droneBulletPeak = drone->GetPeakBulletCount();
-			snapshot.droneBulletPrunes = drone->GetBulletPruneCount();
-			snapshot.droneBulletPrunesPerMinute =
-				static_cast<float>(snapshot.droneBulletPrunes) / rateDivisor;
-		}
 	}
 	if (Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance()) {
@@ -96,7 +87,6 @@ void SoftCapTelemetry::SaveCsv(
 		file << "frame,telemetryFrames,telemetryMinutes,state,level,enemyCount,killCount,"
 			"expOrbCount,expOrbCap,expOrbPeak,expOrbPrunes,expOrbPrunesPerMinute,"
 			"normalBulletCount,normalBulletCap,normalBulletPeak,normalBulletPrunes,normalBulletPrunesPerMinute,"
-			"droneBulletCount,droneBulletCap,droneBulletPeak,droneBulletPrunes,droneBulletPrunesPerMinute,"
 			"particleCount\n";
 	}
 	file << snapshot.frame << ','
@@ -116,11 +106,6 @@ void SoftCapTelemetry::SaveCsv(
 		<< snapshot.normalBulletPeak << ','
 		<< snapshot.normalBulletPrunes << ','
 		<< snapshot.normalBulletPrunesPerMinute << ','
-		<< snapshot.droneBulletCount << ','
-		<< Drone::kMaxActiveBullets << ','
-		<< snapshot.droneBulletPeak << ','
-		<< snapshot.droneBulletPrunes << ','
-		<< snapshot.droneBulletPrunesPerMinute << ','
 		<< snapshot.particleCount << '\n';
 #else
 	(void)snapshot;

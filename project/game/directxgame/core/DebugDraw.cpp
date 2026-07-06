@@ -6,7 +6,6 @@
 #include "ExpOrb.h"
 #include "Player.h"
 #include "PlayerManager.h"
-#include "Drone.h"
 #include "NormalBullet.h"
 #include "OrbitBullet.h"
 #include <cmath>
@@ -132,27 +131,6 @@ void DebugDraw::Queue(
 				line.DrawOBB(
 					bullet->GetCollisionObb(),
 					{ 0.7f, 0.35f, 1.0f, 1.0f });
-			}
-		}
-		if (playerManager->HasDrone() && playerManager->GetDrone()) {
-			for (const std::unique_ptr<NormalBullet>& bullet :
-				playerManager->GetDrone()->GetBullets()) {
-				if (bullet && bullet->IsActive()) {
-					line.DrawOBB(
-						bullet->GetCollisionObb(),
-						{ 0.25f, 0.85f, 1.0f, 1.0f });
-					Vector3 clampedEnd{};
-					if (BuildClampedDebugSegment(
-							bullet->GetPreviousPosition(),
-							bullet->GetPosition(),
-							4.0f,
-							clampedEnd)) {
-						line.Draw(
-							bullet->GetPreviousPosition(),
-							clampedEnd,
-							{ 0.25f, 0.85f, 1.0f, 0.75f });
-					}
-				}
 			}
 		}
 		if (playerManager->GetLightningEffectTimer() > 0.0f) {

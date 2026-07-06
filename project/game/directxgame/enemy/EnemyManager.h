@@ -3,6 +3,8 @@
 #include "Vector3.h"
 #include "EnemyCollisionSystem.h"
 #include "EnemyDeathBomb.h"
+#include "BossInkProjectile.h"
+#include "BossAttackVisual.h"
 #include "Enemy.h"
 #include "EnemySpawnController.h"
 #include "ExpOrb.h"
@@ -53,6 +55,13 @@ public:
 	bool FindNearestEnemyPosition(const Vector3& origin, float maxDistance, Vector3& outPosition) const;
 	std::vector<Vector3> PickLightningTargets(int32_t count) const;
 	void ApplyLightningDamage(const Vector3& center, float radius, int32_t damage);
+	void ApplyAreaDamage(const Vector3& center, float radius, int32_t damage);
+	void ApplyArcDamage(
+		const Vector3& center,
+		const Vector3& forward,
+		float radius,
+		float halfAngleRadians,
+		int32_t damage);
 	void StartBossPhase();
 	bool IsBossPhase() const { return bossPhase_; }
 	bool IsBossDefeated() const { return bossDefeated_; }
@@ -68,10 +77,22 @@ private:
 	void SpawnDeathDrop(const Enemy& enemy);
 	void SpawnDeathBomb(const Enemy& enemy);
 	void UpdateDeathBombs(float deltaTime);
+	void ProcessBossAttackEvents();
+	void UpdateBossInkProjectiles(float deltaTime);
+	void SpawnBossInkWave(const Vector3& position, int32_t waveIndex);
+	void DrawBossAttackTelegraph() const;
+	void UpdateBossAttackVisuals(float deltaTime);
 
 	std::vector<std::unique_ptr<Enemy>> enemies_;
 	std::list<std::unique_ptr<ExpOrb>> expOrbs_;
 	std::vector<std::unique_ptr<EnemyDeathBomb>> deathBombs_;
+	std::vector<std::unique_ptr<BossInkProjectile>> bossInkProjectiles_;
+	Vector3 bossInkWavePosition_{};
+	int32_t pendingBossInkWaves_ = 0;
+	int32_t bossInkNextWaveIndex_ = 0;
+	float bossInkWaveTimer_ = 0.0f;
+	BossRushTelegraph bossRushTelegraph_{};
+	std::vector<std::unique_ptr<BossSlamCube>> bossSlamCubes_;
 	EnemySpawnController spawnController_{};
 	Player* player_ = nullptr;
 	PlayerManager* playerManager_ = nullptr;

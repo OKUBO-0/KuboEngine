@@ -13,6 +13,7 @@
 #include<vector>
 #include <chrono>
 #include <thread>  // std::this_thread
+#include <unordered_map>
 #include <Vector4.h>
 
 /// @brief DirectX12 のデバイス生成とフレーム描画基盤を管理するクラス
@@ -65,6 +66,7 @@ private:
 	void ScissorInitialize();
 	void ImguiInitialize();
 	void InitializeGraphicsResources();
+	void ResizeSwapChainIfNeeded();
 	void PrepareBackBufferForRendering(uint32_t backBufferIndex);
 	void CloseAndExecuteCommandList();
 	void FinalizeFrameTransition();
@@ -88,6 +90,7 @@ public:
 	/// @param なし
 	/// @return なし
 	void Begin();
+	void PrepareForFrame();
 	void BeginGpuFrameTiming();
 
 	/// @brief フレーム描画後の表示反映と同期を行う
@@ -249,9 +252,39 @@ public:
 	/// @param before 遷移前の状態
 	/// @param after 遷移後の状態
 	/// @return なし
-	void TransitionResource(ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after);
+	void TrackResourceState(ID3D12Resource* resource,
+		D3D12_RESOURCE_STATES initialState,
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void UntrackResourceState(ID3D12Resource* resource);
+	void TransitionResource(ID3D12Resource* resource,
+		D3D12_RESOURCE_STATES after,
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void TransitionResource(ID3D12Resource* resource,
+		D3D12_RESOURCE_STATES before,
+		D3D12_RESOURCE_STATES after,
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void InsertUavBarrier(ID3D12Resource* resource = nullptr);
+	void InsertAliasingBarrier(ID3D12Resource* beforeResource,
+		ID3D12Resource* afterResource);
+	size_t GetTrackedResourceStateCount() const { return resourceStates_.size(); }
 
 private:
+	struct ResourceStateKey {
+		ID3D12Resource* resource = nullptr;
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		bool operator==(const ResourceStateKey&) const = default;
+	};
+	struct ResourceStateKeyHash {
+		size_t operator()(const ResourceStateKey& key) const noexcept
+		{
+			return std::hash<ID3D12Resource*>{}(key.resource) ^
+				(static_cast<size_t>(key.subresource) << 1);
+		}
+	};
+	D3D12_RESOURCE_STATES GetTrackedResourceState(
+		ID3D12Resource* resource, UINT subresource) const;
+	UINT GetResourceSubresourceCount(ID3D12Resource* resource) const;
+	void ExpandWholeResourceState(ID3D12Resource* resource);
 
 	// Windows API 管理
 	Engine::Base::WinApp* winApp_ = nullptr;
@@ -302,8 +335,8 @@ private:
 	// シザー矩形
 	D3D12_RECT scissorRect{};
 	std::unique_ptr<ShaderCompiler> shaderCompiler_;
-	// バリア
-	D3D12_RESOURCE_BARRIER barrier{};
+	std::unordered_map<ResourceStateKey, D3D12_RESOURCE_STATES,
+		ResourceStateKeyHash> resourceStates_;
 	// FPS 固定用の基準時刻
 	std::chrono::steady_clock::time_point reference_;
 	bool frameRateLimitEnabled_ = true;

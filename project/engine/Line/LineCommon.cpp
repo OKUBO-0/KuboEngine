@@ -76,6 +76,9 @@ void LineCommon::Finalize()
 		}
 	}
 	graphicsPipeline_.reset();
+	if (dxCommon_) {
+		dxCommon_->UntrackResourceState(vertexResource_.Get());
+	}
 	vertexResource_.Reset();
 	instances_.clear();
 	dxCommon_ = nullptr;

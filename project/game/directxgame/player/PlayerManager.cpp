@@ -2,6 +2,8 @@
 
 #include "CsvReader.h"
 #include "ResourcePaths.h"
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace DirectXGame {
@@ -45,6 +47,7 @@ void PlayerManager::LoadStatusFromCSV(
 		}
 	}
 	progression_.ValidateLoadedStatus();
+	progression_.ApplyCurrentMovementSpeed(player_);
 }
 
 void PlayerManager::LoadWeaponUpgradeSettings(
@@ -56,11 +59,18 @@ void PlayerManager::LoadWeaponUpgradeSettings(
 void PlayerManager::Update(float deltaTime)
 {
 	UpdateInvincibility(deltaTime);
+	hpRegenAccumulator_ +=
+		progression_.GetStats().GetHpRegenPerSecond() * deltaTime;
+	const int32_t regenPoints = static_cast<int32_t>(hpRegenAccumulator_);
+	if (regenPoints > 0) {
+		progression_.RecoverHP(regenPoints);
+		hpRegenAccumulator_ -= static_cast<float>(regenPoints);
+	}
 	weapons_.Update(
 		deltaTime,
 		player_,
 		enemyManager_,
-		GetAttackPower());
+		progression_.GetStats());
 }
 
 void PlayerManager::Draw()
@@ -68,29 +78,96 @@ void PlayerManager::Draw()
 	weapons_.Draw();
 }
 
-void PlayerManager::TakeDamage(int32_t damage)
+bool PlayerManager::TakeDamage(int32_t damage)
 {
 	if (invincible_) {
-		return;
+		return false;
 	}
+	const PlayerStats& stats = progression_.GetStats();
+	const float evasionRoll = std::uniform_real_distribution<float>(0.0f, 1.0f)(
+		damageRandomEngine_);
+	if (evasionRoll < stats.GetEvasionChance()) {
+		return false;
+	}
+	const int32_t mitigatedDamage = (std::max)(1, static_cast<int32_t>(
+		std::ceil(static_cast<float>(damage) *
+			(1.0f - stats.GetArmorReduction()))));
 
-	progression_.TakeDamage(damage);
+	progression_.TakeDamage(mitigatedDamage);
 	invincible_ = true;
 	invincibleTimer_ = invincibilityDuration_;
 	visible_ = false;
 	if (player_) {
 		player_->SetVisible(false);
 	}
+	return true;
 }
 
-void PlayerManager::RecoverHP()
+int32_t PlayerManager::RecoverHP(int32_t amount)
 {
-	progression_.RecoverHP();
+	return progression_.RecoverHP(amount);
 }
 
-void PlayerManager::AddEXP(int32_t amount)
+int32_t PlayerManager::ApplyLifeStealOnHit()
 {
-	progression_.AddEXP(amount);
+	const float chance = progression_.GetStats().GetLifeStealChance();
+	int32_t heal = static_cast<int32_t>(chance);
+	const float fractionalChance = chance - static_cast<float>(heal);
+	if (std::uniform_real_distribution<float>(0.0f, 1.0f)(damageRandomEngine_) <
+		fractionalChance) {
+		++heal;
+	}
+	return progression_.RecoverHP(heal);
+}
+
+int32_t PlayerManager::AddEXP(int32_t amount)
+{
+	const int32_t adjustedAmount = (std::max)(0, static_cast<int32_t>(
+		std::lround(static_cast<float>(amount) *
+			progression_.GetStats().GetExpGainMultiplier())));
+	progression_.AddEXP(adjustedAmount);
+	return adjustedAmount;
+}
+
+DamageResult PlayerManager::RollDamage(int32_t baseDamage)
+{
+	const float randomUnit = std::uniform_real_distribution<float>(0.0f, 1.0f)(
+		damageRandomEngine_);
+	return progression_.GetStats().ResolveHit(baseDamage, randomUnit);
+}
+
+bool PlayerManager::CanAcquirePassiveItem(PassiveItemType type) const
+{
+	const size_t index = PassiveItemIndex(type);
+	if (index >= passiveItemLevels_.size()) {
+		return false;
+	}
+	const int32_t level = passiveItemLevels_[index];
+	return level < kPassiveItemMaxLevel &&
+		(level > 0 || passiveItemAcquisitionOrder_.size() <
+			kMaxEquippedPassiveItems);
+}
+
+bool PlayerManager::UpgradePassiveItem(PassiveItemType type)
+{
+	if (!CanAcquirePassiveItem(type)) {
+		return false;
+	}
+	const PassiveItemDefinition& definition = GetPassiveItemDefinition(type);
+	int32_t& level = passiveItemLevels_[PassiveItemIndex(type)];
+	if (level == 0) {
+		passiveItemAcquisitionOrder_.push_back(type);
+	}
+	++level;
+	if (type == PassiveItemType::MaxHp) {
+		progression_.IncreaseMaxHPBy(static_cast<int32_t>(definition.amount));
+	} else {
+		progression_.UpgradeStat(definition.statType, definition.amount);
+		if (type == PassiveItemType::MoveSpeed) {
+			progression_.ApplyCurrentMovementSpeed(player_);
+		}
+	}
+	return true;
 }
 
 void PlayerManager::IncreaseMaxHP()
@@ -107,14 +184,16 @@ void PlayerManager::ApplyPermanentUpgrades(
 	int32_t maxHPLevel,
 	int32_t attackLevel,
 	int32_t moveSpeedLevel,
-	int32_t expPickupRangeLevel)
+	int32_t expPickupRangeLevel,
+	int32_t coinGainLevel)
 {
 	progression_.ApplyPermanentBonuses(
 		player_,
 		maxHPLevel,
 		attackLevel,
 		moveSpeedLevel,
-		expPickupRangeLevel);
+		expPickupRangeLevel,
+		coinGainLevel);
 }
 
 void PlayerManager::UpgradeNormalBullets()
@@ -130,16 +209,6 @@ void PlayerManager::AddOrbitBullets()
 void PlayerManager::UpgradeOrbitBullets()
 {
 	weapons_.UpgradeOrbitBullets(player_);
-}
-
-void PlayerManager::AddDrone()
-{
-	weapons_.AddDrone();
-}
-
-void PlayerManager::UpgradeDrone()
-{
-	weapons_.UpgradeDrone();
 }
 
 void PlayerManager::AddLightning()

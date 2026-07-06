@@ -277,9 +277,17 @@ public:
 			return;
 		}
 
-		phaseTime_ += deltaTime;
-		actionTimer_ -= deltaTime;
 		const int32_t phase = enemy.GetBossPhase();
+		if (phase != currentPhase_) {
+			currentPhase_ = phase;
+			state_ = State::Stalk;
+			stateTimer_ = GetStalkDuration(phase);
+			currentAction_ = Action::BasicRush;
+			rushesRemaining_ = 0;
+		}
+
+		phaseTime_ += deltaTime;
+		stateTimer_ -= deltaTime;
 		const Vector3 position = enemy.GetPosition();
 		const Vector3 playerPosition = player->GetWorldPosition();
 		Vector3 toPlayer{ playerPosition.x - position.x, 0.0f, playerPosition.z - position.z };
@@ -289,26 +297,80 @@ public:
 			toPlayer = { 0.0f, 0.0f, 1.0f };
 		}
 
-		if (rushTimer_ > 0.0f) {
-			rushTimer_ -= deltaTime;
-			const float rushMultiplier = phase == 3 ? 4.2f : (phase == 2 ? 3.5f : 2.9f);
+		if (state_ == State::Telegraph) {
+			rushDirection_ = toPlayer;
+			enemy.SetRotationY(std::atan2(rushDirection_.x, rushDirection_.z));
+			const float pulse = 0.5f + 0.5f * std::sin(phaseTime_ * 22.0f);
+			const BossAttackType telegraphType = currentAction_ == Action::TentacleSlam
+				? BossAttackType::TentacleSlam
+				: (currentAction_ == Action::InkBurst
+					? BossAttackType::InkBurst
+					: BossAttackType::Rush);
+			const float telegraphRange = telegraphType == BossAttackType::TentacleSlam
+				? 30.0f
+				: (telegraphType == BossAttackType::Rush ? distance + 12.0f : 8.0f);
+			enemy.SetBossAttackTelegraph(
+				telegraphType,
+				rushDirection_,
+				1.0f - stateTimer_ / telegraphDuration_,
+				telegraphRange);
+			const Vector4 telegraphColor = currentAction_ == Action::InkBurst
+				? Vector4{ 0.28f, 0.12f, 0.42f, 1.0f }
+				: (currentAction_ == Action::TentacleSlam
+					? Vector4{ 1.0f, 0.34f, 0.12f, 1.0f }
+					: Vector4{ 1.0f, 0.78f + pulse * 0.18f, 0.16f, 1.0f });
+			enemy.SetBehaviorVisual(telegraphColor, 2.35f + pulse * 0.28f);
+			if (stateTimer_ <= 0.0f) {
+				ExecuteTelegraphedAction(enemy, phase, distance);
+			}
+			return;
+		}
+
+		if (state_ == State::Rush) {
+			const float rushMultiplier =
+				(phase == 3 ? 4.2f : (phase == 2 ? 3.5f : 2.9f)) *
+				rushDistanceSpeedScale_;
 			enemy.SetBehaviorVisual(
 				phase == 3 ? Vector4{ 1.0f, 0.12f, 0.12f, 1.0f } : Vector4{ 1.0f, 0.42f, 0.18f, 1.0f },
 				phase == 3 ? 2.8f : 2.55f);
 			MoveEnemy(enemy, rushDirection_, ToFrameScaledSpeed(enemy.GetSpeed() * rushMultiplier, deltaTime));
+			if (stateTimer_ <= 0.0f) {
+				--rushesRemaining_;
+				if (rushesRemaining_ > 0) {
+					state_ = State::Telegraph;
+					telegraphDuration_ = 0.28f;
+					stateTimer_ = telegraphDuration_;
+				} else {
+					BeginRecovery(phase);
+				}
+			}
 			return;
 		}
 
-		if (actionTimer_ <= 0.0f) {
+		if (state_ == State::Recovery) {
+			enemy.SetBehaviorVisual(
+				{ 0.38f, 0.38f, 0.46f, 1.0f },
+				phase == 3 ? 2.35f : 2.15f);
+			if (stateTimer_ <= 0.0f) {
+				state_ = State::Stalk;
+				stateTimer_ = GetStalkDuration(phase);
+			}
+			return;
+		}
+
+		if (stateTimer_ <= 0.0f) {
+			currentAction_ = SelectNextAction(phase);
+			state_ = State::Telegraph;
+			telegraphDuration_ = GetTelegraphDuration(currentAction_, phase);
+			stateTimer_ = telegraphDuration_;
 			rushDirection_ = toPlayer;
-			rushTimer_ = phase == 3 ? 0.42f : 0.32f;
-			actionTimer_ = phase == 3 ? 0.75f : (phase == 2 ? 1.15f : 1.7f);
 			return;
 		}
 
 		const float strafeSign = std::sin(phaseTime_ * (phase == 3 ? 2.8f : 1.7f)) >= 0.0f ? 1.0f : -1.0f;
 		const Vector3 side{ -toPlayer.z * strafeSign, 0.0f, toPlayer.x * strafeSign };
-		float approach = distance > 18.0f ? 1.1f : (distance < 10.0f ? -0.85f : 0.15f);
+		float approach = distance > 14.0f ? 2.2f
+			: (distance > 9.0f ? 0.8f : (distance < 6.0f ? -0.55f : 0.25f));
 		if (phase == 3) {
 			approach += 0.35f;
 		}
@@ -326,9 +388,111 @@ public:
 	}
 
 private:
+	enum class Action {
+		BasicRush,
+		TentacleSlam,
+		InkBurst,
+		TripleRush,
+	};
+
+	enum class State {
+		Stalk,
+		Telegraph,
+		Rush,
+		Recovery,
+	};
+
+	Action SelectNextAction(int32_t phase)
+	{
+		const int32_t actionCount = phase == 1 ? 2 : (phase == 2 ? 3 : 4);
+		for (int32_t attempt = 0; attempt < actionCount; ++attempt) {
+			const Action candidate = static_cast<Action>(selectionIndex_ % actionCount);
+			++selectionIndex_;
+			if (candidate != previousAction_) {
+				previousAction_ = candidate;
+				return candidate;
+			}
+		}
+		return Action::BasicRush;
+	}
+
+	static float GetTelegraphDuration(Action action, int32_t phase)
+	{
+		switch (action) {
+		case Action::TentacleSlam: return 0.75f;
+		case Action::InkBurst: return 0.85f;
+		case Action::TripleRush: return 0.42f;
+		default: return phase == 3 ? 0.35f : (phase == 2 ? 0.45f : 0.55f);
+		}
+	}
+
+	void ExecuteTelegraphedAction(
+		Enemy& enemy,
+		int32_t phase,
+		float distance)
+	{
+		const float normalizedDistance = std::clamp(distance / 16.0f, 0.85f, 1.6f);
+		rushDistanceSpeedScale_ = normalizedDistance;
+		const float rushMultiplier =
+			phase == 3 ? 4.2f : (phase == 2 ? 3.5f : 2.9f);
+		const float rushUnitsPerSecond =
+			enemy.GetSpeed() * rushMultiplier * rushDistanceSpeedScale_ / 0.016f;
+		const float rushDuration = std::clamp(
+			(distance + 12.0f) / (std::max)(1.0f, rushUnitsPerSecond),
+			0.34f,
+			2.2f);
+		switch (currentAction_) {
+		case Action::TentacleSlam:
+			enemy.QueueBossAttack(BossAttackType::TentacleSlam, rushDirection_);
+			BeginRecovery(phase);
+			break;
+		case Action::InkBurst:
+			enemy.QueueBossAttack(BossAttackType::InkBurst, rushDirection_);
+			BeginRecovery(phase);
+			break;
+		case Action::TripleRush:
+			if (rushesRemaining_ <= 0) {
+				rushesRemaining_ = 3;
+			}
+			state_ = State::Rush;
+			stateTimer_ = rushDuration;
+			break;
+		default:
+			rushesRemaining_ = 1;
+			state_ = State::Rush;
+			stateTimer_ = rushDuration;
+			break;
+		}
+	}
+
+	void BeginRecovery(int32_t phase)
+	{
+		state_ = State::Recovery;
+		if (currentAction_ == Action::TripleRush) {
+			stateTimer_ = 0.72f;
+		} else if (currentAction_ == Action::TentacleSlam ||
+			currentAction_ == Action::InkBurst) {
+			stateTimer_ = 0.55f;
+		} else {
+			stateTimer_ = phase == 3 ? 0.3f : (phase == 2 ? 0.36f : 0.42f);
+		}
+	}
+
+	static float GetStalkDuration(int32_t phase)
+	{
+		return phase == 3 ? 0.55f : (phase == 2 ? 0.8f : 1.05f);
+	}
+
+	State state_ = State::Stalk;
+	Action currentAction_ = Action::BasicRush;
+	Action previousAction_ = Action::TripleRush;
+	int32_t currentPhase_ = 1;
+	int32_t selectionIndex_ = 0;
+	int32_t rushesRemaining_ = 0;
 	float phaseTime_ = 0.0f;
-	float actionTimer_ = 1.2f;
-	float rushTimer_ = 0.0f;
+	float stateTimer_ = 1.2f;
+	float telegraphDuration_ = 0.55f;
+	float rushDistanceSpeedScale_ = 1.0f;
 	Vector3 rushDirection_{ 0.0f, 0.0f, 1.0f };
 };
 

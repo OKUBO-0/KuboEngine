@@ -93,6 +93,15 @@ void Model::Initialize(
 
 void Model::Finalize()
 {
+	if (modelCommon_ && modelCommon_->GetDxCommon()) {
+		auto* dxCommon = modelCommon_->GetDxCommon();
+		dxCommon->UntrackResourceState(vertexResource.Get());
+		dxCommon->UntrackResourceState(indexResource.Get());
+		dxCommon->UntrackResourceState(skinCluster.influenceResource.Get());
+	}
+	vertexResource.Reset();
+	indexResource.Reset();
+	skinCluster.influenceResource.Reset();
 }
 
 void Model::LoadRuntimeAssets(const std::string& directorypath, const std::string& filename)

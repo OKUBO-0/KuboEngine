@@ -22,30 +22,30 @@ bool DebugUI::EditorShell::Draw(
 	const DebugWindowVisibility previous = windows;
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &windows.sceneView, ICON_FA_GAMEPAD },
-		{ "オブジェクトビュー", &windows.objectView, ICON_FA_CUBE },
-		{ "パーティクルビュー", &windows.particleView, ICON_FA_MAGIC },
+		{ "プレイヤー状態", &windows.objectView, ICON_FA_CUBE },
+		{ "パーティクル・演出", &windows.particleView, ICON_FA_MAGIC },
 		{ "統計", &windows.statisticsView, ICON_FA_CHART_BAR },
 		{ "オフスクリーン設定", &windows.offscreenSettings, ICON_FA_WINDOW_RESTORE },
 		{ "ライト設定", &windows.lightSettings, ICON_FA_LIGHTBULB },
 		{ "ギズモ", &windows.gizmo, ICON_FA_ARROWS_ALT },
 		{ "オブジェクトマネージャ", &windows.objectManager, ICON_FA_LIST },
 		{ "モーションエディター", &windows.motionEditor, ICON_FA_FILM },
-		{ "スプライトマネージャ", &windows.spriteManager, ICON_FA_IMAGE },
-		{ "コライダー/タグ管理", &windows.colliderTagManager, ICON_FA_TAGS },
+		{ "HUD・UI調整", &windows.spriteManager, ICON_FA_IMAGE },
+		{ "コライダー・当たり判定", &windows.colliderTagManager, ICON_FA_TAGS },
 		{ "オーディオ", &windows.audio, ICON_FA_VOLUME_UP },
 		{ "キー操作デバッグ", &windows.keyInputDebug, ICON_FA_KEYBOARD },
 		{ "シーン固有デバッグ", &windows.sceneSpecificDebug, ICON_FA_BUG },
-		{ "オブジェクト設定", &windows.objectSettings, ICON_FA_SLIDERS_H },
+		{ "プレイヤー設定・武器デバッグ", &windows.objectSettings, ICON_FA_SLIDERS_H },
 	};
 	const Engine::Editor::DebugEditorMenuItem editItems[] = {
 		{ "ギズモ", &windows.gizmo, ICON_FA_ARROWS_ALT },
-		{ "オブジェクト設定", &windows.objectSettings, ICON_FA_SLIDERS_H },
+		{ "プレイヤー設定・武器デバッグ", &windows.objectSettings, ICON_FA_SLIDERS_H },
 		{ "モーションエディター", &windows.motionEditor, ICON_FA_FILM },
 	};
 	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
 		{ "オブジェクトマネージャ", &windows.objectManager, ICON_FA_LIST },
-		{ "オブジェクト設定", &windows.objectSettings, ICON_FA_SLIDERS_H },
-		{ "コライダー/タグ管理", &windows.colliderTagManager, ICON_FA_TAGS },
+		{ "プレイヤー設定・武器デバッグ", &windows.objectSettings, ICON_FA_SLIDERS_H },
+		{ "コライダー・当たり判定", &windows.colliderTagManager, ICON_FA_TAGS },
 	};
 	Engine::Editor::DebugEditorManager::DrawMainMenu({
 		windowItems,

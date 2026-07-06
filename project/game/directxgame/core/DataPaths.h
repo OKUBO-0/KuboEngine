@@ -7,6 +7,7 @@
 namespace DirectXGame::DataPaths {
 
 inline constexpr char kPlayerStatus[] = "playerStatus.csv";
+inline constexpr char kCharacterStats[] = "characterStats.csv";
 inline constexpr char kEnemyTypes[] = "enemyTypes.csv";
 inline constexpr char kEnemySpawnSettings[] = "enemySpawnSettings.csv";
 inline constexpr char kWeaponUpgradeSettings[] = "weaponUpgradeSettings.csv";

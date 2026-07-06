@@ -1,5 +1,6 @@
 #include "LevelUpChoiceService.h"
 #include "PlayerManager.h"
+#include "PassiveItemData.h"
 #include <algorithm>
 #include <random>
 #include <utility>
@@ -13,63 +14,133 @@ std::string WeaponTitle(const char* name, int32_t nextLevel)
 	return std::string(name) + " LV " + std::to_string(nextLevel);
 }
 
-std::string NormalEffect(int32_t level)
+std::string BowArrowEffect(int32_t level)
 {
 	switch (level) {
-	case 2: return "弾数2個";
-	case 3: return "弾速+20% 間隔-8%";
-	case 4: return "弾数3個";
-	case 5: return "ダメージ+5";
-	case 6: return "弾数4個";
-	case 7: return "貫通数2";
-	case 8: return "威力+5 弾速+15% 間隔-12%";
+	case 1: return "最寄りの敵へ自動照準 貫通矢";
+	case 2: return "貫通数2";
+	case 3: return "ダメージ+3";
+	case 4: return "矢数2本";
+	case 5: return "弾速+25% サイズ+15%";
+	case 6: return "ダメージ+4";
+	case 7: return "矢数3本 貫通数3";
+	case 8: return "ダメージ+5 弾速+20%";
 	default: return "UPGRADE";
 	}
 }
 
-std::string OrbitEffect(int32_t level)
+std::string RockEffect(int32_t level)
 {
 	switch (level) {
-	case 1: return "周囲弾1個 間隔0.5s";
-	case 2: return "周囲弾2個";
-	case 3: return "半径+2 回転+0.01 サイズ+20%";
-	case 4: return "攻撃間隔-20%";
-	case 5: return "周囲弾3個";
-	case 6: return "半径+2 回転+0.01 サイズ+20%";
-	case 7: return "攻撃間隔-20%";
-	case 8: return "周囲弾4個";
+	case 1: return "岩1個 周回攻撃";
+	case 2: return "岩2個";
+	case 3: return "回転速度+35% サイズ+20%";
+	case 4: return "ダメージ+3";
+	case 5: return "岩3個";
+	case 6: return "回転速度+30% サイズ+20%";
+	case 7: return "ヒット間隔-20%";
+	case 8: return "岩4個 ダメージ+4";
 	default: return "UPGRADE";
 	}
 }
 
-std::string LightningEffect(int32_t level)
+std::string ThunderStaffEffect(int32_t level)
 {
 	switch (level) {
-	case 1: return "対象1体 半径6 間隔2.4s";
-	case 2: return "ダメージ+5";
-	case 3: return "対象2体";
-	case 4: return "半径+1.5";
-	case 5: return "ダメージ+5";
-	case 6: return "対象3体";
+	case 1: return "雷撃1回 範囲6";
+	case 2: return "ダメージ+3";
+	case 3: return "雷撃2回";
+	case 4: return "範囲+20%";
+	case 5: return "ダメージ+4";
+	case 6: return "雷撃3回";
 	case 7: return "攻撃間隔-18%";
-	case 8: return "対象4体 半径+1.5";
+	case 8: return "雷撃4回 範囲+25%";
 	default: return "UPGRADE";
 	}
 }
 
-std::string ExplosiveEffect(int32_t level)
+std::string FlameStaffEffect(int32_t level)
 {
 	switch (level) {
-	case 1: return "威力+4 半径4.2 間隔2.0s";
-	case 2: return "ダメージ+4";
-	case 3: return "半径+0.8";
-	case 4: return "攻撃間隔-14%";
-	case 5: return "ダメージ+5";
-	case 6: return "半径+1.0";
-	case 7: return "弾速+12%";
-	case 8: return "威力+6 間隔-18%";
+	case 1: return "自動照準 火球1個 爆発範囲4.2";
+	case 2: return "ダメージ+3";
+	case 3: return "爆発範囲+20%";
+	case 4: return "火球2個を連続発射";
+	case 5: return "ダメージ+4";
+	case 6: return "爆発範囲+25%";
+	case 7: return "弾速+20%";
+	case 8: return "火球3個を連続発射 ダメージ+5";
 	default: return "UPGRADE";
 	}
+}
+
+std::string SwordEffect(int32_t level)
+{
+	switch (level) {
+	case 1: return "最寄りの敵へ前方範囲斬撃";
+	case 2: return "ダメージ+3";
+	case 3: return "攻撃範囲+1";
+	case 4: return "攻撃間隔-12%";
+	case 5: return "ダメージ+4";
+	case 6: return "斬撃角度拡大";
+	case 7: return "攻撃範囲+1.5";
+	case 8: return "ダメージ+6";
+	default: return "UPGRADE";
+	}
+}
+
+std::string AuraEffect(int32_t level)
+{
+	switch (level) {
+	case 1: return "周囲へ一定間隔の範囲攻撃";
+	case 2: return "ダメージ+2";
+	case 3: return "攻撃範囲+1";
+	case 4: return "攻撃間隔-12%";
+	case 5: return "ダメージ+3";
+	case 6: return "攻撃範囲+1.5";
+	case 7: return "攻撃間隔-15%";
+	case 8: return "ダメージ+5";
+	default: return "UPGRADE";
+	}
+}
+
+std::string FlameShoesEffect(int32_t level)
+{
+	switch (level) {
+	case 1: return "移動した場所に炎床を残す";
+	case 2: return "ダメージ+2";
+	case 3: return "炎床範囲+0.8";
+	case 4: return "持続時間+1秒";
+	case 5: return "ダメージ+3";
+	case 6: return "炎床生成間隔-15%";
+	case 7: return "ダメージ間隔-15%";
+	case 8: return "ダメージ+5 範囲+1";
+	default: return "UPGRADE";
+	}
+}
+
+std::string BoneEffect(int32_t level)
+{
+	if (level == 1) return "敵の間を跳ねる骨";
+	if (level == 3 || level == 6) return "跳弾回数+1";
+	if (level == 8) return "骨2個 ダメージ+4";
+	return level == 2 ? "弾速+20%" : "ダメージ+3";
+}
+
+std::string HandgunEffect(int32_t level)
+{
+	if (level == 1) return "最寄りの敵へ高速射撃";
+	if (level == 3 || level == 6) return "跳弾回数+1";
+	if (level == 8) return "2連射 ダメージ+4";
+	return level == 2 ? "攻撃間隔-15%" : "ダメージ+3";
+}
+
+std::string BoomerangEffect(int32_t level)
+{
+	if (level == 1) return "往路と復路で攻撃";
+	if (level == 3 || level == 6) return "命中上限+2";
+	if (level == 8) return "2個発射 ダメージ+4";
+	return level == 2 ? "サイズ+20%" : "ダメージ+3";
 }
 
 }
@@ -80,8 +151,8 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 {
 	std::vector<LevelUpChoice> weaponChoices;
 	std::vector<LevelUpChoice> itemChoices;
-	weaponChoices.reserve(4);
-	itemChoices.reserve(4);
+	weaponChoices.reserve(10);
+	itemChoices.reserve(kPassiveItemDefinitions.size());
 	const auto addWeaponChoice = [&weaponChoices](
 		LevelUpUpgrade upgrade,
 		WeaponType weaponType,
@@ -93,7 +164,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 				upgrade,
 				LevelUpChoiceCategory::Weapon,
 				weaponType,
-				PassiveItemType::Attack,
+				PassiveItemType::Damage,
 				std::move(texturePath),
 				std::move(iconPath),
 				std::move(titleText),
@@ -109,8 +180,8 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 		std::string detailText) {
 			itemChoices.push_back({
 				upgrade,
-				LevelUpChoiceCategory::PassiveItem,
-				WeaponType::NormalBullet,
+				LevelUpChoiceCategory::Item,
+				WeaponType::BowArrow,
 				itemType,
 				std::move(texturePath),
 				std::move(iconPath),
@@ -122,88 +193,132 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 	if (!playerManager.IsNormalBulletMaxLevel()) {
 		const int32_t nextLevel = playerManager.GetNormalBulletLevel() + 1;
 		addWeaponChoice(
-			LevelUpUpgrade::Normal,
-			WeaponType::NormalBullet,
+			LevelUpUpgrade::BowArrow,
+			WeaponType::BowArrow,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/normal_icon.png",
-			WeaponTitle("通常弾", nextLevel),
-			NormalEffect(nextLevel));
+			"ui/game/lvup/icon_weapon_bow_arrow.png",
+			WeaponTitle("弓矢", nextLevel),
+			BowArrowEffect(nextLevel));
 	}
-	if (!playerManager.IsOrbitBulletMaxLevel()) {
+	if (!playerManager.IsOrbitBulletMaxLevel() &&
+		playerManager.CanAcquireWeapon(WeaponType::Rock)) {
 		const int32_t nextLevel = playerManager.HasOrbitBullets()
 			? playerManager.GetOrbitBulletLevel() + 1
 			: 1;
 		addWeaponChoice(
-			LevelUpUpgrade::Orbit,
-			WeaponType::OrbitBullet,
+			LevelUpUpgrade::Rock,
+			WeaponType::Rock,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/orbit_icon.png",
+			"ui/game/lvup/icon_weapon_rock.png",
 			playerManager.HasOrbitBullets() ?
-				WeaponTitle("軌道弾", nextLevel) :
-				"軌道弾 追加",
-			OrbitEffect(nextLevel));
+				WeaponTitle("岩石", nextLevel) :
+				"岩石 追加",
+			RockEffect(nextLevel));
 	}
-	if (!playerManager.IsLightningMaxLevel()) {
+	if (!playerManager.IsLightningMaxLevel() &&
+		playerManager.CanAcquireWeapon(WeaponType::ThunderStaff)) {
 		const int32_t nextLevel = playerManager.HasLightning()
 			? playerManager.GetLightningLevel() + 1
 			: 1;
 		addWeaponChoice(
-			LevelUpUpgrade::Lightning,
-			WeaponType::Lightning,
+			LevelUpUpgrade::ThunderStaff,
+			WeaponType::ThunderStaff,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/lightning_icon.png",
+			"ui/game/lvup/icon_weapon_thunder_staff.png",
 			playerManager.HasLightning() ?
-				WeaponTitle("雷撃", nextLevel) :
-				"雷撃 追加",
-			LightningEffect(nextLevel));
+				WeaponTitle("雷の杖", nextLevel) :
+				"雷の杖 追加",
+			ThunderStaffEffect(nextLevel));
 	}
-	if (!playerManager.IsExplosiveBulletMaxLevel()) {
+	if (!playerManager.IsExplosiveBulletMaxLevel() &&
+		playerManager.CanAcquireWeapon(WeaponType::FlameStaff)) {
 		const int32_t nextLevel = playerManager.HasExplosiveBullets()
 			? playerManager.GetExplosiveBulletLevel() + 1
 			: 1;
 		addWeaponChoice(
-			LevelUpUpgrade::Explosive,
-			WeaponType::ExplosiveBullet,
+			LevelUpUpgrade::FlameStaff,
+			WeaponType::FlameStaff,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/normal_icon.png",
+			"ui/game/lvup/icon_weapon_flame_staff.png",
 			playerManager.HasExplosiveBullets() ?
-				WeaponTitle("爆発弾", nextLevel) :
-				"爆発弾 追加",
-			ExplosiveEffect(nextLevel));
+				WeaponTitle("炎の杖", nextLevel) :
+				"炎の杖 追加",
+			FlameStaffEffect(nextLevel));
 	}
-	addItemChoice(
-		LevelUpUpgrade::Attack,
-		PassiveItemType::Attack,
-		"ui/game/lvup/levelup_frame.png",
-		"ui/game/lvup/attack_icon.png",
-		"攻撃力 UP",
-		"基礎ダメージ+5");
-	if (!playerManager.IsMaxHPAtCap()) {
-		addItemChoice(
-			LevelUpUpgrade::MaxHp,
-			PassiveItemType::MaxHp,
+	if (!playerManager.IsSwordMaxLevel() &&
+		playerManager.CanAcquireWeapon(WeaponType::Sword)) {
+		const int32_t nextLevel = playerManager.HasSword()
+			? playerManager.GetSwordLevel() + 1
+			: 1;
+		addWeaponChoice(
+			LevelUpUpgrade::Sword,
+			WeaponType::Sword,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/maxhp_icon.png",
-			"最大HP UP",
-			"最大HP+20 HP全回復");
+			"ui/game/lvup/icon_weapon_sword.png",
+			playerManager.HasSword()
+				? WeaponTitle("ソード", nextLevel)
+				: "ソード 追加",
+			SwordEffect(nextLevel));
 	}
-	if (!playerManager.IsMoveSpeedMaxLevel()) {
-		addItemChoice(
-			LevelUpUpgrade::MoveSpeed,
-			PassiveItemType::MoveSpeed,
+	if (!playerManager.IsAuraMaxLevel() &&
+		playerManager.CanAcquireWeapon(WeaponType::Aura)) {
+		const int32_t nextLevel = playerManager.HasAura()
+			? playerManager.GetAuraLevel() + 1 : 1;
+		addWeaponChoice(
+			LevelUpUpgrade::Aura, WeaponType::Aura,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/speed_icon.png",
-			"移動速度 UP",
-			"移動速度+3");
+			"ui/game/lvup/icon_common_unknown.png",
+			playerManager.HasAura()
+				? WeaponTitle("オーラ", nextLevel) : "オーラ 追加",
+			AuraEffect(nextLevel));
 	}
-	if (playerManager.GetHP() < playerManager.GetMaxHP()) {
-		addItemChoice(
-			LevelUpUpgrade::Heal,
-			PassiveItemType::Heal,
+	if (!playerManager.IsFlameShoesMaxLevel() &&
+		playerManager.CanAcquireWeapon(WeaponType::FlameShoes)) {
+		const int32_t nextLevel = playerManager.HasFlameShoes()
+			? playerManager.GetFlameShoesLevel() + 1 : 1;
+		addWeaponChoice(
+			LevelUpUpgrade::FlameShoes, WeaponType::FlameShoes,
 			"ui/game/lvup/levelup_frame.png",
-			"ui/game/lvup/heal_icon.png",
-			"HP 回復",
-			"HP+1");
+			"ui/game/lvup/icon_common_unknown.png",
+			playerManager.HasFlameShoes()
+				? WeaponTitle("炎の靴", nextLevel)
+				: "炎の靴 追加",
+			FlameShoesEffect(nextLevel));
+	}
+	if (!playerManager.IsBoneMaxLevel() && playerManager.CanAcquireWeapon(WeaponType::Bone)) {
+		const int32_t nextLevel = playerManager.HasBone() ? playerManager.GetBoneLevel() + 1 : 1;
+		addWeaponChoice(LevelUpUpgrade::Bone, WeaponType::Bone,
+			"ui/game/lvup/levelup_frame.png", "ui/game/lvup/icon_weapon_bone.png",
+			playerManager.HasBone() ? WeaponTitle("ボーン", nextLevel) : "ボーン 追加",
+			BoneEffect(nextLevel));
+	}
+	if (!playerManager.IsHandgunMaxLevel() && playerManager.CanAcquireWeapon(WeaponType::Handgun)) {
+		const int32_t nextLevel = playerManager.HasHandgun() ? playerManager.GetHandgunLevel() + 1 : 1;
+		addWeaponChoice(LevelUpUpgrade::Handgun, WeaponType::Handgun,
+			"ui/game/lvup/levelup_frame.png", "ui/game/lvup/icon_weapon_handgun.png",
+			playerManager.HasHandgun() ? WeaponTitle("拳銃", nextLevel) : "拳銃 追加",
+			HandgunEffect(nextLevel));
+	}
+	if (!playerManager.IsBoomerangMaxLevel() && playerManager.CanAcquireWeapon(WeaponType::Boomerang)) {
+		const int32_t nextLevel = playerManager.HasBoomerang() ? playerManager.GetBoomerangLevel() + 1 : 1;
+		addWeaponChoice(LevelUpUpgrade::Boomerang, WeaponType::Boomerang,
+			"ui/game/lvup/levelup_frame.png", "ui/game/lvup/icon_weapon_boomerang.png",
+			playerManager.HasBoomerang() ? WeaponTitle("ブーメラン", nextLevel) : "ブーメラン 追加",
+			BoomerangEffect(nextLevel));
+	}
+	for (const PassiveItemDefinition& definition : kPassiveItemDefinitions) {
+		if (!playerManager.CanAcquirePassiveItem(definition.type)) {
+			continue;
+		}
+		const int32_t nextLevel =
+			playerManager.GetPassiveItemLevel(definition.type) + 1;
+		addItemChoice(
+			LevelUpUpgrade::PassiveItem,
+			definition.type,
+			"ui/game/lvup/levelup_frame.png",
+			std::string(definition.iconPath),
+			WeaponTitle(definition.name.data(), nextLevel),
+			std::string(definition.effect));
 	}
 
 	static std::mt19937 rng{ std::random_device{}() };
@@ -242,35 +357,41 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 
 void LevelUpChoiceService::Apply(
 	PlayerManager& playerManager,
-	LevelUpUpgrade upgrade)
+	const LevelUpChoice& choice)
 {
-	switch (upgrade) {
-	case LevelUpUpgrade::Normal:
+	switch (choice.upgrade) {
+	case LevelUpUpgrade::BowArrow:
 		playerManager.UpgradeNormalBullets();
 		break;
-	case LevelUpUpgrade::Orbit:
+	case LevelUpUpgrade::Rock:
 		playerManager.UpgradeOrbitBullets();
 		break;
-	case LevelUpUpgrade::Drone:
-		playerManager.UpgradeDrone();
-		break;
-	case LevelUpUpgrade::Lightning:
+	case LevelUpUpgrade::ThunderStaff:
 		playerManager.UpgradeLightning();
 		break;
-	case LevelUpUpgrade::Explosive:
+	case LevelUpUpgrade::FlameStaff:
 		playerManager.UpgradeExplosiveBullets();
 		break;
-	case LevelUpUpgrade::Attack:
-		playerManager.UpgradeAttackPower();
+	case LevelUpUpgrade::Sword:
+		playerManager.UpgradeSword();
 		break;
-	case LevelUpUpgrade::MaxHp:
-		playerManager.IncreaseMaxHP();
+	case LevelUpUpgrade::Aura:
+		playerManager.UpgradeAura();
 		break;
-	case LevelUpUpgrade::MoveSpeed:
-		playerManager.UpgradeMoveSpeed();
+	case LevelUpUpgrade::FlameShoes:
+		playerManager.UpgradeFlameShoes();
 		break;
-	case LevelUpUpgrade::Heal:
-		playerManager.RecoverHP();
+	case LevelUpUpgrade::Bone:
+		playerManager.UpgradeBone();
+		break;
+	case LevelUpUpgrade::Handgun:
+		playerManager.UpgradeHandgun();
+		break;
+	case LevelUpUpgrade::Boomerang:
+		playerManager.UpgradeBoomerang();
+		break;
+	case LevelUpUpgrade::PassiveItem:
+		playerManager.UpgradePassiveItem(choice.passiveItemType);
 		break;
 	}
 }

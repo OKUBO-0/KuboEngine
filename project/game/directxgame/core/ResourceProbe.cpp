@@ -73,7 +73,7 @@ std::vector<std::string> BuildRequiredAssetPaths()
 		ResourcePaths::MakeTexturePath("ui/game/lvup/heal_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/normal_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/orbit_icon.png"),
-		ResourcePaths::MakeTexturePath("ui/game/lvup/drone_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/icon_common_unknown.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/lightning_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/result/Result.png"),
 		ResourcePaths::MakeTexturePath("ui/result/finish_ui.png"),
@@ -82,20 +82,13 @@ std::vector<std::string> BuildRequiredAssetPaths()
 		ResourcePaths::MakeAudioPath("se/se_pause.wav"),
 		ResourcePaths::MakeAudioPath("se/se_death.wav"),
 		ResourcePaths::MakeDataPath("playerStatus.csv"),
+		ResourcePaths::MakeDataPath("characterStats.csv"),
 		ResourcePaths::MakeDataPath("weaponUpgradeSettings.csv"),
 		ResourcePaths::MakeDataPath("enemySpawnSettings.csv"),
 		ResourcePaths::MakeDataPath("levelupWeights.csv"),
 		ResourcePaths::MakeDataPath("enemyTypes.csv"),
 		ResourcePaths::MakeDataPath("debug_tuning.csv"),
 	};
-
-	const std::array<const char*, 4> weaponDirectories{ "normal", "orbit", "drone", "lightning" };
-	for (const char* weaponDirectory : weaponDirectories) {
-		for (int32_t level = 2; level <= 8; ++level) {
-			paths.push_back(ResourcePaths::MakeTexturePath(
-				std::string("ui/game/") + weaponDirectory + "/lv" + std::to_string(level) + ".png"));
-		}
-	}
 
 	return paths;
 }

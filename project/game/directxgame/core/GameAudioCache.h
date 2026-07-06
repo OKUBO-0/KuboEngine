@@ -25,6 +25,11 @@ public:
 	static Engine::AudioSystem::SoundData* GetSoundData(SoundHandle handle);
 	static void Play(SoundHandle handle);
 	static void PlayLoop(SoundHandle handle);
+	static void PlayTuned(
+		SoundHandle handle,
+		std::string_view key,
+		float fallbackVolume,
+		bool loop = false);
 	static void Stop(SoundHandle handle);
 	static void Pause(SoundHandle handle);
 	static void Resume(SoundHandle handle);

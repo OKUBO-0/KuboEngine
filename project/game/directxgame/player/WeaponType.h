@@ -4,11 +4,16 @@ namespace DirectXGame {
 
 enum class WeaponType
 {
-	NormalBullet,
-	OrbitBullet,
-	Drone,
-	Lightning,
-	ExplosiveBullet,
+	BowArrow,
+	Rock,
+	ThunderStaff,
+	FlameStaff,
+	Sword,
+	Aura,
+	FlameShoes,
+	Bone,
+	Handgun,
+	Boomerang,
 };
 
 }

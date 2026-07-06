@@ -9,6 +9,24 @@
 
 namespace Engine::Base {
 
+namespace {
+
+D3D12_VIEWPORT GameViewport()
+{
+	D3D12_VIEWPORT viewport{};
+	viewport.Width = static_cast<float>(WinApp::kClientWidth);
+	viewport.Height = static_cast<float>(WinApp::kClientHeight);
+	viewport.MaxDepth = 1.0f;
+	return viewport;
+}
+
+D3D12_RECT GameScissor()
+{
+	return { 0, 0, WinApp::kClientWidth, WinApp::kClientHeight };
+}
+
+}
+
 OffscreenRenderManager* OffscreenRenderManager::instance_ = nullptr;
 
 OffscreenRenderManager::OffscreenRenderManager() = default;
@@ -34,6 +52,9 @@ void OffscreenRenderManager::Initialize(Engine::Base::DirectXCommon* dxCommon, E
 		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
 		kClearColor
 	);
+	dxCommon_->TrackResourceState(
+		renderTargetTextureResource.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
 	renderTargetTextureHandle = dxCommon_->GetRTVCPUDescriptorHandle(2);
 
 	dxCommon_->GetDevice()->CreateRenderTargetView(renderTargetTextureResource.Get(),
@@ -60,6 +81,9 @@ void OffscreenRenderManager::Finalize()
 		srvIndex = UINT32_MAX;
 	}
 	graphicsPipeline_.reset();
+	if (dxCommon_ && renderTargetTextureResource) {
+		dxCommon_->UntrackResourceState(renderTargetTextureResource.Get());
+	}
 	renderTargetTextureResource.Reset();
 	imGuiSceneTextureReady_ = false;
 	dxCommon_ = nullptr;
@@ -68,19 +92,9 @@ void OffscreenRenderManager::Finalize()
 
 void OffscreenRenderManager::Begin()
 {
-	if (currentState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
-
-		// 前回使ったSRV状態から描画に戻す
-		D3D12_RESOURCE_BARRIER barrier{};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = renderTargetTextureResource.Get();
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
-
-		currentState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	}
+	dxCommon_->TransitionResource(
+		renderTargetTextureResource.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	//描画先のRTVとDSVを設定する
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dxCommon_->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
@@ -92,8 +106,8 @@ void OffscreenRenderManager::Begin()
 
 
 
-	D3D12_VIEWPORT viewport = dxCommon_->GetViewport();
-	D3D12_RECT scissorRect = dxCommon_->GetScissorRect();
+	const D3D12_VIEWPORT viewport = GameViewport();
+	const D3D12_RECT scissorRect = GameScissor();
 
 	dxCommon_->GetCommandList()->RSSetViewports(1, &viewport);
 	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissorRect);
@@ -107,27 +121,17 @@ void OffscreenRenderManager::BindRenderTarget()
 		dxCommon_->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
 	dxCommon_->GetCommandList()->OMSetRenderTargets(
 		1, &renderTargetTextureHandle, false, &dsvHandle);
-	const D3D12_VIEWPORT viewport = dxCommon_->GetViewport();
-	const D3D12_RECT scissorRect = dxCommon_->GetScissorRect();
+	const D3D12_VIEWPORT viewport = GameViewport();
+	const D3D12_RECT scissorRect = GameScissor();
 	dxCommon_->GetCommandList()->RSSetViewports(1, &viewport);
 	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissorRect);
 }
 
 void OffscreenRenderManager::End()
 {
-	if (currentState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
-		D3D12_RESOURCE_BARRIER barrier{};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Transition.pResource = renderTargetTextureResource.Get();
-		barrier.Transition.StateBefore = currentState_;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-		dxCommon_->GetCommandList()->ResourceBarrier(1, &barrier);
-
-		currentState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	}
-
-
+	dxCommon_->TransitionResource(
+		renderTargetTextureResource.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
 void OffscreenRenderManager::Draw()
@@ -228,6 +232,9 @@ void OffscreenRenderManager::DrawImGui(bool* open)
 		ImGui::End();
 		return;
 	}
+	ImGui::Text(
+		"Tracked GPU Resource States: %zu",
+		dxCommon_ ? dxCommon_->GetTrackedResourceStateCount() : size_t{ 0 });
 
 	const char* items[] = {
 	   "Fullscreen",

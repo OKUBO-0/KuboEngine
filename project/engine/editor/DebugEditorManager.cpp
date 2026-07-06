@@ -183,15 +183,16 @@ void DebugEditorManager::BuildDefaultDockLayout(unsigned int dockspaceId)
 	ImGui::DockBuilderDockWindow("キー操作デバッグ", dockBottom);
 	ImGui::DockBuilderDockWindow("ライト設定", dockRight);
 	ImGui::DockBuilderDockWindow("オーディオ", dockRight);
-	ImGui::DockBuilderDockWindow("OffscreenRenderManager", dockRight);
 	ImGui::DockBuilderDockWindow("シーン固有デバッグ", dockRight);
-	ImGui::DockBuilderDockWindow("オブジェクトビュー / オブジェクト設定", dockRight);
-	ImGui::DockBuilderDockWindow("パーティクルビュー / スプライトマネージャ", dockRight);
+	ImGui::DockBuilderDockWindow("プレイヤー状態", dockRight);
+	ImGui::DockBuilderDockWindow("プレイヤー設定・武器デバッグ", dockRight);
+	ImGui::DockBuilderDockWindow("パーティクル・演出", dockRight);
+	ImGui::DockBuilderDockWindow("HUD・UI調整", dockRight);
 	ImGui::DockBuilderDockWindow("オフスクリーン設定", dockRight);
 	ImGui::DockBuilderDockWindow("ギズモ", dockRight);
 	ImGui::DockBuilderDockWindow("オブジェクトマネージャ", dockRight);
 	ImGui::DockBuilderDockWindow("モーションエディター", dockRight);
-	ImGui::DockBuilderDockWindow("コライダー/タグ管理", dockRight);
+	ImGui::DockBuilderDockWindow("コライダー・当たり判定", dockRight);
 	ImGui::DockBuilderFinish(dockspaceId);
 }
 
@@ -373,16 +374,18 @@ DebugSceneViewportState DebugEditorManager::DrawSceneViewport(bool* open)
 	ImGui::SetNextWindowPos(ImVec2(288.0f, 12.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(430.0f, 300.0f), ImGuiCond_FirstUseEver);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-	if (!ImGui::Begin("Scene", open)) {
+	constexpr ImGuiWindowFlags kSceneWindowFlags =
+		ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoScrollWithMouse;
+	if (!ImGui::Begin("Scene", open, kSceneWindowFlags)) {
 		ImGui::End();
 		ImGui::PopStyleVar();
 		return state;
 	}
 
-	state.inputActive = ImGui::IsWindowHovered() || ImGui::IsWindowFocused();
 	if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance();
 		offscreen && offscreen->HasImGuiSceneTexture()) {
-		ImVec2 availableSize = ImGui::GetContentRegionAvail();
+		const ImVec2 availableSize = ImGui::GetContentRegionAvail();
 		constexpr float kSceneAspect = 16.0f / 9.0f;
 		ImVec2 imageSize{ availableSize.x, availableSize.x / kSceneAspect };
 		if (imageSize.y > availableSize.y) {
@@ -391,28 +394,36 @@ DebugSceneViewportState DebugEditorManager::DrawSceneViewport(bool* open)
 		}
 
 		const ImVec2 contentMin = ImGui::GetCursorScreenPos();
+		const ImVec2 contentMax{
+			contentMin.x + availableSize.x,
+			contentMin.y + availableSize.y,
+		};
 		ImGui::GetWindowDrawList()->AddRectFilled(
 			contentMin,
-			ImVec2(contentMin.x + availableSize.x, contentMin.y + availableSize.y),
+			contentMax,
 			IM_COL32(0, 0, 0, 255));
-		const float cursorX = ImGui::GetCursorPosX() + (availableSize.x - imageSize.x) * 0.5f;
-		const float cursorY = ImGui::GetCursorPosY() + (availableSize.y - imageSize.y) * 0.5f;
-		ImGui::SetCursorPosX(cursorX);
-		ImGui::SetCursorPosY(cursorY);
-		const ImVec2 imageMin = ImGui::GetCursorScreenPos();
+		const ImVec2 imageMin{
+			contentMin.x + (availableSize.x - imageSize.x) * 0.5f,
+			contentMin.y + (availableSize.y - imageSize.y) * 0.5f,
+		};
+		const ImVec2 imageMax{
+			imageMin.x + imageSize.x,
+			imageMin.y + imageSize.y,
+		};
 		state.drawn = imageSize.x > 0.0f && imageSize.y > 0.0f;
 		state.min = { imageMin.x, imageMin.y };
 		state.size = { imageSize.x, imageSize.y };
-
-		ImGui::GetWindowDrawList()->AddRectFilled(
-			imageMin,
-			ImVec2(imageMin.x + imageSize.x, imageMin.y + imageSize.y),
-			IM_COL32(0, 0, 0, 255));
-		ImGui::Image(
+		ImGui::GetWindowDrawList()->AddImage(
 			static_cast<ImTextureID>(offscreen->GetImGuiSceneTextureHandle().ptr),
-			imageSize,
+			imageMin,
+			imageMax,
 			ImVec2(0.0f, 0.0f),
 			ImVec2(1.0f, 1.0f));
+		const ImVec2 mouse = ImGui::GetMousePos();
+		const bool imageHovered =
+			mouse.x >= imageMin.x && mouse.x <= imageMax.x &&
+			mouse.y >= imageMin.y && mouse.y <= imageMax.y;
+		state.inputActive = imageHovered || ImGui::IsWindowFocused();
 	}
 
 	ImGui::End();

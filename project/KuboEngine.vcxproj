@@ -214,6 +214,8 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\core\ResourceProbe.cpp" />
     <ClCompile Include="game\directxgame\core\GameSession.cpp" />
     <ClCompile Include="game\directxgame\enemy\Enemy.cpp" />
+    <ClCompile Include="game\directxgame\enemy\BossAttackVisual.cpp" />
+    <ClCompile Include="game\directxgame\enemy\BossInkProjectile.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyBehavior.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyDeathBomb.cpp" />
     <ClCompile Include="game\directxgame\enemy\EnemyCollisionSystem.cpp" />
@@ -231,7 +233,6 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\player\PlayerProgression.cpp" />
     <ClCompile Include="game\directxgame\player\PlayerView.cpp" />
     <ClCompile Include="game\directxgame\player\PlayerWeaponController.cpp" />
-    <ClCompile Include="game\directxgame\player\weapons\Drone.cpp" />
     <ClCompile Include="game\directxgame\player\weapons\NormalBullet.cpp" />
     <ClCompile Include="game\directxgame\player\weapons\OrbitBullet.cpp" />
     <ClCompile Include="game\directxgame\scene\ResultScene.cpp" />
@@ -465,6 +466,8 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\core\GameSession.h" />
     <ClInclude Include="game\directxgame\core\GameplayRules.h" />
     <ClInclude Include="game\directxgame\enemy\Enemy.h" />
+	<ClInclude Include="game\directxgame\enemy\BossAttackVisual.h" />
+	<ClInclude Include="game\directxgame\enemy\BossInkProjectile.h" />
 	<ClInclude Include="game\directxgame\enemy\EnemyBehavior.h" />
 	<ClInclude Include="game\directxgame\enemy\EnemyDefinition.h" />
 	<ClInclude Include="game\directxgame\enemy\EnemyDeathBomb.h" />
@@ -481,11 +484,11 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\player\PlayerMovementController.h" />
     <ClInclude Include="game\directxgame\player\PlayerPresentationController.h" />
     <ClInclude Include="game\directxgame\player\PlayerProgression.h" />
+    <ClInclude Include="game\directxgame\player\PlayerStats.h" />
     <ClInclude Include="game\directxgame\player\WeaponType.h" />
     <ClInclude Include="game\directxgame\player\WeaponUpgradeData.h" />
     <ClInclude Include="game\directxgame\player\PlayerView.h" />
     <ClInclude Include="game\directxgame\player\PlayerWeaponController.h" />
-    <ClInclude Include="game\directxgame\player\weapons\Drone.h" />
     <ClInclude Include="game\directxgame\player\weapons\NormalBullet.h" />
     <ClInclude Include="game\directxgame\player\weapons\OrbitBullet.h" />
     <ClInclude Include="game\directxgame\scene\ResultScene.h" />

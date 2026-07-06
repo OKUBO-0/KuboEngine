@@ -1,6 +1,10 @@
 #include "BitmapText.h"
 #include "GameSpriteFactory.h"
+#include "ResourcePaths.h"
 #include <algorithm>
+#include <fstream>
+#include <regex>
+#include <sstream>
 #include <string_view>
 
 namespace {
@@ -78,6 +82,53 @@ void BitmapText::Initialize(
 	RebuildSprites();
 }
 
+void BitmapText::Initialize(
+	const std::string& texturePath,
+	const std::string& metadataPath)
+{
+	textureHandle_ = GameTextureCache::Load(texturePath);
+	usesMetrics_ = LoadMetadata(metadataPath);
+	if (!usesMetrics_) {
+		glyphCodepoints_ = BuildAsciiGlyphs();
+	}
+	RebuildSprites();
+}
+
+bool BitmapText::LoadMetadata(const std::string& metadataPath)
+{
+	glyphMetrics_.clear();
+	std::ifstream file(ResourcePaths::MakePath(metadataPath));
+	if (!file) {
+		return false;
+	}
+	const std::string json(
+		(std::istreambuf_iterator<char>(file)),
+		std::istreambuf_iterator<char>());
+	std::smatch headerMatch;
+	const std::regex ascentPattern(R"("ascent"\s*:\s*(-?\d+))");
+	if (!std::regex_search(json, headerMatch, ascentPattern)) {
+		return false;
+	}
+	ascent_ = std::stof(headerMatch[1].str());
+	const std::regex glyphPattern(
+		R"("codepoint"\s*:\s*(\d+)\s*,\s*"width"\s*:\s*(\d+)\s*,\s*"height"\s*:\s*(\d+)\s*,\s*"bearingX"\s*:\s*(-?\d+)\s*,\s*"bearingY"\s*:\s*(-?\d+)\s*,\s*"advance"\s*:\s*(\d+)\s*,\s*"x"\s*:\s*(\d+)\s*,\s*"y"\s*:\s*(\d+))");
+	for (std::sregex_iterator it(json.begin(), json.end(), glyphPattern), end;
+		it != end; ++it) {
+		const std::smatch& match = *it;
+		GlyphMetric metric;
+		metric.textureSize = {
+			std::stof(match[2].str()), std::stof(match[3].str()) };
+		metric.bearing = {
+			std::stof(match[4].str()), std::stof(match[5].str()) };
+		metric.advance = std::stof(match[6].str());
+		metric.texturePosition = {
+			std::stof(match[7].str()), std::stof(match[8].str()) };
+		metric.visible = std::stoul(match[1].str()) != static_cast<uint32_t>(' ');
+		glyphMetrics_[static_cast<uint32_t>(std::stoul(match[1].str()))] = metric;
+	}
+	return !glyphMetrics_.empty();
+}
+
 void BitmapText::SetText(const std::string& text)
 {
 	if (text_ == text) {
@@ -126,10 +177,30 @@ void BitmapText::RebuildSprites()
 {
 	glyphSprites_.clear();
 	renderedGlyphIndices_.clear();
+	renderedGlyphMetrics_.clear();
 	const std::vector<uint32_t> textCodepoints = DecodeUtf8(text_);
 	glyphSprites_.reserve(textCodepoints.size());
 	renderedGlyphIndices_.reserve(textCodepoints.size());
+	renderedGlyphMetrics_.reserve(textCodepoints.size());
 	if (textureHandle_ == 0) {
+		return;
+	}
+	if (usesMetrics_) {
+		const auto fallback = glyphMetrics_.find('?');
+		for (uint32_t codepoint : textCodepoints) {
+			auto glyph = glyphMetrics_.find(codepoint);
+			if (glyph == glyphMetrics_.end()) {
+				glyph = fallback;
+			}
+			if (glyph == glyphMetrics_.end()) {
+				continue;
+			}
+			renderedGlyphMetrics_.push_back(glyph->second);
+			glyphSprites_.push_back(glyph->second.visible
+				? GameSpriteFactory::Create(textureHandle_, position_)
+				: nullptr);
+		}
+		ApplyLayout();
 		return;
 	}
 	const auto fallback = std::find(glyphCodepoints_.begin(), glyphCodepoints_.end(), '?');
@@ -153,6 +224,25 @@ void BitmapText::RebuildSprites()
 
 void BitmapText::ApplyLayout()
 {
+	if (usesMetrics_) {
+		float cursorX = position_.x;
+		for (size_t index = 0; index < renderedGlyphMetrics_.size(); ++index) {
+			const GlyphMetric& glyph = renderedGlyphMetrics_[index];
+			std::unique_ptr<Engine::Graphics2D::Sprite>& sprite = glyphSprites_[index];
+			if (sprite) {
+				sprite->SetPosition({
+					cursorX + glyph.bearing.x * scale_,
+					position_.y + (ascent_ + glyph.bearing.y) * scale_ });
+				sprite->SetSize({
+					glyph.textureSize.x * scale_, glyph.textureSize.y * scale_ });
+				sprite->SetTextureLeftTop(glyph.texturePosition);
+				sprite->SetTextureSize(glyph.textureSize);
+				sprite->SetColor(color_);
+			}
+			cursorX += glyph.advance * scale_ * advanceMultiplier_;
+		}
+		return;
+	}
 	const Vector2 scaledGlyphSize{
 		glyphSize_.x * scale_,
 		glyphSize_.y * scale_,

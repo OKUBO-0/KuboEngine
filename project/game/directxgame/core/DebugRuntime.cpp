@@ -133,7 +133,7 @@ void DebugUI::Runtime::DrawColliderManager(
 
 	ImGui::SetNextWindowPos(ImVec2(1255.0f, 280.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
-	ImGui::Begin("コライダー/タグ管理", open);
+	ImGui::Begin("コライダー・当たり判定", open);
 	ImGui::Checkbox("DebugDraw collision / spawn range", debugDrawEnabled);
 	ImGui::SeparatorText("Runtime Tags");
 	ImGui::BulletText("Player");
@@ -153,10 +153,10 @@ void DebugUI::Runtime::DrawColliderManager(
 	}
 	if (playerManager) {
 		ImGui::Text(
-			"Normal Bullets: %zu",
+			"Bow Arrow Projectiles: %zu",
 			playerManager->GetNormalBullets().size());
 		ImGui::Text(
-			"Orbit Bullets: %zu",
+			"Rock Projectiles: %zu",
 			playerManager->GetOrbitBullets().size());
 	}
 	ImGui::End();

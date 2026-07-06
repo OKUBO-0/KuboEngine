@@ -32,6 +32,17 @@ constexpr char kAudioLevelUp[] = "game.levelUp";
 constexpr char kAudioDeath[] = "game.death";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 
+const char* CharacterStatsKey(DirectXGame::CharacterId id)
+{
+	switch (id) {
+	case DirectXGame::CharacterId::Octopus: return "Octopus";
+	case DirectXGame::CharacterId::Flame: return "Flame";
+	case DirectXGame::CharacterId::Blade: return "Blade";
+	case DirectXGame::CharacterId::Storm: return "Storm";
+	}
+	return "Octopus";
+}
+
 }
 
 namespace DirectXGame {
@@ -101,6 +112,10 @@ void PlayScene::Update()
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
 	if (input && input->TriggerKey(DIK_F9) && playerManager_) {
 		playerManager_->MakeDebugStrongest();
+	}
+	if (input && input->TriggerKey(DIK_F11)) {
+		gameplayHud_.GetTimer().SetTime(kGameTimeLimitSeconds);
+		StartBossPhase();
 	}
 #endif
 
@@ -216,11 +231,15 @@ void PlayScene::InitializeWorld()
 	playerManager_->Initialize(player_.get());
 	playerManager_->LoadStatusFromCSV(DataPaths::kPlayerStatus);
 	if (sessionContext_) {
+		playerManager_->LoadCharacterStats(
+			DataPaths::Resolve(DataPaths::kCharacterStats),
+			CharacterStatsKey(sessionContext_->GetSelectedCharacterId()));
 		playerManager_->ApplyPermanentUpgrades(
 			sessionContext_->GetPermanentMaxHPLevel(),
 			sessionContext_->GetPermanentAttackLevel(),
 			sessionContext_->GetPermanentMoveSpeedLevel(),
-			sessionContext_->GetPermanentExpPickupRangeLevel());
+			sessionContext_->GetPermanentExpPickupRangeLevel(),
+			sessionContext_->GetPermanentCoinGainLevel());
 	}
 	playerManager_->LoadWeaponUpgradeSettings(DataPaths::kWeaponUpgradeSettings);
 	if (sessionContext_) {
@@ -341,6 +360,9 @@ void PlayScene::UpdateGameplayPhase(float deltaTime, bool gameplayFrozen)
 				gameplayFlow_.GetIntroElapsed(),
 				GameplayFlowController::kIntroDuration);
 		}
+		if (gameplayFlow_.IsIntroFinished()) {
+			EnterPlaying();
+		}
 	}
 }
 
@@ -432,9 +454,6 @@ void PlayScene::UpdateUi(float deltaTime)
 	navigationInputDevice_ = menuInput.device;
 
 	if (gameplayFlow_.Is(GameplayState::Start)) {
-		if (gameplayFlow_.IsIntroFinished() && menuInput.confirm) {
-			EnterPlaying();
-		}
 		if (menuInput.cancel) {
 			RequestSceneChange(SceneId::kTitle);
 		}
@@ -517,13 +536,13 @@ void PlayScene::TogglePause()
 	if (gameplayFlow_.BeginPause()) {
 		pauseBuildHud_.Start();
 		if (pauseSeHandle_) {
-			GameAudioCache::Play(pauseSeHandle_);
-			GameAudioCache::SetVolumeFromTuning(pauseSeHandle_, kAudioPauseToggle, 0.5f);
+			GameAudioCache::PlayTuned(
+				pauseSeHandle_, kAudioPauseToggle, 0.5f);
 		}
 	} else if (gameplayFlow_.Is(GameplayState::Paused)) {
 		if (pauseSeHandle_) {
-			GameAudioCache::Play(pauseSeHandle_);
-			GameAudioCache::SetVolumeFromTuning(pauseSeHandle_, kAudioPauseToggle, 0.5f);
+			GameAudioCache::PlayTuned(
+				pauseSeHandle_, kAudioPauseToggle, 0.5f);
 		}
 		EnterPlaying();
 	}

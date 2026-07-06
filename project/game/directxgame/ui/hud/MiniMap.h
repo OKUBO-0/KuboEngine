@@ -37,7 +37,7 @@ private:
 		Vector2 backgroundPosition{ 0.0f, 0.0f };
 		Vector2 backgroundSize{ 640.0f, 720.0f };
 		Vector2 center{ 320.0f, 360.0f };
-		float radius = 180.0f;
+		float radius = 267.0f;
 		float scale = 3.0f;
 		float playerIconSize = 20.0f;
 		float enemyIconSize = 20.0f;

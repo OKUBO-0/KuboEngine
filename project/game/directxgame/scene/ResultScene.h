@@ -7,7 +7,7 @@
 #include "GameTextureCache.h"
 #include "CurtainTransition.h"
 #include "UILabel.h"
-#include <array>
+#include "BitmapText.h"
 #include <memory>
 #include <string>
 
@@ -34,9 +34,8 @@ private:
 	void SaveLayout() const;
 	void UpdateCountUp(float deltaTime);
 	void UpdateFinishUiPulse();
-	void DrawNumber(const std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites);
-	void SetNumberSprites(
-		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6>& sprites,
+	void SetNumberText(
+		BitmapText& text,
 		const Vector2& basePosition,
 		int32_t value,
 		float scaleMultiplier = 1.0f,
@@ -61,12 +60,11 @@ private:
 	UILabel resultUi_;
 	UILabel finishUi_;
 	std::unique_ptr<CurtainTransition> curtain_;
-	TextureHandle numberTexture_ = 0;
 	SoundHandle finishSeHandle_{};
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6> expDigits_;
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6> levelDigits_;
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6> killDigits_;
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, 6> totalScoreDigits_;
+	BitmapText expText_;
+	BitmapText levelText_;
+	BitmapText killText_;
+	BitmapText totalScoreText_;
 	Vector2 backgroundPosition_{ 0.0f, 0.0f };
 	Vector2 backgroundSize_{ 1280.0f, 720.0f };
 	Vector2 resultPosition_{ 0.0f, 0.0f };

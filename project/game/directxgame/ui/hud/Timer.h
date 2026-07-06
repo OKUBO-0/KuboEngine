@@ -1,10 +1,7 @@
 #pragma once
 
-#include "Sprite.h"
-#include "GameTextureCache.h"
+#include "BitmapText.h"
 #include "UIElement.h"
-#include <array>
-#include <memory>
 
 namespace DirectXGame {
 
@@ -37,13 +34,7 @@ private:
 	void UpdateDisplay();
 
 	float time_ = 0.0f;
-	static constexpr int32_t kDigitCount = 5;
-
-	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kDigitCount> sprite_;
-	std::unique_ptr<Engine::Graphics2D::Sprite> colonSprite_;
-
-	TextureHandle numberTexture_ = 0;
-	TextureHandle colonTexture_ = 0;
+	BitmapText timeText_;
 	Vector2 digitSize_{ 24.0f, 32.0f };
 	LayoutSettings layoutSettings_{};
 };

@@ -102,9 +102,9 @@ struct CharacterUiDefinition {
 };
 
 constexpr std::array<CharacterUiDefinition, 4> kCharacterUiDefinitions{ {
-	{ DirectXGame::CharacterId::Octopus, "ui/game/lvup/normal_icon.png" },
-	{ DirectXGame::CharacterId::Flame, "ui/game/lvup/attack_icon.png" },
-	{ DirectXGame::CharacterId::Blade, "ui/game/lvup/orbit_icon.png" },
+	{ DirectXGame::CharacterId::Octopus, "ui/game/lvup/icon_common_unknown.png" },
+	{ DirectXGame::CharacterId::Flame, "ui/game/lvup/icon_common_unknown.png" },
+	{ DirectXGame::CharacterId::Blade, "ui/game/lvup/icon_common_unknown.png" },
 	{ DirectXGame::CharacterId::Storm, "ui/game/lvup/lightning_icon.png" },
 } };
 

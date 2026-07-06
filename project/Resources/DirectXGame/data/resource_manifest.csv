@@ -20,8 +20,6 @@ texture,ui/game/lvup_heal_icon.png
 texture,ui/game/normal/icon.png
 texture,ui/game/orbit/icon.png
 texture,ui/game/orbit/add.png
-texture,ui/game/drone/icon.png
-texture,ui/game/drone/add.png
 texture,ui/game/lightning/icon.png
 texture,ui/game/lightning/add.png
 texture,ui/result/Result.png
@@ -41,13 +39,6 @@ texture,ui/game/orbit/lv5.png
 texture,ui/game/orbit/lv6.png
 texture,ui/game/orbit/lv7.png
 texture,ui/game/orbit/lv8.png
-texture,ui/game/drone/lv2.png
-texture,ui/game/drone/lv3.png
-texture,ui/game/drone/lv4.png
-texture,ui/game/drone/lv5.png
-texture,ui/game/drone/lv6.png
-texture,ui/game/drone/lv7.png
-texture,ui/game/drone/lv8.png
 texture,ui/game/lightning/lv2.png
 texture,ui/game/lightning/lv3.png
 texture,ui/game/lightning/lv4.png

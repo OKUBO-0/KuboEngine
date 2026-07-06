@@ -9,12 +9,18 @@ namespace DirectXGame {
 
 class NormalBullet {
 public:
+	enum class MovementMode {
+		Straight,
+		ReturnToPlayer,
+	};
 	void InitializeForward(
 		const Vector3& startPosition,
 		const Vector3& forward,
 		float speed = 1.0f,
 		float range = 30.0f,
-		int32_t maxHits = 1);
+		int32_t maxHits = 1,
+		float scale = 1.0f,
+		MovementMode movementMode = MovementMode::Straight);
 	void Update(const Vector3& playerPosition, float deltaTime);
 	void Draw();
 
@@ -32,6 +38,7 @@ public:
 	bool CanHitEnemy(void* enemyPtr);
 	void RegisterHit(void* enemyPtr);
 	bool ConsumeHit();
+	void RedirectToward(const Vector3& targetPosition);
 
 private:
 	void ApplyTransform();
@@ -43,8 +50,11 @@ private:
 	float speed_ = 1.0f;
 	float range_ = 30.0f;
 	float traveled_ = 0.0f;
+	float scale_ = 1.0f;
 	int32_t remainingHits_ = 1;
 	bool active_ = false;
+	MovementMode movementMode_ = MovementMode::Straight;
+	bool returning_ = false;
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
 	std::unordered_map<void*, float> hitCooldowns_;

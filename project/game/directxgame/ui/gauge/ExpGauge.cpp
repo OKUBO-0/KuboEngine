@@ -1,10 +1,6 @@
 #include "ExpGauge.h"
-#include "Sprite.h"
 #include "DataPaths.h"
-#include "GameSpriteFactory.h"
-#include "GameTextureCache.h"
 #include "UILayoutIO.h"
-#include "DigitSpriteUtil.h"
 #include <algorithm>
 #include <cmath>
 #ifdef _DEBUG
@@ -12,10 +8,6 @@
 #endif
 
 namespace {
-
-constexpr char kLvLabelPath[] = "ui/game/lv_label.png";
-constexpr char kLvDigitsPath[] = "ui/number/numbers.png";
-constexpr Vector2 kLvDigitTextureSize{ 24.0f, 32.0f };
 
 int32_t StepDisplayValue(int32_t displayedValue, int32_t targetValue)
 {
@@ -45,8 +37,6 @@ namespace DirectXGame {
 
 void ExpGauge::Initialize()
 {
-	lvDigitsHandle_ = GameTextureCache::Load(kLvDigitsPath);
-
 	const UILayoutIO::LayoutMap layout = UILayoutIO::LoadOrDefault(DataPaths::kHudLayout, {});
 	layoutSettings_.framePosition = UILayoutIO::GetVector2(layout, "expFramePosition", layoutSettings_.framePosition);
 	layoutSettings_.frameSize = UILayoutIO::GetVector2(layout, "expFrameSize", layoutSettings_.frameSize);
@@ -78,14 +68,13 @@ void ExpGauge::Initialize()
 		sweep.SetAlpha(0.0f);
 	}
 
-	lvLabel_.Initialize(kLvLabelPath, layoutSettings_.lvLabelPosition);
-	lvLabel_.SetSize(layoutSettings_.lvLabelSize);
-
-	for (int32_t index = 0; index < kLvDigits; ++index) {
-		sprite_[index] = GameSpriteFactory::Create(lvDigitsHandle_, { 0.0f, 0.0f });
-		sprite_[index]->SetSize(layoutSettings_.lvDigitSize);
-		sprite_[index]->SetTextureSize(kLvDigitTextureSize);
-	}
+	lvLabelText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
+	lvLabelText_.SetText("LV");
+	lvDigitsText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
 
 	ApplyLayout();
 	SetLevel(1);
@@ -105,12 +94,8 @@ void ExpGauge::Update()
 	glowBar_.SetScale(1.0f);
 	frameBar_.SetAlpha(1.0f);
 	gaugeBar_.SetAlpha(1.0f);
-	lvLabel_.SetAlpha(1.0f);
-	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : sprite_) {
-		if (digit) {
-			digit->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
-		}
-	}
+	lvLabelText_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	lvDigitsText_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 	const float levelUpBrightness = levelUpSelectionActive_ ? selectionPulse * 0.75f : 0.0f;
 	frameBar_.SetColors(
 		{ 1.0f + levelUpBrightness, 1.0f + levelUpBrightness, levelUpBrightness * 0.35f, 1.0f },
@@ -155,14 +140,8 @@ void ExpGauge::Draw()
 	for (UIPanel& sweep : lightSweeps_) {
 		sweep.Draw();
 	}
-	lvLabel_.Draw();
-	for (int32_t index = 0; index < kLvDigits; ++index) {
-		if (!sprite_[index]) {
-			continue;
-		}
-		sprite_[index]->Update();
-		sprite_[index]->Draw();
-	}
+	lvLabelText_.Draw();
+	lvDigitsText_.Draw();
 }
 
 void ExpGauge::SetEXP(int32_t current, int32_t max)
@@ -181,7 +160,9 @@ void ExpGauge::SetLevel(int32_t level)
 		displayedExp_ = targetExp_;
 	}
 	level_ = level;
-	DigitSpriteUtil::SetNumberSprites(sprite_, kLvDigitTextureSize.x, kLvDigitTextureSize, level, 10);
+	lvDigitsText_.SetText(level < 10
+		? "0" + std::to_string((std::max)(0, level))
+		: std::to_string((std::min)(99, level)));
 }
 
 void ExpGauge::SetLevelUpSelectionActive(bool active)
@@ -291,7 +272,6 @@ void ExpGauge::ApplyLayout()
 	frameBar_.SetSize(layoutSettings_.frameSize);
 	gaugeBar_.SetPosition(layoutSettings_.gaugePosition);
 	gaugeBar_.SetSize(layoutSettings_.gaugeSize);
-	lvLabel_.SetPosition(layoutSettings_.lvLabelPosition);
 	const Vector2 scaledLabelSize{
 		layoutSettings_.lvLabelSize.x * layoutSettings_.lvScale,
 		layoutSettings_.lvLabelSize.y * layoutSettings_.lvScale,
@@ -300,17 +280,10 @@ void ExpGauge::ApplyLayout()
 		layoutSettings_.lvDigitSize.x * layoutSettings_.lvScale,
 		layoutSettings_.lvDigitSize.y * layoutSettings_.lvScale,
 	};
-	lvLabel_.SetSize(scaledLabelSize);
-
-	for (int32_t index = 0; index < kLvDigits; ++index) {
-		if (!sprite_[index]) {
-			continue;
-		}
-		sprite_[index]->SetPosition(
-			{ layoutSettings_.lvDigitsPosition.x + scaledDigitSize.x * static_cast<float>(index), layoutSettings_.lvDigitsPosition.y });
-		sprite_[index]->SetSize(scaledDigitSize);
-		sprite_[index]->SetTextureSize(kLvDigitTextureSize);
-	}
+	lvLabelText_.SetPosition(layoutSettings_.lvLabelPosition);
+	lvLabelText_.SetScale(scaledLabelSize.y / 72.0f);
+	lvDigitsText_.SetPosition(layoutSettings_.lvDigitsPosition);
+	lvDigitsText_.SetScale(scaledDigitSize.y / 72.0f);
 }
 
 }

@@ -121,6 +121,14 @@ bool CombatEffectsPresentation::Update(
 	}
 
 	const Vector3 playerPosition = player.GetWorldPosition();
+	if (playerManager.DidAuraPulseThisFrame()) {
+		particleManager->Emit(handles.ripple, playerPosition, 1u);
+	}
+	for (const Vector3& flamePosition :
+		playerManager.GetRecentFlameZoneSpawns()) {
+		particleManager->Emit(handles.ripple, flamePosition, 1u);
+		particleManager->Emit(handles.enemyHitSpark, flamePosition, 5u);
+	}
 	const int32_t hp = playerManager.GetHP();
 	if (hp < previousHp_) {
 		particleManager->Emit(

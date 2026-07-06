@@ -17,6 +17,8 @@ void Enemy::Initialize()
 	justDied_ = false;
 	deathPresentationActive_ = false;
 	groundImpactPending_ = false;
+	pendingBossAttack_ = {};
+	bossAttackTelegraph_ = {};
 	reactionController_.Reset();
 
 	view_.Initialize();
@@ -33,6 +35,7 @@ void Enemy::Update(float deltaTime)
 
 	previousPosition_ = position_;
 	ClearBehaviorVisual();
+	bossAttackTelegraph_ = {};
 
 	reactionController_.Update(deltaTime, position_);
 	if (behavior_ && !reactionController_.IsBehaviorBlocked()) {
@@ -166,6 +169,38 @@ void Enemy::SetBehaviorVisual(const Vector4& color, float scaleMultiplier)
 void Enemy::ClearBehaviorVisual()
 {
 	view_.ClearBehaviorVisual();
+}
+
+void Enemy::QueueBossAttack(
+	BossAttackType type,
+	const Vector3& direction)
+{
+	pendingBossAttack_ = { type, position_, direction };
+}
+
+bool Enemy::ConsumeBossAttack(BossAttackEvent& outEvent)
+{
+	if (pendingBossAttack_.type == BossAttackType::None) {
+		return false;
+	}
+	outEvent = pendingBossAttack_;
+	pendingBossAttack_ = {};
+	return true;
+}
+
+void Enemy::SetBossAttackTelegraph(
+	BossAttackType type,
+	const Vector3& direction,
+	float progress,
+	float range)
+{
+	bossAttackTelegraph_ = {
+		type,
+		position_,
+		direction,
+		std::clamp(progress, 0.0f, 1.0f),
+		(std::max)(0.0f, range),
+	};
 }
 
 } // namespace DirectXGame

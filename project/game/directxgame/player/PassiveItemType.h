@@ -3,10 +3,24 @@
 namespace DirectXGame {
 
 enum class PassiveItemType {
-	Attack,
+	Damage,
 	MaxHp,
 	MoveSpeed,
-	Heal,
+	AttackSpeed,
+	Duration,
+	AreaSize,
+	ProjectileSpeed,
+	ProjectileCount,
+	PickupRange,
+	ExpGain,
+	CoinGain,
+	CritChance,
+	CritDamage,
+	Armor,
+	Evasion,
+	HpRegen,
+	LifeSteal,
+	Count,
 };
 
 }

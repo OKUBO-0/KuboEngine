@@ -28,7 +28,7 @@ constexpr Vector2 kDefaultHitboxSize{ 435.0f, 68.0f };
 
 void PreloadTextures()
 {
-	const std::array<const char*, 11> staticTextures{
+	const std::array<const char*, 16> staticTextures{
 		"ui/font/noto_sans_jp_black.png",
 		"ui/game/lvup/levelup.png",
 		"ui/game/lvup/levelup_frame.png",
@@ -36,10 +36,15 @@ void PreloadTextures()
 		"ui/game/lvup/maxhp_icon.png",
 		"ui/game/lvup/speed_icon.png",
 		"ui/game/lvup/heal_icon.png",
-		"ui/game/lvup/normal_icon.png",
-		"ui/game/lvup/orbit_icon.png",
-		"ui/game/lvup/drone_icon.png",
-		"ui/game/lvup/lightning_icon.png",
+		"ui/game/lvup/icon_common_unknown.png",
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"ui/game/lvup/icon_weapon_rock.png",
+		"ui/game/lvup/icon_weapon_thunder_staff.png",
+		"ui/game/lvup/icon_weapon_flame_staff.png",
+		"ui/game/lvup/icon_weapon_sword.png",
+		"ui/game/lvup/icon_weapon_bone.png",
+		"ui/game/lvup/icon_weapon_handgun.png",
+		"ui/game/lvup/icon_weapon_boomerang.png",
 	};
 
 	std::vector<std::string> texturePaths;
@@ -48,19 +53,6 @@ void PreloadTextures()
 		texturePaths.emplace_back(texture);
 	}
 	DirectXGame::GameTextureCache::LoadBatch(texturePaths);
-}
-
-const std::string& NotoSansJpGlyphOrder()
-{
-	static const std::string glyphs = [] {
-		std::string value;
-		for (char character = 32; character <= 126; ++character) {
-			value.push_back(character);
-		}
-		value += "通常弾軌道雷撃爆発追加攻力最大移動速度回復数個になります。ダメージ間隔貫通周囲半径転サイズ対象体基礎全短縮範囲連射威上昇武器ランダム敵命中時";
-		return value;
-	}();
-	return glyphs;
 }
 
 bool IsPointInRect(
@@ -186,21 +178,17 @@ void LevelUpSelectionHud::Initialize()
 	for (BitmapText& text : choiceTitleTexts_) {
 		text.Initialize(
 			"ui/font/noto_sans_jp_black.png",
-			{ 96.0f, 96.0f },
-			16,
-			NotoSansJpGlyphOrder());
-		text.SetScale(0.30f);
-		text.SetAdvanceMultiplier(0.85f);
+			"ui/font/noto_sans_jp_black.json");
+		text.SetScale(0.40f);
+		text.SetAdvanceMultiplier(1.0f);
 		text.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 	}
 	for (BitmapText& text : choiceDetailTexts_) {
 		text.Initialize(
 			"ui/font/noto_sans_jp_black.png",
-			{ 96.0f, 96.0f },
-			16,
-			NotoSansJpGlyphOrder());
-		text.SetScale(0.24f);
-		text.SetAdvanceMultiplier(0.72f);
+			"ui/font/noto_sans_jp_black.json");
+		text.SetScale(0.32f);
+		text.SetAdvanceMultiplier(1.0f);
 		text.SetColor({ 0.82f, 0.9f, 1.0f, 0.95f });
 	}
 	ApplyLayout();
@@ -245,7 +233,7 @@ bool LevelUpSelectionHud::Update(
 					static_cast<int32_t>(choices_.size()) - 1));
 				LevelUpChoiceService::Apply(
 					playerManager,
-					choices_[index].upgrade);
+					choices_[index]);
 			}
 			selectionPending_ = false;
 			animationState_ = AnimationState::Hidden;

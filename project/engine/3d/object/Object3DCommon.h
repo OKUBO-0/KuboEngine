@@ -108,7 +108,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shadowDsvHeap_;
 	ShadowMapData shadowMapData_{};
 	uint32_t shadowSrvIndex_ = UINT32_MAX;
-	D3D12_RESOURCE_STATES shadowMapState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	bool shadowPassActive_ = false;
 	bool shadowEnabled_ = true;
 	float shadowArea_ = 72.0f;

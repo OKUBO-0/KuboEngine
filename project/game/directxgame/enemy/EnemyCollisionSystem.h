@@ -46,7 +46,18 @@ public:
 		int32_t damage,
 		std::vector<std::unique_ptr<Enemy>>& enemies,
 		std::vector<Vector3>& hitEffectPositions,
-		std::vector<FloatingNumberEvent>& numberEvents);
+		std::vector<FloatingNumberEvent>& numberEvents,
+		PlayerManager* damageOwner = nullptr);
+	static void ApplyArcDamage(
+		const Vector3& center,
+		const Vector3& forward,
+		float radius,
+		float halfAngleRadians,
+		int32_t damage,
+		std::vector<std::unique_ptr<Enemy>>& enemies,
+		std::vector<Vector3>& hitEffectPositions,
+		std::vector<FloatingNumberEvent>& numberEvents,
+		PlayerManager* damageOwner = nullptr);
 	static void ResolveEnemySeparation(
 		std::vector<std::unique_ptr<Enemy>>& enemies);
 	static void ResolveEnemySeparation(

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace DirectXGame {
@@ -22,6 +23,9 @@ public:
 		const Vector2& glyphSize,
 		int32_t columns,
 		const std::string& glyphCharacters);
+	void Initialize(
+		const std::string& texturePath,
+		const std::string& metadataPath);
 	void SetText(const std::string& text);
 	void SetPosition(const Vector2& position);
 	void SetScale(float scale);
@@ -30,6 +34,15 @@ public:
 	void Draw();
 
 private:
+	struct GlyphMetric {
+		Vector2 texturePosition{};
+		Vector2 textureSize{};
+		Vector2 bearing{};
+		float advance = 0.0f;
+		bool visible = true;
+	};
+
+	bool LoadMetadata(const std::string& metadataPath);
 	void RebuildSprites();
 	void ApplyLayout();
 
@@ -39,6 +52,10 @@ private:
 	std::string text_;
 	std::vector<uint32_t> glyphCodepoints_;
 	std::vector<int32_t> renderedGlyphIndices_;
+	std::unordered_map<uint32_t, GlyphMetric> glyphMetrics_;
+	std::vector<GlyphMetric> renderedGlyphMetrics_;
+	float ascent_ = 0.0f;
+	bool usesMetrics_ = false;
 	Vector2 position_{};
 	float scale_ = 1.0f;
 	float advanceMultiplier_ = 1.0f;

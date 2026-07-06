@@ -91,6 +91,9 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 	Engine::Base::ThrowIfFailed(
 		resourceResult,
 		"ID3D12Device::CreateCommittedResource shadow map");
+	dxCommon_->TrackResourceState(
+		shadowMapResource_.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 	shadowDsvHeap_ = dxCommon_->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
@@ -130,6 +133,9 @@ void Object3DCommon::Finalize()
 	graphicsPipeline_.reset();
 	skinningGraphicsPipeline_.reset();
 	shadowGraphicsPipeline_.reset();
+	if (dxCommon_ && shadowMapResource_) {
+		dxCommon_->UntrackResourceState(shadowMapResource_.Get());
+	}
 	shadowMapResource_.Reset();
 	shadowDsvHeap_.Reset();
 	dxCommon_ = nullptr;
@@ -154,11 +160,8 @@ bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 	shadowMapData_.settings.x =
 		sceneLightData_.enable != 0 && shadowEnabled_ ? 1.0f : 0.0f;
 
-	if (shadowMapState_ != D3D12_RESOURCE_STATE_DEPTH_WRITE) {
-		dxCommon_->TransitionResource(
-			shadowMapResource_.Get(), shadowMapState_, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		shadowMapState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
-	}
+	dxCommon_->TransitionResource(
+		shadowMapResource_.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 	const D3D12_CPU_DESCRIPTOR_HANDLE dsv =
 		shadowDsvHeap_->GetCPUDescriptorHandleForHeapStart();
 	dxCommon_->GetCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
@@ -226,12 +229,9 @@ void Object3DCommon::RecordShadowCandidate(bool submitted)
 void Object3DCommon::EndShadowPass()
 {
 	shadowPassActive_ = false;
-	if (shadowMapState_ != D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
-		dxCommon_->TransitionResource(
-			shadowMapResource_.Get(), shadowMapState_,
-			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		shadowMapState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-	}
+	dxCommon_->TransitionResource(
+		shadowMapResource_.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	if (Engine::Base::OffscreenRenderManager* offscreen =
 			Engine::Base::OffscreenRenderManager::GetInstance()) {
 		offscreen->BindRenderTarget();

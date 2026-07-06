@@ -12,6 +12,27 @@ namespace DirectXGame {
 
 class Player;
 
+enum class BossAttackType : uint8_t {
+	None,
+	Rush,
+	TentacleSlam,
+	InkBurst,
+};
+
+struct BossAttackEvent {
+	BossAttackType type = BossAttackType::None;
+	Vector3 position{};
+	Vector3 direction{ 0.0f, 0.0f, 1.0f };
+};
+
+struct BossAttackTelegraph {
+	BossAttackType type = BossAttackType::None;
+	Vector3 position{};
+	Vector3 direction{ 0.0f, 0.0f, 1.0f };
+	float progress = 0.0f;
+	float range = 0.0f;
+};
+
 class Enemy {
 public:
 	void Initialize();
@@ -84,6 +105,17 @@ public:
 	{
 		return reactionController_.ConsumeBossPhaseChanged();
 	}
+	void QueueBossAttack(BossAttackType type, const Vector3& direction);
+	bool ConsumeBossAttack(BossAttackEvent& outEvent);
+	void SetBossAttackTelegraph(
+		BossAttackType type,
+		const Vector3& direction,
+		float progress,
+		float range);
+	const BossAttackTelegraph& GetBossAttackTelegraph() const
+	{
+		return bossAttackTelegraph_;
+	}
 
 private:
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
@@ -107,6 +139,8 @@ private:
 	std::unique_ptr<IEnemyBehavior> behavior_;
 	EnemyReactionController reactionController_{};
 	EnemyView view_{};
+	BossAttackEvent pendingBossAttack_{};
+	BossAttackTelegraph bossAttackTelegraph_{};
 
 	bool groundImpactPending_ = false;
 };

@@ -16,6 +16,8 @@
 
 namespace {
 
+constexpr float kIntroBarHeight = 56.0f;
+
 float Clamp01(float value)
 {
 	return std::clamp(value, 0.0f, 1.0f);
@@ -25,14 +27,10 @@ void PreloadGameplayHudTextures()
 {
 	DirectXGame::GameTextureCache::LoadBatch({
 		"white1x1.png",
-		"ui/number/numbers.png",
-		"ui/number/colon.png",
-		"ui/game/start.png",
 		"ui/game/death.png",
 		"ui/game/pause.png",
 		"ui/game/left_cursor.png",
 		"ui/game/right_corsor.png",
-		"ui/game/lv_label.png",
 		"ui/game/minimap_player.png",
 		"ui/game/minimap_enemy.png",
 		"ui/game/minimap_orb.png",
@@ -42,9 +40,7 @@ void PreloadGameplayHudTextures()
 		"ui/controls/key_s.png",
 		"ui/controls/key_d.png",
 		"ui/controls/key_esc.png",
-		"ui/game/lvup/normal_icon.png",
-		"ui/game/lvup/orbit_icon.png",
-		"ui/game/lvup/drone_icon.png",
+		"ui/game/lvup/icon_common_unknown.png",
 		"ui/game/lvup/lightning_icon.png",
 		"ui/game/lvup/attack_icon.png",
 		});
@@ -76,8 +72,13 @@ void GameplayHudPresentation::Initialize(
 	gameplayMiniMap_.Initialize();
 	ApplyGameplayMiniMapLayout();
 
-	startOverlay_.Initialize("ui/game/start.png", { 0.0f, 0.0f });
-	startOverlay_.SetSize({ 1280.0f, 720.0f });
+	introTopBar_.Initialize("white1x1.png", { 0.0f, 0.0f });
+	introTopBar_.SetSize({ 1280.0f, kIntroBarHeight });
+	introTopBar_.SetColor({ 0.0f, 0.0f, 0.0f, 1.0f });
+	introBottomBar_.Initialize(
+		"white1x1.png", { 0.0f, 720.0f - kIntroBarHeight });
+	introBottomBar_.SetSize({ 1280.0f, kIntroBarHeight });
+	introBottomBar_.SetColor({ 0.0f, 0.0f, 0.0f, 1.0f });
 	hitFlashOverlay_.Initialize("white1x1.png", { 0.0f, 0.0f });
 	hitFlashOverlay_.SetSize({ 1280.0f, 720.0f });
 	hitFlashOverlay_.SetColor({ 1.0f, 0.12f, 0.08f, 1.0f });
@@ -185,6 +186,21 @@ void GameplayHudPresentation::Update(
 void GameplayHudPresentation::Draw(
 	const GameplayFlowController& flow)
 {
+	if (flow.Is(GameplayState::Start)) {
+		const float progress = Clamp01(
+			flow.GetIntroElapsed() / GameplayFlowController::kIntroDuration);
+		const float exitProgress = Clamp01((progress - 0.78f) / 0.22f);
+		const float easedExit = exitProgress * exitProgress *
+			(3.0f - 2.0f * exitProgress);
+		introTopBar_.SetPosition({ 0.0f, -kIntroBarHeight * easedExit });
+		introBottomBar_.SetPosition({
+			0.0f,
+			720.0f - kIntroBarHeight + kIntroBarHeight * easedExit,
+			});
+		introTopBar_.Draw();
+		introBottomBar_.Draw();
+		return;
+	}
 	hpGauge_.Draw();
 	expGauge_.Draw();
 	timer_.Draw();
@@ -200,9 +216,6 @@ void GameplayHudPresentation::Draw(
 			gameplayMiniMap_.Draw();
 		}
 		keyUi_.Draw();
-	}
-	if (flow.Is(GameplayState::Start) && flow.IsIntroFinished()) {
-		startOverlay_.Draw();
 	}
 	hitFlashOverlay_.Draw();
 	deathOverlay_.Draw();

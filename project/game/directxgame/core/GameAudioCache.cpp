@@ -119,9 +119,8 @@ void GameAudioCache::Play(SoundHandle handle)
 	if (!entry) {
 		return;
 	}
-	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(entry->soundData);
-	Engine::AudioSystem::Audio::GetInstance()->SetVolume(&entry->soundData,
-		GetEffectiveVolume(entry->baseVolume));
+	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(
+		entry->soundData, false, GetEffectiveVolume(entry->baseVolume));
 }
 
 void GameAudioCache::PlayLoop(SoundHandle handle)
@@ -130,8 +129,24 @@ void GameAudioCache::PlayLoop(SoundHandle handle)
 	if (!entry) {
 		return;
 	}
-	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(entry->soundData, true);
-	Engine::AudioSystem::Audio::GetInstance()->SetVolume(&entry->soundData,
+	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(
+		entry->soundData, true, GetEffectiveVolume(entry->baseVolume));
+}
+
+void GameAudioCache::PlayTuned(
+	SoundHandle handle,
+	std::string_view key,
+	float fallbackVolume,
+	bool loop)
+{
+	CachedSoundEntry* entry = FindSoundEntry(handle);
+	if (!entry) {
+		return;
+	}
+	entry->baseVolume = ClampVolume(GetTunedVolume(key, fallbackVolume));
+	Engine::AudioSystem::Audio::GetInstance()->SoundPlayWave(
+		entry->soundData,
+		loop,
 		GetEffectiveVolume(entry->baseVolume));
 }
 

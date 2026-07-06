@@ -62,7 +62,8 @@ private:
 	KeyUI keyUi_;
 	MiniMap pauseMiniMap_;
 	MiniMap gameplayMiniMap_;
-	UILabel startOverlay_;
+	UILabel introTopBar_;
+	UILabel introBottomBar_;
 	UILabel hitFlashOverlay_;
 	UILabel deathOverlay_;
 	TextureHandle coinDigitTexture_ = 0;

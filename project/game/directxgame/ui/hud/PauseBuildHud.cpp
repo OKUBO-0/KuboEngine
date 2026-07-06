@@ -5,10 +5,14 @@
 #include "PlayerManager.h"
 #include "Input.h"
 #include "GameSpriteFactory.h"
+#include "GameTextureCache.h"
 #include "DigitSpriteUtil.h"
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 #include <string>
+#include <string_view>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -23,6 +27,20 @@ bool IsPointInRect(const Vector2& point, const Vector2& position, const Vector2&
 {
 	return point.x >= position.x && point.x <= position.x + size.x &&
 		point.y >= position.y && point.y <= position.y + size.y;
+}
+
+void ApplyIconTextureRegion(
+	Engine::Graphics2D::Sprite& sprite,
+	std::string_view relativePath)
+{
+	const bool usesNewIconLayout =
+		relativePath.find("/icon_") != std::string_view::npos;
+	sprite.SetTextureLeftTop(
+		usesNewIconLayout ? Vector2{ 441.0f, 205.0f }
+			: Vector2{ 662.0f, 308.0f });
+	sprite.SetTextureSize(
+		usesNewIconLayout ? Vector2{ 57.0f, 57.0f }
+			: Vector2{ 84.0f, 84.0f });
 }
 
 }
@@ -57,6 +75,12 @@ void PauseBuildHud::Initialize()
 		values, "pauseBuildStepY", layout_.stepY);
 	layout_.iconSize = UILayoutIO::GetVector2(
 		values, "pauseBuildIconSize", layout_.iconSize);
+	layout_.statusPosition = UILayoutIO::GetVector2(
+		values, "pauseStatusPosition", layout_.statusPosition);
+	layout_.statusLineStep = UILayoutIO::GetFloat(
+		values, "pauseStatusLineStep", layout_.statusLineStep);
+	layout_.statusScale = UILayoutIO::GetFloat(
+		values, "pauseStatusScale", layout_.statusScale);
 	layout_.visible = UILayoutIO::GetFloat(
 		values, "pauseBuildVisible", layout_.visible ? 1.0f : 0.0f) > 0.5f;
 	for (int32_t index = 0; index < 3; ++index) {
@@ -71,26 +95,41 @@ void PauseBuildHud::Initialize()
 	}
 
 	const std::array<const char*, kIconCount> iconPaths{
-		"ui/game/lvup/normal_icon.png",
-		"ui/game/lvup/orbit_icon.png",
-		"ui/game/lvup/drone_icon.png",
-		"ui/game/lvup/lightning_icon.png",
-		"ui/game/lvup/normal_icon.png",
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"ui/game/lvup/icon_weapon_rock.png",
+		"ui/game/lvup/icon_weapon_thunder_staff.png",
+		"ui/game/lvup/icon_weapon_flame_staff.png",
+		"ui/game/lvup/icon_weapon_sword.png",
+		"ui/game/lvup/icon_common_unknown.png",
+		"ui/game/lvup/icon_common_unknown.png",
+		"ui/game/lvup/icon_weapon_bone.png",
+		"ui/game/lvup/icon_weapon_handgun.png",
+		"ui/game/lvup/icon_weapon_boomerang.png",
 		"ui/game/lvup/maxhp_icon.png",
 		"ui/game/lvup/attack_icon.png",
 		"ui/game/lvup/speed_icon.png",
 		"ui/game/lvup/heal_icon.png",
+		"ui/game/lvup/icon_common_unknown.png",
+		"ui/game/lvup/icon_common_unknown.png",
 	};
 	for (size_t index = 0; index < icons_.size(); ++index) {
 		icons_[index] = GameSpriteFactory::Create(iconPaths[index], {});
-		icons_[index]->SetTextureLeftTop({ 662.0f, 308.0f });
-		icons_[index]->SetTextureSize({ 84.0f, 84.0f });
+		ApplyIconTextureRegion(*icons_[index], iconPaths[index]);
 		icons_[index]->SetSize(layout_.iconSize);
 		icons_[index]->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 		levelDigits_[index] = GameSpriteFactory::Create("ui/number/numbers.png", {});
 		levelDigits_[index]->SetSize({ 18.0f, 24.0f });
 		levelDigits_[index]->SetTextureSize({ 24.0f, 32.0f });
 		levelDigits_[index]->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+	}
+	for (size_t index = 0; index < statusTexts_.size(); ++index) {
+		statusTexts_[index].Initialize(
+			"ui/font/noto_sans_jp_black.png",
+			"ui/font/noto_sans_jp_black.json");
+		statusTexts_[index].SetScale(layout_.statusScale);
+		statusTexts_[index].SetColor(index == 0
+			? Vector4{ 1.0f, 0.9f, 0.15f, 1.0f }
+			: Vector4{ 1.0f, 1.0f, 1.0f, 1.0f });
 	}
 	ApplyLayout();
 }
@@ -107,30 +146,24 @@ void PauseBuildHud::Start()
 
 void PauseBuildHud::TrackAcquisitions(const PlayerManager& playerManager)
 {
-	if (!acquisitionBaselineInitialized_) {
-		baselineMaxHP_ = playerManager.GetMaxHP();
-		baselineAttackPower_ = playerManager.GetAttackPower();
-		baselineMoveSpeedLevel_ = playerManager.GetMoveSpeedLevel();
-		baselineExpPickupRangeMultiplier_ = playerManager.GetExpPickupRangeMultiplier();
-		acquisitionBaselineInitialized_ = true;
-	}
-	const std::array<bool, kIconCount> acquired{
+	const std::array<bool, kWeaponIconCount> acquired{
 		true,
 		playerManager.HasOrbitBullets(),
-		playerManager.HasDrone(),
 		playerManager.HasLightning(),
 		playerManager.HasExplosiveBullets(),
-		playerManager.GetMaxHP() > baselineMaxHP_,
-		playerManager.GetAttackPower() > baselineAttackPower_,
-		playerManager.GetMoveSpeedLevel() > baselineMoveSpeedLevel_,
-		playerManager.GetExpPickupRangeMultiplier() > baselineExpPickupRangeMultiplier_,
+		playerManager.HasSword(),
+		playerManager.HasAura(),
+		playerManager.HasFlameShoes(),
+		playerManager.HasBone(),
+		playerManager.HasHandgun(),
+		playerManager.HasBoomerang(),
 	};
 	for (int32_t index = 1; index < static_cast<int32_t>(acquired.size()); ++index) {
 		if (!acquired[static_cast<size_t>(index)] || acquisitionRecorded_[static_cast<size_t>(index)]) {
 			continue;
 		}
 		acquisitionRecorded_[static_cast<size_t>(index)] = true;
-		(index <= 4 ? weaponAcquisitionOrder_ : itemAcquisitionOrder_).push_back(index);
+		weaponAcquisitionOrder_.push_back(index);
 	}
 }
 
@@ -198,6 +231,7 @@ void PauseBuildHud::UpdateBuildIcons(
 	float animationTime)
 {
 	TrackAcquisitions(playerManager);
+	UpdateStatusTexts(playerManager);
 	for (auto& icon : icons_) {
 		if (icon) {
 			icon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
@@ -208,18 +242,20 @@ void PauseBuildHud::UpdateBuildIcons(
 			digit->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 		}
 	}
-	const std::array<int32_t, kIconCount> levels{
+	const std::array<int32_t, kWeaponIconCount> weaponLevels{
 		playerManager.GetNormalBulletLevel(),
 		playerManager.GetOrbitBulletLevel(),
-		playerManager.GetDroneLevel(),
 		playerManager.GetLightningLevel(),
 		playerManager.GetExplosiveBulletLevel(),
-		playerManager.GetMaxHPUpgradeLevel(),
-		playerManager.GetAttackPowerUpgradeLevel(),
-		playerManager.GetMoveSpeedLevel(),
-		static_cast<int32_t>((playerManager.GetExpPickupRangeMultiplier() - baselineExpPickupRangeMultiplier_) / 0.25f + 0.5f),
+		playerManager.GetSwordLevel(),
+		playerManager.GetAuraLevel(),
+		playerManager.GetFlameShoesLevel(),
+		playerManager.GetBoneLevel(),
+		playerManager.GetHandgunLevel(),
+		playerManager.GetBoomerangLevel(),
 	};
-	auto placeRow = [this, &levels](const std::vector<int32_t>& order, float y) {
+	auto placeWeaponRow = [this, &weaponLevels](
+		const std::vector<int32_t>& order, float y) {
 		for (size_t orderIndex = 0; orderIndex < order.size(); ++orderIndex) {
 			const int32_t iconIndex = order[orderIndex];
 			auto& icon = icons_[static_cast<size_t>(iconIndex)];
@@ -234,7 +270,8 @@ void PauseBuildHud::UpdateBuildIcons(
 			if (digit) {
 				DigitSpriteUtil::SetDigitSprite(
 					*digit, 24.0f, { 24.0f, 32.0f },
-					std::clamp(levels[static_cast<size_t>(iconIndex)], 0, 9));
+					std::clamp(
+						weaponLevels[static_cast<size_t>(iconIndex)], 0, 9));
 				digit->SetPosition({
 					layout_.position.x + layout_.stepX * static_cast<float>(orderIndex) +
 						(layout_.iconSize.x - 18.0f) * 0.5f,
@@ -245,9 +282,77 @@ void PauseBuildHud::UpdateBuildIcons(
 			}
 		}
 	};
-	placeRow(weaponAcquisitionOrder_, layout_.position.y);
-	placeRow(itemAcquisitionOrder_, layout_.position.y + layout_.stepY);
+	placeWeaponRow(weaponAcquisitionOrder_, layout_.position.y);
+
+	const std::vector<PassiveItemType>& items =
+		playerManager.GetPassiveItemAcquisitionOrder();
+	for (size_t slot = 0; slot < kPassiveItemSlotCount; ++slot) {
+		const size_t iconIndex = kWeaponIconCount + slot;
+		const bool visible = slot < items.size() && layout_.visible;
+		if (!visible) {
+			continue;
+		}
+		const PassiveItemType type = items[slot];
+		const PassiveItemDefinition& definition =
+			GetPassiveItemDefinition(type);
+		const int32_t level = playerManager.GetPassiveItemLevel(type);
+		auto& icon = icons_[iconIndex];
+		if (displayedItemTypes_[slot] != type) {
+			const TextureHandle itemTexture =
+				GameTextureCache::Load(std::string(definition.iconPath));
+			icon->SetTexture(GameTextureCache::GetPath(itemTexture));
+			ApplyIconTextureRegion(*icon, definition.iconPath);
+			displayedItemTypes_[slot] = type;
+		}
+		const Vector2 position{
+			layout_.position.x + static_cast<float>(slot) * 48.0f,
+			layout_.position.y + layout_.stepY,
+		};
+		icon->SetPosition(position);
+		icon->SetSize({ 42.0f, 42.0f });
+		icon->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		auto& digit = levelDigits_[iconIndex];
+		DigitSpriteUtil::SetDigitSprite(
+			*digit, 24.0f, { 24.0f, 32.0f }, std::clamp(level, 0, 9));
+		digit->SetPosition({ position.x + 27.0f, position.y + 29.0f });
+		digit->SetSize({ 14.0f, 19.0f });
+		digit->SetColor({ 1.0f, 0.88f, 0.2f, 1.0f });
+	}
 	(void)animationTime;
+}
+
+void PauseBuildHud::UpdateStatusTexts(const PlayerManager& playerManager)
+{
+	const PlayerStats& stats = playerManager.GetStats();
+	auto fixed = [](float value, int precision = 2) {
+		std::ostringstream stream;
+		stream << std::fixed << std::setprecision(precision) << value;
+		return stream.str();
+	};
+	const std::array<std::string, kStatusLineCount> lines{
+		"PLAYER STATS",
+		"HP          " + std::to_string(playerManager.GetHP()) + " / " +
+			std::to_string(playerManager.GetMaxHP()),
+		"DAMAGE      x" + fixed(stats.GetDamageMultiplier()),
+		"ATTACK SPD  x" + fixed(stats.GetAttackSpeedMultiplier()),
+		"DURATION    x" + fixed(stats.GetDurationMultiplier()),
+		"MOVE SPD    x" + fixed(stats.GetMovementSpeedMultiplier()),
+		"PROJ SPD    x" + fixed(stats.GetProjectileSpeedMultiplier()),
+		"AREA SIZE   x" + fixed(stats.GetAreaSizeMultiplier()),
+		"PROJ COUNT  +" + std::to_string(stats.GetProjectileCountBonus()),
+		"ARMOR       " + fixed(stats.GetArmorReduction() * 100.0f, 1) + "%",
+		"EVASION     " + fixed(stats.GetEvasionChance() * 100.0f, 1) + "%",
+		"HP REGEN    " + fixed(stats.GetHpRegenPerSecond(), 1) + " /s",
+		"LIFESTEAL   " + fixed(stats.GetLifeStealChance() * 100.0f, 1) + "%",
+		"PICKUP      x" + fixed(stats.GetPickupRangeMultiplier()),
+		"EXP / COIN  x" + fixed(stats.GetExpGainMultiplier()) + " / x" +
+			fixed(stats.GetCoinGainMultiplier()),
+		"CRIT        " + fixed(stats.GetCritChance() * 100.0f, 1) +
+			"% / x" + fixed(stats.GetCritDamageMultiplier()),
+	};
+	for (size_t index = 0; index < statusTexts_.size(); ++index) {
+		statusTexts_[index].SetText(lines[index]);
+	}
 }
 
 void PauseBuildHud::Draw()
@@ -276,6 +381,9 @@ void PauseBuildHud::Draw()
 			digit->Draw();
 		}
 	}
+	for (BitmapText& text : statusTexts_) {
+		text.Draw();
+	}
 	leftCursor_.Draw();
 	rightCursor_.Draw();
 }
@@ -289,6 +397,9 @@ void PauseBuildHud::SaveLayout() const
 			{ "pauseBuildStepY", { layout_.stepY } },
 			{ "pauseBuildIconSize", { layout_.iconSize.x, layout_.iconSize.y } },
 			{ "pauseBuildVisible", { layout_.visible ? 1.0f : 0.0f } },
+			{ "pauseStatusPosition", { layout_.statusPosition.x, layout_.statusPosition.y } },
+			{ "pauseStatusLineStep", { layout_.statusLineStep } },
+			{ "pauseStatusScale", { layout_.statusScale } },
 			{ "menuHitbox0", { menuLayout_.hitboxPositions[0].x, menuLayout_.hitboxPositions[0].y } },
 			{ "menuHitbox1", { menuLayout_.hitboxPositions[1].x, menuLayout_.hitboxPositions[1].y } },
 			{ "menuHitbox2", { menuLayout_.hitboxPositions[2].x, menuLayout_.hitboxPositions[2].y } },
@@ -342,6 +453,14 @@ int32_t PauseBuildHud::GetHoveredMenuIndex() const
 
 void PauseBuildHud::ApplyLayout()
 {
+	for (size_t index = 0; index < statusTexts_.size(); ++index) {
+		statusTexts_[index].SetPosition({
+			layout_.statusPosition.x,
+			layout_.statusPosition.y +
+				layout_.statusLineStep * static_cast<float>(index),
+			});
+		statusTexts_[index].SetScale(layout_.statusScale);
+	}
 	for (size_t index = 0; index < icons_.size(); ++index) {
 		if (!icons_[index]) {
 			continue;
@@ -403,6 +522,17 @@ void PauseBuildHud::DrawDebugUI()
 		};
 		changed = true;
 	}
+	float statusPosition[2]{
+		layout_.statusPosition.x, layout_.statusPosition.y };
+	if (ImGui::DragFloat2(
+			"Pause Status Position", statusPosition, 1.0f, 0.0f, 1280.0f)) {
+		layout_.statusPosition = { statusPosition[0], statusPosition[1] };
+		changed = true;
+	}
+	changed |= ImGui::DragFloat(
+		"Pause Status Line Step", &layout_.statusLineStep, 0.5f, 10.0f, 40.0f);
+	changed |= ImGui::DragFloat(
+		"Pause Status Scale", &layout_.statusScale, 0.01f, 0.1f, 0.5f);
 	if (changed) {
 		ApplyLayout();
 	}

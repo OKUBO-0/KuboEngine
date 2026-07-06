@@ -369,6 +369,12 @@
     <ClCompile Include="game\directxgame\enemy\Enemy.cpp">
       <Filter>game\directxgame\enemy</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\BossAttackVisual.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
+    <ClCompile Include="game\directxgame\enemy\BossInkProjectile.cpp">
+      <Filter>game\directxgame\enemy</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\enemy\EnemyBehavior.cpp">
       <Filter>game\directxgame\enemy</Filter>
     </ClCompile>
@@ -419,9 +425,6 @@
     </ClCompile>
     <ClCompile Include="game\directxgame\player\PlayerWeaponController.cpp">
       <Filter>game\directxgame\player</Filter>
-    </ClCompile>
-    <ClCompile Include="game\directxgame\player\weapons\Drone.cpp">
-      <Filter>game\directxgame\player\weapons</Filter>
     </ClCompile>
     <ClCompile Include="game\directxgame\player\weapons\NormalBullet.cpp">
       <Filter>game\directxgame\player\weapons</Filter>
@@ -776,6 +779,12 @@
     <ClInclude Include="game\directxgame\enemy\Enemy.h">
       <Filter>game\directxgame\enemy</Filter>
     </ClInclude>
+	<ClInclude Include="game\directxgame\enemy\BossAttackVisual.h">
+	  <Filter>game\directxgame\enemy</Filter>
+	</ClInclude>
+	<ClInclude Include="game\directxgame\enemy\BossInkProjectile.h">
+	  <Filter>game\directxgame\enemy</Filter>
+	</ClInclude>
 	<ClInclude Include="game\directxgame\enemy\EnemyBehavior.h">
 	  <Filter>game\directxgame\enemy</Filter>
 	</ClInclude>
@@ -827,6 +836,9 @@
     <ClInclude Include="game\directxgame\player\PlayerProgression.h">
       <Filter>game\directxgame\player</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\player\PlayerStats.h">
+      <Filter>game\directxgame\player</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\player\WeaponType.h">
       <Filter>game\directxgame\player</Filter>
     </ClInclude>
@@ -835,9 +847,6 @@
     </ClInclude>
     <ClInclude Include="game\directxgame\player\PlayerWeaponController.h">
       <Filter>game\directxgame\player</Filter>
-    </ClInclude>
-    <ClInclude Include="game\directxgame\player\weapons\Drone.h">
-      <Filter>game\directxgame\player\weapons</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\player\weapons\NormalBullet.h">
       <Filter>game\directxgame\player\weapons</Filter>

@@ -4,8 +4,11 @@
 #include "Player.h"
 #include "PlayerProgression.h"
 #include "PlayerWeaponController.h"
+#include "PassiveItemData.h"
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -21,12 +24,19 @@ public:
 		enemyManager_ = enemyManager;
 	}
 	void LoadStatusFromCSV(const std::string& filePath);
+	void LoadCharacterStats(
+		const std::string& filePath,
+		const std::string& characterKey)
+	{
+		progression_.LoadCharacterStats(filePath, characterKey, player_);
+	}
 	void LoadWeaponUpgradeSettings(const std::string& filePath);
 	void Update(float deltaTime);
 	void Draw();
 
-	void TakeDamage(int32_t damage = 10);
-	void RecoverHP();
+	bool TakeDamage(int32_t damage = 10);
+	int32_t RecoverHP(int32_t amount = 1);
+	int32_t ApplyLifeStealOnHit();
 	int32_t GetHP() const { return progression_.GetHP(); }
 	int32_t GetMaxHP() const { return progression_.GetMaxHP(); }
 	bool IsMaxHPAtCap() const { return progression_.IsMaxHPAtCap(); }
@@ -42,7 +52,7 @@ public:
 #endif
 	void MakeDebugStrongest();
 
-	void AddEXP(int32_t amount);
+	int32_t AddEXP(int32_t amount);
 	int32_t GetEXP() const { return progression_.GetEXP(); }
 	int32_t GetTotalEXP() const { return progression_.GetTotalEXP(); }
 	int32_t GetLevel() const { return progression_.GetLevel(); }
@@ -51,16 +61,53 @@ public:
 	void ClearLevelUpRequest() { progression_.ClearLevelUpRequest(); }
 
 	int32_t GetAttackPower() const { return progression_.GetAttackPower(); }
+	const PlayerStats& GetStats() const { return progression_.GetStats(); }
+	float GetDamageMultiplier() const
+	{
+		return progression_.GetStats().GetDamageMultiplier();
+	}
+	float GetAttackSpeedMultiplier() const
+	{
+		return progression_.GetStats().GetAttackSpeedMultiplier();
+	}
+	float GetDurationMultiplier() const
+	{
+		return progression_.GetStats().GetDurationMultiplier();
+	}
+	float GetCoinGainMultiplier() const
+	{
+		return progression_.GetStats().GetCoinGainMultiplier();
+	}
+	DamageResult RollDamage(int32_t baseDamage);
 	int32_t GetMaxHPUpgradeLevel() const { return progression_.GetMaxHPUpgradeLevel(); }
 	int32_t GetAttackPowerUpgradeLevel() const { return progression_.GetAttackPowerUpgradeLevel(); }
 	void UpgradeAttackPower() { progression_.UpgradeAttackPower(); }
+	void UpgradeStat(PlayerStatType type, float amount)
+	{
+		progression_.UpgradeStat(type, amount);
+	}
+	bool CanAcquirePassiveItem(PassiveItemType type) const;
+	bool UpgradePassiveItem(PassiveItemType type);
+	int32_t GetPassiveItemLevel(PassiveItemType type) const
+	{
+		return passiveItemLevels_[PassiveItemIndex(type)];
+	}
+	const std::vector<PassiveItemType>& GetPassiveItemAcquisitionOrder() const
+	{
+		return passiveItemAcquisitionOrder_;
+	}
+	size_t GetEquippedPassiveItemCount() const
+	{
+		return passiveItemAcquisitionOrder_.size();
+	}
 	void IncreaseMaxHP();
 	void UpgradeMoveSpeed();
 	void ApplyPermanentUpgrades(
 		int32_t maxHPLevel,
 		int32_t attackLevel,
 		int32_t moveSpeedLevel,
-		int32_t expPickupRangeLevel);
+		int32_t expPickupRangeLevel,
+		int32_t coinGainLevel);
 	int32_t GetMoveSpeedLevel() const { return progression_.GetMoveSpeedLevel(); }
 	bool IsMoveSpeedMaxLevel() const { return progression_.IsMoveSpeedMaxLevel(); }
 	float GetExpPickupRangeMultiplier() const
@@ -69,6 +116,20 @@ public:
 	}
 
 	void UpgradeNormalBullets();
+	static constexpr size_t kMaxEquippedWeaponTypes =
+		PlayerWeaponController::kMaxEquippedWeaponTypes;
+	bool HasWeapon(WeaponType type) const
+	{
+		return weapons_.HasWeapon(type);
+	}
+	size_t GetEquippedWeaponCount() const
+	{
+		return weapons_.GetEquippedWeaponCount();
+	}
+	bool CanAcquireWeapon(WeaponType type) const
+	{
+		return weapons_.CanAcquireWeapon(type);
+	}
 	const std::vector<std::unique_ptr<NormalBullet>>&
 		GetNormalBullets() const
 	{
@@ -104,7 +165,7 @@ public:
 	}
 	int32_t GetNormalBulletDamage() const
 	{
-		return weapons_.GetNormalBulletDamage(GetAttackPower());
+		return weapons_.GetNormalBulletDamage(GetStats());
 	}
 
 	void AddOrbitBullets();
@@ -130,29 +191,7 @@ public:
 	}
 	int32_t GetOrbitBulletDamage() const
 	{
-		return weapons_.GetOrbitBulletDamage(GetAttackPower());
-	}
-
-	void AddDrone();
-	void UpgradeDrone();
-	bool HasDrone() const { return weapons_.HasDrone(); }
-	const std::unique_ptr<Drone>& GetDrone() const
-	{
-		return weapons_.GetDrone();
-	}
-	int32_t GetDroneLevel() const
-	{
-		return weapons_.GetDroneLevel();
-	}
-	static constexpr int32_t kDroneMaxLevel =
-		PlayerWeaponController::kDroneMaxLevel;
-	bool IsDroneMaxLevel() const
-	{
-		return weapons_.IsDroneMaxLevel();
-	}
-	int32_t GetDroneDamage() const
-	{
-		return weapons_.GetDroneDamage(GetAttackPower());
+		return weapons_.GetOrbitBulletDamage(GetStats());
 	}
 
 	void AddLightning();
@@ -164,7 +203,7 @@ public:
 	}
 	int32_t GetLightningDamage() const
 	{
-		return weapons_.GetLightningDamage(GetAttackPower());
+		return weapons_.GetLightningDamage(GetStats());
 	}
 	int32_t GetLightningStrikeCount() const
 	{
@@ -210,12 +249,58 @@ public:
 	}
 	int32_t GetExplosiveBulletDamage() const
 	{
-		return weapons_.GetExplosiveBulletDamage(GetAttackPower());
+		return weapons_.GetExplosiveBulletDamage(GetStats());
 	}
 	float GetExplosiveBulletRadius() const
 	{
-		return weapons_.GetExplosiveBulletRadius();
+		return weapons_.GetExplosiveBulletRadius(GetStats());
 	}
+
+	void UpgradeSword() { weapons_.UpgradeSword(); }
+	bool HasSword() const { return weapons_.HasSword(); }
+	int32_t GetSwordLevel() const { return weapons_.GetSwordLevel(); }
+	bool IsSwordMaxLevel() const { return weapons_.IsSwordMaxLevel(); }
+	int32_t GetSwordDamage() const { return weapons_.GetSwordDamage(GetStats()); }
+	void UpgradeAura() { weapons_.UpgradeAura(); }
+	bool HasAura() const { return weapons_.HasAura(); }
+	int32_t GetAuraLevel() const { return weapons_.GetAuraLevel(); }
+	bool IsAuraMaxLevel() const { return weapons_.IsAuraMaxLevel(); }
+	int32_t GetAuraDamage() const { return weapons_.GetAuraDamage(GetStats()); }
+	void UpgradeFlameShoes() { weapons_.UpgradeFlameShoes(); }
+	bool HasFlameShoes() const { return weapons_.HasFlameShoes(); }
+	int32_t GetFlameShoesLevel() const { return weapons_.GetFlameShoesLevel(); }
+	bool IsFlameShoesMaxLevel() const { return weapons_.IsFlameShoesMaxLevel(); }
+	int32_t GetFlameShoesDamage() const
+	{
+		return weapons_.GetFlameShoesDamage(GetStats());
+	}
+	size_t GetFlameZoneCount() const { return weapons_.GetFlameZoneCount(); }
+	bool DidAuraPulseThisFrame() const
+	{
+		return weapons_.DidAuraPulseThisFrame();
+	}
+	const std::vector<Vector3>& GetRecentFlameZoneSpawns() const
+	{
+		return weapons_.GetRecentFlameZoneSpawns();
+	}
+	void UpgradeBone() { weapons_.UpgradeBone(); }
+	void UpgradeHandgun() { weapons_.UpgradeHandgun(); }
+	void UpgradeBoomerang() { weapons_.UpgradeBoomerang(); }
+	bool HasBone() const { return weapons_.HasBone(); }
+	bool HasHandgun() const { return weapons_.HasHandgun(); }
+	bool HasBoomerang() const { return weapons_.HasBoomerang(); }
+	int32_t GetBoneLevel() const { return weapons_.GetBoneLevel(); }
+	int32_t GetHandgunLevel() const { return weapons_.GetHandgunLevel(); }
+	int32_t GetBoomerangLevel() const { return weapons_.GetBoomerangLevel(); }
+	bool IsBoneMaxLevel() const { return weapons_.IsBoneMaxLevel(); }
+	bool IsHandgunMaxLevel() const { return weapons_.IsHandgunMaxLevel(); }
+	bool IsBoomerangMaxLevel() const { return weapons_.IsBoomerangMaxLevel(); }
+	int32_t GetBoneDamage() const { return weapons_.GetBoneDamage(GetStats()); }
+	int32_t GetHandgunDamage() const { return weapons_.GetHandgunDamage(GetStats()); }
+	int32_t GetBoomerangDamage() const { return weapons_.GetBoomerangDamage(GetStats()); }
+	const auto& GetBoneBullets() const { return weapons_.GetBoneBullets(); }
+	const auto& GetHandgunBullets() const { return weapons_.GetHandgunBullets(); }
+	const auto& GetBoomerangBullets() const { return weapons_.GetBoomerangBullets(); }
 
 	void MaxAllWeapons();
 	void PlayLevelUpEffect();
@@ -232,6 +317,11 @@ private:
 	float invincibleTimer_ = 0.0f;
 	bool visible_ = true;
 	float invincibilityDuration_ = 1.25f;
+	float hpRegenAccumulator_ = 0.0f;
+	std::mt19937 damageRandomEngine_{ std::random_device{}() };
+	std::array<int32_t, static_cast<size_t>(PassiveItemType::Count)>
+		passiveItemLevels_{};
+	std::vector<PassiveItemType> passiveItemAcquisitionOrder_;
 };
 
 } // namespace DirectXGame

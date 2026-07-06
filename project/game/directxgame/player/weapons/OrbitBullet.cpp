@@ -17,9 +17,12 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 {
 	orbitRadius_ = radius;
 	angle_ = angle;
-	angularSpeed_ = angularSpeed;
-	scale_ = scale;
-	hitInterval_ = hitInterval;
+	baseAngularSpeed_ = angularSpeed;
+	baseScale_ = scale;
+	baseHitInterval_ = hitInterval;
+	angularSpeed_ = baseAngularSpeed_;
+	scale_ = baseScale_;
+	hitInterval_ = baseHitInterval_;
 	active_ = true;
 	position_ = {
 		center.x + std::cos(angle_) * orbitRadius_,
@@ -28,7 +31,7 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	};
 	previousPosition_ = position_;
 
-	const ModelHandle bulletHandle = GameModelCache::Load("bullet.obj");
+	const ModelHandle bulletHandle = GameModelCache::Load("cube.obj");
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
 	GameModelCache::ApplyToObject(*object_, bulletHandle);
@@ -37,6 +40,16 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	object_->SetEnvironmentRoughness(1.0f);
 
 	Update(center, 0.0f);
+}
+
+void OrbitBullet::ApplyRuntimeModifiers(
+	float projectileSpeedMultiplier,
+	float areaSizeMultiplier,
+	float attackSpeedMultiplier)
+{
+	angularSpeed_ = baseAngularSpeed_ * (std::max)(0.1f, projectileSpeedMultiplier);
+	scale_ = baseScale_ * (std::max)(0.1f, areaSizeMultiplier);
+	hitInterval_ = baseHitInterval_ / (std::max)(0.1f, attackSpeedMultiplier);
 }
 
 void OrbitBullet::Update(const Vector3& center, float deltaTime)

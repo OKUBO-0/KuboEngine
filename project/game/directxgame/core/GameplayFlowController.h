@@ -15,7 +15,7 @@ enum class GameplayState {
 
 class GameplayFlowController final {
 public:
-	static constexpr float kIntroDuration = 1.2f;
+	static constexpr float kIntroDuration = 4.8f;
 
 	void Reset();
 	void UpdateIntro(float deltaTime);
