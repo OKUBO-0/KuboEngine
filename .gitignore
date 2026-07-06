@@ -318,3 +318,26 @@ DirectXGame/imgui.ini
 
 # DirectXTex Compiled Shaders
 **/DirectXTex/Shaders/Compiled/
+
+# KuboEngine local/generated artifacts
+project/output/
+project/tmp/
+project/externals/generated/
+project/.code-review-graph/
+project/.codex/
+project/.playwright-mcp/
+project/cpu_regression_checks.obj
+project/imgui.ini
+project/.debug_editor_windows.ini
+project/NodeEditor.json
+project/Resources/DirectXGame/data/soft_cap_telemetry.csv
+
+# Local environment and transient media/editor files
+.env
+*.tmp
+*.log
+*.bak
+*.autosave
+*_preview.jpg
+*_contact_sheet.jpg
+*_timeline.jpg
