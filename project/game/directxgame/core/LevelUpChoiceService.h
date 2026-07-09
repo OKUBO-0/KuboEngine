@@ -38,6 +38,8 @@ struct LevelUpChoice {
 	std::string iconPath;
 	std::string titleText;
 	std::string detailText;
+	std::string rarityText;
+	std::string statTagText;
 };
 
 class LevelUpChoiceService final {

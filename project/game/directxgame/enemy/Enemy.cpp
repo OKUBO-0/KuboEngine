@@ -16,6 +16,8 @@ void Enemy::Initialize()
 	active_ = true;
 	justDied_ = false;
 	deathPresentationActive_ = false;
+	spawnPresentationTimer_ = 0.0f;
+	spawnPresentationDuration_ = 0.0f;
 	groundImpactPending_ = false;
 	pendingBossAttack_ = {};
 	bossAttackTelegraph_ = {};
@@ -36,6 +38,21 @@ void Enemy::Update(float deltaTime)
 	previousPosition_ = position_;
 	ClearBehaviorVisual();
 	bossAttackTelegraph_ = {};
+	if (spawnPresentationTimer_ > 0.0f) {
+		spawnPresentationTimer_ = (std::max)(
+			0.0f,
+			spawnPresentationTimer_ - deltaTime);
+		const float progress = spawnPresentationDuration_ > 0.0f
+			? 1.0f - spawnPresentationTimer_ / spawnPresentationDuration_
+			: 1.0f;
+		const float eased =
+			std::clamp(progress, 0.0f, 1.0f) *
+			std::clamp(progress, 0.0f, 1.0f) *
+			(3.0f - 2.0f * std::clamp(progress, 0.0f, 1.0f));
+		view_.SetSpawnScaleMultiplier(0.03f + eased * 0.97f);
+	} else {
+		view_.SetSpawnScaleMultiplier(1.0f);
+	}
 
 	reactionController_.Update(deltaTime, position_);
 	if (behavior_ && !reactionController_.IsBehaviorBlocked()) {
@@ -131,6 +148,14 @@ void Enemy::SetBoss(bool boss)
 {
 	reactionController_.SetBoss(boss);
 	view_.SetFloatingEnabled(false);
+}
+
+void Enemy::StartSpawnPresentation(float duration)
+{
+	spawnPresentationDuration_ = (std::max)(0.01f, duration);
+	spawnPresentationTimer_ = spawnPresentationDuration_;
+	view_.SetSpawnScaleMultiplier(0.03f);
+	view_.Update(position_, rotationY_, false, false);
 }
 
 float Enemy::GetHpRatio() const

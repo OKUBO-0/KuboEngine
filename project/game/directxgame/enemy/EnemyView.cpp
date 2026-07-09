@@ -226,10 +226,11 @@ void EnemyView::ApplyTransform(
 	if (!object_) {
 		return;
 	}
+	const float scale = behaviorScaleMultiplier_ * spawnScaleMultiplier_;
 	object_->SetScale({
-		behaviorScaleMultiplier_,
-		behaviorScaleMultiplier_,
-		behaviorScaleMultiplier_,
+		scale,
+		scale,
+		scale,
 		});
 	object_->SetRotate({ 0.0f, rotationY, 0.0f });
 	object_->SetTranslate({

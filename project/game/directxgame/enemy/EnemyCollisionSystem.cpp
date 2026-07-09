@@ -8,6 +8,7 @@
 #include "PlayerManager.h"
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cfloat>
 #include <cmath>
 #include <functional>
@@ -27,6 +28,19 @@ constexpr char kAudioPlayerDamage[] = "combat.playerDamage";
 constexpr float kEnemySeparationStrength = 1.1f;
 constexpr float kSpatialCellSize = 8.0f;
 constexpr float kEnemyQueryPadding = 2.0f;
+
+thread_local DirectXGame::EnemyCollisionContext::Telemetry* gTelemetry = nullptr;
+thread_local const std::vector<DirectXGame::Enemy*>* gActiveEnemies = nullptr;
+thread_local DirectXGame::EnemyBroadPhaseMode gBroadPhaseMode =
+	DirectXGame::EnemyBroadPhaseMode::SpatialGrid;
+
+using SteadyClock = std::chrono::steady_clock;
+
+double ElapsedMilliseconds(SteadyClock::time_point begin)
+{
+	return std::chrono::duration<double, std::milli>(
+		SteadyClock::now() - begin).count();
+}
 
 bool IsSweptBulletCollision(
 	const DirectXGame::NormalBullet& bullet,
@@ -202,6 +216,16 @@ void CollectNearbyEnemies(
 	float radius,
 	std::vector<DirectXGame::Enemy*>& outEnemies)
 {
+	if (gBroadPhaseMode == DirectXGame::EnemyBroadPhaseMode::BruteForce &&
+		gActiveEnemies) {
+		outEnemies.assign(gActiveEnemies->begin(), gActiveEnemies->end());
+		if (gTelemetry) {
+			++gTelemetry->queryCount;
+			gTelemetry->nearbyCandidateCount += outEnemies.size();
+			gTelemetry->bruteForceCandidateCount += outEnemies.size();
+		}
+		return;
+	}
 	outEnemies.clear();
 	const int32_t centerCellX = ToCellCoord(center.x);
 	const int32_t centerCellZ = ToCellCoord(center.z);
@@ -232,6 +256,12 @@ void CollectNearbyEnemies(
 	outEnemies.erase(
 		std::unique(outEnemies.begin(), outEnemies.end()),
 		outEnemies.end());
+	if (gTelemetry) {
+		++gTelemetry->queryCount;
+		gTelemetry->nearbyCandidateCount += outEnemies.size();
+		gTelemetry->bruteForceCandidateCount +=
+			gTelemetry->activeEnemyCount;
+	}
 }
 
 void ApplyEnemyHit(
@@ -601,11 +631,26 @@ void EnemyCollisionSystem::RebuildContext(
 	std::vector<std::unique_ptr<Enemy>>& enemies,
 	EnemyCollisionContext& context)
 {
-	BuildActiveEnemySpatialMap(
-		enemies,
-		context.spatialMap,
-		context.activeEnemies);
+	const SteadyClock::time_point begin = SteadyClock::now();
+	if (context.broadPhaseMode == EnemyBroadPhaseMode::BruteForce) {
+		context.spatialMap.clear();
+		context.activeEnemies.clear();
+		for (const std::unique_ptr<Enemy>& enemy : enemies) {
+			if (enemy && enemy->IsActive()) {
+				context.activeEnemies.push_back(enemy.get());
+			}
+		}
+	} else {
+		BuildActiveEnemySpatialMap(
+			enemies,
+			context.spatialMap,
+			context.activeEnemies);
+	}
 	context.nearbyEnemies.clear();
+	context.telemetry.mode = context.broadPhaseMode;
+	context.telemetry.activeEnemyCount = context.activeEnemies.size();
+	context.telemetry.spatialBuildMilliseconds +=
+		ElapsedMilliseconds(begin);
 }
 
 void EnemyCollisionSystem::CheckCollisions(
@@ -635,6 +680,10 @@ void EnemyCollisionSystem::CheckCollisions(
 	std::vector<Vector3>& deathEffectPositions,
 	std::vector<FloatingNumberEvent>& numberEvents)
 {
+	const SteadyClock::time_point begin = SteadyClock::now();
+	gTelemetry = &context.telemetry;
+	gActiveEnemies = &context.activeEnemies;
+	gBroadPhaseMode = context.broadPhaseMode;
 	CheckNormalBulletCollisions(
 		playerManager,
 		context.spatialMap,
@@ -671,6 +720,10 @@ void EnemyCollisionSystem::CheckCollisions(
 		context.spatialMap,
 		context.nearbyEnemies,
 		deathEffectPositions);
+	gTelemetry = nullptr;
+	gActiveEnemies = nullptr;
+	context.telemetry.collisionMilliseconds +=
+		ElapsedMilliseconds(begin);
 }
 
 void EnemyCollisionSystem::ApplyAreaDamage(
@@ -719,7 +772,8 @@ void EnemyCollisionSystem::ApplyArcDamage(
 	std::vector<std::unique_ptr<Enemy>>& enemies,
 	std::vector<Vector3>& hitEffectPositions,
 	std::vector<FloatingNumberEvent>& numberEvents,
-	PlayerManager* damageOwner)
+	PlayerManager* damageOwner,
+	float knockStrength)
 {
 	const float radiusSq = radius * radius;
 	const float minimumDot = std::cos(halfAngleRadians);
@@ -744,7 +798,7 @@ void EnemyCollisionSystem::ApplyArcDamage(
 			*enemy,
 			center,
 			damage,
-			kFixedKnockbackStrength,
+			knockStrength,
 			hitEffectPositions,
 			numberEvents,
 			damageOwner);
@@ -762,6 +816,10 @@ void EnemyCollisionSystem::ResolveEnemySeparation(
 void EnemyCollisionSystem::ResolveEnemySeparation(
 	EnemyCollisionContext& context)
 {
+	const SteadyClock::time_point begin = SteadyClock::now();
+	gTelemetry = &context.telemetry;
+	gActiveEnemies = &context.activeEnemies;
+	gBroadPhaseMode = context.broadPhaseMode;
 	for (Enemy* a : context.activeEnemies) {
 		if (!a || !a->IsActive()) {
 			continue;
@@ -808,6 +866,10 @@ void EnemyCollisionSystem::ResolveEnemySeparation(
 			b->SetPosition(posB);
 		}
 	}
+	gTelemetry = nullptr;
+	gActiveEnemies = nullptr;
+	context.telemetry.separationMilliseconds +=
+		ElapsedMilliseconds(begin);
 }
 
 }

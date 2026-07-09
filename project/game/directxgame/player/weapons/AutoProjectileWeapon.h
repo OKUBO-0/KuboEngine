@@ -2,6 +2,7 @@
 
 #include "NormalBullet.h"
 #include "PlayerStats.h"
+#include "WeaponUpgradeData.h"
 #include "Vector3.h"
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,7 @@
 namespace DirectXGame {
 
 struct AutoProjectileWeaponConfig {
+	WeaponType weaponType = WeaponType::BowArrow;
 	std::string prefix;
 	float baseDamage = 1.0f;
 	float interval = 1.0f;
@@ -46,7 +48,7 @@ public:
 		timer_ += deltaTime;
 		const WeaponRuntimeStats runtime = stats.Resolve({
 			config_.baseDamage + damageBonus_, interval_, speed_, range_,
-			scale_, count_ });
+			scale_, count_ }, GetWeaponStatApplicability(config_.weaponType));
 		if (timer_ >= runtime.interval) {
 			SpawnFan(playerPosition, aimDirection, runtime);
 			timer_ = std::fmod(timer_, runtime.interval);
@@ -67,7 +69,9 @@ public:
 	int32_t GetLevel() const { return level_; }
 	int32_t GetDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ config_.baseDamage + damageBonus_ }).damage;
+		return stats.Resolve(
+			{ config_.baseDamage + damageBonus_ },
+			GetWeaponStatApplicability(config_.weaponType)).damage;
 	}
 	const std::vector<std::unique_ptr<NormalBullet>>& GetBullets() const
 	{
@@ -133,19 +137,19 @@ private:
 
 class BoneWeapon final : public AutoProjectileWeapon {
 public:
-	BoneWeapon() : AutoProjectileWeapon({ "bone", 9.0f, 1.3f, 0.82f,
+	BoneWeapon() : AutoProjectileWeapon({ WeaponType::Bone, "bone", 9.0f, 1.3f, 0.82f,
 		36.0f, 1.0f, 2, "bounceCount", 1 }) {}
 };
 
 class HandgunWeapon final : public AutoProjectileWeapon {
 public:
-	HandgunWeapon() : AutoProjectileWeapon({ "handgun", 11.0f, 0.48f,
+	HandgunWeapon() : AutoProjectileWeapon({ WeaponType::Handgun, "handgun", 11.0f, 0.48f,
 		1.65f, 48.0f, 0.72f, 0, "ricochetCount", 1 }) {}
 };
 
 class BoomerangWeapon final : public AutoProjectileWeapon {
 public:
-	BoomerangWeapon() : AutoProjectileWeapon({ "boomerang", 8.0f, 1.55f,
+	BoomerangWeapon() : AutoProjectileWeapon({ WeaponType::Boomerang, "boomerang", 8.0f, 1.55f,
 		0.78f, 38.0f, 1.15f, 8, "maxHits", 0,
 		NormalBullet::MovementMode::ReturnToPlayer }) {}
 };

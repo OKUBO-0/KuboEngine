@@ -32,6 +32,18 @@ SoftCapTelemetry::Snapshot SoftCapTelemetry::Capture(
 		snapshot.expOrbPrunes = enemyManager->GetExpOrbPruneCount();
 		snapshot.expOrbPrunesPerMinute =
 			static_cast<float>(snapshot.expOrbPrunes) / rateDivisor;
+		const EnemyCollisionContext::Telemetry& collision =
+			enemyManager->GetCollisionTelemetry();
+		snapshot.collisionQueryCount = collision.queryCount;
+		snapshot.nearbyCandidateCount = collision.nearbyCandidateCount;
+		snapshot.bruteForceCandidateCount = collision.bruteForceCandidateCount;
+		snapshot.collisionCandidateReductionPercent =
+			collision.CandidateReductionPercent();
+		snapshot.spatialBuildMilliseconds = collision.spatialBuildMilliseconds;
+		snapshot.collisionMilliseconds = collision.collisionMilliseconds;
+		snapshot.separationMilliseconds = collision.separationMilliseconds;
+		snapshot.collisionBruteForceMode =
+			enemyManager->GetBroadPhaseMode() == EnemyBroadPhaseMode::BruteForce;
 	}
 	if (playerManager) {
 		snapshot.normalBulletCount = playerManager->GetNormalBullets().size();
@@ -107,6 +119,41 @@ void SoftCapTelemetry::SaveCsv(
 		<< snapshot.normalBulletPrunes << ','
 		<< snapshot.normalBulletPrunesPerMinute << ','
 		<< snapshot.particleCount << '\n';
+
+	const std::string collisionPath =
+		DataPaths::Resolve(DataPaths::kCollisionTelemetry);
+	bool writeCollisionHeader = true;
+	{
+		std::ifstream existing(collisionPath);
+		writeCollisionHeader = !existing.good() ||
+			existing.peek() == std::ifstream::traits_type::eof();
+	}
+	std::ofstream collisionFile(collisionPath, std::ios::app);
+	if (collisionFile.is_open()) {
+		if (writeCollisionHeader) {
+			collisionFile
+				<< "frame,mode,state,level,enemyCount,normalBulletCount,orbitBulletCount,"
+				"queryCount,nearbyCandidateCount,bruteForceCandidateCount,"
+				"candidateReductionPercent,spatialBuildMilliseconds,collisionMilliseconds,"
+				"separationMilliseconds\n";
+		}
+		collisionFile
+			<< snapshot.frame << ','
+			<< (snapshot.collisionBruteForceMode
+				? "brute_force" : "spatial_grid") << ','
+			<< stateName << ','
+			<< level << ','
+			<< snapshot.enemyCount << ','
+			<< snapshot.normalBulletCount << ','
+			<< snapshot.orbitBulletCount << ','
+			<< snapshot.collisionQueryCount << ','
+			<< snapshot.nearbyCandidateCount << ','
+			<< snapshot.bruteForceCandidateCount << ','
+			<< snapshot.collisionCandidateReductionPercent << ','
+			<< snapshot.spatialBuildMilliseconds << ','
+			<< snapshot.collisionMilliseconds << ','
+			<< snapshot.separationMilliseconds << '\n';
+	}
 #else
 	(void)snapshot;
 	(void)stateName;

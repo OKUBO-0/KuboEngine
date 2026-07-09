@@ -52,9 +52,13 @@ void Player::Update(float deltaTime)
 		deltaTime,
 		position_,
 		rotationY_,
-		moveSpeedPerSecond_);
+		moveSpeedPerSecond_,
+		cameraController_.GetYaw(),
+		cameraController_.UsesCameraRelativeMovement());
 	cameraController_.Update(camera_.get(), position_, rotationY_, true);
-	aimController_.Update(deltaTime, position_, rotationY_, camera_.get());
+	if (!cameraController_.UsesMouseLook()) {
+		aimController_.Update(deltaTime, position_, rotationY_, camera_.get());
+	}
 	cameraController_.Update(camera_.get(), position_, rotationY_, false);
 	ApplyTransforms();
 

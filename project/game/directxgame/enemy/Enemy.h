@@ -96,6 +96,7 @@ public:
 	void SetBehaviorVisual(const Vector4& color, float scaleMultiplier = 1.0f);
 	void ClearBehaviorVisual();
 	void SetBoss(bool boss);
+	void StartSpawnPresentation(float duration = 0.58f);
 	bool IsBoss() const { return reactionController_.IsBoss(); }
 	int32_t GetBossPhase() const
 	{
@@ -134,6 +135,8 @@ private:
 	bool active_ = true;
 	bool justDied_ = false;
 	bool deathPresentationActive_ = false;
+	float spawnPresentationTimer_ = 0.0f;
+	float spawnPresentationDuration_ = 0.0f;
 
 	Player* player_ = nullptr;
 	std::unique_ptr<IEnemyBehavior> behavior_;

@@ -294,6 +294,8 @@ bool PlayScene::UpdateSceneStressTelemetry()
 
 	sessionContext_->AdvanceSceneStressFrame();
 	if (enemyManager_) {
+		enemyManager_->AppendCollisionTelemetryCsv(
+			sessionContext_->GetSceneStressFrameCount());
 		sessionContext_->RecordSceneObjectCounts(
 			static_cast<uint32_t>(enemyManager_->GetActiveEnemyCount()),
 			static_cast<uint32_t>(enemyManager_->GetEnemies().size()),

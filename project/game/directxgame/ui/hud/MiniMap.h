@@ -1,9 +1,11 @@
 #pragma once
 
+#include "BitmapText.h"
 #include "Sprite.h"
 #include "Vector2.h"
 #include "Vector3.h"
 #include "GameTextureCache.h"
+#include <array>
 #include <memory>
 #include <vector>
 
@@ -48,8 +50,11 @@ private:
 
 	void ApplyLayout();
 	void DrawIcon(Engine::Graphics2D::Sprite& sprite, const Vector2& position, float size);
+	void UpdateDirectionLabels(float cameraYaw);
+	void DrawDirectionLabels();
 	void EnsureIconSpriteCount(std::vector<std::unique_ptr<Engine::Graphics2D::Sprite>>& sprites, TextureHandle textureHandle, size_t count);
 	static Vector2 ClampToCircle(const Vector2& center, const Vector2& position, float radius);
+	static Vector2 RotateMiniMapRelative(const Vector2& relative, float cameraYaw);
 
 	TextureHandle playerTexture_ = 0;
 	TextureHandle enemyTexture_ = 0;
@@ -59,8 +64,11 @@ private:
 	std::unique_ptr<Engine::Graphics2D::Sprite> playerIconSprite_;
 	std::vector<std::unique_ptr<Engine::Graphics2D::Sprite>> enemyIconSprites_;
 	std::vector<std::unique_ptr<Engine::Graphics2D::Sprite>> orbIconSprites_;
+	std::array<BitmapText, 4> directionLabels_;
+	std::array<Vector2, 4> directionLabelPositions_{};
 	std::vector<Vector2> enemyIconPositions_;
 	std::vector<Vector2> orbIconPositions_;
+	float cameraYaw_ = 0.0f;
 	LayoutSettings layoutSettings_{};
 };
 

@@ -21,6 +21,10 @@ public:
 	void LoadEnemyTypes(const std::string& filePath);
 	void LoadSpawnSettings(const std::string& filePath);
 	void SetRandomSeed(uint32_t seed) { randomEngine_.seed(seed); }
+	void SpawnBenchmarkEnemies(
+		Player* player,
+		std::vector<std::unique_ptr<Enemy>>& enemies,
+		size_t targetCount);
 	void Update(
 		float deltaTime,
 		Player* player,

@@ -1,6 +1,7 @@
 #include "LevelUpChoiceService.h"
 #include "PlayerManager.h"
 #include "PassiveItemData.h"
+#include "WeaponUpgradeData.h"
 #include <algorithm>
 #include <random>
 #include <utility>
@@ -12,6 +13,20 @@ namespace {
 std::string WeaponTitle(const char* name, int32_t nextLevel)
 {
 	return std::string(name) + " LV " + std::to_string(nextLevel);
+}
+
+std::string WeaponDetail(
+	WeaponType weaponType,
+	int32_t nextLevel,
+	const std::string& effectText)
+{
+	const WeaponUpgradeLevelMetadata metadata =
+		GetWeaponUpgradeMetadata(weaponType, nextLevel);
+	if (metadata.statTags.empty()) {
+		return effectText;
+	}
+	return "[" + std::string(ToString(metadata.rarity)) + "] " +
+		std::string(metadata.statTags) + " - " + effectText;
 }
 
 std::string BowArrowEffect(int32_t level)
@@ -156,10 +171,13 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 	const auto addWeaponChoice = [&weaponChoices](
 		LevelUpUpgrade upgrade,
 		WeaponType weaponType,
+		int32_t nextLevel,
 		std::string texturePath,
 		std::string iconPath,
 		std::string titleText,
 		std::string detailText) {
+			const WeaponUpgradeLevelMetadata metadata =
+				GetWeaponUpgradeMetadata(weaponType, nextLevel);
 			weaponChoices.push_back({
 				upgrade,
 				LevelUpChoiceCategory::Weapon,
@@ -168,7 +186,9 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 				std::move(texturePath),
 				std::move(iconPath),
 				std::move(titleText),
-				std::move(detailText),
+				WeaponDetail(weaponType, nextLevel, detailText),
+				std::string(ToString(metadata.rarity)),
+				std::string(metadata.statTags),
 			});
 		};
 	const auto addItemChoice = [&itemChoices](
@@ -187,6 +207,8 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 				std::move(iconPath),
 				std::move(titleText),
 				std::move(detailText),
+				{},
+				{},
 			});
 		};
 
@@ -195,6 +217,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 		addWeaponChoice(
 			LevelUpUpgrade::BowArrow,
 			WeaponType::BowArrow,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_weapon_bow_arrow.png",
 			WeaponTitle("弓矢", nextLevel),
@@ -208,6 +231,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 		addWeaponChoice(
 			LevelUpUpgrade::Rock,
 			WeaponType::Rock,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_weapon_rock.png",
 			playerManager.HasOrbitBullets() ?
@@ -223,6 +247,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 		addWeaponChoice(
 			LevelUpUpgrade::ThunderStaff,
 			WeaponType::ThunderStaff,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_weapon_thunder_staff.png",
 			playerManager.HasLightning() ?
@@ -238,6 +263,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 		addWeaponChoice(
 			LevelUpUpgrade::FlameStaff,
 			WeaponType::FlameStaff,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_weapon_flame_staff.png",
 			playerManager.HasExplosiveBullets() ?
@@ -253,6 +279,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 		addWeaponChoice(
 			LevelUpUpgrade::Sword,
 			WeaponType::Sword,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_weapon_sword.png",
 			playerManager.HasSword()
@@ -266,6 +293,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 			? playerManager.GetAuraLevel() + 1 : 1;
 		addWeaponChoice(
 			LevelUpUpgrade::Aura, WeaponType::Aura,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_common_unknown.png",
 			playerManager.HasAura()
@@ -278,6 +306,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 			? playerManager.GetFlameShoesLevel() + 1 : 1;
 		addWeaponChoice(
 			LevelUpUpgrade::FlameShoes, WeaponType::FlameShoes,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png",
 			"ui/game/lvup/icon_common_unknown.png",
 			playerManager.HasFlameShoes()
@@ -288,6 +317,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 	if (!playerManager.IsBoneMaxLevel() && playerManager.CanAcquireWeapon(WeaponType::Bone)) {
 		const int32_t nextLevel = playerManager.HasBone() ? playerManager.GetBoneLevel() + 1 : 1;
 		addWeaponChoice(LevelUpUpgrade::Bone, WeaponType::Bone,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png", "ui/game/lvup/icon_weapon_bone.png",
 			playerManager.HasBone() ? WeaponTitle("ボーン", nextLevel) : "ボーン 追加",
 			BoneEffect(nextLevel));
@@ -295,6 +325,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 	if (!playerManager.IsHandgunMaxLevel() && playerManager.CanAcquireWeapon(WeaponType::Handgun)) {
 		const int32_t nextLevel = playerManager.HasHandgun() ? playerManager.GetHandgunLevel() + 1 : 1;
 		addWeaponChoice(LevelUpUpgrade::Handgun, WeaponType::Handgun,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png", "ui/game/lvup/icon_weapon_handgun.png",
 			playerManager.HasHandgun() ? WeaponTitle("拳銃", nextLevel) : "拳銃 追加",
 			HandgunEffect(nextLevel));
@@ -302,6 +333,7 @@ std::vector<LevelUpChoice> LevelUpChoiceService::Build(
 	if (!playerManager.IsBoomerangMaxLevel() && playerManager.CanAcquireWeapon(WeaponType::Boomerang)) {
 		const int32_t nextLevel = playerManager.HasBoomerang() ? playerManager.GetBoomerangLevel() + 1 : 1;
 		addWeaponChoice(LevelUpUpgrade::Boomerang, WeaponType::Boomerang,
+			nextLevel,
 			"ui/game/lvup/levelup_frame.png", "ui/game/lvup/icon_weapon_boomerang.png",
 			playerManager.HasBoomerang() ? WeaponTitle("ブーメラン", nextLevel) : "ブーメラン 追加",
 			BoomerangEffect(nextLevel));

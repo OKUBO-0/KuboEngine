@@ -34,6 +34,8 @@ public:
 	float GetCameraHeight() const { return cameraController_.GetHeight(); }
 	float GetCameraDistance() const { return cameraController_.GetDistance(); }
 	float GetCameraPitch() const { return cameraController_.GetPitch(); }
+	float GetCameraYaw() const { return cameraController_.GetYaw(); }
+	float GetCameraLookSmoothing() const { return cameraController_.GetLookSmoothing(); }
 	float GetCameraFollowSmoothness() const { return cameraController_.GetFollowSmoothness(); }
 	CameraMode GetCameraMode() const { return cameraController_.GetMode(); }
 	bool IsMouseAimEnabled() const { return aimController_.IsMouseAimEnabled(); }
@@ -41,6 +43,7 @@ public:
 	void SetCameraHeight(float height) { cameraController_.SetHeight(height); }
 	void SetCameraDistance(float distance) { cameraController_.SetDistance(distance); }
 	void SetCameraPitch(float pitch) { cameraController_.SetPitch(pitch); }
+	void SetCameraLookSmoothing(float smoothing) { cameraController_.SetLookSmoothing(smoothing); }
 	void SetCameraFollowSmoothness(float smoothness) { cameraController_.SetFollowSmoothness(smoothness); }
 	void SetCameraMode(CameraMode mode) { cameraController_.SetMode(mode); }
 	void SetMouseAimEnabled(bool enabled) { aimController_.SetMouseAimEnabled(enabled); }

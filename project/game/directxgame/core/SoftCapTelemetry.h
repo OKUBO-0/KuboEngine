@@ -26,6 +26,14 @@ public:
 		float normalBulletPrunesPerMinute = 0.0f;
 		size_t orbitBulletCount = 0;
 		size_t particleCount = 0;
+		uint64_t collisionQueryCount = 0;
+		uint64_t nearbyCandidateCount = 0;
+		uint64_t bruteForceCandidateCount = 0;
+		double collisionCandidateReductionPercent = 0.0;
+		double spatialBuildMilliseconds = 0.0;
+		double collisionMilliseconds = 0.0;
+		double separationMilliseconds = 0.0;
+		bool collisionBruteForceMode = false;
 	};
 
 	Snapshot Capture(

@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "output" / "documents"
 DOCX_PATH = OUT_DIR / "KuboEngine_program_explanation_A4.docx"
 
-FONT = "Yu Gothic"
+FONT_BODY = "Noto Sans JP"
+FONT_HEADING = "Noto Sans JP Black"
 NAVY = "15324A"
 BLUE = "27678A"
 GREEN = "39735D"
@@ -26,6 +27,8 @@ GRAY = "5D6870"
 WHITE = "FFFFFF"
 INK = "1C252B"
 TABLE_WIDTH = 9800
+BORDER_COLOR = "202020"
+BORDER_SIZE = "8"
 
 
 def set_cell_shading(cell, fill):
@@ -53,6 +56,42 @@ def set_cell_margins(cell, top=70, start=110, bottom=70, end=110):
         node.set(qn("w:type"), "dxa")
 
 
+def set_cell_borders(cell, color=BORDER_COLOR, size=BORDER_SIZE):
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_borders = tc_pr.find(qn("w:tcBorders"))
+    if tc_borders is None:
+        tc_borders = OxmlElement("w:tcBorders")
+        tc_pr.append(tc_borders)
+    for edge in ("top", "left", "start", "bottom", "right", "end"):
+        tag = qn(f"w:{edge}")
+        node = tc_borders.find(tag)
+        if node is None:
+            node = OxmlElement(f"w:{edge}")
+            tc_borders.append(node)
+        node.set(qn("w:val"), "single")
+        node.set(qn("w:sz"), size)
+        node.set(qn("w:space"), "0")
+        node.set(qn("w:color"), color)
+
+
+def set_table_borders(table, color=BORDER_COLOR, size=BORDER_SIZE):
+    tbl_pr = table._tbl.tblPr
+    tbl_borders = tbl_pr.find(qn("w:tblBorders"))
+    if tbl_borders is None:
+        tbl_borders = OxmlElement("w:tblBorders")
+        tbl_pr.append(tbl_borders)
+    for edge in ("top", "left", "start", "bottom", "right", "end", "insideH", "insideV"):
+        tag = qn(f"w:{edge}")
+        node = tbl_borders.find(tag)
+        if node is None:
+            node = OxmlElement(f"w:{edge}")
+            tbl_borders.append(node)
+        node.set(qn("w:val"), "single")
+        node.set(qn("w:sz"), size)
+        node.set(qn("w:space"), "0")
+        node.set(qn("w:color"), color)
+
+
 def set_repeat_table_header(row):
     tr_pr = row._tr.get_or_add_trPr()
     tbl_header = OxmlElement("w:tblHeader")
@@ -76,6 +115,7 @@ def set_table_geometry(table, widths):
         tbl_pr.append(tbl_ind)
     tbl_ind.set(qn("w:w"), "110")
     tbl_ind.set(qn("w:type"), "dxa")
+    set_table_borders(table)
     grid = table._tbl.tblGrid
     for child in list(grid):
         grid.remove(child)
@@ -92,9 +132,11 @@ def set_table_geometry(table, widths):
             tc_w.set(qn("w:w"), str(widths[idx]))
             tc_w.set(qn("w:type"), "dxa")
             set_cell_margins(cell)
+            set_cell_borders(cell)
 
 
-def set_run(run, size=9.2, bold=False, color=INK, italic=False, font=FONT):
+def set_run(run, size=9.2, bold=False, color=INK, italic=False, font=None):
+    font = font or (FONT_HEADING if bold else FONT_BODY)
     run.font.name = font
     run._element.get_or_add_rPr().rFonts.set(qn("w:ascii"), font)
     run._element.get_or_add_rPr().rFonts.set(qn("w:hAnsi"), font)
@@ -237,17 +279,17 @@ def build():
     add_page_header(section)
 
     normal = doc.styles["Normal"]
-    normal.font.name = FONT
-    normal._element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
+    normal.font.name = FONT_BODY
+    normal._element.rPr.rFonts.set(qn("w:eastAsia"), FONT_BODY)
     normal.font.size = Pt(9.2)
     normal.font.color.rgb = RGBColor.from_string(INK)
     for style_name in ("Heading 1", "Heading 2", "Heading 3"):
         style = doc.styles[style_name]
-        style.font.name = FONT
-        style._element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
+        style.font.name = FONT_HEADING
+        style._element.rPr.rFonts.set(qn("w:eastAsia"), FONT_HEADING)
     lb = doc.styles["List Bullet"]
-    lb.font.name = FONT
-    lb._element.rPr.rFonts.set(qn("w:eastAsia"), FONT)
+    lb.font.name = FONT_BODY
+    lb._element.rPr.rFonts.set(qn("w:eastAsia"), FONT_BODY)
     lb.paragraph_format.left_indent = Cm(0.7)
     lb.paragraph_format.first_line_indent = Cm(-0.35)
 
@@ -262,7 +304,7 @@ def build():
     add_para(doc, "C++20とDirectX 12でゲームエンジンを構築し、その上でTitle・Play・Resultまでを持つゲームを制作しました。描画基盤だけでなく、ゲーム進行、武器、敵、衝突判定、データ調整、デバッグ・検証まで一つのプロジェクトとして実装しています。", size=9.6, after=7, line=1.18)
     add_flow(doc, ["C++20", "DirectX 12", "HLSL", "ImGui", "CSV", "Assimp"])
     add_heading(doc, "作品概要", 1, NAVY)
-    add_para(doc, "敵を倒して経験値を集め、レベルアップ時に武器や能力を選びながらボス戦まで生き残るゲームです。プレイ中に得たコインはResultで集計し、Titleで恒久強化やキャラクター解放に使用します。", after=5)
+    add_para(doc, "敵を倒して経験値を集め、レベルアップ時に武器や能力を選びながらボス戦まで生き残るゲームです。1回のプレイで終わらず次の挑戦へつながる流れを作るため、獲得コインをResultで集計し、Titleの恒久強化やキャラクター解放へ引き継ぎます。", after=5)
     add_table(doc, ["項目", "内容"], [
         ("ゲーム構成", "Title / Play / Result、通常戦闘、レベルアップ、ボス戦、恒久強化"),
         ("エンジン", "描画、入力、音声、モデル、スプライト、パーティクル、カメラ、シーン管理"),
@@ -270,18 +312,18 @@ def build():
         ("検証", "CPU回帰テスト、シーン遷移ストレス、SRVテレメトリ"),
     ], [2100, 7700], PALE_BLUE, 8.3)
     add_heading(doc, "技術的な軸", 1, NAVY)
-    add_callout(doc, "設計", "engine/ と game/directxgame/ を分離し、PlaySceneから進行・武器・敵・HUDを責務ごとに切り出しました。", PALE_BLUE, BLUE)
-    add_callout(doc, "描画", "FrameContext、Fence、SRV再利用、ResourceBarrierまでDirectX 12の寿命と状態を明示的に管理します。", PALE_GREEN, GREEN)
-    add_callout(doc, "負荷対策", "OBBの前に空間分割で候補を絞り、上限値とテレメトリを組み合わせて破綻箇所を確認します。", PALE_ORANGE, ORANGE)
+    add_callout(doc, "設計", "変更理由の異なる処理がPlaySceneへ集中するのを避けるため、進行・武器・敵・HUDを責務ごとに分離しました。結果として、機能追加時に確認する範囲を限定できます。", PALE_BLUE, BLUE)
+    add_callout(doc, "描画", "CPUとGPUで参照時期が異なる問題に対応するため、FrameContext、Fence、SRV再利用、ResourceBarrierで寿命と状態を管理します。結果として、再利用条件をコード上で追跡できます。", PALE_GREEN, GREEN)
+    add_callout(doc, "負荷対策", "敵と弾が増えた際の総当たりを避けるため、OBBの前に空間分割で候補を絞ります。結果として、詳細判定の対象を周辺の敵へ限定できます。", PALE_ORANGE, ORANGE)
 
     # Page 2
     page_break(doc)
     add_kicker(doc, "01  ARCHITECTURE", BLUE)
     add_heading(doc, "エンジン層とゲーム層の分離", 1, NAVY)
-    add_para(doc, "共通機能は engine/、作品固有の処理は game/directxgame/ に配置しています。起動処理では GameSceneFactory を Game へ渡し、main.cppは起動と例外処理に絞りました。ゲーム固有のシーンを共通基盤から直接生成しない境界を置いています。", after=5)
+    add_para(doc, "ゲーム固有の変更が描画・入力などの共通基盤へ波及するのを避けるため、共通機能はengine/、作品固有の処理はgame/directxgame/に配置しました。起動処理ではGameSceneFactoryをGameへ渡し、main.cppは起動と例外処理に限定しています。結果として、エンジン側は特定のTitle・Play・Resultを知らず、ゲーム側でシーン構成を差し替えられます。", after=5)
     add_flow(doc, ["main.cpp", "Game", "GameSceneFactory", "Title / Play / Result"], PALE_BLUE, BLUE)
     add_heading(doc, "PlaySceneを構成の起点にする", 2, BLUE)
-    add_para(doc, "PlaySceneは各機能を保持して接続しますが、処理そのものは責務ごとのクラスへ分けています。変更理由が異なる処理を同じクラスへ集めないことで、武器追加やUI修正がシーン全体へ波及しにくい構成にしました。", after=4)
+    add_para(doc, "PlaySceneへ更新・UI・演出を直接追加し続けると、1機能の変更でもシーン全体を確認する必要があります。そこでPlaySceneは各機能を保持して接続する役割に絞り、処理は責務ごとのクラスへ分けました。結果として、武器追加はPlayerWeaponController、進行変更はGameplayFlowControllerを中心に追える構成になりました。", after=4)
     add_table(doc, ["クラス", "役割"], [
         ("Framework", "ゲームループと共通サービス"),
         ("GameSceneFactory", "Title、Play、Resultの生成"),
@@ -292,20 +334,20 @@ def build():
         ("GameSession", "結果、コイン、恒久強化、キャラクター情報"),
     ], [2850, 6950], PALE_BLUE, 8.15)
     add_heading(doc, "ゲーム進行とシーン間データ", 2, BLUE)
-    add_para(doc, "GameplayFlowControllerは通常更新、ボス演出、ポーズ、レベルアップ、死亡を状態として分離します。シーンをまたぐ値はGameSessionに集約し、RunResultへ経験値、コイン、最終レベル、撃破数、経過フレームを記録します。各シーンが互いの内部状態を直接参照しないよう、共有データの置き場所を限定しました。", after=4)
+    add_para(doc, "通常更新とポーズ・レベルアップ・死亡処理が同時に動かないよう、GameplayFlowControllerで状態を分離しました。また、結果やコインをシーンごとに受け渡す複雑さを避けるため、共有値はGameSessionへ集約しています。結果として、Playは結果を記録し、Resultは表示し、Titleは強化へ使うという役割が明確になりました。", after=4)
     add_flow(doc, ["Play\n結果を記録", "Result\n集計・表示", "Title\n強化・解放", "Play\n次のラン"], PALE_GREEN, GREEN)
     add_heading(doc, "状態に応じたレベルアップ候補", 2, GREEN)
-    add_para(doc, "LevelUpChoiceServiceはPlayerManagerの状態から武器候補と能力候補を生成します。最大レベルの武器、上限到達済みの能力、HP満タン時の回復を除外し、武器と能力が混ざるよう候補数を調整してから表示順をシャッフルします。", after=3)
+    add_para(doc, "固定の候補を出すと、最大強化済みの武器やHP満タン時の回復が選択肢を占有します。そこでLevelUpChoiceServiceがPlayerManagerの状態を確認し、不要な候補を除外してから武器と能力を混ぜ、表示順をシャッフルします。結果として、現在の状態で意味のある候補を3択へ残せます。", after=3)
     add_callout(doc, "5武器", "通常弾 / 周囲弾 / 雷撃 / 爆発弾 / ソード。強化値はweaponUpgradeSettings.csvから読み込みます。", PALE_GREEN, GREEN)
 
     # Page 3
     page_break(doc)
     add_kicker(doc, "02  IMPLEMENTATION", GREEN)
     add_heading(doc, "DirectX 12のフレーム・リソース管理", 1, NAVY)
-    add_para(doc, "CPUが次のフレームを準備している間もGPUが前のフレームを参照できるよう、2つのFrameContextを用意しました。各コンテキストはCommandAllocator、Upload Arena、遅延解放リソース、Fence値を保持します。GPUが参照する一時リソースをFence完了まで保持し、CPU側の早すぎる再利用を防ぎます。", after=4)
+    add_para(doc, "DirectX 12では、CPUが次のフレームへ進んでもGPUが前フレームのリソースを参照している場合があります。早すぎる再利用を避けるため、2つのFrameContextにCommandAllocator、Upload Arena、遅延解放リソース、Fence値を持たせました。結果として、フレーム単位で『いつ再利用できるか』をFence完了と対応付けられます。", after=4)
     add_flow(doc, ["Frame 0\nUpload / Fence", "GPU実行", "Frame 1\nUpload / Fence", "完了後に再利用"], PALE_GREEN, GREEN)
     add_heading(doc, "ディスクリプタとリソース状態", 2, GREEN)
-    add_para(doc, "SrvManagerはTexture2D、CubeMap、StructuredBuffer、ShadowMapなどの用途と使用数を記録し、解放されたディスクリプタをFence完了後に再利用します。DirectXCommonはリソース状態を追跡し、遷移元と遷移先からResourceBarrierを発行します。追跡値と指定した遷移元が異なる場合は例外として検出します。", after=4)
+    add_para(doc, "GPU参照中のディスクリプタ上書きと、誤った状態からのリソース利用を防ぐ必要があります。SrvManagerは用途と使用数を記録し、解放済みSRVをFence完了後に再利用します。DirectXCommonは現在状態を追跡してResourceBarrierを発行し、遷移元が追跡値と異なる場合は例外として検出します。結果として、寿命と利用状態を別々の契約として確認できます。", after=4)
     add_table(doc, ["管理対象", "実装"], [
         ("フレーム寿命", "FrameContext / Upload Arena / deferred release / Fence"),
         ("SRV寿命", "retired descriptorをFence完了後に再利用"),
@@ -313,18 +355,18 @@ def build():
         ("追加バリア", "UAV barrier / aliasing barrier"),
     ], [2600, 7200], PALE_GREEN, 8.15)
     add_heading(doc, "Shadow Mapとオフスクリーン描画", 2, GREEN)
-    add_para(doc, "Shadow Passではライト視点の深度マップを作成し、通常描画のPixel ShaderでSampleCmpLevelZeroによる3×3比較サンプリングを行います。開始時に深度テクスチャをDEPTH_WRITE、終了時にPIXEL_SHADER_RESOURCEへ遷移します。casterはライト範囲でカリングし、候補数・描画数・除外数を記録します。", after=4)
+    add_para(doc, "モデル形状とライト方向に沿う影を描くため、ライト視点の深度マップとSampleCmpLevelZeroによる3×3比較サンプリングを実装しました。開始時はDEPTH_WRITE、終了時はPIXEL_SHADER_RESOURCEへ遷移します。さらにライト範囲外のcasterを除外し、候補数・描画数・除外数を記録します。結果として、影の描画経路と負荷要因を同じ仕組みから確認できます。", after=4)
     add_flow(doc, ["PIXEL_SHADER_RESOURCE", "DEPTH_WRITE\nShadow Pass", "PIXEL_SHADER_RESOURCE", "通常描画で参照"], PALE_ORANGE, ORANGE)
     add_heading(doc, "OBBと空間分割", 2, ORANGE)
-    add_para(doc, "通常弾、周囲弾、爆発弾、プレイヤー、敵の詳細判定にはOBBを使用します。敵は衝突半径が重なるすべてのXZセルへ登録し、検索後に重複を除去してからOBB判定へ進みます。セル境界で候補が漏れることを防ぎつつ、全敵との総当たりを避けます。", after=3)
+    add_para(doc, "回転したモデルにAABBを使うと見た目より判定が広がるため、通常弾、周囲弾、爆発弾、プレイヤー、敵の詳細判定にはOBBを使用します。一方、全敵へOBB判定を行うと対象数が増えるため、敵を衝突半径が重なるXZセルへ登録し、周辺候補だけを判定します。結果として、回転を反映した判定を維持しながら、詳細判定の対象を絞れます。", after=3)
     add_flow(doc, ["敵をセル登録", "周辺セル検索", "重複を除去", "OBB詳細判定", "ダメージ / 押し戻し"], PALE_ORANGE, ORANGE)
-    add_callout(doc, "計測条件", "空間分割とShadow Passの性能値は未計測です。資料では実装と検証手段を説明し、FPSやGPU時間の改善値は断定しません。", PALE_ORANGE, ORANGE)
+    add_callout(doc, "CPU実測", "Release x64・固定シード・各1200フレームで比較。総当たり→固定グリッドの中央値は、27体: 0.1056→0.0542 ms、52体: 0.3645→0.0888 ms、84体: 0.9304→0.1654 ms。84体時の候補数は7140→835件（88.3%減）でした。FPS・GPU時間の改善値ではありません。", PALE_ORANGE, ORANGE)
 
     # Page 4
     page_break(doc)
     add_kicker(doc, "03  VERIFICATION & NEXT", ORANGE)
     add_heading(doc, "調整と検証を実装の一部にする", 1, NAVY)
-    add_para(doc, "プレイヤー能力、武器強化、敵設定、スポーン、UI配置、デバッグ調整値をCSVへ分離しました。数値変換では文字列全体を消費したか、有限値か、範囲内かを確認します。ImGuiでは敵数、弾数、パーティクル数、FPS、SRV使用数、Shadow Pass統計、衝突形状などを実行中に確認できます。", after=5)
+    add_para(doc, "調整のたびにC++を修正・再ビルドする手間を減らすため、プレイヤー能力、武器強化、敵設定、スポーン、UI配置をCSVへ分離しました。不正値を早い段階で止めるため、文字列全体の消費、有限値、範囲も検査します。また、不具合時の内部状態を画面と対応付けるため、ImGuiに敵数、弾数、SRV使用数、Shadow Pass統計、衝突形状を表示します。結果として、調整と原因切り分けをコード修正から分離できました。", after=5)
     add_table(doc, ["確認方法", "対象", "結果・用途"], [
         ("CPU回帰テスト", "セルキー、HP、CSV、武器間隔、乱数、SoundHandle", "Debug / Release PASS"),
         ("Scene Stress", "Title → Play → Resultを3周", "各シーン3回訪問"),
@@ -332,18 +374,18 @@ def build():
         ("Debug x64 build", "修正後の状態遷移実装を含む", "2026-07-05 PASS"),
     ], [2100, 4800, 2900], PALE_BLUE, 7.9)
     add_heading(doc, "制作中に見直した点", 1, NAVY)
-    add_table(doc, ["対象", "現在の構成"], [
-        ("シーン生成", "GameSceneFactoryへ分離"),
-        ("ゲーム進行", "GameplayFlowControllerへ分離"),
-        ("シーン間データ", "GameSessionへ集約"),
-        ("武器処理", "PlayerWeaponControllerへ分離"),
-        ("衝突候補", "空間分割で絞り、OBBで詳細判定"),
-        ("GPUリソース", "FrameContext、Fence、状態追跡、ResourceBarrier"),
-        ("確認方法", "CPU回帰テストとシーン遷移ストレス"),
-    ], [2850, 6950], PALE_GREEN, 8.05)
+    add_table(doc, ["課題・理由", "対応", "結果"], [
+        ("シーン生成を共通基盤へ固定したくない", "GameSceneFactoryへ分離", "ゲーム側で構成を差し替え可能"),
+        ("進行処理がPlaySceneへ集中", "GameplayFlowControllerへ分離", "状態遷移を一か所で追跡"),
+        ("結果の受け渡しが複雑", "GameSessionへ集約", "各シーンの役割を限定"),
+        ("武器追加でPlayerが肥大化", "PlayerWeaponControllerへ分離", "武器更新と強化を集約"),
+        ("全敵への詳細判定を避けたい", "空間分割後にOBB判定", "近傍候補へ対象を限定"),
+        ("GPU参照中の再利用を防ぎたい", "FrameContext / Fence / 状態追跡", "再利用条件と状態を明示"),
+        ("手動確認だけでは再発を拾いにくい", "CPUテスト / Scene Stress", "同じ条件で再確認可能"),
+    ], [3100, 3300, 3400], PALE_GREEN, 7.45)
     add_heading(doc, "今後の改善", 1, ORANGE)
     add_bullet(doc, "PIXでShadow PassのGPU時間、フレーム時間、描画数を同じ条件で記録する。")
-    add_bullet(doc, "敵数・弾数を固定した比較で、空間分割が有効になる条件をCPU時間として測定する。")
+    add_bullet(doc, "実プレイ時の弾数と敵配置を保存・再生し、空間分割の比較条件をさらに現実のプレイ状況へ近づける。")
     add_bullet(doc, "起動後に追加したモデルをパス索引へ反映する更新処理と、非同期ロードを検討する。")
     add_bullet(doc, "管理クラスごとに異なるIDを取り違えないよう、型付きハンドルを広げる。")
     add_bullet(doc, "CSVスキーマとゲーム進行をGPUなしで確認できるfixtureを増やす。")

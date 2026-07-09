@@ -1,6 +1,7 @@
 #include "CombatEffectsPresentation.h"
 #include "Object3DCommon.h"
 #include "ParticleManager.h"
+#include "Line.h"
 #include "GameModelCache.h"
 #include "GameParticleEffects.h"
 #include "Enemy.h"
@@ -14,9 +15,120 @@
 
 namespace {
 
+constexpr float kSwordSlashLifetime = 0.18f;
+constexpr float kPi = 3.14159265359f;
+
 float Clamp01(float value)
 {
 	return std::clamp(value, 0.0f, 1.0f);
+}
+
+void DrawGroundCircle(
+	Engine::LineSystem::Line& line,
+	const Vector3& center,
+	float radius,
+	float yOffset,
+	const Vector4& color,
+	int32_t segments)
+{
+	const float y = center.y + yOffset;
+	for (int32_t segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {
+		const float startAngle =
+			static_cast<float>(segmentIndex) /
+			static_cast<float>(segments) * kPi * 2.0f;
+		const float endAngle =
+			static_cast<float>(segmentIndex + 1) /
+			static_cast<float>(segments) * kPi * 2.0f;
+		line.Draw(
+			{
+				center.x + std::cos(startAngle) * radius,
+				y,
+				center.z + std::sin(startAngle) * radius,
+			},
+			{
+				center.x + std::cos(endAngle) * radius,
+				y,
+				center.z + std::sin(endAngle) * radius,
+			},
+			color);
+	}
+}
+
+void DrawFlameStrokes(
+	Engine::LineSystem::Line& line,
+	const DirectXGame::FlameZoneVisual& visual,
+	float radius,
+	float lifeRatio)
+{
+	const Vector3 forward = visual.direction;
+	const Vector3 side{
+		-forward.z,
+		0.0f,
+		forward.x,
+	};
+	const Vector4 flameColor{
+		1.0f,
+		0.42f + lifeRatio * 0.24f,
+		0.04f,
+		0.72f,
+	};
+	for (int32_t index = -1; index <= 1; ++index) {
+		const Vector3 base =
+			visual.position +
+			side * (static_cast<float>(index) * radius * 0.26f) -
+			forward * (radius * 0.18f);
+		const Vector3 tip =
+			base +
+			forward * (radius * 0.34f) +
+			Vector3{ 0.0f, 0.18f + lifeRatio * 0.10f, 0.0f };
+		line.Draw(
+			base + side * (radius * 0.10f),
+			tip,
+			flameColor);
+		line.Draw(
+			base - side * (radius * 0.10f),
+			tip,
+			flameColor);
+	}
+}
+
+void QueueFlameShoeZoneCircles(
+	const DirectXGame::PlayerManager& playerManager)
+{
+	Engine::LineSystem::Line line;
+	for (const DirectXGame::FlameZoneVisual& visual :
+		playerManager.GetFlameZoneVisuals()) {
+		if (visual.radius <= 0.0f || visual.remainingDuration <= 0.0f) {
+			continue;
+		}
+		const float totalDuration = (std::max)(0.001f, visual.totalDuration);
+		const float lifeRatio =
+			Clamp01(visual.remainingDuration / totalDuration);
+		const float pulse =
+			0.96f + std::sin((1.0f - lifeRatio) * kPi * 4.0f) * 0.04f;
+		const float radius = visual.radius * pulse;
+		const Vector4 outerColor{
+			1.0f,
+			0.18f + lifeRatio * 0.30f,
+			0.02f,
+			0.72f,
+		};
+		const Vector4 innerColor{
+			1.0f,
+			0.56f + lifeRatio * 0.18f,
+			0.06f,
+			0.50f,
+		};
+		DrawGroundCircle(line, visual.position, radius, 0.08f, outerColor, 44);
+		DrawGroundCircle(
+			line,
+			visual.position,
+			radius * (0.50f + lifeRatio * 0.18f),
+			0.10f,
+			innerColor,
+			32);
+		DrawFlameStrokes(line, visual, radius, lifeRatio);
+	}
 }
 
 }
@@ -36,6 +148,7 @@ void CombatEffectsPresentation::Initialize()
 		object->SetLighting(false);
 		object->SetColor({ 0.42f, 0.84f, 1.0f, 0.0f });
 	}
+	swordSlashVisuals_.reserve(kMaxSwordSlashVisuals);
 }
 
 void CombatEffectsPresentation::Reset(const PlayerManager& playerManager)
@@ -121,14 +234,37 @@ bool CombatEffectsPresentation::Update(
 	}
 
 	const Vector3 playerPosition = player.GetWorldPosition();
+	const std::vector<SwordSlashEvent>& swordSlashes =
+		playerManager.GetRecentSwordSlashes();
+	for (size_t slashIndex = 0; slashIndex < swordSlashes.size(); ++slashIndex) {
+		const SwordSlashEvent& slash = swordSlashes[slashIndex];
+		const Vector3 side{
+			-slash.forward.z,
+			0.0f,
+			slash.forward.x,
+		};
+		const Vector3 slashCenter =
+			slash.center + slash.forward * (slash.radius * 0.58f);
+		particleManager->Emit(handles.enemyHitSpark, slashCenter, 8u);
+		particleManager->Emit(
+			handles.enemyHitSpark,
+			slashCenter + side * (slash.radius * 0.26f),
+			4u);
+		particleManager->Emit(
+			handles.enemyHitSpark,
+			slashCenter - side * (slash.radius * 0.26f),
+			4u);
+		particleManager->Emit(handles.ripple, slashCenter, 1u);
+		SpawnSwordSlashVisual(
+			slash.center,
+			slash.forward,
+			slash.radius,
+			slash.directionSign);
+	}
 	if (playerManager.DidAuraPulseThisFrame()) {
 		particleManager->Emit(handles.ripple, playerPosition, 1u);
 	}
-	for (const Vector3& flamePosition :
-		playerManager.GetRecentFlameZoneSpawns()) {
-		particleManager->Emit(handles.ripple, flamePosition, 1u);
-		particleManager->Emit(handles.enemyHitSpark, flamePosition, 5u);
-	}
+	QueueFlameShoeZoneCircles(playerManager);
 	const int32_t hp = playerManager.GetHP();
 	if (hp < previousHp_) {
 		particleManager->Emit(
@@ -161,6 +297,7 @@ bool CombatEffectsPresentation::Update(
 		}
 	}
 	previousLightningTimer_ = lightningTimer;
+	UpdateSwordSlashVisuals(1.0f / 60.0f);
 	UpdateLightningVisuals(playerManager);
 
 	return bossPhaseChanged;
@@ -168,12 +305,128 @@ bool CombatEffectsPresentation::Update(
 
 void CombatEffectsPresentation::Draw() const
 {
+	for (const SwordSlashVisual& slash : swordSlashVisuals_) {
+		if (slash.age >= slash.lifetime) {
+			continue;
+		}
+		for (const auto& segment : slash.segments) {
+			if (segment && segment->GetColor().w > 0.0f) {
+				segment->Draw();
+			}
+		}
+	}
 	for (const std::unique_ptr<Engine::Graphics3D::Object3D>& object :
 		lightningObjects_) {
 		if (object && object->GetColor().w > 0.0f) {
 			object->Draw();
 		}
 	}
+}
+
+void CombatEffectsPresentation::SpawnSwordSlashVisual(
+	const Vector3& center,
+	const Vector3& forward,
+	float radius,
+	int32_t directionSign)
+{
+	if (swordSlashVisuals_.size() >= kMaxSwordSlashVisuals) {
+		swordSlashVisuals_.erase(swordSlashVisuals_.begin());
+	}
+
+	SwordSlashVisual visual{};
+	const ModelHandle slashHandle = GameModelCache::Load("cube.obj");
+	for (auto& segment : visual.segments) {
+		segment = std::make_unique<Engine::Graphics3D::Object3D>();
+		segment->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
+		GameModelCache::ApplyToObject(*segment, slashHandle);
+		segment->SetSkyboxFilePath("Resources/textures/skybox/test.dds");
+		segment->SetEnvironmentReflectionStrength(0.0f);
+		segment->SetEnvironmentRoughness(1.0f);
+		segment->SetLighting(false);
+		segment->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+	}
+	visual.center = center;
+	visual.forward = forward;
+	visual.radius = radius;
+	visual.lifetime = kSwordSlashLifetime;
+	visual.directionSign = directionSign >= 0 ? 1 : -1;
+	swordSlashVisuals_.push_back(std::move(visual));
+}
+
+void CombatEffectsPresentation::UpdateSwordSlashVisuals(float deltaTime)
+{
+	for (SwordSlashVisual& slash : swordSlashVisuals_) {
+		slash.age += deltaTime;
+		const float progress = Clamp01(slash.age / slash.lifetime);
+		const float alpha = 1.0f - progress;
+		const Vector3 side{
+			-slash.forward.z,
+			0.0f,
+			slash.forward.x,
+		};
+		const float yaw = std::atan2(slash.forward.x, slash.forward.z);
+		const float sweepStart =
+			static_cast<float>(slash.directionSign) * 1.22f;
+		const float sweepEnd =
+			static_cast<float>(slash.directionSign) * -1.22f;
+		const float sweepOffset =
+			static_cast<float>(slash.directionSign) * (0.34f - progress * 0.18f);
+		for (size_t segmentIndex = 0;
+			segmentIndex < slash.segments.size();
+			++segmentIndex) {
+			Engine::Graphics3D::Object3D* segment =
+				slash.segments[segmentIndex].get();
+			if (!segment) {
+				continue;
+			}
+			const float t = slash.segments.size() <= 1
+				? 0.0f
+				: static_cast<float>(segmentIndex) /
+					static_cast<float>(slash.segments.size() - 1);
+			const float arcAngle =
+				sweepStart + (sweepEnd - sweepStart) * t + sweepOffset;
+			const float taper = std::sin(t * 3.14159265359f);
+			const float segmentAlpha = alpha * std::clamp(taper * 1.35f, 0.0f, 1.0f);
+			const float arcRadius = slash.radius * (0.52f + progress * 0.08f);
+			const Vector3 local =
+				slash.forward * (std::cos(arcAngle) * arcRadius) +
+				side * (std::sin(arcAngle) * arcRadius);
+			const Vector3 tangent =
+				slash.forward * (-std::sin(arcAngle)) +
+				side * (std::cos(arcAngle));
+			const float segmentYaw = std::atan2(tangent.x, tangent.z);
+			const float segmentLength = slash.radius *
+				(0.25f + taper * 0.18f);
+			const float segmentThickness = slash.radius *
+				(0.10f + taper * 0.06f);
+			const Vector3 position =
+				slash.center +
+				slash.forward * (slash.radius * 0.42f) +
+				local;
+
+			segment->SetScale({
+				segmentLength,
+				segmentThickness,
+				segmentThickness * 0.55f,
+				});
+			segment->SetRotate({ 0.0f, segmentYaw + 1.57079632679f, 0.0f });
+			segment->SetTranslate({
+				position.x,
+				position.y + 1.05f,
+				position.z,
+				});
+			segment->SetColor({
+				1.0f,
+				1.0f,
+				1.0f,
+				segmentAlpha * 0.9f,
+				});
+			segment->Update();
+		}
+	}
+	std::erase_if(swordSlashVisuals_, [](const SwordSlashVisual& slash) {
+		return slash.age >= slash.lifetime;
+	});
 }
 
 void CombatEffectsPresentation::UpdateLightningVisuals(

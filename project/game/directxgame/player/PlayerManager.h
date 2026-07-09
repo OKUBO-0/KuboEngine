@@ -283,6 +283,14 @@ public:
 	{
 		return weapons_.GetRecentFlameZoneSpawns();
 	}
+	const std::vector<FlameZoneVisual>& GetFlameZoneVisuals() const
+	{
+		return weapons_.GetFlameZoneVisuals();
+	}
+	const std::vector<SwordSlashEvent>& GetRecentSwordSlashes() const
+	{
+		return weapons_.GetRecentSwordSlashes();
+	}
 	void UpgradeBone() { weapons_.UpgradeBone(); }
 	void UpgradeHandgun() { weapons_.UpgradeHandgun(); }
 	void UpgradeBoomerang() { weapons_.UpgradeBoomerang(); }

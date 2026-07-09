@@ -27,6 +27,7 @@ public:
 	void LoadEnemyTypes(const std::string& filePath);
 	void LoadSpawnSettings(const std::string& filePath);
 	void SetRandomSeed(uint32_t seed);
+	void AppendCollisionTelemetryCsv(uint32_t frame) const;
 	void SetSession(GameSession* session) { session_ = session; }
 	void Update(float deltaTime);
 	void Draw();
@@ -38,6 +39,18 @@ public:
 	size_t GetActiveEnemyCount() const;
 	size_t GetExpOrbCount() const { return expOrbs_.size(); }
 	size_t GetPeakExpOrbCount() const { return peakExpOrbCount_; }
+	const EnemyCollisionContext::Telemetry& GetCollisionTelemetry() const
+	{
+		return collisionContext_.telemetry;
+	}
+	EnemyBroadPhaseMode GetBroadPhaseMode() const
+	{
+		return collisionContext_.broadPhaseMode;
+	}
+	void SetBroadPhaseMode(EnemyBroadPhaseMode mode)
+	{
+		collisionContext_.broadPhaseMode = mode;
+	}
 	size_t GetExpOrbPruneCount() const { return expOrbPruneCount_; }
 	void ResetExpOrbTelemetry()
 	{
@@ -61,7 +74,8 @@ public:
 		const Vector3& forward,
 		float radius,
 		float halfAngleRadians,
-		int32_t damage);
+		int32_t damage,
+		float knockStrength = 0.8f);
 	void StartBossPhase();
 	bool IsBossPhase() const { return bossPhase_; }
 	bool IsBossDefeated() const { return bossDefeated_; }
@@ -109,6 +123,7 @@ private:
 	Enemy* bossEnemy_ = nullptr;
 	bool bossPhase_ = false;
 	bool bossDefeated_ = false;
+	bool collisionTelemetryEnabled_ = false;
 	mutable std::mt19937 randomEngine_{ std::random_device{}() };
 };
 

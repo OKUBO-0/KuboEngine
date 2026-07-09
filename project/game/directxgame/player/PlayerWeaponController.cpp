@@ -263,6 +263,7 @@ void PlayerWeaponController::UpgradeFlameShoes()
 		hasFlameShoes_ = true;
 		flameShoesLevel_ = 1;
 		flameShoesPositionInitialized_ = false;
+		flameShoesLastDirection_ = { 0.0f, 0.0f, 1.0f };
 	} else if (IsFlameShoesMaxLevel()) {
 		return;
 	} else {
@@ -418,7 +419,7 @@ void PlayerWeaponController::UpdateNormalBullets(
 		normalBulletRange_,
 		normalBulletScale_,
 		normalBulletAmount_,
-		});
+		}, GetWeaponStatApplicability(WeaponType::BowArrow));
 	if (hasNormalBullets_ && player) {
 		normalBulletTimer_ += deltaTime;
 		int32_t catchUpAttackCount = 0;
@@ -533,7 +534,7 @@ void PlayerWeaponController::UpdateExplosiveBullets(
 		explosiveBulletRange_,
 		1.0f,
 		explosiveBulletCount_,
-		});
+		}, GetWeaponStatApplicability(WeaponType::FlameStaff));
 	if (hasExplosiveBullets_ && player) {
 		explosiveBulletTimer_ += deltaTime;
 		explosiveBurstTimer_ += deltaTime;
@@ -586,22 +587,62 @@ void PlayerWeaponController::UpdateSword(
 	EnemyManager* enemyManager,
 	const PlayerStats& stats)
 {
+	recentSwordSlashes_.clear();
 	if (!hasSword_ || !player || !enemyManager) {
 		return;
 	}
 	swordTimer_ += deltaTime;
+	const WeaponRuntimeStats runtime = stats.Resolve({
+		14.0f + swordDamageBonus_,
+		swordInterval_,
+		1.0f,
+		1.0f,
+		swordRadius_,
+		swordSlashCount_,
+		}, GetWeaponStatApplicability(WeaponType::Sword));
 	const float effectiveInterval =
-		swordInterval_ / stats.GetAttackSpeedMultiplier();
+		runtime.interval;
 	if (swordTimer_ < effectiveInterval) {
 		return;
 	}
 	const Vector3 direction = ResolveAimDirection(*player, enemyManager);
-	enemyManager->ApplyArcDamage(
-		player->GetWorldPosition(),
-		direction,
-		swordRadius_ * stats.GetAreaSizeMultiplier(),
-		swordHalfAngle_,
-		GetSwordDamage(stats));
+	const Vector3 right{
+		direction.z,
+		0.0f,
+		-direction.x,
+	};
+	const int32_t slashCount = runtime.projectileCount;
+	const float centerOffset = static_cast<float>(slashCount - 1) * 0.5f;
+	const float radius = runtime.areaSize;
+	const int32_t damage = runtime.damage;
+	for (int32_t index = 0; index < slashCount; ++index) {
+		const int32_t directionSign = index % 2 == 0 ? 1 : -1;
+		const int32_t sideStep = index / 2;
+		const float spreadAngle =
+			static_cast<float>(directionSign * sideStep) *
+			(swordHalfAngle_ * 0.38f);
+		const float cosine = std::cos(spreadAngle);
+		const float sine = std::sin(spreadAngle);
+		const Vector3 slashDirection{
+			direction.x * cosine + right.x * sine,
+			0.0f,
+			direction.z * cosine + right.z * sine,
+		};
+		enemyManager->ApplyArcDamage(
+			player->GetWorldPosition(),
+			slashDirection,
+			radius,
+			swordHalfAngle_ * 0.55f,
+			damage,
+			swordKnockbackStrength_);
+		recentSwordSlashes_.push_back({
+			player->GetWorldPosition(),
+			slashDirection,
+			radius,
+			swordHalfAngle_ * 0.55f,
+			directionSign,
+			});
+	}
 	swordTimer_ = std::fmod(swordTimer_, effectiveInterval);
 }
 
@@ -616,14 +657,22 @@ void PlayerWeaponController::UpdateAura(
 		return;
 	}
 	auraTimer_ += deltaTime;
-	const float interval = auraInterval_ / stats.GetAttackSpeedMultiplier();
+	const WeaponRuntimeStats runtime = stats.Resolve({
+		8.0f + auraDamageBonus_,
+		auraInterval_,
+		1.0f,
+		1.0f,
+		auraRadius_,
+		1,
+		}, GetWeaponStatApplicability(WeaponType::Aura));
+	const float interval = runtime.interval;
 	if (auraTimer_ < interval) {
 		return;
 	}
 	enemyManager->ApplyAreaDamage(
 		player->GetWorldPosition(),
-		auraRadius_ * stats.GetAreaSizeMultiplier(),
-		GetAuraDamage(stats));
+		runtime.areaSize,
+		runtime.damage);
 	auraPulseThisFrame_ = true;
 	auraTimer_ = std::fmod(auraTimer_, interval);
 }
@@ -635,42 +684,91 @@ void PlayerWeaponController::UpdateFlameShoes(
 	const PlayerStats& stats)
 {
 	recentFlameZoneSpawns_.clear();
+	flameZoneVisuals_.clear();
 	if (!hasFlameShoes_ || !player || !enemyManager) {
 		return;
 	}
 	const Vector3 playerPosition = player->GetWorldPosition();
+	const WeaponRuntimeStats runtime = stats.Resolve({
+		5.0f + flameShoesDamageBonus_,
+		flameShoesDamageInterval_,
+		1.0f,
+		flameShoesZoneDuration_,
+		flameShoesRadius_,
+		flameShoesZoneCount_,
+		}, GetWeaponStatApplicability(WeaponType::FlameShoes));
 	if (!flameShoesPositionInitialized_) {
 		flameShoesLastSpawnPosition_ = playerPosition;
 		flameShoesPositionInitialized_ = true;
 	}
-	const float dx = playerPosition.x - flameShoesLastSpawnPosition_.x;
-	const float dz = playerPosition.z - flameShoesLastSpawnPosition_.z;
-	if (dx * dx + dz * dz >=
+	const float spawnDx = playerPosition.x - flameShoesLastSpawnPosition_.x;
+	const float spawnDz = playerPosition.z - flameShoesLastSpawnPosition_.z;
+	const float spawnDistanceSq = spawnDx * spawnDx + spawnDz * spawnDz;
+	if (spawnDistanceSq >=
 		flameShoesSpawnDistance_ * flameShoesSpawnDistance_) {
-		if (flameZones_.size() >= kMaxFlameZones) {
-			flameZones_.erase(flameZones_.begin());
+		Vector3 moveDirection{ spawnDx, 0.0f, spawnDz };
+		const float moveLength = std::sqrt(spawnDistanceSq);
+		if (moveLength > 0.0001f) {
+			moveDirection.x /= moveLength;
+			moveDirection.z /= moveLength;
+			flameShoesLastDirection_ = moveDirection;
+		} else {
+			moveDirection = flameShoesLastDirection_;
 		}
-		flameZones_.push_back({
-			playerPosition,
-			flameShoesZoneDuration_ * stats.GetDurationMultiplier(),
-			flameShoesDamageInterval_ / stats.GetAttackSpeedMultiplier(),
-		});
-		recentFlameZoneSpawns_.push_back(playerPosition);
+		const int32_t zoneCount = (std::max)(
+			1,
+			runtime.projectileCount);
+		const float zoneDuration = runtime.duration;
+		const float zoneSpacing =
+			runtime.areaSize * 1.08f;
+		const Vector3 trailCenter =
+			playerPosition - moveDirection *
+				(runtime.areaSize * 0.06f);
+		for (int32_t index = 0; index < zoneCount; ++index) {
+			if (flameZones_.size() >= kMaxFlameZones) {
+				flameZones_.erase(flameZones_.begin());
+			}
+			const float backOffset =
+				static_cast<float>(index) * zoneSpacing;
+			const Vector3 zonePosition =
+				trailCenter - moveDirection * backOffset;
+			flameZones_.push_back({
+				zonePosition,
+				moveDirection,
+				runtime.areaSize,
+				zoneDuration,
+				zoneDuration,
+				runtime.interval,
+				});
+			recentFlameZoneSpawns_.push_back(zonePosition);
+		}
 		flameShoesLastSpawnPosition_ = playerPosition;
 	}
 
-	const float damageInterval =
-		flameShoesDamageInterval_ / stats.GetAttackSpeedMultiplier();
+	const float damageInterval = runtime.interval;
 	for (FlameZone& zone : flameZones_) {
 		zone.remainingDuration -= deltaTime;
 		zone.damageTimer += deltaTime;
+		const float lifeRatio = std::clamp(
+			zone.remainingDuration / (std::max)(0.001f, zone.totalDuration),
+			0.0f,
+			1.0f);
+		const float activeRadius = zone.radius *
+			(0.55f + std::sqrt(lifeRatio) * 0.45f);
+		flameZoneVisuals_.push_back({
+			zone.position,
+			zone.direction,
+			activeRadius,
+			zone.remainingDuration,
+			zone.totalDuration,
+			});
 		if (zone.damageTimer < damageInterval) {
 			continue;
 		}
 		enemyManager->ApplyAreaDamage(
 			zone.position,
-			flameShoesRadius_ * stats.GetAreaSizeMultiplier(),
-			GetFlameShoesDamage(stats));
+			activeRadius,
+			runtime.damage);
 		zone.damageTimer = std::fmod(zone.damageTimer, damageInterval);
 	}
 	std::erase_if(flameZones_, [](const FlameZone& zone) {
@@ -771,16 +869,26 @@ void PlayerWeaponController::UpdateOrbitBullets(
 	if (!hasOrbitBullets_ || !player) {
 		return;
 	}
+	const WeaponStatApplicability applicability =
+		GetWeaponStatApplicability(WeaponType::Rock);
+	const int32_t projectileCountBonus =
+		applicability.projectileCount ? stats.GetProjectileCountBonus() : 0;
 	const int32_t effectiveCount = (std::max)(
-		1, orbitBulletCount_ + stats.GetProjectileCountBonus());
+		1, orbitBulletCount_ + projectileCountBonus);
 	if (orbitBullets_.size() != static_cast<size_t>(effectiveCount)) {
-		RebuildOrbitBullets(player, stats.GetProjectileCountBonus());
+		RebuildOrbitBullets(player, projectileCountBonus);
 	}
 	for (std::unique_ptr<OrbitBullet>& bullet : orbitBullets_) {
 		bullet->ApplyRuntimeModifiers(
-			stats.GetProjectileSpeedMultiplier(),
-			stats.GetAreaSizeMultiplier(),
-			stats.GetAttackSpeedMultiplier());
+			applicability.projectileSpeed
+				? stats.GetProjectileSpeedMultiplier()
+				: 1.0f,
+			applicability.areaSize
+				? stats.GetAreaSizeMultiplier()
+				: 1.0f,
+			applicability.attackSpeed
+				? stats.GetAttackSpeedMultiplier()
+				: 1.0f);
 		bullet->Update(player->GetWorldPosition(), deltaTime);
 	}
 }
@@ -804,22 +912,32 @@ void PlayerWeaponController::UpdateLightning(
 
 	lightningTimer_ += deltaTime;
 	int32_t catchUpAttackCount = 0;
+	const WeaponStatApplicability applicability =
+		GetWeaponStatApplicability(WeaponType::ThunderStaff);
+	const float attackSpeedMultiplier =
+		applicability.attackSpeed ? stats.GetAttackSpeedMultiplier() : 1.0f;
+	const float areaSizeMultiplier =
+		applicability.areaSize ? stats.GetAreaSizeMultiplier() : 1.0f;
+	const float durationMultiplier =
+		applicability.duration ? stats.GetDurationMultiplier() : 1.0f;
+	const int32_t projectileCountBonus =
+		applicability.projectileCount ? stats.GetProjectileCountBonus() : 0;
 	const float effectiveInterval =
-		lightningInterval_ / stats.GetAttackSpeedMultiplier();
+		lightningInterval_ / attackSpeedMultiplier;
 	while (lightningTimer_ >= effectiveInterval &&
 		catchUpAttackCount < kMaxCatchUpAttacksPerFrame) {
 		const std::vector<Vector3> targets =
 			enemyManager->PickLightningTargets(
-				lightningStrikeCount_ + stats.GetProjectileCountBonus());
+				lightningStrikeCount_ + projectileCountBonus);
 		if (!targets.empty()) {
 			lightningEffectTargets_ = targets;
 			lightningEffectTimer_ =
-				0.22f * stats.GetDurationMultiplier();
+				0.22f * durationMultiplier;
 		}
 		for (const Vector3& target : targets) {
 			enemyManager->ApplyLightningDamage(
 				target,
-				lightningRadius_ * stats.GetAreaSizeMultiplier(),
+				lightningRadius_ * areaSizeMultiplier,
 				GetLightningDamage(stats));
 		}
 		lightningTimer_ -= effectiveInterval;
@@ -1006,10 +1124,14 @@ void PlayerWeaponController::ApplySwordUpgradeLevel(int32_t level)
 {
 	swordDamageBonus_ += GetLevelUpgradeSettingInt(
 		"sword", level, "damageBonusAdd", 0);
+	swordSlashCount_ = GetLevelUpgradeSettingInt(
+		"sword", level, "count", swordSlashCount_);
 	swordRadius_ += GetLevelUpgradeSetting(
 		"sword", level, "radiusAdd", 0.0f);
 	swordHalfAngle_ += GetLevelUpgradeSetting(
 		"sword", level, "halfAngleAdd", 0.0f);
+	swordKnockbackStrength_ += GetLevelUpgradeSetting(
+		"sword", level, "knockbackAdd", 0.0f);
 	swordInterval_ *= GetLevelUpgradeSetting(
 		"sword", level, "intervalMultiplier", 1.0f);
 	swordInterval_ = (std::max)(
@@ -1034,6 +1156,8 @@ void PlayerWeaponController::ApplyFlameShoesUpgradeLevel(int32_t level)
 {
 	flameShoesDamageBonus_ += GetLevelUpgradeSettingInt(
 		"flameShoes", level, "damageBonusAdd", 0);
+	flameShoesZoneCount_ = GetLevelUpgradeSettingInt(
+		"flameShoes", level, "count", flameShoesZoneCount_);
 	flameShoesRadius_ += GetLevelUpgradeSetting(
 		"flameShoes", level, "radiusAdd", 0.0f);
 	flameShoesZoneDuration_ += GetLevelUpgradeSetting(

@@ -96,43 +96,7 @@ void DebugContext::Load(
 	LoadGameAudioTuning(tuning);
 	particleEffects.LoadTuning(tuning);
 
-	if (player) {
-		player->SetCameraHeight(
-			UILayoutIO::GetFloat(
-				tuning,
-				"camera.height",
-				player->GetCameraHeight()));
-		player->SetCameraDistance(
-			UILayoutIO::GetFloat(
-				tuning,
-				"camera.distance",
-				player->GetCameraDistance()));
-		player->SetCameraPitch(
-			UILayoutIO::GetFloat(
-				tuning,
-				"camera.pitch",
-				player->GetCameraPitch()));
-		player->SetCameraFollowSmoothness(
-			UILayoutIO::GetFloat(
-				tuning,
-				"camera.followSmoothness",
-				player->GetCameraFollowSmoothness()));
-		player->SetMouseAimEnabled(
-			UILayoutIO::GetFloat(
-				tuning,
-				"camera.mouseAimEnabled",
-				player->IsMouseAimEnabled() ? 1.0f : 0.0f) > 0.5f);
-		const int32_t cameraMode = static_cast<int32_t>(
-			UILayoutIO::GetFloat(
-				tuning,
-				"camera.mode",
-				static_cast<float>(player->GetCameraMode())));
-		if (cameraMode >= 0 &&
-			cameraMode <= static_cast<int32_t>(Player::CameraMode::TopDown)) {
-			player->SetCameraMode(
-				static_cast<Player::CameraMode>(cameraMode));
-		}
-	}
+	(void)player;
 
 	cameraPosition_ = UILayoutIO::GetVector3(
 		tuning,

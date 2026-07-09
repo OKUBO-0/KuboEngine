@@ -113,6 +113,18 @@ GameSession::GameSession()
 	unlockedCharacterMask_(kDefaultUnlockedCharacterMask)
 {
 	LoadProfile();
+	char* randomSeed = nullptr;
+	size_t randomSeedLength = 0;
+	if (_dupenv_s(&randomSeed, &randomSeedLength, "KUBO_RANDOM_SEED") == 0 &&
+		randomSeed) {
+		uint32_t parsedSeed = 0;
+		const char* end = randomSeed + std::char_traits<char>::length(randomSeed);
+		const auto result = std::from_chars(randomSeed, end, parsedSeed);
+		if (result.ec == std::errc{} && result.ptr == end) {
+			SetRandomSeed(parsedSeed);
+		}
+	}
+	std::free(randomSeed);
 	char* stressCycles = nullptr;
 	size_t stressCyclesLength = 0;
 	if (_dupenv_s(

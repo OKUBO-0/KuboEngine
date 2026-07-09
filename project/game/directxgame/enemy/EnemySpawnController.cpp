@@ -177,6 +177,20 @@ void EnemySpawnController::Update(
 	}
 }
 
+void EnemySpawnController::SpawnBenchmarkEnemies(
+	Player* player,
+	std::vector<std::unique_ptr<Enemy>>& enemies,
+	size_t targetCount)
+{
+	if (!player || enemyTypes_.empty()) {
+		return;
+	}
+	while (CountActiveEnemies(enemies) < targetCount) {
+		const size_t index = CountActiveEnemies(enemies) % enemyTypes_.size();
+		SpawnOneEnemy(enemyTypes_[index], *player, enemies);
+	}
+}
+
 void EnemySpawnController::RelocateFarEnemies(
 	Player* player,
 	std::vector<std::unique_ptr<Enemy>>& enemies,
@@ -214,6 +228,7 @@ void EnemySpawnController::RelocateFarEnemies(
 			0.0f,
 			playerPosition.z + std::sin(angle) * respawnRadius_,
 		});
+		enemy->StartSpawnPresentation();
 	}
 }
 
@@ -325,6 +340,7 @@ void EnemySpawnController::SpawnOneEnemy(
 		data.deathBombDelay, data.deathBombRadius, data.deathBombDamage);
 	enemy->SetSpeed(
 		data.baseSpeed + elapsedTime_ * 0.0015f);
+	enemy->StartSpawnPresentation();
 	enemies.push_back(std::move(enemy));
 }
 

@@ -64,6 +64,15 @@ struct WeaponRuntimeStats {
 	int32_t projectileCount = 1;
 };
 
+struct WeaponStatApplicability {
+	bool damage = true;
+	bool attackSpeed = true;
+	bool duration = true;
+	bool projectileSpeed = true;
+	bool areaSize = true;
+	bool projectileCount = true;
+};
+
 struct DamageResult {
 	int32_t damage = 1;
 	int32_t criticalTier = 0;
@@ -134,15 +143,29 @@ public:
 			run_.projectileCount;
 	}
 
-	WeaponRuntimeStats Resolve(const WeaponBaseStats& base) const
+	WeaponRuntimeStats Resolve(
+		const WeaponBaseStats& base,
+		const WeaponStatApplicability& applicability = {}) const
 	{
+		const float damageMultiplier =
+			applicability.damage ? GetDamageMultiplier() : 1.0f;
+		const float attackSpeedMultiplier =
+			applicability.attackSpeed ? GetAttackSpeedMultiplier() : 1.0f;
+		const float projectileSpeedMultiplier =
+			applicability.projectileSpeed ? GetProjectileSpeedMultiplier() : 1.0f;
+		const float durationMultiplier =
+			applicability.duration ? GetDurationMultiplier() : 1.0f;
+		const float areaSizeMultiplier =
+			applicability.areaSize ? GetAreaSizeMultiplier() : 1.0f;
+		const int32_t projectileCountBonus =
+			applicability.projectileCount ? GetProjectileCountBonus() : 0;
 		return {
-			(std::max)(1, static_cast<int32_t>(std::lround(base.damage * GetDamageMultiplier()))),
-			(std::max)(0.05f, base.interval / GetAttackSpeedMultiplier()),
-			(std::max)(0.01f, base.projectileSpeed * GetProjectileSpeedMultiplier()),
-			(std::max)(0.01f, base.duration * GetDurationMultiplier()),
-			(std::max)(0.05f, base.areaSize * GetAreaSizeMultiplier()),
-			(std::max)(1, base.projectileCount + GetProjectileCountBonus()),
+			(std::max)(1, static_cast<int32_t>(std::lround(base.damage * damageMultiplier))),
+			(std::max)(0.05f, base.interval / attackSpeedMultiplier),
+			(std::max)(0.01f, base.projectileSpeed * projectileSpeedMultiplier),
+			(std::max)(0.01f, base.duration * durationMultiplier),
+			(std::max)(0.05f, base.areaSize * areaSizeMultiplier),
+			(std::max)(1, base.projectileCount + projectileCountBonus),
 		};
 	}
 

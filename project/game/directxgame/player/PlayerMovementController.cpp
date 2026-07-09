@@ -11,13 +11,15 @@ void PlayerMovementController::Update(
 	float deltaTime,
 	Vector3& position,
 	float& rotationY,
-	float moveSpeedPerSecond)
+	float moveSpeedPerSecond,
+	float cameraYaw,
+	bool cameraRelativeMovement)
 {
 	Engine::InputSystem::Input* input =
 		Engine::InputSystem::Input::GetInstance();
 	const Vector2 moveInput =
 		GameInputBindings::GetMoveVector(input);
-	UpdateDodge(deltaTime, moveInput, rotationY);
+	UpdateDodge(deltaTime, moveInput, rotationY, cameraYaw, cameraRelativeMovement);
 	if (IsDodging()) {
 		position.x +=
 			dodgeDirection_.x * kDodgeSpeed * deltaTime;
@@ -26,15 +28,23 @@ void PlayerMovementController::Update(
 		return;
 	}
 
+	const Vector3 moveDirection =
+		ResolveMoveDirection(moveInput, cameraYaw, cameraRelativeMovement);
 	const float moveDistance = moveSpeedPerSecond * deltaTime;
-	position.x += moveInput.x * moveDistance;
-	position.z += moveInput.y * moveDistance;
+	position.x += moveDirection.x * moveDistance;
+	position.z += moveDirection.z * moveDistance;
+	if (cameraRelativeMovement &&
+		std::abs(moveInput.x) + std::abs(moveInput.y) > 0.001f) {
+		rotationY = std::atan2(moveDirection.x, moveDirection.z);
+	}
 }
 
 void PlayerMovementController::UpdateDodge(
 	float deltaTime,
 	const Vector2& moveInput,
-	float& rotationY)
+	float& rotationY,
+	float cameraYaw,
+	bool cameraRelativeMovement)
 {
 	dodgeCooldownTimer_ = (std::max)(
 		0.0f,
@@ -56,14 +66,12 @@ void PlayerMovementController::UpdateDodge(
 		return;
 	}
 
-	Vector3 direction{ moveInput.x, 0.0f, moveInput.y };
+	Vector3 direction =
+		ResolveMoveDirection(moveInput, cameraYaw, cameraRelativeMovement);
 	const float length = std::sqrt(
 		direction.x * direction.x +
 		direction.z * direction.z);
-	if (length > 0.001f) {
-		direction.x /= length;
-		direction.z /= length;
-	} else {
+	if (length <= 0.001f) {
 		direction = {
 			std::sin(rotationY),
 			0.0f,
@@ -74,6 +82,38 @@ void PlayerMovementController::UpdateDodge(
 	dodgeTimer_ = kDodgeDuration;
 	dodgeCooldownTimer_ = kDodgeCooldown;
 	rotationY = std::atan2(direction.x, direction.z);
+}
+
+Vector3 PlayerMovementController::ResolveMoveDirection(
+	const Vector2& moveInput,
+	float cameraYaw,
+	bool cameraRelativeMovement) const
+{
+	Vector3 direction{ moveInput.x, 0.0f, moveInput.y };
+	if (cameraRelativeMovement) {
+		const Vector3 cameraForward{
+			std::sin(cameraYaw),
+			0.0f,
+			std::cos(cameraYaw),
+		};
+		const Vector3 cameraRight{
+			cameraForward.z,
+			0.0f,
+			-cameraForward.x,
+		};
+		direction =
+			cameraRight * moveInput.x +
+			cameraForward * moveInput.y;
+	}
+	const float length = std::sqrt(
+		direction.x * direction.x +
+		direction.z * direction.z);
+	if (length > 0.001f) {
+		direction.x /= length;
+		direction.z /= length;
+		return direction;
+	}
+	return { 0.0f, 0.0f, 0.0f };
 }
 
 float PlayerMovementController::GetDodgeCooldownRatio() const

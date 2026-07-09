@@ -1,7 +1,7 @@
 titlePosition,0,0
 cursorSize,1280,720
 shopLevelSquareStepX,20
-debug.statisticsView,1
+debug.statisticsView,0
 titleSize,1280,720
 modelScale,4.5,4.5,4.5
 cursorShopOffset,435,0
@@ -26,7 +26,7 @@ cameraOrbitSpeed,0.12
 debug.windowSwitcher,0
 debug.titleView,1
 shopItemPosition2,573,164
-debug.titleSettings,1
+debug.titleSettings,0
 debug.offscreenSettings,1
 shopCoinPosition,940,100
 debug.lightSettings,1

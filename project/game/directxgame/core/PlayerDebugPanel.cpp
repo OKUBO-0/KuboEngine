@@ -118,12 +118,22 @@ void DebugUI::PlayerPanel::Draw(
 				30.0f)) {
 			player->SetCameraFollowSmoothness(cameraFollowSmoothness);
 		}
+		float cameraLookSmoothing = player->GetCameraLookSmoothing();
+		if (ImGui::DragFloat(
+				"Camera Look Smoothing",
+				&cameraLookSmoothing,
+				0.01f,
+				0.0f,
+				0.95f)) {
+			player->SetCameraLookSmoothing(cameraLookSmoothing);
+		}
 
 		constexpr const char* kCameraModeLabels[] = {
 			"World Back",
 			"Player Back",
 			"World Front",
 			"Top Down",
+			"Megabonk",
 		};
 		int32_t cameraMode = static_cast<int32_t>(player->GetCameraMode());
 		if (ImGui::Combo(

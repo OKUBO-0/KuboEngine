@@ -2,6 +2,7 @@
 
 #include "Vector3.h"
 #include "WeaponType.h"
+#include "WeaponUpgradeData.h"
 #include "PlayerStats.h"
 #include "NormalBullet.h"
 #include "OrbitBullet.h"
@@ -16,6 +17,22 @@ namespace DirectXGame {
 
 class EnemyManager;
 class Player;
+
+struct SwordSlashEvent {
+	Vector3 center{};
+	Vector3 forward{ 0.0f, 0.0f, 1.0f };
+	float radius = 0.0f;
+	float halfAngle = 0.0f;
+	int32_t directionSign = 1;
+};
+
+struct FlameZoneVisual {
+	Vector3 position{};
+	Vector3 direction{ 0.0f, 0.0f, 1.0f };
+	float radius = 0.0f;
+	float remainingDuration = 0.0f;
+	float totalDuration = 1.0f;
+};
 
 class PlayerWeaponController final {
 public:
@@ -160,19 +177,27 @@ public:
 	bool IsWeaponMaxLevel(WeaponType type) const;
 	int32_t GetNormalBulletDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 10.0f + normalBulletDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 10.0f + normalBulletDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::BowArrow)).damage;
 	}
 	int32_t GetOrbitBulletDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 10.0f + orbitDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 10.0f + orbitDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::Rock)).damage;
 	}
 	int32_t GetLightningDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 10.0f + lightningDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 10.0f + lightningDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::ThunderStaff)).damage;
 	}
 	int32_t GetExplosiveBulletDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 10.0f + explosiveBulletDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 10.0f + explosiveBulletDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::FlameStaff)).damage;
 	}
 	float GetExplosiveBulletRadius(const PlayerStats& stats) const
 	{
@@ -180,15 +205,21 @@ public:
 	}
 	int32_t GetSwordDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 14.0f + swordDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 14.0f + swordDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::Sword)).damage;
 	}
 	int32_t GetAuraDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 8.0f + auraDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 8.0f + auraDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::Aura)).damage;
 	}
 	int32_t GetFlameShoesDamage(const PlayerStats& stats) const
 	{
-		return stats.Resolve({ 6.0f + flameShoesDamageBonus_ }).damage;
+		return stats.Resolve(
+			{ 5.0f + flameShoesDamageBonus_ },
+			GetWeaponStatApplicability(WeaponType::FlameShoes)).damage;
 	}
 	int32_t GetBoneDamage(const PlayerStats& stats) const
 	{
@@ -207,6 +238,14 @@ public:
 	const std::vector<Vector3>& GetRecentFlameZoneSpawns() const
 	{
 		return recentFlameZoneSpawns_;
+	}
+	const std::vector<FlameZoneVisual>& GetFlameZoneVisuals() const
+	{
+		return flameZoneVisuals_;
+	}
+	const std::vector<SwordSlashEvent>& GetRecentSwordSlashes() const
+	{
+		return recentSwordSlashes_;
 	}
 	size_t GetPeakNormalBulletCount() const
 	{
@@ -342,6 +381,9 @@ private:
 	float swordTimer_ = 0.0f;
 	float swordRadius_ = 7.0f;
 	float swordHalfAngle_ = 0.9f;
+	int32_t swordSlashCount_ = 1;
+	float swordKnockbackStrength_ = 0.8f;
+	std::vector<SwordSlashEvent> recentSwordSlashes_;
 
 	bool hasAura_ = false;
 	int32_t auraLevel_ = 0;
@@ -353,20 +395,26 @@ private:
 
 	struct FlameZone {
 		Vector3 position{};
+		Vector3 direction{ 0.0f, 0.0f, 1.0f };
+		float radius = 0.0f;
 		float remainingDuration = 0.0f;
+		float totalDuration = 1.0f;
 		float damageTimer = 0.0f;
 	};
-	static constexpr size_t kMaxFlameZones = 24;
+	static constexpr size_t kMaxFlameZones = 36;
 	bool hasFlameShoes_ = false;
 	int32_t flameShoesLevel_ = 0;
 	int32_t flameShoesDamageBonus_ = 0;
-	float flameShoesZoneDuration_ = 4.0f;
+	float flameShoesZoneDuration_ = 1.5f;
 	float flameShoesDamageInterval_ = 0.6f;
-	float flameShoesRadius_ = 3.0f;
-	float flameShoesSpawnDistance_ = 2.4f;
+	float flameShoesRadius_ = 3.2f;
+	float flameShoesSpawnDistance_ = 7.0f;
+	int32_t flameShoesZoneCount_ = 1;
 	Vector3 flameShoesLastSpawnPosition_{};
+	Vector3 flameShoesLastDirection_{ 0.0f, 0.0f, 1.0f };
 	bool flameShoesPositionInitialized_ = false;
 	std::vector<FlameZone> flameZones_;
+	std::vector<FlameZoneVisual> flameZoneVisuals_;
 	std::vector<Vector3> recentFlameZoneSpawns_;
 	BoneWeapon boneWeapon_{};
 	HandgunWeapon handgunWeapon_{};

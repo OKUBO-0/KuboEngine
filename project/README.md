@@ -1,55 +1,96 @@
-# KuboEngine / DirectXGame
+# Octopus — KuboEngine / DirectXGame
 
-Windows / DirectX 12向けのC++20ゲームエンジンと、タイトル・ゲームプレイ・リザルトで構成したアクションゲームです。描画、入力、音声、リソース管理をengine層に置き、ゲーム固有のscene、敵、武器、HUD、演出を`game/directxgame`へ分離しています。
+`Octopus`は、敵を倒して経験値を集め、レベルアップで武器や能力を選びながら5分後のボス撃破を目指す3Dサバイバルシューティングです。
 
-## 動作環境
+ゲーム本体に加え、描画・入力・音声・リソース管理を行うWindows / DirectX 12向けゲームエンジンをC++20で実装しています。
 
-- Windows 10/11 x64
-- DirectX 12対応GPU
-- Visual Studio C++ Desktop workload
-- Windows 10 SDK
-- MSVC Platform Toolset v143
+## プレイ動画
 
-依存ライブラリは`externals`以下と`Lib`に配置済みです。主な依存はDirectXTex、Assimp、Dear ImGui、ImGuizmo、ImPlot、imgui-node-editorです。
+[作品紹介動画（MP4）](output/video/Octopus_showcase_20260706.mp4)
 
-## Build
+![作品紹介動画プレビュー](output/video/Octopus_showcase_20260706_preview.jpg)
 
-Developer PowerShell for Visual Studioで、このREADMEがあるdirectoryをcurrent directoryにして実行します。
+## ゲームの流れ
 
-```powershell
-msbuild KuboEngine.sln /m /p:Configuration=Debug /p:Platform=x64
-msbuild KuboEngine.sln /m /p:Configuration=Release /p:Platform=x64
+1. 移動と回避で敵との距離を調整する
+2. 自動攻撃で敵を倒し、経験値オーブを回収する
+3. レベルアップ時に3つの候補から強化を選ぶ
+4. 武器と能力を組み合わせて戦い方を作る
+5. 5分後に出現するボスを倒す
+6. 獲得したポイントをショップで次回の強化に使う
+
+## ゲームの特徴
+
+### 武器と成長
+
+- 通常弾：照準方向へ発射する基本武器
+- 旋回弾：プレイヤーの周囲を回って接触した敵を攻撃
+- ドローン：プレイヤーを追従して攻撃を補助
+- 雷：離れた敵を選んで攻撃
+- 能力強化：攻撃力、最大HP、移動速度、回復など
+
+`LevelUpChoiceService`が現在のプレイヤー状態から候補を生成し、取得上限に達した強化を候補から除外します。
+
+### ゲーム進行
+
+`GameplayFlowController`で以下の状態を明示的に管理しています。
+
+```text
+Start → Playing → BossIntro → Boss → BossDefeated
+           ├── LevelUp
+           ├── Paused
+           └── Dead
 ```
 
-出力先:
+レベルアップやポーズ中は戦闘更新を止め、復帰後に元の進行へ戻します。
 
-- Debug: `..\generated\outputs\Debug\KuboEngine.exe`
-- Release: `..\generated\outputs\Release\KuboEngine.exe`
-- CPU tests: `generated\outputs\tests\<Configuration>\cpu_regression_checks.exe`
+### データによる調整
 
-## Run
+武器、敵、出現設定、レベルアップ抽選、UI配置を`Resources/DirectXGame/data`以下のCSVへ分離しています。バランス調整やUI位置の変更時に、コード中の固定値を編集する範囲を減らしています。
 
-resource pathはcurrent directory基準です。project directoryから起動します。
+主なデータ:
 
-```powershell
-& ..\generated\outputs\Debug\KuboEngine.exe
-```
+- `weaponUpgradeSettings.csv`
+- `enemyTypes.csv`
+- `enemySpawnSettings.csv`
+- `levelupWeights.csv`
+- `playerStatus.csv`
+- `ui_layout_*.csv`
 
-## 操作
+## 操作方法
 
-| 操作 | Keyboard / Mouse | Gamepad |
+| 操作 | キーボード / マウス | ゲームパッド |
 | --- | --- | --- |
-| 移動 | `WASD` / Arrow keys | Left stick / D-pad |
-| 照準 | Mouse | Right stick |
+| 移動 | `WASD` / 矢印キー | 左スティック / D-pad |
+| 照準 | マウス | 右スティック |
 | 回避 | `Space` | `B` |
-| Menu移動 | `WASD` / Arrow keys | D-pad |
-| 決定 | `Enter` / `Space` / Left click | `A` |
-| Cancel | `Esc` / Right click | `B` |
-| Pause | `Esc` / `P` | `Start` / `Back` |
+| メニュー移動 | `WASD` / 矢印キー | D-pad |
+| 決定 | `Enter` / `Space` / 左クリック | `A` |
+| キャンセル | `Esc` / 右クリック | `B` |
+| ポーズ | `Esc` / `P` | `Start` / `Back` |
 
-ImGuiがkeyboardまたはmouseをcaptureしている間、gameplay入力は抑止されます。
+ImGuiがキーボードまたはマウスを使用している間は、ゲーム側への入力を抑止します。
 
-## Architecture
+## 技術構成
+
+| 項目 | 内容 |
+| --- | --- |
+| 言語 | C++20 / HLSL |
+| 描画API | DirectX 12 |
+| 開発環境 | Visual Studio 2022 / MSVC v143 |
+| 対応環境 | Windows 10 / 11 x64 |
+| モデル・画像 | Assimp / DirectXTex |
+| デバッグUI | Dear ImGui / ImGuizmo / ImPlot |
+
+## アーキテクチャ
+
+共通機能とゲーム固有処理を分離しています。
+
+- `engine/`：描画、入力、音声、モデル、パーティクル、カメラ、シーン基盤
+- `game/directxgame/`：シーン、プレイヤー、敵、武器、HUD、演出、ゲームデータ
+- `Resources/DirectXGame/`：モデル、テクスチャ、音声、UI、CSV
+- `tests/`：CPU回帰テスト
+- `tools/`：回帰テスト、シーン遷移ストレス、PIX事前確認
 
 ```mermaid
 flowchart TD
@@ -59,40 +100,67 @@ flowchart TD
     Factory --> Scenes["TitleScene / PlayScene / ResultScene"]
 
     Framework --> DX["DirectXCommon"]
-    Framework --> Input["Input"]
-    Framework --> Audio["Audio"]
-    Framework --> Managers["Texture / Model / Particle / Camera managers"]
+    Framework --> Services["Input / Audio / Resource Managers"]
 
-    Scenes --> Session["GameSession"]
-    Scenes --> Caches["GameTextureCache / GameModelCache / GameAudioCache"]
-    Scenes --> Gameplay["Player / Enemy / Weapon / HUD / Presentation"]
-    Caches --> Managers
+    Scenes --> Flow["GameplayFlowController"]
+    Scenes --> Gameplay["Player / Enemy / Weapon / HUD / Effects"]
 
-    DX --> Frames["2 FrameContexts + frame upload arenas"]
-    DX --> Queue["Command queue + frame fences"]
-    Managers --> SRV["SrvManager: sole shader-visible SRV heap owner"]
+    DX --> Frames["2 FrameContexts"]
+    DX --> Upload["Frame Upload Arenas / Deferred Release"]
+    Services --> SRV["SrvManager"]
 ```
 
-主要な設計契約:
+`main.cpp`は起動と`GameSceneFactory`の注入に絞り、`PlayScene`をゲームプレイの構成地点としています。プレイヤー、敵、HUD、演出、状態遷移の処理はそれぞれのモジュールへ分割しています。
 
-- CPU/GPU overlapは2個の`FrameContext`で管理し、frame再利用時だけFenceを待ちます。
-- 動的CBV/VBV/IBVはframe upload arenaへ配置します。
-- static geometryはDEFAULT heapへ置き、staging resourceはframe Fence完了後に解放します。
-- gameplay textureはscene単位でbatch preloadします。単体dynamic uploadもGPU全完了待ちを行いません。
-- SRV heap、capacity、descriptor handleは`SrvManager`が単独所有します。
-- model pathは初回作成するcanonical indexで解決し、同一scopeの重複名を例外にします。
-- audio handleはstrong型のprocess-lifetime IDです。invalid handle操作はno-op、load/decode失敗は例外です。
+### DirectX 12のリソース管理
 
-詳細:
+- 2個の`FrameContext`でCPU/GPUのフレーム境界を管理
+- フレーム再利用時に対応するFenceだけを待機
+- 動的CBV/VBV/IBVをフレーム単位のUpload Arenaへ配置
+- 一時GPUリソースをFence完了後に遅延解放
+- Shader-visible SRV Heapを`SrvManager`へ集約
+- SRV使用数とHigh-watermarkをテレメトリで確認
 
-- [Gameplay class diagram](docs/directxgame_class_diagram.md)
-- [Detailed gameplay UML](docs/directxgame_uml_class_diagram.md)
-- [Frame resource design](docs/frame_resource_design.md)
-- [Code review inventory](docs/code_review_inventory.md)
+これはリソース寿命と同期条件を明示するための設計です。FPSやGPU処理時間の改善値は、PIXによる定量計測を行っていないため記載していません。
 
-## Tests
+### 敵・弾が増える場面への対応
 
-正式CPU test projectはsolutionの`KuboEngineCpuTests`です。cell key、gauge境界値、CSV strict parsing、weapon interval、run seed、audio handle契約をproduction codeへ直接実行します。
+- 空間マップから近傍の衝突候補を抽出
+- 弾オブジェクトをプールして再利用
+- Swap-popで削除時の要素移動を抑制
+- 経験値オーブと通常弾に稼働上限を設定
+- 稼働数と上限到達をテレメトリへ出力
+
+## ビルド
+
+Developer PowerShell for Visual Studioで、`README.md`があるディレクトリをカレントディレクトリにして実行します。
+
+```powershell
+msbuild KuboEngine.sln /m /p:Configuration=Debug /p:Platform=x64
+msbuild KuboEngine.sln /m /p:Configuration=Release /p:Platform=x64
+```
+
+出力先:
+
+- Debug：`..\generated\outputs\Debug\KuboEngine.exe`
+- Release：`..\generated\outputs\Release\KuboEngine.exe`
+- CPUテスト：`generated\outputs\tests\<Configuration>\cpu_regression_checks.exe`
+
+## 実行
+
+リソースパスはカレントディレクトリ基準です。必ずプロジェクトディレクトリから起動してください。
+
+```powershell
+& ..\generated\outputs\Debug\KuboEngine.exe
+```
+
+Release版:
+
+```powershell
+& ..\generated\outputs\Release\KuboEngine.exe
+```
+
+## テスト
 
 ```powershell
 .\tools\run_cpu_regression_checks.ps1
@@ -100,27 +168,34 @@ flowchart TD
 .\tools\run_pix_capture_preflight.ps1
 ```
 
-scene stressは環境変数`KUBO_SCENE_STRESS_CYCLES`を設定してTitle → Gameplay → Resultを自動遷移し、visit countとSRV telemetryを`generated/outputs/scene_transition_stress.txt`へ出力します。
+CPU回帰テストでは、空間セルキー、HP・ゲージ境界値、CSVの厳密解析、武器発射間隔、Run Seed、`SoundHandle`の契約を確認します。
 
-## Latest verification
+シーン遷移ストレスではTitle → Gameplay → Resultを自動遷移し、訪問回数とSRV使用量を`generated/outputs/scene_transition_stress.txt`へ出力します。
 
-2026-06-19:
+## 確認済みの状態
 
-- Debug x64 solution build: PASS
-- Release x64 solution build: PASS
-- Debug / Release CPU tests: PASS
-- Scene transition stress 3 cycles: PASS
-- Title / Gameplay / Result visits: 3 / 3 / 3
-- SRV maximum used / high-watermark: 105 / 105
-- 既存10-cycle stress記録: PASS、SRV maximum used / high-watermark 105 / 105
+2026-06-19時点:
 
-FPS、GPU pass time、draw-call内訳は未計測です。性能値として提示する場合はPIX等によるcaptureが必要です。
+- Debug x64ビルド：PASS
+- Release x64ビルド：PASS
+- Debug / Release CPUテスト：PASS
+- シーン遷移ストレス3周：PASS
+- Title / Gameplay / Result訪問数：3 / 3 / 3
+- SRV最大使用数 / High-watermark：105 / 105
+- 既存10周ストレス：PASS
 
-## Known constraints
+## 既知の制約
 
-- Windows / DirectX 12専用です。
-- Shadow passは無効時に全体skipし、caster boundsをlight frustumでcullingします。silhouette目視確認とGPU timingは未実施です。
-- shader compilation、D3D12 PSO descriptor生成、root signature factory、model asset path解決、mesh変換、weapon種別dispatch、scene transition orchestration、debug free-function namespace整理は分離済みです。性能値として提示する場合はPIX capture結果を別途記録してください。
-- Title sceneでもshadow passを更新するため、gameplayからtitleへ戻った際に前sceneのshadow mapが残らない構成です。Debug editorは黒基調theme、icon付きmenu、上部Freeze/Resume toolbarを持ちます。
-- model path indexはprocess起動後に追加されたassetを再indexしません。
-- legacy sample scene sourceは保持していますが、Visual Studio projectのbuild対象外です。
+- Windows / DirectX 12専用
+- FPS、GPU Pass時間、Draw Call内訳は未計測
+- Shadow Passのシルエット確認とGPU時間計測は未実施
+- 起動後に追加されたモデルは、モデルパス索引を再構築するまで自動検出されない
+- 一部の旧サンプルソースは保管しているが、Visual Studioのビルド対象外
+
+## 関連資料
+
+- [ゲームプレイクラス図](docs/directxgame_class_diagram.md)
+- [詳細UML](docs/directxgame_uml_class_diagram.md)
+- [Frame Resource設計](docs/frame_resource_design.md)
+- [コードレビュー項目](docs/code_review_inventory.md)
+- [プログラム説明資料](output/pdf/program_explanation_A4_2026.pdf)

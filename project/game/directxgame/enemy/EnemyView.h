@@ -29,6 +29,10 @@ public:
 		const Vector4& color,
 		float scaleMultiplier = 1.0f);
 	void ClearBehaviorVisual();
+	void SetSpawnScaleMultiplier(float scaleMultiplier)
+	{
+		spawnScaleMultiplier_ = scaleMultiplier;
+	}
 
 	float GetCollisionRadius() const;
 	Engine::Math::AABB GetCollisionAabb(
@@ -49,6 +53,7 @@ private:
 	std::unique_ptr<Engine::Graphics3D::Object3D> floatingShadowObject_;
 	Vector4 behaviorColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
 	float behaviorScaleMultiplier_ = 1.0f;
+	float spawnScaleMultiplier_ = 1.0f;
 	float modelVerticalOffsetY_ = 0.0f;
 	bool floatingEnabled_ = false;
 };

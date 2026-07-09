@@ -15,6 +15,17 @@ inline uint64_t MakeCellKey(int32_t cellX, int32_t cellZ)
 		static_cast<uint32_t>(cellZ);
 }
 
+inline double CalculateCandidateReductionPercent(
+	uint64_t nearbyCandidateCount,
+	uint64_t bruteForceCandidateCount)
+{
+	if (bruteForceCandidateCount == 0) {
+		return 0.0;
+	}
+	return 100.0 * (1.0 - static_cast<double>(nearbyCandidateCount) /
+		static_cast<double>(bruteForceCandidateCount));
+}
+
 inline float CalculateGaugeRate(int32_t displayedValue, int32_t maxValue)
 {
 	if (maxValue <= 0) {

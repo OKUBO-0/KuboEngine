@@ -11,6 +11,7 @@
 namespace {
 
 using DirectXGame::GameplayRules::CalculateGaugeRate;
+using DirectXGame::GameplayRules::CalculateCandidateReductionPercent;
 using DirectXGame::GameplayRules::ClampGaugeValue;
 using DirectXGame::GameplayRules::DeriveRunSeed;
 using DirectXGame::GameplayRules::MakeCellKey;
@@ -40,6 +41,16 @@ void TestCellKey()
 	Require(MakeCellKey(-1, 0) == 0xFFFFFFFF00000000ull, "cell key negative x");
 	Require(MakeCellKey(0, -1) == 0x00000000FFFFFFFFull, "cell key negative z");
 	Require(MakeCellKey(-12, 34) != MakeCellKey(34, -12), "cell key axis uniqueness");
+}
+
+void TestCollisionCandidateReduction()
+{
+	Require(
+		CalculateCandidateReductionPercent(25, 100) == 75.0,
+		"collision candidate reduction");
+	Require(
+		CalculateCandidateReductionPercent(0, 0) == 0.0,
+		"collision candidate reduction empty baseline");
 }
 
 void TestGaugeRate()
@@ -138,6 +149,7 @@ int main()
 {
 	try {
 		TestCellKey();
+		TestCollisionCandidateReduction();
 		TestGaugeRate();
 		TestCsvParsing();
 		TestWeaponIntervals();

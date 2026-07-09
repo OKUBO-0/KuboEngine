@@ -15,6 +15,7 @@ public:
 		PlayerBack,
 		WorldFront,
 		TopDown,
+		Megabonk,
 	};
 
 	void Update(
@@ -28,25 +29,35 @@ public:
 	float GetHeight() const { return height_; }
 	float GetDistance() const { return distance_; }
 	float GetPitch() const { return pitch_; }
+	float GetYaw() const { return yaw_; }
+	float GetLookSmoothing() const { return lookSmoothing_; }
 	float GetFollowSmoothness() const { return followSmoothness_; }
 	Mode GetMode() const { return mode_; }
+	bool UsesCameraRelativeMovement() const { return mode_ == Mode::Megabonk; }
+	bool UsesMouseLook() const { return mode_ == Mode::Megabonk; }
 
 	void SetHeight(float height);
 	void SetDistance(float distance);
-	void SetPitch(float pitch) { pitch_ = pitch; }
+	void SetPitch(float pitch) { pitch_ = pitch; targetPitch_ = pitch; }
+	void SetYaw(float yaw) { yaw_ = yaw; targetYaw_ = yaw; }
+	void SetLookSmoothing(float smoothing) { lookSmoothing_ = smoothing; }
 	void SetFollowSmoothness(float smoothness) { followSmoothness_ = smoothness; }
 	void SetMode(Mode mode) { mode_ = mode; }
 
 private:
-	float height_ = 80.0f;
-	float distance_ = 45.0f;
-	float pitch_ = 1.0f;
+	float height_ = 70.0f;
+	float distance_ = 90.0f;
+	float pitch_ = 0.52f;
+	float targetPitch_ = 0.52f;
+	float yaw_ = 0.0f;
+	float targetYaw_ = 0.0f;
+	float lookSmoothing_ = 0.32f;
 	float followSmoothness_ = 8.0f;
-	float combatDistance_ = 45.0f;
-	float combatHeight_ = 80.0f;
+	float combatDistance_ = 90.0f;
+	float combatHeight_ = 70.0f;
 	Vector3 focusPosition_{ 0.0f, 0.0f, 0.0f };
 	bool followInitialized_ = false;
-	Mode mode_ = Mode::WorldBack;
+	Mode mode_ = Mode::Megabonk;
 	float shakeTimer_ = 0.0f;
 	float shakeDuration_ = 0.0f;
 	float shakeStrength_ = 0.0f;

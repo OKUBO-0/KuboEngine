@@ -94,6 +94,38 @@ void StatisticsDebugPanel::Draw(
 		"EXP Orb Peak: %zu  Pruned: %zu",
 		softCap.expOrbPeak,
 		softCap.expOrbPrunes);
+	if (enemyManager) {
+		int broadPhaseMode = enemyManager->GetBroadPhaseMode() ==
+			EnemyBroadPhaseMode::SpatialGrid ? 0 : 1;
+		const char* broadPhaseModes[] = { "Spatial Grid", "Brute Force" };
+		if (ImGui::Combo(
+			"Broad Phase Mode",
+			&broadPhaseMode,
+			broadPhaseModes,
+			2)) {
+			enemyManager->SetBroadPhaseMode(
+				broadPhaseMode == 0
+					? EnemyBroadPhaseMode::SpatialGrid
+					: EnemyBroadPhaseMode::BruteForce);
+		}
+		const EnemyCollisionContext::Telemetry& collision =
+			enemyManager->GetCollisionTelemetry();
+		ImGui::SeparatorText("Collision Broad Phase");
+		ImGui::Text(
+			"Enemies: %llu  Queries: %llu",
+			static_cast<unsigned long long>(collision.activeEnemyCount),
+			static_cast<unsigned long long>(collision.queryCount));
+		ImGui::Text(
+			"Candidates: %llu / brute-force %llu  reduction %.1f%%",
+			static_cast<unsigned long long>(collision.nearbyCandidateCount),
+			static_cast<unsigned long long>(collision.bruteForceCandidateCount),
+			collision.CandidateReductionPercent());
+		ImGui::Text(
+			"CPU ms: build %.3f  collision %.3f  separation %.3f",
+			collision.spatialBuildMilliseconds,
+			collision.collisionMilliseconds,
+			collision.separationMilliseconds);
+	}
 	ImGui::Text(
 		"Weapons: Bow Arrow %zu / %zu | Rock %zu",
 		softCap.normalBulletCount,

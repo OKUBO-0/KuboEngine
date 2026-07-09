@@ -7,6 +7,7 @@
 #include "ExpOrb.h"
 #include "Player.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #ifdef _DEBUG
 #include <imgui.h>
@@ -18,6 +19,7 @@ constexpr char kPlayerPath[] = "ui/game/minimap_player.png";
 constexpr char kEnemyPath[] = "ui/game/minimap_enemy.png";
 constexpr char kOrbPath[] = "ui/game/minimap_orb.png";
 constexpr char kBackgroundPath[] = "ui/game/minimap_bg.png";
+constexpr char kDirectionFontTexture[] = "ui/font/hud_ascii.png";
 constexpr float kIconEdgePadding = 2.0f;
 
 }
@@ -44,6 +46,16 @@ void MiniMap::Initialize()
 	backgroundSprite_ = GameSpriteFactory::Create(backgroundTexture_, layoutSettings_.backgroundPosition);
 	playerIconSprite_ = GameSpriteFactory::Create(playerTexture_, layoutSettings_.center);
 	playerIconSprite_->SetAnchorPoint({ 0.5f, 0.5f });
+	constexpr std::array<const char*, 4> kLabels{ "N", "E", "S", "W" };
+	for (size_t index = 0; index < directionLabels_.size(); ++index) {
+		directionLabels_[index].Initialize(
+			kDirectionFontTexture,
+			{ 18.0f, 26.0f },
+			16);
+		directionLabels_[index].SetText(kLabels[index]);
+		directionLabels_[index].SetScale(0.74f);
+		directionLabels_[index].SetColor({ 1.0f, 1.0f, 1.0f, 0.95f });
+	}
 
 	ApplyLayout();
 }
@@ -113,11 +125,14 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 	}
 
 	const Vector3 playerPosition = player->GetWorldPosition();
+	cameraYaw_ = player->GetCameraYaw();
 	auto addIcon = [this, &playerPosition](const Vector3& objectPosition, bool enemy, float iconSize) {
-		const Vector2 relative{
+		const Vector2 worldRelative{
 			(objectPosition.x - playerPosition.x) * layoutSettings_.scale,
 			-(objectPosition.z - playerPosition.z) * layoutSettings_.scale,
 		};
+		const Vector2 relative =
+			RotateMiniMapRelative(worldRelative, cameraYaw_);
 		const Vector2 unclamped{
 			layoutSettings_.center.x + relative.x,
 			layoutSettings_.center.y + relative.y,
@@ -153,6 +168,7 @@ void MiniMap::Update(const Player* player, const EnemyManager& enemyManager)
 			addIcon(orb->GetPosition(), false, layoutSettings_.orbIconSize);
 		}
 	}
+	UpdateDirectionLabels(cameraYaw_);
 }
 
 void MiniMap::Draw()
@@ -179,6 +195,7 @@ void MiniMap::Draw()
 	for (size_t index = 0; index < orbIconPositions_.size(); ++index) {
 		DrawIcon(*orbIconSprites_[index], orbIconPositions_[index], layoutSettings_.orbIconSize);
 	}
+	DrawDirectionLabels();
 }
 
 void MiniMap::DebugDrawImGui()
@@ -254,6 +271,37 @@ void MiniMap::DrawIcon(Engine::Graphics2D::Sprite& sprite, const Vector2& positi
 	sprite.Draw();
 }
 
+void MiniMap::UpdateDirectionLabels(float cameraYaw)
+{
+	constexpr std::array<Vector2, 4> kWorldDirections{
+		Vector2{ 0.0f, -1.0f },
+		Vector2{ 1.0f, 0.0f },
+		Vector2{ 0.0f, 1.0f },
+		Vector2{ -1.0f, 0.0f },
+	};
+	const float labelRadius = (std::max)(0.0f, layoutSettings_.radius - 18.0f);
+	for (size_t index = 0; index < directionLabels_.size(); ++index) {
+		const Vector2 directionOffset{
+			kWorldDirections[index].x * labelRadius,
+			kWorldDirections[index].y * labelRadius,
+		};
+		const Vector2 relative =
+			RotateMiniMapRelative(directionOffset, cameraYaw);
+		directionLabelPositions_[index] = {
+			layoutSettings_.center.x + relative.x - 6.5f,
+			layoutSettings_.center.y + relative.y - 9.0f,
+		};
+		directionLabels_[index].SetPosition(directionLabelPositions_[index]);
+	}
+}
+
+void MiniMap::DrawDirectionLabels()
+{
+	for (BitmapText& label : directionLabels_) {
+		label.Draw();
+	}
+}
+
 void MiniMap::EnsureIconSpriteCount(std::vector<std::unique_ptr<Engine::Graphics2D::Sprite>>& sprites, TextureHandle textureHandle, size_t count)
 {
 	while (sprites.size() < count) {
@@ -276,6 +324,16 @@ Vector2 MiniMap::ClampToCircle(const Vector2& center, const Vector2& position, f
 	return {
 		center.x + dx * ratio,
 		center.y + dy * ratio,
+	};
+}
+
+Vector2 MiniMap::RotateMiniMapRelative(const Vector2& relative, float cameraYaw)
+{
+	const float cosine = std::cos(-cameraYaw);
+	const float sine = std::sin(-cameraYaw);
+	return {
+		relative.x * cosine - relative.y * sine,
+		relative.x * sine + relative.y * cosine,
 	};
 }
 

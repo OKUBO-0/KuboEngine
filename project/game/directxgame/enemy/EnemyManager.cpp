@@ -5,8 +5,12 @@
 #include "PlayerManager.h"
 #include "Line.h"
 #include <algorithm>
+#include <charconv>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <numbers>
+#include <string_view>
 
 namespace DirectXGame {
 
@@ -23,12 +27,43 @@ void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player,
 	bossSlamCubes_.clear();
 	bossPhase_ = false;
 	bossDefeated_ = false;
+	char* collisionMode = nullptr;
+	size_t collisionModeLength = 0;
+	if (_dupenv_s(&collisionMode, &collisionModeLength, "KUBO_COLLISION_MODE") == 0 &&
+		collisionMode) {
+		const std::string_view mode(collisionMode);
+		collisionContext_.broadPhaseMode =
+			(mode == "brute_force" || mode == "brute")
+			? EnemyBroadPhaseMode::BruteForce
+			: EnemyBroadPhaseMode::SpatialGrid;
+	}
+	std::free(collisionMode);
+	char* telemetryEnabled = nullptr;
+	size_t telemetryEnabledLength = 0;
+	if (_dupenv_s(&telemetryEnabled, &telemetryEnabledLength,
+		"KUBO_COLLISION_TELEMETRY") == 0 && telemetryEnabled) {
+		collisionTelemetryEnabled_ = std::string_view(telemetryEnabled) == "1";
+	}
+	std::free(telemetryEnabled);
 	if (playerManager_) {
 		playerManager_->SetEnemyManager(this);
 	}
 	spawnController_.Initialize(
 		enemyTypesPath,
 		DataPaths::Resolve(DataPaths::kEnemySpawnSettings));
+	char* benchmarkEnemies = nullptr;
+	size_t benchmarkEnemiesLength = 0;
+	if (_dupenv_s(&benchmarkEnemies, &benchmarkEnemiesLength,
+		"KUBO_COLLISION_BENCHMARK_ENEMIES") == 0 && benchmarkEnemies) {
+		size_t targetCount = 0;
+		const char* end = benchmarkEnemies +
+			std::char_traits<char>::length(benchmarkEnemies);
+		const auto result = std::from_chars(benchmarkEnemies, end, targetCount);
+		if (result.ec == std::errc{} && result.ptr == end && targetCount > 0) {
+			spawnController_.SpawnBenchmarkEnemies(player_, enemies_, targetCount);
+		}
+	}
+	std::free(benchmarkEnemies);
 }
 
 void EnemyManager::LoadEnemyTypes(const std::string& filePath)
@@ -47,8 +82,48 @@ void EnemyManager::SetRandomSeed(uint32_t seed)
 	spawnController_.SetRandomSeed(seed ^ 0xA511E9B3u);
 }
 
+void EnemyManager::AppendCollisionTelemetryCsv(uint32_t frame) const
+{
+	if (!collisionTelemetryEnabled_) {
+		return;
+	}
+	const std::string path = DataPaths::Resolve(DataPaths::kCollisionTelemetry);
+	bool writeHeader = true;
+	{
+		std::ifstream existing(path);
+		writeHeader = !existing.good() ||
+			existing.peek() == std::ifstream::traits_type::eof();
+	}
+	std::ofstream file(path, std::ios::app);
+	if (!file.is_open()) {
+		return;
+	}
+	if (writeHeader) {
+		file << "frame,mode,state,level,enemyCount,normalBulletCount,orbitBulletCount,"
+			"queryCount,nearbyCandidateCount,bruteForceCandidateCount,"
+			"candidateReductionPercent,spatialBuildMilliseconds,collisionMilliseconds,"
+			"separationMilliseconds\n";
+	}
+	const auto& telemetry = collisionContext_.telemetry;
+	file << frame << ','
+		<< (collisionContext_.broadPhaseMode == EnemyBroadPhaseMode::BruteForce
+			? "brute_force" : "spatial_grid") << ','
+		<< "scene_stress,0,"
+		<< GetActiveEnemyCount() << ','
+		<< (playerManager_ ? playerManager_->GetNormalBullets().size() : 0) << ','
+		<< (playerManager_ ? playerManager_->GetOrbitBullets().size() : 0) << ','
+		<< telemetry.queryCount << ','
+		<< telemetry.nearbyCandidateCount << ','
+		<< telemetry.bruteForceCandidateCount << ','
+		<< telemetry.CandidateReductionPercent() << ','
+		<< telemetry.spatialBuildMilliseconds << ','
+		<< telemetry.collisionMilliseconds << ','
+		<< telemetry.separationMilliseconds << '\n';
+}
+
 void EnemyManager::Update(float deltaTime)
 {
+	collisionContext_.telemetry = {};
 	spawnController_.Update(
 		deltaTime,
 		player_,
@@ -234,7 +309,8 @@ void EnemyManager::ApplyArcDamage(
 	const Vector3& forward,
 	float radius,
 	float halfAngleRadians,
-	int32_t damage)
+	int32_t damage,
+	float knockStrength)
 {
 	EnemyCollisionSystem::ApplyArcDamage(
 		center,
@@ -245,7 +321,8 @@ void EnemyManager::ApplyArcDamage(
 		enemies_,
 		recentHitEffectPositions_,
 		recentFloatingNumberEvents_,
-		playerManager_);
+		playerManager_,
+		knockStrength);
 }
 
 void EnemyManager::StartBossPhase()

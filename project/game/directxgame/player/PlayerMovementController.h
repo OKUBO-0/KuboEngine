@@ -11,7 +11,9 @@ public:
 		float deltaTime,
 		Vector3& position,
 		float& rotationY,
-		float moveSpeedPerSecond);
+		float moveSpeedPerSecond,
+		float cameraYaw,
+		bool cameraRelativeMovement);
 	bool IsDodging() const { return dodgeTimer_ > 0.0f; }
 	float GetDodgeCooldownRatio() const;
 	void SuppressNextDodgeTrigger()
@@ -23,7 +25,13 @@ private:
 	void UpdateDodge(
 		float deltaTime,
 		const Vector2& moveInput,
-		float& rotationY);
+		float& rotationY,
+		float cameraYaw,
+		bool cameraRelativeMovement);
+	Vector3 ResolveMoveDirection(
+		const Vector2& moveInput,
+		float cameraYaw,
+		bool cameraRelativeMovement) const;
 
 	Vector3 dodgeDirection_{ 0.0f, 0.0f, 1.0f };
 	float dodgeTimer_ = 0.0f;
