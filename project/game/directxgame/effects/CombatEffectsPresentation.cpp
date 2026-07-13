@@ -131,6 +131,35 @@ void QueueFlameShoeZoneCircles(
 	}
 }
 
+void QueueAuraCircle(
+	const DirectXGame::Player& player,
+	const DirectXGame::PlayerManager& playerManager)
+{
+	if (!playerManager.HasAura()) {
+		return;
+	}
+	Engine::LineSystem::Line line;
+	const float radius = playerManager.GetAuraRadius();
+	const Vector3 center = player.GetWorldPosition();
+	const Vector4 outerColor{ 0.45f, 0.82f, 1.0f, 0.58f };
+	const Vector4 innerColor{ 0.76f, 0.95f, 1.0f, 0.34f };
+	DrawGroundCircle(line, center, radius, 0.07f, outerColor, 56);
+	DrawGroundCircle(line, center, radius * 0.72f, 0.09f, innerColor, 40);
+}
+
+void QueueExplosionRangeCircle(
+	const Vector3& center,
+	float radius)
+{
+	Engine::LineSystem::Line line;
+	const Vector4 outerColor{ 1.0f, 0.30f, 0.04f, 0.90f };
+	const Vector4 middleColor{ 1.0f, 0.62f, 0.08f, 0.66f };
+	const Vector4 innerColor{ 1.0f, 0.92f, 0.34f, 0.42f };
+	DrawGroundCircle(line, center, radius, 0.12f, outerColor, 64);
+	DrawGroundCircle(line, center, radius * 0.68f, 0.14f, middleColor, 48);
+	DrawGroundCircle(line, center, radius * 0.34f, 0.16f, innerColor, 32);
+}
+
 }
 
 namespace DirectXGame {
@@ -198,9 +227,19 @@ bool CombatEffectsPresentation::Update(
 		}
 		for (const Vector3& explosionPosition :
 			enemyManager->GetRecentExplosionEffectPositions()) {
-			particleManager->Emit(handles.enemyHitSpark, explosionPosition, 36u);
-			particleManager->Emit(handles.deathSmoke, explosionPosition, 14u);
-			particleManager->Emit(handles.ripple, explosionPosition, 3u);
+			QueueExplosionRangeCircle(
+				explosionPosition,
+				playerManager.GetExplosiveBulletRadius());
+			particleManager->Emit(
+				handles.explosionBurst,
+				explosionPosition,
+				static_cast<uint32_t>((std::max)(0, tuning.explosionBurstCount)));
+			particleManager->Emit(
+				handles.explosionSmoke,
+				explosionPosition,
+				static_cast<uint32_t>((std::max)(0, tuning.explosionSmokeCount)));
+			particleManager->Emit(handles.ripple, explosionPosition, 4u);
+			player.RequestCameraShake(0.13f, 0.62f);
 		}
 		enemyManager->ClearRecentEffectPositions();
 
@@ -234,6 +273,73 @@ bool CombatEffectsPresentation::Update(
 	}
 
 	const Vector3 playerPosition = player.GetWorldPosition();
+	QueueAuraCircle(player, playerManager);
+	for (const std::unique_ptr<NormalBullet>& bullet :
+		playerManager.GetExplosiveBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		particleManager->EmitTrailSegment(
+			handles.flameProjectileTrail,
+			bullet->GetPreviousPosition(),
+			bullet->GetPosition(),
+			0.30f);
+		particleManager->Emit(
+			handles.flameProjectileGlow,
+			bullet->GetPosition(),
+			2u);
+	}
+	for (const std::unique_ptr<NormalBullet>& bullet :
+		playerManager.GetHandgunBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		particleManager->EmitTrailSegment(
+			handles.handgunBulletTrail,
+			bullet->GetPreviousPosition(),
+			bullet->GetPosition(),
+			0.13f);
+	}
+	for (const Vector3& shotPosition :
+		playerManager.GetRecentHandgunShotPositions()) {
+		particleManager->Emit(
+			handles.handgunMuzzleFlash,
+			shotPosition,
+			7u);
+		particleManager->Emit(
+			handles.handgunBulletTrail,
+			shotPosition,
+			3u);
+	}
+	for (const Vector3& reloadPosition :
+		playerManager.GetRecentHandgunReloadPositions()) {
+		particleManager->Emit(
+			handles.handgunReloadSmoke,
+			reloadPosition,
+			5u);
+	}
+	for (const std::unique_ptr<NormalBullet>& bullet :
+		playerManager.GetBoomerangBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		particleManager->EmitTrailSegment(
+			handles.boomerangTrail,
+			bullet->GetPreviousPosition(),
+			bullet->GetPosition(),
+			0.22f);
+	}
+	for (const std::unique_ptr<OrbitBullet>& bullet :
+		playerManager.GetOrbitBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		particleManager->EmitTrailSegment(
+			handles.rockTrail,
+			bullet->GetPreviousPosition(),
+			bullet->GetPosition(),
+			0.18f);
+	}
 	const std::vector<SwordSlashEvent>& swordSlashes =
 		playerManager.GetRecentSwordSlashes();
 	for (size_t slashIndex = 0; slashIndex < swordSlashes.size(); ++slashIndex) {

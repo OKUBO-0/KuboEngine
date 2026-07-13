@@ -20,6 +20,7 @@ enum class PassiveItemType {
 	Evasion,
 	HpRegen,
 	LifeSteal,
+	Knockback,
 	Count,
 };
 

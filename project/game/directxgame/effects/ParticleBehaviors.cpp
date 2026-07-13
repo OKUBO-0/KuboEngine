@@ -1,5 +1,6 @@
 #include "ParticleBehaviors.h"
 #include "ParticleManager.h"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <numbers>
@@ -136,6 +137,82 @@ void SmokeParticleBehavior::Update(Engine::Particle::Particle& particle, float d
 	particle.transform.scale.z += scaleStep;
 	particle.transform.rotate.z += 0.025f * fixedStepScale;
 	particle.currentTime += dt;
+}
+
+ExplosionBurstParticleBehavior::ExplosionBurstParticleBehavior(
+	const Vector4& color,
+	const Settings& settings)
+	: color_(color)
+	, settings_(settings)
+{
+}
+
+Engine::Particle::Particle ExplosionBurstParticleBehavior::Create(
+	std::mt19937& rng,
+	const Vector3& pos)
+{
+	std::uniform_real_distribution<float> angleDist(
+		0.0f,
+		std::numbers::pi_v<float> * 2.0f);
+	std::uniform_real_distribution<float> horizontalDist(
+		settings_.horizontalSpeedMin,
+		settings_.horizontalSpeedMax);
+	std::uniform_real_distribution<float> verticalDist(
+		settings_.verticalSpeedMin,
+		settings_.verticalSpeedMax);
+	std::uniform_real_distribution<float> scaleDist(
+		settings_.scaleMin,
+		settings_.scaleMax);
+	std::uniform_real_distribution<float> colorMixDist(0.0f, 1.0f);
+
+	const float angle = angleDist(rng);
+	const float horizontalSpeed = horizontalDist(rng);
+	const float scale = scaleDist(rng);
+	const float whiteMix = colorMixDist(rng) * 0.42f;
+
+	Engine::Particle::Particle particle{};
+	particle.transform.scale = { scale, scale, scale };
+	particle.transform.rotate = { angle, angle * 0.5f, angle };
+	particle.transform.translate = {
+		pos.x,
+		pos.y + settings_.yOffset,
+		pos.z,
+	};
+	particle.Velocity = {
+		std::cos(angle) * horizontalSpeed,
+		verticalDist(rng),
+		std::sin(angle) * horizontalSpeed,
+	};
+	particle.color = {
+		color_.x + (1.0f - color_.x) * whiteMix,
+		color_.y + (1.0f - color_.y) * whiteMix,
+		color_.z + (1.0f - color_.z) * whiteMix,
+		color_.w,
+	};
+	particle.lifetime = settings_.lifetime;
+	particle.currentTime = 0.0f;
+	return particle;
+}
+
+void ExplosionBurstParticleBehavior::Update(
+	Engine::Particle::Particle& particle,
+	float dt,
+	Engine::Math::Material* /*materialData*/)
+{
+	const float fixedStepScale = dt / (1.0f / 60.0f);
+	particle.transform.translate += particle.Velocity * fixedStepScale;
+	particle.Velocity.y -= settings_.gravity * fixedStepScale;
+	const float grow = settings_.scaleGrow * fixedStepScale;
+	particle.transform.scale.x += grow;
+	particle.transform.scale.y += grow;
+	particle.transform.scale.z += grow;
+	particle.transform.rotate.z += 0.09f * fixedStepScale;
+	particle.currentTime += dt;
+	const float progress = std::clamp(
+		particle.currentTime / particle.lifetime,
+		0.0f,
+		1.0f);
+	particle.color.w = color_.w * std::pow(1.0f - progress, 1.35f);
 }
 
 ConfettiParticleBehavior::ConfettiParticleBehavior(const Settings& settings)

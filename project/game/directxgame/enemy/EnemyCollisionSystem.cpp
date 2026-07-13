@@ -303,7 +303,10 @@ void ApplyEnemyHit(
 	const DirectXGame::DamageResult result = damageOwner
 		? damageOwner->RollDamage(damage)
 		: DirectXGame::DamageResult{ damage, 0 };
-	enemy.TakeDamage(result.damage, knockDirection, knockStrength);
+	const float resolvedKnockStrength = damageOwner
+		? knockStrength * damageOwner->GetKnockbackMultiplier()
+		: knockStrength;
+	enemy.TakeDamage(result.damage, knockDirection, resolvedKnockStrength);
 	if (damageOwner) {
 		damageOwner->ApplyLifeStealOnHit();
 	}
@@ -390,6 +393,7 @@ void CheckExplosiveBulletCollisions(
 	DirectXGame::PlayerManager& playerManager,
 	const EnemyCellMap& spatialMap,
 	std::vector<DirectXGame::Enemy*>& nearbyEnemies,
+	std::vector<Vector3>& explosionEffectPositions,
 	std::vector<Vector3>& hitEffectPositions,
 	std::vector<DirectXGame::FloatingNumberEvent>& numberEvents)
 {
@@ -436,6 +440,7 @@ void CheckExplosiveBulletCollisions(
 			}
 
 			const Vector3 impactPosition = enemy->GetPosition();
+			explosionEffectPositions.push_back(impactPosition);
 			CollectNearbyEnemies(
 				spatialMap,
 				impactPosition,
@@ -659,6 +664,7 @@ void EnemyCollisionSystem::CheckCollisions(
 	std::vector<std::unique_ptr<Enemy>>& enemies,
 	std::vector<Vector3>& hitEffectPositions,
 	std::vector<Vector3>& deathEffectPositions,
+	std::vector<Vector3>& explosionEffectPositions,
 	std::vector<FloatingNumberEvent>& numberEvents)
 {
 	EnemyCollisionContext context;
@@ -669,6 +675,7 @@ void EnemyCollisionSystem::CheckCollisions(
 		context,
 		hitEffectPositions,
 		deathEffectPositions,
+		explosionEffectPositions,
 		numberEvents);
 }
 
@@ -678,6 +685,7 @@ void EnemyCollisionSystem::CheckCollisions(
 	EnemyCollisionContext& context,
 	std::vector<Vector3>& hitEffectPositions,
 	std::vector<Vector3>& deathEffectPositions,
+	std::vector<Vector3>& explosionEffectPositions,
 	std::vector<FloatingNumberEvent>& numberEvents)
 {
 	const SteadyClock::time_point begin = SteadyClock::now();
@@ -700,6 +708,7 @@ void EnemyCollisionSystem::CheckCollisions(
 		playerManager,
 		context.spatialMap,
 		context.nearbyEnemies,
+		explosionEffectPositions,
 		hitEffectPositions,
 		numberEvents);
 	CheckRicochetProjectileCollisions(

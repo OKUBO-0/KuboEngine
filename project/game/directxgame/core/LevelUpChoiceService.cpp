@@ -33,12 +33,12 @@ std::string BowArrowEffect(int32_t level)
 {
 	switch (level) {
 	case 1: return "最寄りの敵へ自動照準 貫通矢";
-	case 2: return "貫通数2";
+	case 2: return "貫通数3";
 	case 3: return "ダメージ+3";
 	case 4: return "矢数2本";
 	case 5: return "弾速+25% サイズ+15%";
 	case 6: return "ダメージ+4";
-	case 7: return "矢数3本 貫通数3";
+	case 7: return "矢数3本 貫通数5";
 	case 8: return "ダメージ+5 弾速+20%";
 	default: return "UPGRADE";
 	}
@@ -47,14 +47,14 @@ std::string BowArrowEffect(int32_t level)
 std::string RockEffect(int32_t level)
 {
 	switch (level) {
-	case 1: return "岩1個 周回攻撃";
-	case 2: return "岩2個";
+	case 1: return "岩2個 周回攻撃";
+	case 2: return "岩3個";
 	case 3: return "回転速度+35% サイズ+20%";
 	case 4: return "ダメージ+3";
-	case 5: return "岩3個";
+	case 5: return "岩4個";
 	case 6: return "回転速度+30% サイズ+20%";
 	case 7: return "ヒット間隔-20%";
-	case 8: return "岩4個 ダメージ+4";
+	case 8: return "岩5個 ダメージ+4";
 	default: return "UPGRADE";
 	}
 }
@@ -144,9 +144,9 @@ std::string BoneEffect(int32_t level)
 
 std::string HandgunEffect(int32_t level)
 {
-	if (level == 1) return "最寄りの敵へ高速射撃";
+	if (level == 1) return "最寄りの敵へ3連射";
 	if (level == 3 || level == 6) return "跳弾回数+1";
-	if (level == 8) return "2連射 ダメージ+4";
+	if (level == 8) return "6連射 ダメージ+4";
 	return level == 2 ? "攻撃間隔-15%" : "ダメージ+3";
 }
 

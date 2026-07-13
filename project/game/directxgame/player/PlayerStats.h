@@ -23,6 +23,7 @@ enum class PlayerStatType {
 	Evasion,
 	HpRegen,
 	LifeSteal,
+	Knockback,
 };
 
 // Additive bonuses are kept by source so character, permanent shop upgrades,
@@ -43,6 +44,7 @@ struct PlayerStatModifiers {
 	float evasion = 0.0f;
 	float hpRegen = 0.0f;
 	float lifeSteal = 0.0f;
+	float knockback = 0.0f;
 	int32_t projectileCount = 0;
 };
 
@@ -137,6 +139,10 @@ public:
 	{
 		return std::clamp(Sum(&PlayerStatModifiers::lifeSteal), 0.0f, 3.0f);
 	}
+	float GetKnockbackMultiplier() const
+	{
+		return CappedMultiplier(&PlayerStatModifiers::knockback, 4.0f, 10.0f);
+	}
 	int32_t GetProjectileCountBonus() const
 	{
 		return character_.projectileCount + permanent_.projectileCount +
@@ -210,6 +216,7 @@ private:
 		case PlayerStatType::Evasion: modifiers.evasion += amount; break;
 		case PlayerStatType::HpRegen: modifiers.hpRegen += amount; break;
 		case PlayerStatType::LifeSteal: modifiers.lifeSteal += amount; break;
+		case PlayerStatType::Knockback: modifiers.knockback += amount; break;
 		}
 	}
 	using FloatMember = float PlayerStatModifiers::*;

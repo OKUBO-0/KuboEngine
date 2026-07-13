@@ -39,6 +39,8 @@ private:
 	float baseAngularSpeed_ = 0.05f;
 	float baseScale_ = 1.0f;
 	float baseHitInterval_ = 0.5f;
+	float spinAngle_ = 0.0f;
+	float spinSpeed_ = 0.115f;
 	bool active_ = false;
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;

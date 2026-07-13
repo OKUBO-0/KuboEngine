@@ -133,6 +133,12 @@ const ResourceProbeStatus& ResourceProbe::Verify()
 
 	const ModelHandle probeModel = GameModelCache::Load("octopus.obj");
 	status.modelLoaded = GameModelCache::Get(probeModel) != nullptr;
+	const ModelHandle fireballModel = GameModelCache::Load("fireball.obj");
+	status.modelLoaded =
+		status.modelLoaded && GameModelCache::Get(fireballModel) != nullptr;
+	const ModelHandle boomerangModel = GameModelCache::Load("boomerang.obj");
+	status.modelLoaded =
+		status.modelLoaded && GameModelCache::Get(boomerangModel) != nullptr;
 
 	std::ifstream csvFile(ResourcePaths::MakeDataPath("playerStatus.csv"));
 	assert(csvFile.is_open());

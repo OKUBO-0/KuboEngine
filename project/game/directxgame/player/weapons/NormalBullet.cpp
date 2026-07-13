@@ -32,7 +32,8 @@ void NormalBullet::InitializeForward(
 	float range,
 	int32_t maxHits,
 	float scale,
-	MovementMode movementMode)
+	MovementMode movementMode,
+	const VisualStyle& visualStyle)
 {
 	position_ = startPosition;
 	previousPosition_ = startPosition;
@@ -43,21 +44,32 @@ void NormalBullet::InitializeForward(
 	traveled_ = 0.0f;
 	remainingHits_ = (std::max)(1, maxHits);
 	scale_ = (std::max)(0.05f, scale);
+	spinAngle_ = 0.0f;
 	active_ = true;
 	movementMode_ = movementMode;
 	returning_ = false;
+	visualStyle_ = visualStyle;
 	hitCooldowns_.clear();
 
-	if (!object_) {
-		const ModelHandle bulletHandle = GameModelCache::Load("bullet.obj");
+	const char* requestedModel = visualStyle_.modelPath
+		? visualStyle_.modelPath
+		: "bullet.obj";
+	if (!object_ || modelPath_ != requestedModel) {
+		const ModelHandle bulletHandle = GameModelCache::Load(requestedModel);
 		object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 		object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
 		GameModelCache::ApplyToObject(*object_, bulletHandle);
 		object_->SetSkyboxFilePath(kEnvironmentTexturePath);
 		object_->SetEnvironmentReflectionStrength(0.0f);
 		object_->SetEnvironmentRoughness(1.0f);
+		modelPath_ = requestedModel;
 	}
-	object_->SetScale({ scale_, scale_, scale_ });
+	object_->SetColor(visualStyle_.color);
+	object_->SetScale({
+		scale_ * visualStyle_.scaleMultiplier.x,
+		scale_ * visualStyle_.scaleMultiplier.y,
+		scale_ * visualStyle_.scaleMultiplier.z,
+		});
 	ApplyTransform();
 	object_->Update();
 
@@ -96,6 +108,9 @@ void NormalBullet::Update(const Vector3& playerPosition, float deltaTime)
 	position_.x += direction_.x * distance;
 	position_.y += direction_.y * distance;
 	position_.z += direction_.z * distance;
+	if (movementMode_ == MovementMode::ReturnToPlayer) {
+		spinAngle_ += 0.24f * (deltaTime / 0.016f);
+	}
 	traveled_ += distance;
 
 	if (traveled_ >= range_) {
@@ -179,7 +194,15 @@ void NormalBullet::ApplyTransform()
 	if (!object_) {
 		return;
 	}
-	object_->SetRotate({ 0.0f, rotationY_, 0.0f });
+	if (movementMode_ == MovementMode::ReturnToPlayer) {
+		object_->SetRotate({
+			0.0f,
+			rotationY_ + spinAngle_ * 0.22f,
+			spinAngle_,
+			});
+	} else {
+		object_->SetRotate({ 0.0f, rotationY_, 0.0f });
+	}
 	object_->SetTranslate(position_);
 }
 

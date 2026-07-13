@@ -227,6 +227,7 @@ void EnemyManager::CheckCollisions(Player* player, PlayerManager* playerManager)
 		collisionContext_,
 		recentHitEffectPositions_,
 		recentDeathEffectPositions_,
+		recentExplosionEffectPositions_,
 		recentFloatingNumberEvents_);
 }
 

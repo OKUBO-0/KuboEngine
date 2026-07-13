@@ -99,11 +99,22 @@ void TestPlayerStatResolution()
 	stats.AddRunModifier(DirectXGame::PlayerStatType::AttackSpeed, 1.0f);
 	stats.AddRunModifier(DirectXGame::PlayerStatType::Duration, 0.5f);
 	stats.AddRunModifier(DirectXGame::PlayerStatType::ProjectileCount, 2.0f);
+	stats.AddRunModifier(DirectXGame::PlayerStatType::Knockback, 0.5f);
 	runtime = stats.Resolve(base);
 	Require(runtime.damage == 17, "damage layers are additive before resolution");
 	Require(runtime.interval == 0.5f, "attack speed reduces interval");
 	Require(runtime.duration == 45.0f, "duration scales weapon lifetime");
 	Require(runtime.projectileCount == 3, "projectile count bonus");
+	Require(stats.GetKnockbackMultiplier() == 1.5f, "knockback multiplier");
+
+	runtime = stats.Resolve(
+		base,
+		DirectXGame::WeaponStatApplicability{
+			true, false, true, false, true, false });
+	Require(runtime.damage == 17, "masked stats keep damage");
+	Require(runtime.interval == 1.0f, "masked stats ignore attack speed");
+	Require(runtime.projectileSpeed == 2.0f, "masked stats ignore projectile speed");
+	Require(runtime.projectileCount == 1, "masked stats ignore projectile count");
 
 	stats.CharacterModifiers().critChance = 0.25f;
 	auto hit = stats.ResolveHit(10, 0.10f);

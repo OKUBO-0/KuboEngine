@@ -1,0 +1,10 @@
+# DirectXGame fireball material
+newmtl fireball_core
+Ka 1.000000 0.300000 0.050000
+Kd 1.000000 0.300000 0.050000
+Ks 0.100000 0.050000 0.000000
+Ke 0.250000 0.050000 0.000000
+Ns 64.000000
+d 1.000000
+illum 2
+map_Kd white1x1.png

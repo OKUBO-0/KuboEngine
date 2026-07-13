@@ -16,10 +16,19 @@ public:
 		Engine::Particle::ParticleGroupHandle enemyHitSpark{};
 		Engine::Particle::ParticleGroupHandle expSpark{};
 		Engine::Particle::ParticleGroupHandle lightningImpact{};
+		Engine::Particle::ParticleGroupHandle explosionBurst{};
+		Engine::Particle::ParticleGroupHandle explosionSmoke{};
 		Engine::Particle::ParticleGroupHandle playerDeathSpark{};
 		Engine::Particle::ParticleGroupHandle deathSmoke{};
 		Engine::Particle::ParticleGroupHandle confetti{};
 		Engine::Particle::ParticleGroupHandle suicideEnemyTrail{};
+		Engine::Particle::ParticleGroupHandle flameProjectileTrail{};
+		Engine::Particle::ParticleGroupHandle flameProjectileGlow{};
+		Engine::Particle::ParticleGroupHandle handgunBulletTrail{};
+		Engine::Particle::ParticleGroupHandle boomerangTrail{};
+		Engine::Particle::ParticleGroupHandle rockTrail{};
+		Engine::Particle::ParticleGroupHandle handgunMuzzleFlash{};
+		Engine::Particle::ParticleGroupHandle handgunReloadSmoke{};
 	};
 
 	struct Tuning {
@@ -30,6 +39,8 @@ public:
 		int32_t enemyDeathSmokeCount = 10;
 		int32_t expSparkCount = 8;
 		int32_t lightningSparkCount = 14;
+		int32_t explosionBurstCount = 44;
+		int32_t explosionSmokeCount = 18;
 		int32_t levelUpConfettiCount = 120;
 		int32_t playerDeathSparkCount = 48;
 		int32_t playerDeathSmokeCount = 18;

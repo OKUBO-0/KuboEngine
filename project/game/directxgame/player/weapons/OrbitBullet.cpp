@@ -23,6 +23,7 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	angularSpeed_ = baseAngularSpeed_;
 	scale_ = baseScale_;
 	hitInterval_ = baseHitInterval_;
+	spinAngle_ = angle * 1.7f;
 	active_ = true;
 	position_ = {
 		center.x + std::cos(angle_) * orbitRadius_,
@@ -38,6 +39,7 @@ void OrbitBullet::Initialize(const Vector3& center, float radius, float angle, f
 	object_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	object_->SetEnvironmentReflectionStrength(0.0f);
 	object_->SetEnvironmentRoughness(1.0f);
+	object_->SetColor({ 0.46f, 0.38f, 0.30f, 1.0f });
 
 	Update(center, 0.0f);
 }
@@ -59,7 +61,9 @@ void OrbitBullet::Update(const Vector3& center, float deltaTime)
 	}
 
 	previousPosition_ = position_;
-	angle_ += angularSpeed_ * (deltaTime / 0.016f);
+	const float fixedStepScale = deltaTime / 0.016f;
+	angle_ += angularSpeed_ * fixedStepScale;
+	spinAngle_ += spinSpeed_ * fixedStepScale;
 	position_ = {
 		center.x + std::cos(angle_) * orbitRadius_,
 		center.y,
@@ -126,7 +130,17 @@ void OrbitBullet::ApplyTransform()
 	if (!object_) {
 		return;
 	}
-	object_->SetScale({ scale_, scale_, scale_ });
+	const float wobble = std::sin(spinAngle_ * 1.7f) * 0.045f;
+	object_->SetRotate({
+		spinAngle_ * 0.72f,
+		-angle_ + spinAngle_,
+		spinAngle_ * 1.18f,
+		});
+	object_->SetScale({
+		scale_ * (1.10f + wobble),
+		scale_ * (0.86f - wobble * 0.35f),
+		scale_ * (0.98f + wobble * 0.55f),
+		});
 	object_->SetTranslate(position_);
 }
 

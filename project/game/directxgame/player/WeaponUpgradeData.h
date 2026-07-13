@@ -130,7 +130,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kBoneUpgradeMetadata{
 
 inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kHandgunUpgradeMetadata{ {
 	{},
-	{ WeaponUpgradeRarity::Common, "Core" },
+	{ WeaponUpgradeRarity::Common, "Core / Quantity" },
 	{ WeaponUpgradeRarity::Common, "Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Ricochet" },
 	{ WeaponUpgradeRarity::Common, "Damage" },

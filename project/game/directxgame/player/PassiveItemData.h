@@ -21,7 +21,7 @@ struct PassiveItemDefinition {
 inline constexpr int32_t kPassiveItemMaxLevel = 8;
 inline constexpr size_t kMaxEquippedPassiveItems = 6;
 
-inline constexpr std::array<PassiveItemDefinition, 17> kPassiveItemDefinitions{ {
+inline constexpr std::array<PassiveItemDefinition, 18> kPassiveItemDefinitions{ {
 	{ PassiveItemType::Damage, PlayerStatType::Damage, "攻撃の書", "ダメージ+10%", "ui/game/lvup/attack_icon.png", 0.10f },
 	{ PassiveItemType::MaxHp, PlayerStatType::Damage, "生命の書", "最大HP+15", "ui/game/lvup/maxhp_icon.png", 15.0f },
 	{ PassiveItemType::MoveSpeed, PlayerStatType::MovementSpeed, "俊足の書", "移動速度+8%", "ui/game/lvup/speed_icon.png", 0.08f },
@@ -39,6 +39,7 @@ inline constexpr std::array<PassiveItemDefinition, 17> kPassiveItemDefinitions{ 
 	{ PassiveItemType::Evasion, PlayerStatType::Evasion, "回避の書", "回避+4%", "ui/game/lvup/icon_common_unknown.png", 0.04f },
 	{ PassiveItemType::HpRegen, PlayerStatType::HpRegen, "再生の書", "HP回復+0.25/秒", "ui/game/lvup/heal_icon.png", 0.25f },
 	{ PassiveItemType::LifeSteal, PlayerStatType::LifeSteal, "吸血の書", "吸血率+3%", "ui/game/lvup/icon_common_unknown.png", 0.03f },
+	{ PassiveItemType::Knockback, PlayerStatType::Knockback, "吹き飛ばしの書", "ノックバック+12%", "ui/game/lvup/icon_common_unknown.png", 0.12f },
 } };
 
 inline constexpr size_t PassiveItemIndex(PassiveItemType type)

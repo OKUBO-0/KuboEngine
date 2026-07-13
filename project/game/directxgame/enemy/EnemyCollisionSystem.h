@@ -57,6 +57,7 @@ public:
 		std::vector<std::unique_ptr<Enemy>>& enemies,
 		std::vector<Vector3>& hitEffectPositions,
 		std::vector<Vector3>& deathEffectPositions,
+		std::vector<Vector3>& explosionEffectPositions,
 		std::vector<FloatingNumberEvent>& numberEvents);
 	static void CheckCollisions(
 		Player& player,
@@ -64,6 +65,7 @@ public:
 		EnemyCollisionContext& context,
 		std::vector<Vector3>& hitEffectPositions,
 		std::vector<Vector3>& deathEffectPositions,
+		std::vector<Vector3>& explosionEffectPositions,
 		std::vector<FloatingNumberEvent>& numberEvents);
 	static void ApplyAreaDamage(
 		const Vector3& center,

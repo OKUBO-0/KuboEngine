@@ -79,6 +79,33 @@ private:
 	Settings settings_{};
 };
 
+class ExplosionBurstParticleBehavior : public Engine::Particle::IParticleBehavior {
+public:
+	struct Settings {
+		float lifetime = 0.34f;
+		float horizontalSpeedMin = 0.16f;
+		float horizontalSpeedMax = 0.42f;
+		float verticalSpeedMin = 0.04f;
+		float verticalSpeedMax = 0.18f;
+		float scaleMin = 0.22f;
+		float scaleMax = 0.55f;
+		float scaleGrow = 0.035f;
+		float gravity = 0.010f;
+		float yOffset = 0.42f;
+	};
+
+	explicit ExplosionBurstParticleBehavior(
+		const Vector4& color = { 1.0f, 0.38f, 0.06f, 1.0f },
+		const Settings& settings = Settings{});
+
+	Engine::Particle::Particle Create(std::mt19937& rng, const Vector3& pos) override;
+	void Update(Engine::Particle::Particle& particle, float dt, Engine::Math::Material* materialData) override;
+
+private:
+	Vector4 color_{ 1.0f, 0.38f, 0.06f, 1.0f };
+	Settings settings_{};
+};
+
 class ConfettiParticleBehavior : public Engine::Particle::IParticleBehavior {
 public:
 	struct Settings {
