@@ -7,6 +7,7 @@
 #include "Matrix4x4.h"
 #include <MyMath.h>
 #include <cstring>
+#include <memory>
 
 namespace Engine::Graphics2D {
 
@@ -40,12 +41,15 @@ void Sprite::Update()
 
 void Sprite::Draw()
 {
+    const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+        spriteCommon_->GetDxCommon();
+    ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
     const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
         UploadFrameConstant(&materialData_, sizeof(materialData_));
     const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
         UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
     const Engine::Base::DirectXCommon::FrameUploadAllocation vertexAllocation =
-        spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+        dxCommon->AllocateFrameUpload(
             sizeof(vertexData_),
             alignof(VertexData));
     std::memcpy(
@@ -53,7 +57,7 @@ void Sprite::Draw()
         vertexData_.data(),
         sizeof(vertexData_));
     const Engine::Base::DirectXCommon::FrameUploadAllocation indexAllocation =
-        spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+        dxCommon->AllocateFrameUpload(
             sizeof(indexData_),
             alignof(uint32_t));
     std::memcpy(
@@ -72,20 +76,20 @@ void Sprite::Draw()
     };
 
     // 頂点バッファ設定
-    spriteCommon_->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView);
-    spriteCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
+    commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+    commandList->IASetIndexBuffer(&indexBufferView);
 
     // マテリアルCBV設定 (RootParameter[0])
-    spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAddress);
+    commandList->SetGraphicsRootConstantBufferView(0, materialAddress);
 
     // テクスチャSRV設定 (RootParameter[1])
-    spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_));
+    commandList->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_));
 
     // 行列CBV設定 (RootParameter[2])
-    spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(2, transformAddress);
+    commandList->SetGraphicsRootConstantBufferView(2, transformAddress);
 
     // インデックス付き描画
-    spriteCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 }
 
 void Sprite::AdjustTextureSize()
@@ -171,8 +175,10 @@ D3D12_GPU_VIRTUAL_ADDRESS Sprite::UploadFrameConstant(
     const void* data,
     size_t size)
 {
+    const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+        spriteCommon_->GetDxCommon();
     const Engine::Base::DirectXCommon::FrameUploadAllocation allocation =
-        spriteCommon_->GetDxCommon()->AllocateFrameUpload(size, 256);
+        dxCommon->AllocateFrameUpload(size, 256);
     std::memcpy(allocation.cpuAddress, data, size);
     return allocation.gpuAddress;
 }

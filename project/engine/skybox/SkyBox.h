@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <memory>
 #include <string>
 #include <vector>
 #include "RenderingData.h"
@@ -50,7 +51,7 @@ private:
 	void InitializeMaterial();
 
 	Engine::Base::SrvManager* srvManager_ = nullptr;
-	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
+	std::shared_ptr<Engine::Base::DirectXCommon> dxCommon_;
 
 	//トランスフォーム
 	TransformationMatrix transformationMatrixData_{};

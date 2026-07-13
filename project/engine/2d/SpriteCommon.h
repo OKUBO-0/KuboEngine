@@ -19,7 +19,7 @@ public:
     /// @brief Sprite 描画の共通リソースを初期化する
     /// @param dxCommon DirectX 共通管理クラス
     /// @return なし
-    void Initialize(Engine::Base::DirectXCommon* dxCommon);
+    void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon);
 
     /// @brief 共通管理インスタンスを解放する
     /// @param なし
@@ -31,7 +31,8 @@ public:
     /// @return なし
     void CommonDraw();
 
-    Engine::Base::DirectXCommon* GetDxCommon() const { return dxCommon_; }
+    /// @brief DirectX 共通管理を shared_ptr で返し、呼び出し側の一時保持中に破棄されないようにする
+    std::shared_ptr<Engine::Base::DirectXCommon> GetDxCommon() const { return dxCommon_.lock(); }
 
 private:
     SpriteCommon() = default;
@@ -39,7 +40,8 @@ private:
     SpriteCommon(const SpriteCommon&) = delete;
     SpriteCommon& operator=(const SpriteCommon&) = delete;
 
-    Engine::Base::DirectXCommon* dxCommon_ = nullptr; // DX共通クラス参照
+    std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_; // Framework所有。公開時だけ shared_ptr 化する
+    Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr; // フレーム内描画用の非所有キャッシュ
     std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_; // グラフィックスパイプライン
 };
 

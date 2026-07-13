@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <numbers>
 
 namespace {
@@ -108,6 +109,9 @@ void Object3D::SkinClusterUpdate(const SkinCluster& skinCluster, const Skeleton&
 
 void Object3D::Draw()
 {
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		object3DCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
 	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
 		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
 	const D3D12_GPU_VIRTUAL_ADDRESS cameraAddress =
@@ -117,10 +121,10 @@ void Object3D::Draw()
 	const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
 		UploadFrameConstant(&materialData_, sizeof(materialData_));
 
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformAddress);
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraAddress);
+	commandList->SetGraphicsRootConstantBufferView(1, transformAddress);
+	commandList->SetGraphicsRootConstantBufferView(4, cameraAddress);
 	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(5, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentAddress);
+	commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
 	object3DCommon_->BindSceneLighting();
 	if (model_) {
 		model_->Draw(materialAddress);
@@ -133,6 +137,9 @@ void Object3D::DrawSkinning()
 		return;
 	}
 
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		object3DCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
 	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
 		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
 	const D3D12_GPU_VIRTUAL_ADDRESS cameraAddress =
@@ -143,9 +150,9 @@ void Object3D::DrawSkinning()
 		UploadFrameConstant(&materialData_, sizeof(materialData_));
 	const size_t paletteBytes = sizeof(WellForGPU) * skinPaletteData_.size();
 	const Engine::Base::DirectXCommon::FrameUploadAllocation paletteAllocation =
-		object3DCommon_->GetDxCommon()->AllocateFrameUpload(paletteBytes, sizeof(WellForGPU));
+		dxCommon->AllocateFrameUpload(paletteBytes, sizeof(WellForGPU));
 	std::memcpy(paletteAllocation.cpuAddress, skinPaletteData_.data(), paletteBytes);
-	const uint32_t frameIndex = object3DCommon_->GetDxCommon()->GetCurrentFrameIndex();
+	const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
 	const uint32_t paletteSrvIndex = skinPaletteSrvIndices_[frameIndex];
 	object3DCommon_->GetSrvManager()->CreateSRVforStructuredBuffer(
 		paletteSrvIndex,
@@ -154,13 +161,13 @@ void Object3D::DrawSkinning()
 		sizeof(WellForGPU),
 		paletteAllocation.offset / sizeof(WellForGPU));
 
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformAddress);
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(4, cameraAddress);
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(
+	commandList->SetGraphicsRootConstantBufferView(1, transformAddress);
+	commandList->SetGraphicsRootConstantBufferView(4, cameraAddress);
+	commandList->SetGraphicsRootDescriptorTable(
 		7,
 		object3DCommon_->GetSrvManager()->GetGPUDescriptorHandle(paletteSrvIndex));
 	object3DCommon_->GetSrvManager()->SetGraphicsRootDescriptorTable(5, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(skyboxFilePath_));
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(6, environmentAddress);
+	commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
 	object3DCommon_->BindSceneLighting(true);
 	if (model_) {
 		model_->Draw(materialAddress);
@@ -186,8 +193,9 @@ void Object3D::DrawShadow()
 	}
 	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
 		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
-	object3DCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(
-		0, transformAddress);
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		object3DCommon_->GetDxCommon();
+	dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, transformAddress);
 	model_->DrawGeometry();
 }
 
@@ -438,8 +446,10 @@ D3D12_GPU_VIRTUAL_ADDRESS Object3D::UploadFrameConstant(
 	const void* data,
 	size_t size)
 {
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		object3DCommon_->GetDxCommon();
 	const Engine::Base::DirectXCommon::FrameUploadAllocation allocation =
-		object3DCommon_->GetDxCommon()->AllocateFrameUpload(size, 256);
+		dxCommon->AllocateFrameUpload(size, 256);
 	std::memcpy(allocation.cpuAddress, data, size);
 	return allocation.gpuAddress;
 }

@@ -24,7 +24,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief 共通管理インスタンスを解放する
 	/// @param なし
@@ -37,8 +37,8 @@ public:
 	void commonDraw();
 	
 
-	//DXCommon
-	Engine::Base::DirectXCommon* GetDxCommon()const { return dxCommon_; }
+	/// @brief DirectX 共通管理を shared_ptr で返し、呼び出し側の一時保持中に破棄されないようにする
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDxCommon() const { return dxCommon_.lock(); }
 	//srvManager
 	Engine::Base::SrvManager* GetSrvManager()const { return srvManager_; }
 
@@ -49,7 +49,8 @@ private:
 	SkyBoxCommon& operator=(const SkyBoxCommon&) = delete;
 
 	// DirectX共通
-	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
+	Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr;
 	// シェーダーリソースマネージャー
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 	// パイプライン

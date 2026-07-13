@@ -50,7 +50,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief 共通管理インスタンスを解放する
 	/// @param なし
@@ -78,8 +78,8 @@ public:
 	/// @param color ライン色
 	/// @return なし
 	void DrawLine(const Vector3& start, const Vector3& end, const Vector4& color);
-	//DXCommon
-	Engine::Base::DirectXCommon* GetDxCommon()const { return dxCommon_; }
+	/// @brief DirectX 共通管理を shared_ptr で返し、呼び出し側の一時保持中に破棄されないようにする
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDxCommon() const { return dxCommon_.lock(); }
 	//SrvManager
 	Engine::Base::SrvManager* GetSrvManager()const { return srvManager_; }
 
@@ -98,7 +98,8 @@ private:
 	static const Vector4 kDefaultLineColor_;
 	static const std::array<VertexDataLine, 2> kDefaultLineVertices_;
 
-	Engine::Base::DirectXCommon* dxCommon_;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
+	Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr;
 	Engine::Base::SrvManager* srvManager_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;
 

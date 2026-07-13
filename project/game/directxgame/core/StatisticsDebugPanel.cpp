@@ -38,7 +38,7 @@ void StatisticsDebugPanel::Draw(
 		softCapTelemetry_.Capture(gameFrameCount, enemyManager, playerManager);
 	Engine::Particle::ParticleManager* particleManager =
 		Engine::Particle::ParticleManager::GetInstance();
-	Engine::Base::DirectXCommon* dxCommon =
+	auto dxCommon =
 		Engine::Graphics2D::SpriteCommon::GetInstance()->GetDxCommon();
 
 	ImGui::Text("State: %s", stateName);

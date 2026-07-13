@@ -6,6 +6,7 @@
 #include "WinApp.h"
 #include <cassert>
 #include <imgui.h>
+#include <string>
 
 namespace Engine::Base {
 
@@ -136,8 +137,12 @@ void OffscreenRenderManager::End()
 
 void OffscreenRenderManager::Draw()
 {
-	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateCopyImage(currentEffectType_));
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureCopyImage());
+	const Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState =
+		graphicsPipeline_->GetGraphicsPipelineStateCopyImageHandle(currentEffectType_);
+	const Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature =
+		graphicsPipeline_->GetRootSignatureHandle("PostEffect." + std::to_string(static_cast<int>(currentEffectType_)));
+	dxCommon_->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
 	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	//heapの設定

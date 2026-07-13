@@ -19,6 +19,7 @@ class EnemyManager;
 class Player;
 
 struct SwordSlashEvent {
+	// 演出側が 1 フレーム分の斬撃を再構成するための軽量イベント。
 	Vector3 center{};
 	Vector3 forward{ 0.0f, 0.0f, 1.0f };
 	float radius = 0.0f;
@@ -27,6 +28,7 @@ struct SwordSlashEvent {
 };
 
 struct FlameZoneVisual {
+	// 炎床の描画に必要な情報だけを公開する。ダメージタイマーなどの内部状態は持たない。
 	Vector3 position{};
 	Vector3 direction{ 0.0f, 0.0f, 1.0f };
 	float radius = 0.0f;
@@ -36,6 +38,8 @@ struct FlameZoneVisual {
 
 class PlayerWeaponController final {
 public:
+	// 武器ごとの最大レベルと実体数上限。
+	// レベルアップ候補生成、デバッグ強化、ソフトキャップ表示で同じ値を参照する。
 	static constexpr int32_t kNormalBulletMaxLevel = 8;
 	static constexpr int32_t kOrbitBulletMaxLevel = 8;
 	static constexpr int32_t kLightningMaxLevel = 8;
@@ -49,6 +53,8 @@ public:
 	static constexpr size_t kMaxEquippedWeaponTypes = 4;
 	static constexpr size_t kMaxActiveNormalBullets = 96;
 
+	// 初期化とデータ駆動設定。
+	// CSV のキーを内部パラメータに反映し、武器追加時にコード以外の調整余地を残す。
 	void Initialize(const std::string& upgradeSettingsPath);
 	bool LoadStatusValue(
 		const std::string& key,
@@ -61,6 +67,8 @@ public:
 		const PlayerStats& playerStats);
 	void Draw();
 
+	// 外部公開する強化 API。
+	// PlayerManager からのみ呼ばれる想定で、取得済みフラグ・レベル・弾再構築をここで一貫処理する。
 	void UpgradeNormalBullets(Player* player);
 	void AddOrbitBullets(Player* player);
 	void UpgradeOrbitBullets(Player* player);
@@ -80,6 +88,8 @@ public:
 	size_t GetEquippedWeaponCount() const;
 	bool CanAcquireWeapon(WeaponType type) const;
 
+	// 弾・演出イベントの参照公開。
+	// 所有権は Controller 側に残し、HUD/演出/デバッグはフレーム内読み取りだけ行う。
 	const std::vector<std::unique_ptr<NormalBullet>>&
 		GetNormalBullets() const
 	{
@@ -102,6 +112,14 @@ public:
 	const auto& GetBoneBullets() const { return boneWeapon_.GetBullets(); }
 	const auto& GetHandgunBullets() const { return handgunWeapon_.GetBullets(); }
 	const auto& GetBoomerangBullets() const { return boomerangWeapon_.GetBullets(); }
+	const std::vector<Vector3>& GetRecentHandgunShotPositions() const
+	{
+		return handgunWeapon_.GetRecentShotPositions();
+	}
+	const std::vector<Vector3>& GetRecentHandgunReloadPositions() const
+	{
+		return handgunWeapon_.GetRecentReloadPositions();
+	}
 	float GetLightningEffectTimer() const
 	{
 		return lightningEffectTimer_;
@@ -215,6 +233,12 @@ public:
 			{ 8.0f + auraDamageBonus_ },
 			GetWeaponStatApplicability(WeaponType::Aura)).damage;
 	}
+	float GetAuraRadius(const PlayerStats& stats) const
+	{
+		return stats.Resolve(
+			{ 1.0f, 1.0f, 1.0f, 1.0f, auraRadius_, 1 },
+			GetWeaponStatApplicability(WeaponType::Aura)).areaSize;
+	}
 	int32_t GetFlameShoesDamage(const PlayerStats& stats) const
 	{
 		return stats.Resolve(
@@ -258,6 +282,8 @@ public:
 	void ResetBulletTelemetry();
 
 private:
+	// 武器ごとの更新単位。
+	// Update() から固定順で呼び、弾生成、敵検索、ダメージ適用、演出イベント生成を分離する。
 	void UpdateNormalBullets(
 		float deltaTime,
 		Player* player,
@@ -294,6 +320,9 @@ private:
 	Vector3 ResolveAimDirection(
 		const Player& player,
 		const EnemyManager* enemyManager) const;
+
+	// 弾プール管理。
+	// 頻繁な生成破棄を避け、上限超過時は非アクティブ弾を再利用する。
 	NormalBullet& AcquireExplosiveBullet();
 	void RecycleExplosiveBullet(size_t index);
 	void RecycleInactiveExplosiveBullets();
@@ -305,6 +334,9 @@ private:
 	void ApplySwordUpgradeLevel(int32_t level);
 	void ApplyAuraUpgradeLevel(int32_t level);
 	void ApplyFlameShoesUpgradeLevel(int32_t level);
+
+	// CSV 設定の参照ヘルパー。
+	// 未設定キーは fallback を使い、古い CSV でも起動できるようにする。
 	int32_t GetLevelUpgradeSettingInt(
 		const std::string& prefix,
 		int32_t level,
@@ -319,6 +351,7 @@ private:
 		const std::string& key,
 		float fallback) const;
 
+	// 通常弾。最初から有効な基礎武器で、弾プールと発射間隔を持つ。
 	std::vector<std::unique_ptr<NormalBullet>> normalBullets_;
 	std::vector<std::unique_ptr<NormalBullet>> normalBulletPool_;
 	bool hasNormalBullets_ = true;
@@ -335,6 +368,7 @@ private:
 	size_t normalBulletPruneCount_ = 0;
 	float normalBulletMinInterval_ = 0.18f;
 
+	// 周回弾。プレイヤー周辺に弾を再配置するため、レベル変更時に Rebuild する。
 	std::vector<std::unique_ptr<OrbitBullet>> orbitBullets_;
 	bool hasOrbitBullets_ = false;
 	int32_t orbitBulletLevel_ = 0;
@@ -349,6 +383,7 @@ private:
 	float orbitHitInterval_ = 0.5f;
 	float orbitHitIntervalUpgradeMultiplier_ = 0.8f;
 
+	// 雷。実弾を持たず、一定間隔で EnemyManager から候補位置を取得して範囲ダメージを入れる。
 	bool hasLightning_ = false;
 	int32_t lightningLevel_ = 0;
 	int32_t lightningStrikeCount_ = 1;
@@ -359,6 +394,7 @@ private:
 	std::vector<Vector3> lightningEffectTargets_;
 	float lightningEffectTimer_ = 0.0f;
 
+	// 爆発弾。通常弾と同じ NormalBullet 実体を使い、着弾時の範囲ダメージだけ別扱いにする。
 	std::vector<std::unique_ptr<NormalBullet>> explosiveBullets_;
 	std::vector<std::unique_ptr<NormalBullet>> explosiveBulletPool_;
 	bool hasExplosiveBullets_ = false;
@@ -374,6 +410,7 @@ private:
 	float explosiveBurstTimer_ = 0.0f;
 	float explosiveBurstInterval_ = 0.14f;
 
+	// 剣。弾を生成せず、前方扇形の即時ダメージと斬撃イベントを発行する。
 	bool hasSword_ = false;
 	int32_t swordLevel_ = 0;
 	int32_t swordDamageBonus_ = 0;
@@ -385,6 +422,7 @@ private:
 	float swordKnockbackStrength_ = 0.8f;
 	std::vector<SwordSlashEvent> recentSwordSlashes_;
 
+	// オーラ。プレイヤー中心の周期パルスとして扱い、演出は auraPulseThisFrame_ を参照する。
 	bool hasAura_ = false;
 	int32_t auraLevel_ = 0;
 	int32_t auraDamageBonus_ = 0;
@@ -394,6 +432,7 @@ private:
 	bool auraPulseThisFrame_ = false;
 
 	struct FlameZone {
+		// ダメージ判定用の内部状態。描画へは FlameZoneVisual に変換して渡す。
 		Vector3 position{};
 		Vector3 direction{ 0.0f, 0.0f, 1.0f };
 		float radius = 0.0f;
@@ -402,6 +441,7 @@ private:
 		float damageTimer = 0.0f;
 	};
 	static constexpr size_t kMaxFlameZones = 36;
+	// 炎靴。移動方向に複数の炎床を置き、短時間だけ範囲ダメージを継続する。
 	bool hasFlameShoes_ = false;
 	int32_t flameShoesLevel_ = 0;
 	int32_t flameShoesDamageBonus_ = 0;
@@ -416,6 +456,8 @@ private:
 	std::vector<FlameZone> flameZones_;
 	std::vector<FlameZoneVisual> flameZoneVisuals_;
 	std::vector<Vector3> recentFlameZoneSpawns_;
+
+	// 汎用自動投射武器。個別の弾種差分は AutoProjectileWeapon 側へ閉じ込める。
 	BoneWeapon boneWeapon_{};
 	HandgunWeapon handgunWeapon_{};
 	BoomerangWeapon boomerangWeapon_{};

@@ -27,14 +27,14 @@ LineCommon* LineCommon::GetInstance()
 void LineCommon::InitializePipeline()
 {
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	graphicsPipeline_->Initialize(dxCommon_);
+	graphicsPipeline_->Initialize(dxCommonRaw_);
 	graphicsPipeline_->CreateLine();
 }
 
 void LineCommon::InitializeVertexResources()
 {
 	const size_t vertexBytes = sizeof(VertexDataLine) * linevertices.size();
-	vertexResource_ = dxCommon_->CreateDefaultBufferResource(
+	vertexResource_ = dxCommonRaw_->CreateDefaultBufferResource(
 		linevertices.data(),
 		vertexBytes,
 		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
@@ -43,9 +43,10 @@ void LineCommon::InitializeVertexResources()
 	vertexBufferView_.StrideInBytes = sizeof(VertexDataLine);
 }
 
-void LineCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+void LineCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
 	dxCommon_ = dxCommon;
+	dxCommonRaw_ = dxCommon.get();
 	srvManager_ = srvManager;
 	InitializePipeline();
 	InitializeVertexResources();
@@ -76,21 +77,22 @@ void LineCommon::Finalize()
 		}
 	}
 	graphicsPipeline_.reset();
-	if (dxCommon_) {
-		dxCommon_->UntrackResourceState(vertexResource_.Get());
+	if (dxCommonRaw_) {
+		dxCommonRaw_->UntrackResourceState(vertexResource_.Get());
 	}
 	vertexResource_.Reset();
 	instances_.clear();
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
+	dxCommonRaw_ = nullptr;
 	srvManager_ = nullptr;
 }
 
 void LineCommon::CommonDraw()
 {
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureLine());
-	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateLine());
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureLine());
+	dxCommonRaw_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateLine());
 	// 1本ずつ独立した線なので LINESTRIP ではなく LINELIST
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+	dxCommonRaw_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
 }
 
 void LineCommon::Update()
@@ -103,14 +105,14 @@ void LineCommon::Draw()
 	if (instances_.empty()) return;
 
 	const Engine::Base::DirectXCommon::FrameUploadAllocation cameraAllocation =
-		dxCommon_->AllocateFrameUpload(sizeof(CameraBufferforGpu), 256);
+		dxCommonRaw_->AllocateFrameUpload(sizeof(CameraBufferforGpu), 256);
 	memcpy(cameraAllocation.cpuAddress, &cameraData_, sizeof(cameraData_));
 	const size_t instanceSize =
 		sizeof(LineInstanceData) * instances_.size();
 	const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
-		dxCommon_->AllocateFrameUpload(instanceSize, sizeof(LineInstanceData));
+		dxCommonRaw_->AllocateFrameUpload(instanceSize, sizeof(LineInstanceData));
 	memcpy(instanceAllocation.cpuAddress, instances_.data(), instanceSize);
-	const uint32_t frameIndex = dxCommon_->GetCurrentFrameIndex();
+	const uint32_t frameIndex = dxCommonRaw_->GetCurrentFrameIndex();
 	const uint32_t srvIndex = instanceSrvIndices_[frameIndex];
 	srvManager_->CreateSRVforStructuredBuffer(
 		srvIndex,
@@ -120,13 +122,13 @@ void LineCommon::Draw()
 		instanceAllocation.offset / sizeof(LineInstanceData));
 
 	CommonDraw();
-	dxCommon_->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView_);
+	dxCommonRaw_->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView_);
 	// RootParameter[0] → b0：カメラ（CBV）
-	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootConstantBufferView(
 		0,
 		cameraAllocation.gpuAddress);
 	srvManager_->SetGraphicsRootDescriptorTable(1, srvIndex);
-	dxCommon_->GetCommandList()->DrawInstanced(2, static_cast<UINT>(instances_.size()), 0, 0);
+	dxCommonRaw_->GetCommandList()->DrawInstanced(2, static_cast<UINT>(instances_.size()), 0, 0);
 
 	instances_.clear(); // ← 正しい変数名
 

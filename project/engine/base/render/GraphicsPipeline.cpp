@@ -179,6 +179,7 @@ void GraphicsPipeline::Create()
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 	}, graphicsPipelineState.GetAddressOf());
+	RegisterPipeline("Object3D", rootSignature, graphicsPipelineState);
 
 }
 
@@ -216,6 +217,7 @@ void GraphicsPipeline::CreateParticle()
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 	}, graphicsPipelineStateParticle.GetAddressOf());
+	RegisterPipeline("Particle", rootSignatureParticle, graphicsPipelineStateParticle);
 
 }
 
@@ -254,6 +256,7 @@ void GraphicsPipeline::CreateSprite()
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 	}, graphicsPipelineStateSprite.GetAddressOf());
+	RegisterPipeline("Sprite", rootSignatureSprite, graphicsPipelineStateSprite);
 
 }
 
@@ -297,6 +300,7 @@ void GraphicsPipeline::CreateShadowMap()
 		DXGI_FORMAT_D32_FLOAT,
 		"ID3D12Device::CreateGraphicsPipelineState shadow map",
 	}, graphicsPipelineStateShadowMap.GetAddressOf());
+	RegisterPipeline("ShadowMap", rootSignatureShadowMap, graphicsPipelineStateShadowMap);
 }
 
 void GraphicsPipeline::RootSignatureShadowMapCreate()
@@ -326,6 +330,7 @@ void GraphicsPipeline::CreateSkinning()
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 	}, graphicsPipelineStateSkinning.GetAddressOf());
+	RegisterPipeline("Skinning", rootSignatureSkinning, graphicsPipelineStateSkinning);
 }
 
 void GraphicsPipeline::CreateLine()
@@ -350,6 +355,7 @@ void GraphicsPipeline::CreateLine()
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE,
 	}, graphicsPipelineStateLine.GetAddressOf());
+	RegisterPipeline("Line", rootSignatureLine, graphicsPipelineStateLine);
 }
 
 
@@ -371,8 +377,11 @@ void GraphicsPipeline::CreateCopyImage(PostEffectType type, const std::wstring& 
 	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
 	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDisabledDepthStencilDesc();
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
-	CreateGraphicsPipelineState(dxCommon_, {
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso =
+		CreateAndRegisterPipelineState(
+			"PostEffect." + std::to_string(static_cast<int>(type)),
+			rootSignatureCopyImage,
+			{
 		rootSignatureCopyImage.Get(),
 		inputLayoutDesc,
 		vertexShaderBlob.Get(),
@@ -381,7 +390,7 @@ void GraphicsPipeline::CreateCopyImage(PostEffectType type, const std::wstring& 
 		rasterizerDesc,
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	}, pso.GetAddressOf());
+	});
 
 	// 後段描画で種類ごとに切り替えられるよう PSO を保持する
 	copyImagePipelines_[type] = pso;
@@ -426,6 +435,7 @@ void GraphicsPipeline::CreateSkybox()
 		depthStencilDesc,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
 	}, graphicsPipelineStateSkybox.GetAddressOf());
+	RegisterPipeline("Skybox", rootSignatureSkybox, graphicsPipelineStateSkybox);
 }
 
 void GraphicsPipeline::RootSignatureSkyboxCreate()
@@ -439,6 +449,62 @@ ID3D12PipelineState* GraphicsPipeline::GetGraphicsPipelineStateCopyImage(PostEff
 		return it->second.Get();
 	}
 	return nullptr; // または assert(false)
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::GetGraphicsPipelineStateCopyImageHandle(PostEffectType type) const
+{
+	auto it = copyImagePipelines_.find(type);
+	if (it != copyImagePipelines_.end()) {
+		return it->second;
+	}
+	return nullptr;
+}
+
+void GraphicsPipeline::RegisterPipeline(
+	const std::string& key,
+	const Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSignature,
+	const Microsoft::WRL::ComPtr<ID3D12PipelineState>& pipelineState)
+{
+	pipelineRegistry_[key] = { rootSignature, pipelineState };
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::CreateAndRegisterPipelineState(
+	const std::string& key,
+	const Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSignature,
+	const GraphicsPipelineStateRequest& request)
+{
+	GraphicsPipelineStateRequest adjustedRequest = request;
+	adjustedRequest.rootSignature = rootSignature.Get();
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
+	CreateGraphicsPipelineState(
+		dxCommon_,
+		adjustedRequest,
+		pipelineState.GetAddressOf());
+	RegisterPipeline(key, rootSignature, pipelineState);
+	return pipelineState;
+}
+
+const GraphicsPipeline::PipelineResourceSet*
+GraphicsPipeline::FindPipeline(const std::string& key) const
+{
+	const auto it = pipelineRegistry_.find(key);
+	return it != pipelineRegistry_.end() ? &it->second : nullptr;
+}
+
+Microsoft::WRL::ComPtr<ID3D12RootSignature>
+GraphicsPipeline::GetRootSignatureHandle(const std::string& key) const
+{
+	const PipelineResourceSet* pipeline = FindPipeline(key);
+	return pipeline ? pipeline->rootSignature : nullptr;
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::GetPipelineStateHandle(const std::string& key) const
+{
+	const PipelineResourceSet* pipeline = FindPipeline(key);
+	return pipeline ? pipeline->pipelineState : nullptr;
 }
 
 void GraphicsPipeline::Initialize(Engine::Base::DirectXCommon* dxCommon)

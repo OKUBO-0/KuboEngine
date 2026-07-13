@@ -1,6 +1,7 @@
 #pragma once
 #include <d3d12.h>
 #include <wrl.h>
+#include "PipelineStateBuilder.h"
 #include <map>
 #include <string>
 
@@ -14,6 +15,11 @@ class DirectXCommon;
 class GraphicsPipeline
 {
 public:
+	struct PipelineResourceSet {
+		Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature;
+		Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
+	};
+
 	/// @brief DirectX 共通参照を保持する
 	/// @param dxCommon DirectX 共通管理
 	/// @return なし
@@ -55,6 +61,29 @@ public:
 	/// @brief スカイボックス用ルートシグネチャを生成する
 	void RootSignatureSkyboxCreate();
 
+	/// @brief 任意キーでパイプライン資源を登録する
+	/// @details FW 側の共通クラスでも、描画種別を getter 追加だけに閉じず拡張できるようにする。
+	void RegisterPipeline(
+		const std::string& key,
+		const Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSignature,
+		const Microsoft::WRL::ComPtr<ID3D12PipelineState>& pipelineState);
+
+	/// @brief 任意の PSO 設定を生成して登録する
+	/// @details 新しい描画種別を追加するとき、専用 getter / 専用 member を増やさず key で扱える。
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> CreateAndRegisterPipelineState(
+		const std::string& key,
+		const Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSignature,
+		const GraphicsPipelineStateRequest& request);
+
+	/// @brief 登録済みパイプライン資源を検索する
+	const PipelineResourceSet* FindPipeline(const std::string& key) const;
+
+	/// @brief ルートシグネチャを ComPtr で取得し、呼び出し側が保持中に解放されないようにする
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureHandle(const std::string& key) const;
+
+	/// @brief PSO を ComPtr で取得し、呼び出し側が保持中に解放されないようにする
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetPipelineStateHandle(const std::string& key) const;
+
 
 
 	//ゲッター
@@ -71,6 +100,7 @@ public:
 	//コピーイメージ用のPSO
 	ID3D12RootSignature* GetRootSignatureCopyImage()const { return rootSignatureCopyImage.Get(); }
 	ID3D12PipelineState* GetGraphicsPipelineStateCopyImage(PostEffectType type);
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateCopyImageHandle(PostEffectType type) const;
 
 	//ライン用のPSO
 	ID3D12RootSignature* GetRootSignatureLine()const { return rootSignatureLine.Get(); }
@@ -112,6 +142,7 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignatureCopyImage = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineStateCopyImage = nullptr;
 	std::map<PostEffectType, Microsoft::WRL::ComPtr<ID3D12PipelineState>> copyImagePipelines_; 
+	std::map<std::string, PipelineResourceSet> pipelineRegistry_;
 
 
 	//ライン用

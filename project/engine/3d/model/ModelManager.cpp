@@ -33,7 +33,7 @@ void ModelManager::Finalize()
 	srvManager_ = nullptr;
 }
 
-void ModelManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+void ModelManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
 	srvManager_ = srvManager;
 	modelCommon = std::make_unique<ModelCommon>();

@@ -36,7 +36,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief 共通管理インスタンスを解放する
 	/// @param なし
@@ -82,8 +82,8 @@ public:
 	void SetShadowArea(float area);
 	float GetShadowArea() const { return shadowArea_; }
 
-	//DXCommon
-	Engine::Base::DirectXCommon* GetDxCommon()const { return dxCommon_; }
+	/// @brief DirectX 共通管理を shared_ptr で返し、外部利用中の use-after-free を防ぐ
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDxCommon() const { return dxCommon_.lock(); }
 	//SrvManager
 	Engine::Base::SrvManager* GetSrvManager()const { return srvManager_; }
 
@@ -97,7 +97,8 @@ private:
 	Object3DCommon& operator=(const Object3DCommon&) = delete;
 
 private:
-	Engine::Base::DirectXCommon* dxCommon_;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
+	Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;

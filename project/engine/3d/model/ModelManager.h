@@ -38,7 +38,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief モデルファイルを読み込んで管理対象へ登録する
 	/// @param filePath 読み込むモデルのファイルパス

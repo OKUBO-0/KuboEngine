@@ -150,18 +150,19 @@ void SkyBox::Draw()
 		sizeof(materialData_));
 
 	SkyBoxCommon::GetInstance()->commonDraw();//共通描画処理を呼び出す
+	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
 	//頂点バッファビューをセット
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView);
+	commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 	//Materialをセット
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
+	commandList->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
 	//トランスフォームをセット
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(1, transformAllocation.gpuAddress);
+	commandList->SetGraphicsRootConstantBufferView(1, transformAllocation.gpuAddress);
 	//テクスチャをセット
 	SkyBoxCommon::GetInstance()->GetSrvManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_));
 	//インデックスバッファビューをセット
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetIndexBuffer(&indexBufferView);
 	//描画
-	SkyBoxCommon::GetInstance()->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(static_cast<UINT>(indices.size()), 1, 0, 0, 0);
+	commandList->DrawIndexedInstanced(static_cast<UINT>(indices.size()), 1, 0, 0, 0);
 }
 
 void SkyBox::DrawImGuiDebug()

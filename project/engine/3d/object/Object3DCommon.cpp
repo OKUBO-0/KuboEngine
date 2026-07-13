@@ -43,22 +43,23 @@ Object3DCommon* Object3DCommon::GetInstance()
 
 }
 
-void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+void Object3DCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
 
 	dxCommon_ = dxCommon;
+	dxCommonRaw_ = dxCommon.get();
 	srvManager_ = srvManager;
 	//パイプラインの生成
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	graphicsPipeline_->Initialize(dxCommon_);
+	graphicsPipeline_->Initialize(dxCommonRaw_);
 	graphicsPipeline_->Create();
 	
 	skinningGraphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	skinningGraphicsPipeline_->Initialize(dxCommon_);
+	skinningGraphicsPipeline_->Initialize(dxCommonRaw_);
 	skinningGraphicsPipeline_->CreateSkinning();
 
 	shadowGraphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	shadowGraphicsPipeline_->Initialize(dxCommon_);
+	shadowGraphicsPipeline_->Initialize(dxCommonRaw_);
 	shadowGraphicsPipeline_->CreateShadowMap();
 
 	sceneLightData_.color = { 1.0f, 0.95f, 0.9f, 1.0f };
@@ -84,22 +85,22 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 	D3D12_CLEAR_VALUE clearValue{};
 	clearValue.Format = DXGI_FORMAT_D32_FLOAT;
 	clearValue.DepthStencil.Depth = 1.0f;
-	const HRESULT resourceResult = dxCommon_->GetDevice()->CreateCommittedResource(
+	const HRESULT resourceResult = dxCommonRaw_->GetDevice()->CreateCommittedResource(
 		&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValue,
 		IID_PPV_ARGS(shadowMapResource_.GetAddressOf()));
 	Engine::Base::ThrowIfFailed(
 		resourceResult,
 		"ID3D12Device::CreateCommittedResource shadow map");
-	dxCommon_->TrackResourceState(
+	dxCommonRaw_->TrackResourceState(
 		shadowMapResource_.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-	shadowDsvHeap_ = dxCommon_->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);
+	shadowDsvHeap_ = dxCommonRaw_->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
 	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	dxCommon_->GetDevice()->CreateDepthStencilView(
+	dxCommonRaw_->GetDevice()->CreateDepthStencilView(
 		shadowMapResource_.Get(), &dsvDesc,
 		shadowDsvHeap_->GetCPUDescriptorHandleForHeapStart());
 
@@ -109,7 +110,7 @@ void Object3DCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::B
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Texture2D.MipLevels = 1;
-	dxCommon_->GetDevice()->CreateShaderResourceView(
+	dxCommonRaw_->GetDevice()->CreateShaderResourceView(
 		shadowMapResource_.Get(), &srvDesc,
 		srvManager_->GetCPUDescriptorHandle(shadowSrvIndex_));
 	srvManager_->LabelUsage(shadowSrvIndex_, "ShadowMap");
@@ -133,12 +134,13 @@ void Object3DCommon::Finalize()
 	graphicsPipeline_.reset();
 	skinningGraphicsPipeline_.reset();
 	shadowGraphicsPipeline_.reset();
-	if (dxCommon_ && shadowMapResource_) {
-		dxCommon_->UntrackResourceState(shadowMapResource_.Get());
+	if (dxCommonRaw_ && shadowMapResource_) {
+		dxCommonRaw_->UntrackResourceState(shadowMapResource_.Get());
 	}
 	shadowMapResource_.Reset();
 	shadowDsvHeap_.Reset();
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
+	dxCommonRaw_ = nullptr;
 	srvManager_ = nullptr;
 }
 
@@ -150,7 +152,7 @@ bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 		shadowMapData_.settings.x = 0.0f;
 		return false;
 	}
-	dxCommon_->BeginShadowGpuTiming();
+	dxCommonRaw_->BeginShadowGpuTiming();
 	const Vector3 direction = MyMath::Normalize(sceneLightData_.direction);
 	const Vector3 eye = focusPosition - direction * 95.0f;
 	const Matrix4x4 view = MakeLookAtMatrix(eye, focusPosition);
@@ -160,12 +162,12 @@ bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 	shadowMapData_.settings.x =
 		sceneLightData_.enable != 0 && shadowEnabled_ ? 1.0f : 0.0f;
 
-	dxCommon_->TransitionResource(
+	dxCommonRaw_->TransitionResource(
 		shadowMapResource_.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 	const D3D12_CPU_DESCRIPTOR_HANDLE dsv =
 		shadowDsvHeap_->GetCPUDescriptorHandleForHeapStart();
-	dxCommon_->GetCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
-	dxCommon_->GetCommandList()->ClearDepthStencilView(
+	dxCommonRaw_->GetCommandList()->OMSetRenderTargets(0, nullptr, false, &dsv);
+	dxCommonRaw_->GetCommandList()->ClearDepthStencilView(
 		dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 	D3D12_VIEWPORT viewport{};
 	viewport.Width = static_cast<float>(kShadowMapSize);
@@ -174,20 +176,20 @@ bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 	const D3D12_RECT scissor{
 		0, 0, static_cast<LONG>(kShadowMapSize), static_cast<LONG>(kShadowMapSize)
 	};
-	dxCommon_->GetCommandList()->RSSetViewports(1, &viewport);
-	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissor);
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(
+	dxCommonRaw_->GetCommandList()->RSSetViewports(1, &viewport);
+	dxCommonRaw_->GetCommandList()->RSSetScissorRects(1, &scissor);
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootSignature(
 		shadowGraphicsPipeline_->GetRootSignatureShadowMap());
-	dxCommon_->GetCommandList()->SetPipelineState(
+	dxCommonRaw_->GetCommandList()->SetPipelineState(
 		shadowGraphicsPipeline_->GetGraphicsPipelineStateShadowMap());
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	dxCommonRaw_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	const Engine::Base::DirectXCommon::FrameUploadAllocation shadowAllocation =
-		dxCommon_->AllocateFrameUpload(sizeof(ShadowMapData), 256);
+		dxCommonRaw_->AllocateFrameUpload(sizeof(ShadowMapData), 256);
 	std::memcpy(
 		shadowAllocation.cpuAddress,
 		&shadowMapData_,
 		sizeof(shadowMapData_));
-	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootConstantBufferView(
 		1, shadowAllocation.gpuAddress);
 	shadowPassActive_ = true;
 	return true;
@@ -229,14 +231,14 @@ void Object3DCommon::RecordShadowCandidate(bool submitted)
 void Object3DCommon::EndShadowPass()
 {
 	shadowPassActive_ = false;
-	dxCommon_->TransitionResource(
+	dxCommonRaw_->TransitionResource(
 		shadowMapResource_.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 	if (Engine::Base::OffscreenRenderManager* offscreen =
 			Engine::Base::OffscreenRenderManager::GetInstance()) {
 		offscreen->BindRenderTarget();
 	}
-	dxCommon_->EndShadowGpuTiming();
+	dxCommonRaw_->EndShadowGpuTiming();
 	++measuredShadowPassCount_;
 	totalShadowCandidateCount_ += shadowPassStats_.candidateCount;
 	totalShadowSubmittedCount_ += shadowPassStats_.submittedCount;
@@ -254,24 +256,24 @@ void Object3DCommon::ResetShadowPassStatistics()
 void Object3DCommon::BindSceneLighting(bool skinning)
 {
 	const Engine::Base::DirectXCommon::FrameUploadAllocation lightAllocation =
-		dxCommon_->AllocateFrameUpload(sizeof(SceneLightData), 256);
+		dxCommonRaw_->AllocateFrameUpload(sizeof(SceneLightData), 256);
 	std::memcpy(
 		lightAllocation.cpuAddress,
 		&sceneLightData_,
 		sizeof(sceneLightData_));
 	const Engine::Base::DirectXCommon::FrameUploadAllocation shadowAllocation =
-		dxCommon_->AllocateFrameUpload(sizeof(ShadowMapData), 256);
+		dxCommonRaw_->AllocateFrameUpload(sizeof(ShadowMapData), 256);
 	std::memcpy(
 		shadowAllocation.cpuAddress,
 		&shadowMapData_,
 		sizeof(shadowMapData_));
 
-	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootConstantBufferView(
 		3, lightAllocation.gpuAddress);
 	const UINT shadowTextureRoot = skinning ? 8u : 7u;
 	const UINT shadowDataRoot = skinning ? 9u : 8u;
 	srvManager_->SetGraphicsRootDescriptorTable(shadowTextureRoot, shadowSrvIndex_);
-	dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootConstantBufferView(
 		shadowDataRoot, shadowAllocation.gpuAddress);
 }
 
@@ -339,18 +341,18 @@ void Object3DCommon::CommonDraw()
 {
 
 	//RootSignatureを設定。POSに設定しているけどベット設定が必要
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignature());
-	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineState());
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignature());
+	dxCommonRaw_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineState());
+	dxCommonRaw_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 }
 
 void Object3DCommon::SkinningCommonDraw()
 {
 	//RootSignatureを設定。POSに設定しているけどベット設定が必要
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(skinningGraphicsPipeline_->GetRootSignatureSkinning());
-	dxCommon_->GetCommandList()->SetPipelineState(skinningGraphicsPipeline_->GetGraphicsPipelineStateSkinning());
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	dxCommonRaw_->GetCommandList()->SetGraphicsRootSignature(skinningGraphicsPipeline_->GetRootSignatureSkinning());
+	dxCommonRaw_->GetCommandList()->SetPipelineState(skinningGraphicsPipeline_->GetGraphicsPipelineStateSkinning());
+	dxCommonRaw_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
 }

@@ -68,8 +68,8 @@ protected:
 
 	// WinAppのポインタ
 	std::unique_ptr<Engine::Base::WinApp> winApp;
-	// DirectXCommonのポインタ
-	std::unique_ptr<Engine::Base::DirectXCommon> dxCommon;
+	// Framework が所有し、各描画共通クラスは weak/shared で参照する。
+	std::shared_ptr<Engine::Base::DirectXCommon> dxCommon;
 	// SrvManagerのポインタ
 	std::unique_ptr<Engine::Base::SrvManager> srvManager;
 	// ImGuiManagerのポインタ

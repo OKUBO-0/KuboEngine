@@ -18,6 +18,7 @@
 #include "Camera.h"
 #include "CameraManager.h"
 #include "Input.h"
+#include <memory>
 #include "Object3D.h"
 #include "Object3DCommon.h"
 #include "OffscreenRenderManager.h"
@@ -208,10 +209,12 @@ void TitleScene::Update()
 		sessionContext_->AdvanceSceneStressFrame();
 		if (sessionContext_->GetRunCount() == 0 &&
 			sessionContext_->GetSceneStressFrameCount() == 1) {
-			Engine::Graphics3D::Object3DCommon::GetInstance()
-				->GetDxCommon()->ResetGpuTimingStatistics();
-			Engine::Graphics3D::Object3DCommon::GetInstance()
-				->ResetShadowPassStatistics();
+			Engine::Graphics3D::Object3DCommon* objectCommon =
+				Engine::Graphics3D::Object3DCommon::GetInstance();
+			const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+				objectCommon->GetDxCommon();
+			dxCommon->ResetGpuTimingStatistics();
+			objectCommon->ResetShadowPassStatistics();
 		}
 		if (Engine::Base::SrvManager* srvManager =
 			Engine::Graphics3D::Object3DCommon::GetInstance()->GetSrvManager()) {

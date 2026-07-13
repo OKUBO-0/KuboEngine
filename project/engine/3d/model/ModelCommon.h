@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 
 namespace Engine::Base {
 class DirectXCommon;
@@ -18,14 +19,14 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
-	//DXCommon
-	Engine::Base::DirectXCommon* GetDxCommon()const { return dxCommon_; }
+	/// @brief DirectX 共通管理を shared_ptr で返し、モデル側の一時利用中に破棄されないようにする
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDxCommon() const { return dxCommon_.lock(); }
 	Engine::Base::SrvManager* GetSRVManager() { return srvManager_; }
 
 private:
-	Engine::Base::DirectXCommon* dxCommon_;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 
 

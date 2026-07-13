@@ -10,6 +10,7 @@
 #include "SpriteCommon.h"
 #include "TextureManager.h"
 #include "WinApp.h"
+#include <memory>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -87,9 +88,11 @@ public:
 
 		UpdateGeometry();
 		UpdateMatrices();
+		const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+			spriteCommon_->GetDxCommon();
 
 		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
-			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+			dxCommon->AllocateFrameUpload(
 				sizeof(MaterialSprite),
 				256);
 		std::memcpy(
@@ -97,7 +100,7 @@ public:
 			&materialData_,
 			sizeof(materialData_));
 		const Engine::Base::DirectXCommon::FrameUploadAllocation transformAllocation =
-			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+			dxCommon->AllocateFrameUpload(
 				sizeof(TransformationMatrixsprite),
 				256);
 		std::memcpy(
@@ -105,7 +108,7 @@ public:
 			&transformationMatrixData_,
 			sizeof(transformationMatrixData_));
 		const Engine::Base::DirectXCommon::FrameUploadAllocation vertexAllocation =
-			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+			dxCommon->AllocateFrameUpload(
 				sizeof(VertexData) * vertexData_.size(),
 				alignof(VertexData));
 		std::memcpy(
@@ -113,7 +116,7 @@ public:
 			vertexData_.data(),
 			sizeof(VertexData) * vertexData_.size());
 		const Engine::Base::DirectXCommon::FrameUploadAllocation indexAllocation =
-			spriteCommon_->GetDxCommon()->AllocateFrameUpload(
+			dxCommon->AllocateFrameUpload(
 				sizeof(uint32_t) * indexCount_,
 				alignof(uint32_t));
 		std::memcpy(
@@ -132,7 +135,7 @@ public:
 			.Format = DXGI_FORMAT_R32_UINT,
 		};
 
-		auto* commandList = spriteCommon_->GetDxCommon()->GetCommandList();
+		ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
 		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
 		commandList->IASetIndexBuffer(&indexBufferView);
 		commandList->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);

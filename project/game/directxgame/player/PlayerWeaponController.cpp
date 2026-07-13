@@ -15,12 +15,28 @@ namespace {
 constexpr float kMinWeaponInterval =
 	DirectXGame::GameplayRules::kMinimumWeaponInterval;
 constexpr int32_t kMaxCatchUpAttacksPerFrame = 4;
+const DirectXGame::NormalBullet::VisualStyle kBowArrowVisual{
+	"bullet.obj",
+	{ 0.66f, 0.94f, 1.0f, 1.0f },
+	{ 0.52f, 0.52f, 1.45f },
+};
+const DirectXGame::NormalBullet::VisualStyle kFlameStaffVisual{
+	"fireball.obj",
+	{ 1.0f, 0.28f, 0.03f, 1.0f },
+	{ 1.26f, 1.26f, 1.26f },
+};
 
 float PositiveFiniteOr(float value, float fallback)
 {
 	return std::isfinite(value) && value > 0.0f
 		? value
 		: fallback;
+}
+
+Vector3 PlayerFacingDirection(const DirectXGame::Player& player)
+{
+	const float angle = player.GetWorldRotationY();
+	return { std::sin(angle), 0.0f, std::cos(angle) };
 }
 
 }
@@ -85,6 +101,7 @@ void PlayerWeaponController::LoadUpgradeSettings(
 		const float setting = CsvReader::ParseFloat(
 			row[1],
 			"weaponUpgradeSettings." + row[0]);
+		// damageBonus は 0 を「増加なし」として許可し、それ以外の間隔/半径/個数系は正値に限定する。
 		const bool zeroAllowed =
 			row[0].find("damageBonus") != std::string::npos;
 		if (setting < 0.0f || (!zeroAllowed && setting == 0.0f)) {
@@ -102,6 +119,7 @@ void PlayerWeaponController::Update(
 	EnemyManager* enemyManager,
 	const PlayerStats& playerStats)
 {
+	// 武器更新は固定順にする。弾生成、範囲ダメージ、演出イベントの発生順がフレーム間でぶれないようにする。
 	UpdateNormalBullets(deltaTime, player, enemyManager, playerStats);
 	UpdateOrbitBullets(deltaTime, player, playerStats);
 	UpdateLightning(deltaTime, enemyManager, playerStats);
@@ -116,6 +134,7 @@ void PlayerWeaponController::Update(
 
 void PlayerWeaponController::Draw()
 {
+	// Draw は所有中の弾・投射物だけを描画する。範囲攻撃系の見た目は Presentation 側がイベントから描く。
 	for (std::unique_ptr<NormalBullet>& bullet : normalBullets_) {
 		bullet->Draw();
 	}
@@ -454,7 +473,9 @@ void PlayerWeaponController::UpdateNormalBullets(
 					runtime.projectileSpeed,
 					runtime.duration,
 					normalBulletPierceCount_,
-					runtime.areaSize);
+					runtime.areaSize,
+					NormalBullet::MovementMode::Straight,
+					kBowArrowVisual);
 				peakNormalBulletCount_ = (std::max)(
 					peakNormalBulletCount_,
 					normalBullets_.size());
@@ -567,7 +588,9 @@ void PlayerWeaponController::UpdateExplosiveBullets(
 				runtime.projectileSpeed,
 				runtime.duration,
 				1,
-				runtime.areaSize);
+				runtime.areaSize,
+				NormalBullet::MovementMode::Straight,
+				kFlameStaffVisual);
 			--explosiveBurstShotsRemaining_;
 			explosiveBurstTimer_ -= effectiveBurstInterval;
 		}
@@ -605,7 +628,7 @@ void PlayerWeaponController::UpdateSword(
 	if (swordTimer_ < effectiveInterval) {
 		return;
 	}
-	const Vector3 direction = ResolveAimDirection(*player, enemyManager);
+	const Vector3 direction = PlayerFacingDirection(*player);
 	const Vector3 right{
 		direction.z,
 		0.0f,

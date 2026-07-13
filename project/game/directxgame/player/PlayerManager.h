@@ -18,6 +18,8 @@ class EnemyManager;
 
 class PlayerManager {
 public:
+	// PlayerManager は PlayerProgression と PlayerWeaponController の窓口。
+	// シーン側は HP/EXP/武器強化の詳細を知らず、このクラスの API だけを呼ぶ。
 	void Initialize(Player* player);
 	void SetEnemyManager(EnemyManager* enemyManager)
 	{
@@ -34,6 +36,7 @@ public:
 	void Update(float deltaTime);
 	void Draw();
 
+	// HP と被弾状態。無敵時間、死亡判定、回復量の反映を Progression と同期する。
 	bool TakeDamage(int32_t damage = 10);
 	int32_t RecoverHP(int32_t amount = 1);
 	int32_t ApplyLifeStealOnHit();
@@ -52,6 +55,7 @@ public:
 #endif
 	void MakeDebugStrongest();
 
+	// 経験値と成長状態。レベルアップ要求は HUD 選択が完了するまで保持する。
 	int32_t AddEXP(int32_t amount);
 	int32_t GetEXP() const { return progression_.GetEXP(); }
 	int32_t GetTotalEXP() const { return progression_.GetTotalEXP(); }
@@ -77,6 +81,10 @@ public:
 	float GetCoinGainMultiplier() const
 	{
 		return progression_.GetStats().GetCoinGainMultiplier();
+	}
+	float GetKnockbackMultiplier() const
+	{
+		return progression_.GetStats().GetKnockbackMultiplier();
 	}
 	DamageResult RollDamage(int32_t baseDamage);
 	int32_t GetMaxHPUpgradeLevel() const { return progression_.GetMaxHPUpgradeLevel(); }
@@ -115,6 +123,8 @@ public:
 		return progression_.GetExpPickupRangeMultiplier();
 	}
 
+	// 武器ファサード。
+	// 各武器の生成・更新・弾数制限は PlayerWeaponController に隠し、外部には候補生成に必要な状態だけを返す。
 	void UpgradeNormalBullets();
 	static constexpr size_t kMaxEquippedWeaponTypes =
 		PlayerWeaponController::kMaxEquippedWeaponTypes;
@@ -266,6 +276,7 @@ public:
 	int32_t GetAuraLevel() const { return weapons_.GetAuraLevel(); }
 	bool IsAuraMaxLevel() const { return weapons_.IsAuraMaxLevel(); }
 	int32_t GetAuraDamage() const { return weapons_.GetAuraDamage(GetStats()); }
+	float GetAuraRadius() const { return weapons_.GetAuraRadius(GetStats()); }
 	void UpgradeFlameShoes() { weapons_.UpgradeFlameShoes(); }
 	bool HasFlameShoes() const { return weapons_.HasFlameShoes(); }
 	int32_t GetFlameShoesLevel() const { return weapons_.GetFlameShoesLevel(); }
@@ -309,24 +320,39 @@ public:
 	const auto& GetBoneBullets() const { return weapons_.GetBoneBullets(); }
 	const auto& GetHandgunBullets() const { return weapons_.GetHandgunBullets(); }
 	const auto& GetBoomerangBullets() const { return weapons_.GetBoomerangBullets(); }
+	const std::vector<Vector3>& GetRecentHandgunShotPositions() const
+	{
+		return weapons_.GetRecentHandgunShotPositions();
+	}
+	const std::vector<Vector3>& GetRecentHandgunReloadPositions() const
+	{
+		return weapons_.GetRecentHandgunReloadPositions();
+	}
 
 	void MaxAllWeapons();
 	void PlayLevelUpEffect();
 
 private:
+	// 被弾直後の点滅/無敵時間を更新する。
 	void UpdateInvincibility(float deltaTime);
 
+	// 非所有参照。実体は PlayScene / EnemyManager が所有し、PlayerManager はフレーム内連携だけに使う。
 	Player* player_ = nullptr;
 	EnemyManager* enemyManager_ = nullptr;
+
+	// 成長値と武器状態の実データ。PlayerManager は外部公開 API の薄い統合層にする。
 	PlayerProgression progression_{};
 	PlayerWeaponController weapons_{};
 
+	// 被弾演出と確率ダメージ用の一時状態。
 	bool invincible_ = false;
 	float invincibleTimer_ = 0.0f;
 	bool visible_ = true;
 	float invincibilityDuration_ = 1.25f;
 	float hpRegenAccumulator_ = 0.0f;
 	std::mt19937 damageRandomEngine_{ std::random_device{}() };
+
+	// パッシブアイテムは固定 enum 数でレベルを持ち、取得順は HUD 表示と上限判定に使う。
 	std::array<int32_t, static_cast<size_t>(PassiveItemType::Count)>
 		passiveItemLevels_{};
 	std::vector<PassiveItemType> passiveItemAcquisitionOrder_;

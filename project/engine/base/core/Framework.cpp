@@ -40,7 +40,7 @@ void Framework::InitializeCoreServices()
 	winApp = std::make_unique<Engine::Base::WinApp>();
 	winApp->Initialize();
 
-	dxCommon = std::make_unique<Engine::Base::DirectXCommon>();
+	dxCommon = std::make_shared<Engine::Base::DirectXCommon>();
 	dxCommon->Initialize(winApp.get());
 
 	srvManager = std::make_unique<Engine::Base::SrvManager>();
@@ -61,11 +61,11 @@ void Framework::InitializeSharedManagers()
 
 void Framework::InitializeRenderingCommons()
 {
-	Engine::Graphics2D::SpriteCommon::GetInstance()->Initialize(dxCommon.get());
-	Engine::Graphics3D::ModelManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
-	Engine::Graphics3D::Object3DCommon::GetInstance()->Initialize(dxCommon.get(),srvManager.get());
-	Engine::LineSystem::LineCommon::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
-	Engine::Skybox::SkyBoxCommon::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::Graphics2D::SpriteCommon::GetInstance()->Initialize(dxCommon);
+	Engine::Graphics3D::ModelManager::GetInstance()->Initialize(dxCommon, srvManager.get());
+	Engine::Graphics3D::Object3DCommon::GetInstance()->Initialize(dxCommon, srvManager.get());
+	Engine::LineSystem::LineCommon::GetInstance()->Initialize(dxCommon, srvManager.get());
+	Engine::Skybox::SkyBoxCommon::GetInstance()->Initialize(dxCommon, srvManager.get());
 }
 
 void Framework::InitializeDebugTools()

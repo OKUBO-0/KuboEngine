@@ -89,7 +89,7 @@ void ResultScene::Update()
 		}
 		if (sessionContext_->GetSceneStressFrameCount() >= 30) {
 			if (sessionContext_->IsSceneStressComplete()) {
-				Engine::Base::DirectXCommon* dxCommon =
+				auto dxCommon =
 					Engine::Graphics3D::Object3DCommon::GetInstance()->GetDxCommon();
 				sessionContext_->RecordGpuTimingSummary(
 					dxCommon->GetAverageFrameGpuMilliseconds(),

@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -94,7 +95,7 @@ void Model::Initialize(
 void Model::Finalize()
 {
 	if (modelCommon_ && modelCommon_->GetDxCommon()) {
-		auto* dxCommon = modelCommon_->GetDxCommon();
+		auto dxCommon = modelCommon_->GetDxCommon();
 		dxCommon->UntrackResourceState(vertexResource.Get());
 		dxCommon->UntrackResourceState(indexResource.Get());
 		dxCommon->UntrackResourceState(skinCluster.influenceResource.Get());
@@ -116,8 +117,10 @@ void Model::LoadRuntimeAssets(const std::string& directorypath, const std::strin
 void Model::CreateVertexBuffer()
 {
 	// 頂点バッファ生成とデータ転送
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
 	const size_t vertexBytes = sizeof(VertexData) * modelData.vertices.size();
-	vertexResource = modelCommon_->GetDxCommon()->CreateDefaultBufferResource(
+	vertexResource = dxCommon->CreateDefaultBufferResource(
 		modelData.vertices.data(),
 		vertexBytes,
 		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
@@ -129,8 +132,10 @@ void Model::CreateVertexBuffer()
 void Model::CreateIndexBuffer()
 {
 	// インデックスバッファ生成とデータ転送
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
 	const size_t indexBytes = sizeof(uint32_t) * modelData.indices.size();
-	indexResource = modelCommon_->GetDxCommon()->CreateDefaultBufferResource(
+	indexResource = dxCommon->CreateDefaultBufferResource(
 		modelData.indices.data(),
 		indexBytes,
 		D3D12_RESOURCE_STATE_INDEX_BUFFER);
@@ -156,9 +161,12 @@ void Model::LoadMaterialTexture()
 
 void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 {
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
 	if (materialAddress == 0) {
 		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
-			modelCommon_->GetDxCommon()->AllocateFrameUpload(sizeof(Material), 256);
+			dxCommon->AllocateFrameUpload(sizeof(Material), 256);
 		std::memcpy(
 			materialAllocation.cpuAddress,
 			&materialData_,
@@ -173,13 +181,13 @@ void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 	};
 
 	// 頂点バッファ設定
-	modelCommon_->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 2, vbvs);
+	commandList->IASetVertexBuffers(0, 2, vbvs);
 
 	// インデックスバッファ設定
-	modelCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetIndexBuffer(&indexBufferView);
 
 	// マテリアルCBV設定
-	modelCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(
+	commandList->SetGraphicsRootConstantBufferView(
 		0,
 		materialAddress);
 
@@ -187,7 +195,7 @@ void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath));
 
 	// インデックス付き描画（インスタンス数 = 1）
-	modelCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(
+	commandList->DrawIndexedInstanced(
 		static_cast<UINT>(modelData.indices.size()), // インデックス数
 		1,  // インスタンス数
 		0,  // 開始インデックス
@@ -198,10 +206,13 @@ void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 
 void Model::DrawGeometry()
 {
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
 	D3D12_VERTEX_BUFFER_VIEW vertexView = vertexBufferView;
-	modelCommon_->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 1, &vertexView);
-	modelCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
-	modelCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(
+	commandList->IASetVertexBuffers(0, 1, &vertexView);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->DrawIndexedInstanced(
 		static_cast<UINT>(modelData.indices.size()), 1, 0, 0, 0);
 }
 
@@ -517,8 +528,10 @@ void Model::ApplyJointWeightsToSkinCluster(SkinCluster& skinCluster)
 
     const size_t influenceBytes =
         sizeof(VertexInfluence) * skinCluster.influenceData.size();
+    const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+        modelCommon_->GetDxCommon();
     skinCluster.influenceResource =
-        modelCommon_->GetDxCommon()->CreateDefaultBufferResource(
+        dxCommon->CreateDefaultBufferResource(
             skinCluster.influenceData.data(),
             influenceBytes,
             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
