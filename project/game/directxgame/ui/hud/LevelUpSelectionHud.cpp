@@ -25,10 +25,14 @@ constexpr Vector2 kDefaultChoiceSize{ 1280.0f, 720.0f };
 constexpr float kDefaultChoiceStepY = 140.0f;
 constexpr Vector2 kDefaultHitboxOffset{ 465.0f, 214.0f };
 constexpr Vector2 kDefaultHitboxSize{ 435.0f, 68.0f };
+constexpr float kChoiceTextOffsetX = 48.0f;
+constexpr float kChoiceTextRightPadding = 20.0f;
+constexpr float kChoiceTitleBaseScale = 0.40f;
+constexpr float kChoiceDetailBaseScale = 0.32f;
 
 void PreloadTextures()
 {
-	const std::array<const char*, 16> staticTextures{
+	const std::array<const char*, 17> staticTextures{
 		"ui/font/noto_sans_jp_black.png",
 		"ui/game/lvup/levelup.png",
 		"ui/game/lvup/levelup_frame.png",
@@ -45,6 +49,7 @@ void PreloadTextures()
 		"ui/game/lvup/icon_weapon_bone.png",
 		"ui/game/lvup/icon_weapon_handgun.png",
 		"ui/game/lvup/icon_weapon_boomerang.png",
+		"ui/game/lvup/scroll.png",
 	};
 
 	std::vector<std::string> texturePaths;
@@ -179,7 +184,7 @@ void LevelUpSelectionHud::Initialize()
 		text.Initialize(
 			"ui/font/noto_sans_jp_black.png",
 			"ui/font/noto_sans_jp_black.json");
-		text.SetScale(0.40f);
+		text.SetScale(kChoiceTitleBaseScale);
 		text.SetAdvanceMultiplier(1.0f);
 		text.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 	}
@@ -187,7 +192,7 @@ void LevelUpSelectionHud::Initialize()
 		text.Initialize(
 			"ui/font/noto_sans_jp_black.png",
 			"ui/font/noto_sans_jp_black.json");
-		text.SetScale(0.32f);
+		text.SetScale(kChoiceDetailBaseScale);
 		text.SetAdvanceMultiplier(1.0f);
 		text.SetColor({ 0.82f, 0.9f, 1.0f, 0.95f });
 	}
@@ -379,6 +384,9 @@ void LevelUpSelectionHud::BuildChoices(
 void LevelUpSelectionHud::ApplyLayout()
 {
 	overlay_.SetPosition({ slideOffsetX_, 0.0f });
+	const float textMaxWidth = (std::max)(
+		1.0f,
+		choiceHitboxSize_.x - kChoiceTextOffsetX - kChoiceTextRightPadding);
 	for (size_t index = 0; index < choiceSprites_.size(); ++index) {
 		const Vector2 position{
 			slideOffsetX_,
@@ -388,12 +396,18 @@ void LevelUpSelectionHud::ApplyLayout()
 		choiceSprites_[index].SetSize(choiceSize_);
 		choiceIcons_[index].SetPosition(position);
 		choiceIcons_[index].SetSize(choiceSize_);
+		choiceTitleTexts_[index].SetScaleToFit(
+			kChoiceTitleBaseScale,
+			textMaxWidth);
+		choiceDetailTexts_[index].SetScaleToFit(
+			kChoiceDetailBaseScale,
+			textMaxWidth);
 		choiceTitleTexts_[index].SetPosition({
-			slideOffsetX_ + choiceHitboxOffset_.x + 48.0f,
+			slideOffsetX_ + choiceHitboxOffset_.x + kChoiceTextOffsetX,
 			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index) - 10.0f,
 			});
 		choiceDetailTexts_[index].SetPosition({
-			slideOffsetX_ + choiceHitboxOffset_.x + 49.0f,
+			slideOffsetX_ + choiceHitboxOffset_.x + kChoiceTextOffsetX + 1.0f,
 			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index) + 21.0f,
 			});
 	}

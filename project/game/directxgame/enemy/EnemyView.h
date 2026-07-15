@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Object3D.h"
+#include "UILayoutIO.h"
 #include "Vector3.h"
 #include "Vector4.h"
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace DirectXGame {
 
@@ -34,6 +36,13 @@ public:
 		spawnScaleMultiplier_ = scaleMultiplier;
 	}
 
+	static void LoadVisualTuning(
+		const DirectXGame::UILayoutIO::LayoutMap& tuning);
+	static void AppendVisualTuningEntries(
+		std::vector<DirectXGame::UILayoutIO::Entry>& entries);
+	static float GetOctopusModelGroundOffsetY();
+	static void SetOctopusModelGroundOffsetY(float offsetY);
+
 	float GetCollisionRadius() const;
 	Engine::Math::AABB GetCollisionAabb(
 		const Vector3& fallbackPosition) const;
@@ -45,6 +54,7 @@ private:
 	void ApplyTransform(
 		const Vector3& position,
 		float rotationY);
+	float GetEffectiveModelVerticalOffsetY() const;
 	void UpdateFloatingShadow(
 		const Vector3& position,
 		float rotationY);
@@ -55,6 +65,7 @@ private:
 	float behaviorScaleMultiplier_ = 1.0f;
 	float spawnScaleMultiplier_ = 1.0f;
 	float modelVerticalOffsetY_ = 0.0f;
+	bool usesOctopusGroundOffset_ = false;
 	bool floatingEnabled_ = false;
 };
 

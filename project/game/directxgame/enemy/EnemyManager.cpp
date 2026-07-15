@@ -360,6 +360,22 @@ bool EnemyManager::ConsumeBossPhaseChanged(Vector3& outPosition, int32_t& outPha
 	return true;
 }
 
+bool EnemyManager::HasActiveBoss() const
+{
+	return bossPhase_ && bossEnemy_ &&
+		(bossEnemy_->IsActive() || bossEnemy_->IsDeathPresentationActive());
+}
+
+int32_t EnemyManager::GetBossHP() const
+{
+	return HasActiveBoss() ? bossEnemy_->GetHP() : 0;
+}
+
+int32_t EnemyManager::GetBossMaxHP() const
+{
+	return HasActiveBoss() ? bossEnemy_->GetMaxHP() : 1;
+}
+
 bool EnemyManager::GetBossPresentationPosition(Vector3& outPosition) const
 {
 	if (!bossEnemy_) {
@@ -611,7 +627,7 @@ void EnemyManager::DrawBossAttackTelegraph() const
 			0.0f,
 			telegraph.direction.x * kHalfWidth,
 		};
-		const Vector4 color{ 1.0f, 0.18f, 0.05f, alpha };
+		const Vector4 color{ 1.0f, 0.0f, 0.0f, alpha };
 		line.Draw(origin, end - side, color);
 		line.Draw(origin, end + side, color);
 		line.Draw(end - side, end + side, color);

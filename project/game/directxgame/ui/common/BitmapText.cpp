@@ -146,8 +146,19 @@ void BitmapText::SetPosition(const Vector2& position)
 
 void BitmapText::SetScale(float scale)
 {
-	scale_ = (std::max)(0.1f, scale);
+	scale_ = (std::max)(0.05f, scale);
 	ApplyLayout();
+}
+
+void BitmapText::SetScaleToFit(float baseScale, float maxWidth)
+{
+	const float safeBaseScale = (std::max)(0.05f, baseScale);
+	const float width = CalculateWidth(safeBaseScale);
+	if (maxWidth <= 0.0f || width <= 0.0f || width <= maxWidth) {
+		SetScale(safeBaseScale);
+		return;
+	}
+	SetScale(safeBaseScale * (maxWidth / width));
 }
 
 void BitmapText::SetAdvanceMultiplier(float multiplier)
@@ -160,6 +171,16 @@ void BitmapText::SetColor(const Vector4& color)
 {
 	color_ = color;
 	ApplyLayout();
+}
+
+float BitmapText::MeasureWidth() const
+{
+	return CalculateWidth(scale_);
+}
+
+float BitmapText::MeasureWidth(float scale) const
+{
+	return CalculateWidth(scale);
 }
 
 void BitmapText::Draw()
@@ -220,6 +241,33 @@ void BitmapText::RebuildSprites()
 		glyphSprites_.push_back(GameSpriteFactory::Create(textureHandle_, position_));
 	}
 	ApplyLayout();
+}
+
+float BitmapText::CalculateWidth(float scale) const
+{
+	const float safeScale = (std::max)(0.05f, scale);
+	if (usesMetrics_) {
+		float width = 0.0f;
+		for (const GlyphMetric& glyph : renderedGlyphMetrics_) {
+			width += glyph.advance * safeScale * advanceMultiplier_;
+		}
+		return width;
+	}
+
+	const Vector2 scaledGlyphSize{
+		glyphSize_.x * safeScale,
+		glyphSize_.y * safeScale,
+	};
+	float width = 0.0f;
+	for (int32_t glyphIndex : renderedGlyphIndices_) {
+		if (glyphIndex < 0) {
+			width += scaledGlyphSize.x * 0.6f;
+			continue;
+		}
+		width += scaledGlyphSize.x *
+			(glyphIndex >= 95 ? 0.95f : 0.72f) * advanceMultiplier_;
+	}
+	return width;
 }
 
 void BitmapText::ApplyLayout()

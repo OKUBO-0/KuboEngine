@@ -43,6 +43,12 @@ Vector3 LookAtRotation(const Vector3& cameraPosition, const Vector3& focusPositi
 	};
 }
 
+float YawToTarget(const Vector3& from, const Vector3& target)
+{
+	return NormalizeAngle(
+		std::atan2(target.x - from.x, target.z - from.z));
+}
+
 }
 
 namespace DirectXGame {
@@ -59,8 +65,6 @@ void PlayerCameraController::Update(
 
 	if (!followInitialized_) {
 		ResetFocus(playerPosition);
-	} else if (mode_ == Mode::Megabonk) {
-		focusPosition_ = playerPosition;
 	} else if (advanceFollow) {
 		const float clampedSmoothness = (std::max)(0.0f, followSmoothness_);
 		const float followRate = clampedSmoothness <= 0.0f
@@ -107,71 +111,9 @@ void PlayerCameraController::Update(
 			kMegabonkMaxPitch);
 	}
 
-	switch (mode_) {
-	case Mode::PlayerBack: {
-		const Vector3 forward{
-			std::sin(playerRotationY),
-			0.0f,
-			std::cos(playerRotationY),
-		};
-		camera->SetTranslate({
-			focusPosition_.x - forward.x * combatDistance_,
-			combatHeight_,
-			focusPosition_.z - forward.z * combatDistance_,
-			});
-		camera->SetRotate({ pitch_, playerRotationY, 0.0f });
-		break;
-	}
-	case Mode::WorldFront:
-		camera->SetTranslate({
-			focusPosition_.x,
-			combatHeight_,
-			focusPosition_.z + combatDistance_,
-			});
-		camera->SetRotate({ pitch_, 3.14159265f, 0.0f });
-		break;
-	case Mode::TopDown:
-		camera->SetTranslate({
-			focusPosition_.x,
-			combatHeight_,
-			focusPosition_.z,
-			});
-		camera->SetRotate({ 1.57079633f, 0.0f, 0.0f });
-		break;
-	case Mode::Megabonk: {
-		const Vector3 forward{
-			std::sin(yaw_),
-			0.0f,
-			std::cos(yaw_),
-		};
-		const Vector3 focus{
-			focusPosition_.x + forward.x * kMegabonkLookAheadDistance,
-			focusPosition_.y + kMegabonkFocusHeight,
-			focusPosition_.z + forward.z * kMegabonkLookAheadDistance,
-		};
-		const float horizontalDistance =
-			std::cos(pitch_) * combatDistance_;
-		const float verticalDistance =
-			std::sin(pitch_) * combatDistance_;
-		const Vector3 cameraPosition{
-			focusPosition_.x - forward.x * horizontalDistance,
-			focusPosition_.y + verticalDistance,
-			focusPosition_.z - forward.z * horizontalDistance,
-		};
-		camera->SetTranslate(cameraPosition);
-		camera->SetRotate(LookAtRotation(cameraPosition, focus));
-		break;
-	}
-	case Mode::WorldBack:
-	default:
-		camera->SetTranslate({
-			focusPosition_.x,
-			combatHeight_,
-			focusPosition_.z - combatDistance_,
-			});
-		camera->SetRotate({ pitch_, 0.0f, 0.0f });
-		break;
-	}
+	const CameraPose pose = CalculatePose(focusPosition_, playerRotationY);
+	camera->SetTranslate(pose.position);
+	camera->SetRotate(pose.rotation);
 
 	if (shakeTimer_ > 0.0f && shakeDuration_ > 0.0f) {
 		const float fade = shakeTimer_ / shakeDuration_;
@@ -193,10 +135,126 @@ void PlayerCameraController::Update(
 	}
 }
 
+PlayerCameraController::CameraPose PlayerCameraController::CalculatePose(
+	const Vector3& focusPosition,
+	float playerRotationY) const
+{
+	CameraPose pose{};
+	switch (mode_) {
+	case Mode::PlayerBack: {
+		const Vector3 forward{
+			std::sin(playerRotationY),
+			0.0f,
+			std::cos(playerRotationY),
+		};
+		pose.position = {
+			focusPosition.x - forward.x * combatDistance_,
+			combatHeight_,
+			focusPosition.z - forward.z * combatDistance_,
+			};
+		pose.rotation = { pitch_, playerRotationY, 0.0f };
+		break;
+	}
+	case Mode::WorldFront:
+		pose.position = {
+			focusPosition.x,
+			combatHeight_,
+			focusPosition.z + combatDistance_,
+			};
+		pose.rotation = { pitch_, 3.14159265f, 0.0f };
+		break;
+	case Mode::TopDown:
+		pose.position = {
+			focusPosition.x,
+			combatHeight_,
+			focusPosition.z,
+			};
+		pose.rotation = { 1.57079633f, 0.0f, 0.0f };
+		break;
+	case Mode::Megabonk: {
+		const Vector3 forward{
+			std::sin(yaw_),
+			0.0f,
+			std::cos(yaw_),
+		};
+		const Vector3 focus{
+			focusPosition.x + forward.x * kMegabonkLookAheadDistance,
+			focusPosition.y + kMegabonkFocusHeight,
+			focusPosition.z + forward.z * kMegabonkLookAheadDistance,
+		};
+		const float horizontalDistance =
+			std::cos(pitch_) * combatDistance_;
+		const float verticalDistance =
+			std::sin(pitch_) * combatDistance_;
+		pose.position = {
+			focusPosition.x - forward.x * horizontalDistance,
+			focusPosition.y + verticalDistance,
+			focusPosition.z - forward.z * horizontalDistance,
+		};
+		pose.rotation = LookAtRotation(pose.position, focus);
+		break;
+	}
+	case Mode::WorldBack:
+	default:
+		pose.position = {
+			focusPosition.x,
+			combatHeight_,
+			focusPosition.z - combatDistance_,
+			};
+		pose.rotation = { pitch_, 0.0f, 0.0f };
+		break;
+	}
+	return pose;
+}
+
+PlayerCameraController::CameraPose
+PlayerCameraController::CalculatePoseFacingTarget(
+	const Vector3& playerPosition,
+	const Vector3& targetPosition) const
+{
+	const float targetYaw = YawToTarget(playerPosition, targetPosition);
+	if (mode_ != Mode::Megabonk) {
+		return CalculatePose(playerPosition, targetYaw);
+	}
+
+	CameraPose pose{};
+	const Vector3 forward{
+		std::sin(targetYaw),
+		0.0f,
+		std::cos(targetYaw),
+	};
+	const Vector3 focus{
+		playerPosition.x + forward.x * kMegabonkLookAheadDistance,
+		playerPosition.y + kMegabonkFocusHeight,
+		playerPosition.z + forward.z * kMegabonkLookAheadDistance,
+	};
+	const float horizontalDistance =
+		std::cos(pitch_) * combatDistance_;
+	const float verticalDistance =
+		std::sin(pitch_) * combatDistance_;
+	pose.position = {
+		playerPosition.x - forward.x * horizontalDistance,
+		playerPosition.y + verticalDistance,
+		playerPosition.z - forward.z * horizontalDistance,
+	};
+	pose.rotation = LookAtRotation(pose.position, focus);
+	return pose;
+}
+
 void PlayerCameraController::ResetFocus(const Vector3& playerPosition)
 {
 	focusPosition_ = playerPosition;
 	followInitialized_ = true;
+}
+
+void PlayerCameraController::SyncToTarget(
+	const Vector3& playerPosition,
+	const Vector3& targetPosition)
+{
+	ResetFocus(playerPosition);
+	const float targetYaw = YawToTarget(playerPosition, targetPosition);
+	yaw_ = targetYaw;
+	targetYaw_ = targetYaw;
 }
 
 void PlayerCameraController::RequestShake(float duration, float strength)

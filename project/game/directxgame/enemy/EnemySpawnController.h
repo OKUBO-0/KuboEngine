@@ -40,14 +40,14 @@ public:
 		int32_t playerLevel) const;
 
 private:
-	static constexpr size_t kDefaultMaxActiveEnemies = 84;
-	static constexpr float kDefaultSpawnUnlockInterval = 18.0f;
+	static constexpr size_t kDefaultMaxActiveEnemies = 96;
+	static constexpr float kDefaultSpawnUnlockInterval = 10.8f;
 	static constexpr float kDefaultSpawnDistance = 50.0f;
 	static constexpr float kDefaultRespawnDistance = 75.0f;
 	static constexpr float kDefaultRespawnRadius = 60.0f;
-	static constexpr float kDefaultMinSpawnInterval = 0.85f;
-	static constexpr float kDefaultBaseSpawnInterval = 1.9f;
-	static constexpr float kDefaultSpawnAcceleration = 0.0075f;
+	static constexpr float kDefaultMinSpawnInterval = 0.75f;
+	static constexpr float kDefaultBaseSpawnInterval = 1.75f;
+	static constexpr float kDefaultSpawnAcceleration = 0.0085f;
 
 	void SpawnEnemies(
 		Player& player,

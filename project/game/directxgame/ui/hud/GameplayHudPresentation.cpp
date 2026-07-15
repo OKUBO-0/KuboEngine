@@ -10,6 +10,8 @@
 #include "DataPaths.h"
 #include "UILayoutIO.h"
 #include <algorithm>
+#include <cmath>
+#include <string>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
@@ -17,6 +19,7 @@
 namespace {
 
 constexpr float kIntroBarHeight = 56.0f;
+constexpr float kBossHpFrameBorder = 3.0f;
 
 float Clamp01(float value)
 {
@@ -63,6 +66,10 @@ void GameplayHudPresentation::Initialize(
 		layout, "gameplayMiniMapPosition", gameplayMiniMapPosition_);
 	gameplayMiniMapScale_ = UILayoutIO::GetFloat(
 		layout, "gameplayMiniMapScale", gameplayMiniMapScale_);
+	bossHpPosition_ = UILayoutIO::GetVector2(
+		layout, "bossHpPosition", bossHpPosition_);
+	bossHpSize_ = UILayoutIO::GetVector2(
+		layout, "bossHpSize", bossHpSize_);
 
 	timer_.Initialize();
 	hpGauge_.Initialize();
@@ -88,6 +95,22 @@ void GameplayHudPresentation::Initialize(
 	deathOverlay_.SetSize({ 1280.0f, 720.0f });
 	deathOverlay_.SetAlpha(0.0f);
 	deathOverlay_.SetVisible(false);
+	bossHpFrame_.Initialize("white1x1.png", bossHpPosition_);
+	bossHpFrame_.SetColor({ 0.92f, 0.90f, 0.86f, 0.96f });
+	bossHpFrame_.SetVisible(false);
+	bossHpBackground_.Initialize("white1x1.png", bossHpPosition_);
+	bossHpBackground_.SetColor({ 0.06f, 0.02f, 0.02f, 0.92f });
+	bossHpBackground_.SetVisible(false);
+	bossHpFill_.Initialize("white1x1.png", bossHpPosition_);
+	bossHpFill_.SetColor({ 1.0f, 0.0f, 0.0f, 0.96f });
+	bossHpFill_.SetVisible(false);
+	bossHpText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
+	bossHpText_.SetScale(0.28f);
+	bossHpText_.SetAdvanceMultiplier(1.0f);
+	bossHpText_.SetColor({ 1.0f, 1.0f, 1.0f, 0.98f });
+	ApplyBossHpBarLayout();
 	for (int32_t index = 0; index < kCoinDigitCount; ++index) {
 		coinDigits_[index] = GameSpriteFactory::Create(
 			coinDigitTexture_,
@@ -172,6 +195,7 @@ void GameplayHudPresentation::Update(
 
 	hpGauge_.Update();
 	expGauge_.Update();
+	UpdateBossHpBar(deltaTime, flow, enemyManager);
 	if (flow.IsCursorHidden()) {
 		keyUi_.Update(input);
 	}
@@ -204,6 +228,7 @@ void GameplayHudPresentation::Draw(
 	hpGauge_.Draw();
 	expGauge_.Draw();
 	timer_.Draw();
+	DrawBossHpBar();
 	const bool showRunCounters =
 		flow.IsWorldHudVisible() ||
 		flow.Is(GameplayState::Paused);
@@ -297,6 +322,77 @@ void GameplayHudPresentation::UpdateKillDisplay(int32_t killCount)
 	}
 }
 
+void GameplayHudPresentation::UpdateBossHpBar(
+	float deltaTime,
+	const GameplayFlowController& flow,
+	EnemyManager* enemyManager)
+{
+	const bool shouldShow =
+		enemyManager &&
+		enemyManager->HasActiveBoss() &&
+		(flow.Is(GameplayState::BossIntro) ||
+			flow.Is(GameplayState::Boss) ||
+			flow.Is(GameplayState::BossDefeated));
+	if (!shouldShow) {
+		bossHpVisible_ = false;
+		bossHpFrame_.SetVisible(false);
+		bossHpBackground_.SetVisible(false);
+		bossHpFill_.SetVisible(false);
+		bossHpTarget_ = 0;
+		displayedBossHp_ = 0.0f;
+		bossHpText_.SetText("");
+		return;
+	}
+
+	const int32_t currentHp = (std::max)(0, enemyManager->GetBossHP());
+	bossMaxHp_ = (std::max)(1, enemyManager->GetBossMaxHP());
+	if (!bossHpVisible_) {
+		displayedBossHp_ = 0.0f;
+	}
+	bossHpVisible_ = true;
+	bossHpTarget_ = currentHp;
+
+	const float difference =
+		static_cast<float>(bossHpTarget_) - displayedBossHp_;
+	if (std::fabs(difference) <= 0.5f) {
+		displayedBossHp_ = static_cast<float>(bossHpTarget_);
+	} else {
+		const float fillSpeed = static_cast<float>(bossMaxHp_) * 1.15f;
+		const float step = (std::max)(
+			std::fabs(difference) * 7.5f,
+			fillSpeed) * deltaTime;
+		displayedBossHp_ += std::clamp(difference, -step, step);
+	}
+
+	const float rate = Clamp01(displayedBossHp_ / static_cast<float>(bossMaxHp_));
+	const Vector2 fillPosition{
+		bossHpPosition_.x + kBossHpFrameBorder,
+		bossHpPosition_.y + kBossHpFrameBorder,
+	};
+	const Vector2 innerSize{
+		(std::max)(1.0f, bossHpSize_.x - kBossHpFrameBorder * 2.0f),
+		(std::max)(1.0f, bossHpSize_.y - kBossHpFrameBorder * 2.0f),
+	};
+	bossHpFrame_.SetVisible(true);
+	bossHpBackground_.SetVisible(true);
+	bossHpFill_.SetVisible(rate > 0.0f);
+	bossHpFill_.SetPosition(fillPosition);
+	bossHpFill_.SetSize({ innerSize.x * rate, innerSize.y });
+
+	const int32_t displayedHpInt = std::clamp(
+		static_cast<int32_t>(std::round(displayedBossHp_)),
+		0,
+		bossMaxHp_);
+	bossHpText_.SetText(
+		std::to_string(displayedHpInt) + "/" + std::to_string(bossMaxHp_));
+	bossHpText_.SetScaleToFit(0.28f, bossHpSize_.x - 24.0f);
+	const float textWidth = bossHpText_.MeasureWidth();
+	bossHpText_.SetPosition({
+		bossHpPosition_.x + (bossHpSize_.x - textWidth) * 0.5f,
+		bossHpPosition_.y + 1.0f,
+		});
+}
+
 void GameplayHudPresentation::DrawKillDisplay()
 {
 	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : killDigits_) {
@@ -306,6 +402,17 @@ void GameplayHudPresentation::DrawKillDisplay()
 		digit->Update();
 		digit->Draw();
 	}
+}
+
+void GameplayHudPresentation::DrawBossHpBar()
+{
+	if (!bossHpVisible_) {
+		return;
+	}
+	bossHpFrame_.Draw();
+	bossHpBackground_.Draw();
+	bossHpFill_.Draw();
+	bossHpText_.Draw();
 }
 
 void GameplayHudPresentation::ApplyCounterLayout()
@@ -328,6 +435,24 @@ void GameplayHudPresentation::ApplyGameplayMiniMapLayout()
 	gameplayMiniMap_.ConfigureAsScaledCopy(
 		pauseMiniMap_, gameplayMiniMapScale_, gameplayMiniMapPosition_, true);
 	gameplayMiniMap_.SetIconSizeMultiplier(1.45f);
+}
+
+void GameplayHudPresentation::ApplyBossHpBarLayout()
+{
+	bossHpFrame_.SetPosition(bossHpPosition_);
+	bossHpFrame_.SetSize(bossHpSize_);
+	const Vector2 innerPosition{
+		bossHpPosition_.x + kBossHpFrameBorder,
+		bossHpPosition_.y + kBossHpFrameBorder,
+	};
+	const Vector2 innerSize{
+		(std::max)(1.0f, bossHpSize_.x - kBossHpFrameBorder * 2.0f),
+		(std::max)(1.0f, bossHpSize_.y - kBossHpFrameBorder * 2.0f),
+	};
+	bossHpBackground_.SetPosition(innerPosition);
+	bossHpBackground_.SetSize(innerSize);
+	bossHpFill_.SetPosition(innerPosition);
+	bossHpFill_.SetSize({ 1.0f, innerSize.y });
 }
 
 void GameplayHudPresentation::DebugDrawImGui()
@@ -375,6 +500,23 @@ void GameplayHudPresentation::DebugDrawImGui()
 		ApplyGameplayMiniMapLayout();
 	}
 
+	bool bossHpChanged = false;
+	float bossHpPosition[2]{ bossHpPosition_.x, bossHpPosition_.y };
+	if (ImGui::DragFloat2(
+		"Boss HP Position", bossHpPosition, 1.0f, -400.0f, 1280.0f)) {
+		bossHpPosition_ = { bossHpPosition[0], bossHpPosition[1] };
+		bossHpChanged = true;
+	}
+	float bossHpSize[2]{ bossHpSize_.x, bossHpSize_.y };
+	if (ImGui::DragFloat2(
+		"Boss HP Size", bossHpSize, 1.0f, 16.0f, 1280.0f)) {
+		bossHpSize_ = { bossHpSize[0], bossHpSize[1] };
+		bossHpChanged = true;
+	}
+	if (bossHpChanged) {
+		ApplyBossHpBarLayout();
+	}
+
 	if (ImGui::Button("Save Gameplay HUD Layout")) {
 		SaveLayout();
 	}
@@ -390,6 +532,8 @@ void GameplayHudPresentation::SaveLayout() const
 			{ "counterDigitSize", { coinDigitSize_.x, coinDigitSize_.y } },
 			{ "gameplayMiniMapPosition", { gameplayMiniMapPosition_.x, gameplayMiniMapPosition_.y } },
 			{ "gameplayMiniMapScale", { gameplayMiniMapScale_ } },
+			{ "bossHpPosition", { bossHpPosition_.x, bossHpPosition_.y } },
+			{ "bossHpSize", { bossHpSize_.x, bossHpSize_.y } },
 		});
 }
 

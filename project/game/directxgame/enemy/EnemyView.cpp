@@ -12,7 +12,11 @@ constexpr char kEnvironmentTexturePath[] =
 	"Resources/textures/skybox/test.dds";
 constexpr float kEnemyFallbackCollisionRadius = 1.35f;
 constexpr float kFloatingShadowGroundY = -1.84f;
-constexpr float kOctopusModelGroundOffsetY = 2.12f;
+constexpr float kDefaultOctopusModelGroundOffsetY = 4.7f;
+constexpr char kOctopusModelGroundOffsetKey[] =
+	"enemy.octopusModelGroundOffsetY";
+
+float gOctopusModelGroundOffsetY = kDefaultOctopusModelGroundOffsetY;
 
 }
 
@@ -74,6 +78,7 @@ void EnemyView::ApplyDeathPose(
 	const float pulse = std::sin(progress * 3.14159265f);
 	const float scale =
 		behaviorScaleMultiplier_ * (1.0f + pulse * 0.18f);
+	const float verticalOffsetY = GetEffectiveModelVerticalOffsetY();
 	object_->SetScale({ scale, scale, scale });
 	object_->SetRotate({
 		progress * 1.32f,
@@ -82,7 +87,7 @@ void EnemyView::ApplyDeathPose(
 		});
 	object_->SetTranslate({
 		position.x,
-		position.y + modelVerticalOffsetY_ - progress * 1.15f,
+		position.y + verticalOffsetY - progress * 1.15f,
 		position.z,
 		});
 	object_->SetColor({
@@ -108,10 +113,10 @@ void EnemyView::SetModelByType(int32_t type)
 	case static_cast<int32_t>(EnemyType::Boss): modelName = "octopus.obj"; break;
 	default: break;
 	}
-	modelVerticalOffsetY_ =
-		std::string_view(modelName) == "octopus.obj"
-			? kOctopusModelGroundOffsetY
-			: 0.0f;
+	usesOctopusGroundOffset_ = std::string_view(modelName) == "octopus.obj";
+	modelVerticalOffsetY_ = usesOctopusGroundOffset_
+		? GetOctopusModelGroundOffsetY()
+		: 0.0f;
 
 	if (object_) {
 		const ModelHandle modelHandle =
@@ -144,6 +149,34 @@ void EnemyView::ClearBehaviorVisual()
 {
 	behaviorColor_ = { 1.0f, 1.0f, 1.0f, 1.0f };
 	behaviorScaleMultiplier_ = 1.0f;
+}
+
+void EnemyView::LoadVisualTuning(
+	const DirectXGame::UILayoutIO::LayoutMap& tuning)
+{
+	SetOctopusModelGroundOffsetY(UILayoutIO::GetFloat(
+		tuning,
+		kOctopusModelGroundOffsetKey,
+		kDefaultOctopusModelGroundOffsetY));
+}
+
+void EnemyView::AppendVisualTuningEntries(
+	std::vector<DirectXGame::UILayoutIO::Entry>& entries)
+{
+	entries.push_back({
+		kOctopusModelGroundOffsetKey,
+		{ GetOctopusModelGroundOffsetY() },
+	});
+}
+
+float EnemyView::GetOctopusModelGroundOffsetY()
+{
+	return gOctopusModelGroundOffsetY;
+}
+
+void EnemyView::SetOctopusModelGroundOffsetY(float offsetY)
+{
+	gOctopusModelGroundOffsetY = std::clamp(offsetY, 0.0f, 8.0f);
 }
 
 float EnemyView::GetCollisionRadius() const
@@ -227,6 +260,7 @@ void EnemyView::ApplyTransform(
 		return;
 	}
 	const float scale = behaviorScaleMultiplier_ * spawnScaleMultiplier_;
+	const float verticalOffsetY = GetEffectiveModelVerticalOffsetY();
 	object_->SetScale({
 		scale,
 		scale,
@@ -235,9 +269,16 @@ void EnemyView::ApplyTransform(
 	object_->SetRotate({ 0.0f, rotationY, 0.0f });
 	object_->SetTranslate({
 		position.x,
-		position.y + modelVerticalOffsetY_,
+		position.y + verticalOffsetY,
 		position.z,
 		});
+}
+
+float EnemyView::GetEffectiveModelVerticalOffsetY() const
+{
+	return usesOctopusGroundOffset_
+		? GetOctopusModelGroundOffsetY()
+		: modelVerticalOffsetY_;
 }
 
 void EnemyView::UpdateFloatingShadow(

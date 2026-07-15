@@ -76,16 +76,34 @@ void PlayerPresentationController::UpdateIntro(
 	}
 
 	const float returnProgress = SmoothStep(Clamp01((rawProgress - 0.84f) / 0.16f));
-	const float distance = LerpFloat(18.0f, cameraController.GetDistance(), returnProgress);
-	const float height = LerpFloat(10.0f, cameraController.GetHeight(), returnProgress);
+	const PlayerCameraController::CameraPose normalCameraPose =
+		cameraController.CalculatePose(playerPosition, playerRotationY);
+	const float distance = LerpFloat(
+		18.0f,
+		cameraController.GetDistance(),
+		returnProgress);
+	const float height = LerpFloat(
+		10.0f,
+		normalCameraPose.position.y,
+		returnProgress);
 	const float orbitAngle = LerpFloat(-1.55f, 0.0f, orbitProgress);
 	const float pitch = std::atan2(height - playerPosition.y, distance);
-	camera->SetTranslate({
+	const Vector3 orbitPosition{
 		playerPosition.x + std::sin(orbitAngle) * distance,
 		height,
 		playerPosition.z - std::cos(orbitAngle) * distance,
+		};
+	const Vector3 orbitRotation{ pitch, -orbitAngle, 0.0f };
+	camera->SetTranslate({
+		LerpFloat(orbitPosition.x, normalCameraPose.position.x, returnProgress),
+		LerpFloat(orbitPosition.y, normalCameraPose.position.y, returnProgress),
+		LerpFloat(orbitPosition.z, normalCameraPose.position.z, returnProgress),
 		});
-	camera->SetRotate({ pitch, -orbitAngle, 0.0f });
+	camera->SetRotate({
+		LerpFloat(orbitRotation.x, normalCameraPose.rotation.x, returnProgress),
+		LerpFloat(orbitRotation.y, normalCameraPose.rotation.y, returnProgress),
+		LerpFloat(orbitRotation.z, normalCameraPose.rotation.z, returnProgress),
+		});
 	SyncCamera(camera);
 }
 

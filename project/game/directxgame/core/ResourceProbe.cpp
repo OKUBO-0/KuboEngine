@@ -71,6 +71,7 @@ std::vector<std::string> BuildRequiredAssetPaths()
 		ResourcePaths::MakeTexturePath("ui/game/lvup/maxhp_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/speed_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/heal_icon.png"),
+		ResourcePaths::MakeTexturePath("ui/game/lvup/scroll.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/normal_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/orbit_icon.png"),
 		ResourcePaths::MakeTexturePath("ui/game/lvup/icon_common_unknown.png"),

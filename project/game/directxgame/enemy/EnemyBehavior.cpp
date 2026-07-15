@@ -317,8 +317,8 @@ public:
 			const Vector4 telegraphColor = currentAction_ == Action::InkBurst
 				? Vector4{ 0.28f, 0.12f, 0.42f, 1.0f }
 				: (currentAction_ == Action::TentacleSlam
-					? Vector4{ 1.0f, 0.34f, 0.12f, 1.0f }
-					: Vector4{ 1.0f, 0.78f + pulse * 0.18f, 0.16f, 1.0f });
+					? Vector4{ 1.0f, 0.0f, 0.0f, 1.0f }
+					: Vector4{ 1.0f, 0.0f, 0.0f, 1.0f });
 			enemy.SetBehaviorVisual(telegraphColor, 2.35f + pulse * 0.28f);
 			if (stateTimer_ <= 0.0f) {
 				ExecuteTelegraphedAction(enemy, phase, distance);
@@ -328,7 +328,7 @@ public:
 
 		if (state_ == State::Rush) {
 			const float rushMultiplier =
-				(phase == 3 ? 4.2f : (phase == 2 ? 3.5f : 2.9f)) *
+				(phase == 3 ? 5.6f : (phase == 2 ? 4.8f : 4.0f)) *
 				rushDistanceSpeedScale_;
 			enemy.SetBehaviorVisual(
 				phase == 3 ? Vector4{ 1.0f, 0.12f, 0.12f, 1.0f } : Vector4{ 1.0f, 0.42f, 0.18f, 1.0f },
@@ -434,13 +434,13 @@ private:
 		const float normalizedDistance = std::clamp(distance / 16.0f, 0.85f, 1.6f);
 		rushDistanceSpeedScale_ = normalizedDistance;
 		const float rushMultiplier =
-			phase == 3 ? 4.2f : (phase == 2 ? 3.5f : 2.9f);
+			phase == 3 ? 5.6f : (phase == 2 ? 4.8f : 4.0f);
 		const float rushUnitsPerSecond =
 			enemy.GetSpeed() * rushMultiplier * rushDistanceSpeedScale_ / 0.016f;
 		const float rushDuration = std::clamp(
 			(distance + 12.0f) / (std::max)(1.0f, rushUnitsPerSecond),
-			0.34f,
-			2.2f);
+			0.24f,
+			1.55f);
 		switch (currentAction_) {
 		case Action::TentacleSlam:
 			enemy.QueueBossAttack(BossAttackType::TentacleSlam, rushDirection_);

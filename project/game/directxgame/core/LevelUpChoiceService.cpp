@@ -22,7 +22,8 @@ std::string WeaponDetail(
 {
 	const WeaponUpgradeLevelMetadata metadata =
 		GetWeaponUpgradeMetadata(weaponType, nextLevel);
-	if (metadata.statTags.empty()) {
+	if (metadata.statTags.empty() ||
+		metadata.rarity == WeaponUpgradeRarity::Common) {
 		return effectText;
 	}
 	return "[" + std::string(ToString(metadata.rarity)) + "] " +

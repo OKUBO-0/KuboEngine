@@ -6,11 +6,14 @@ namespace DirectXGame {
 
 class EnemyManager;
 class GameParticleEffects;
+class Player;
 
 class BossPresentation final {
 public:
 	void Reset();
-	void StartEntrance(EnemyManager& enemyManager);
+	void StartEntrance(
+		EnemyManager& enemyManager,
+		const Player* player);
 	bool UpdateEntrance(
 		EnemyManager& enemyManager,
 		const GameParticleEffects& particleEffects,
@@ -34,6 +37,8 @@ private:
 	Vector3 defeatFocusPosition_{};
 	Vector3 entranceStartCameraPosition_{};
 	Vector3 entranceStartCameraRotation_{};
+	Vector3 entranceReturnCameraPosition_{};
+	Vector3 entranceReturnCameraRotation_{};
 	Vector3 defeatStartCameraPosition_{};
 	Vector3 defeatStartCameraRotation_{};
 	bool entranceEffectEmitted_ = false;

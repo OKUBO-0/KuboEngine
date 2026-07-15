@@ -4,6 +4,8 @@ killDigitPosition,150,58
 counterDigitSize,14,20
 gameplayMiniMapPosition,1094,72
 gameplayMiniMapScale,0.21
+bossHpPosition,340,118
+bossHpSize,600,24
 expFramePosition,0,0
 expGaugeSize,1274,34
 hpSize,400,18

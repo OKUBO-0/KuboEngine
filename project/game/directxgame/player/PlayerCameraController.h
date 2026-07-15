@@ -10,6 +10,11 @@ namespace DirectXGame {
 
 class PlayerCameraController final {
 public:
+	struct CameraPose {
+		Vector3 position{};
+		Vector3 rotation{};
+	};
+
 	enum class Mode {
 		WorldBack,
 		PlayerBack,
@@ -23,7 +28,16 @@ public:
 		const Vector3& playerPosition,
 		float playerRotationY,
 		bool advanceFollow);
+	CameraPose CalculatePose(
+		const Vector3& focusPosition,
+		float playerRotationY) const;
+	CameraPose CalculatePoseFacingTarget(
+		const Vector3& playerPosition,
+		const Vector3& targetPosition) const;
 	void ResetFocus(const Vector3& playerPosition);
+	void SyncToTarget(
+		const Vector3& playerPosition,
+		const Vector3& targetPosition);
 	void RequestShake(float duration, float strength);
 
 	float GetHeight() const { return height_; }

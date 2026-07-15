@@ -4,6 +4,7 @@
 #include "GameAudioTuning.h"
 #include "SceneLighting.h"
 #include "UILayoutIO.h"
+#include "EnemyView.h"
 #include "GameParticleEffects.h"
 #include "Player.h"
 #include <cstdint>
@@ -95,6 +96,7 @@ void DebugContext::Load(
 
 	LoadGameAudioTuning(tuning);
 	particleEffects.LoadTuning(tuning);
+	EnemyView::LoadVisualTuning(tuning);
 
 	(void)player;
 
@@ -127,6 +129,7 @@ void DebugContext::Save(
 	std::vector<UILayoutIO::Entry> entries;
 	AppendGameAudioTuningEntries(entries);
 	particleEffects.AppendTuningEntries(entries);
+	EnemyView::AppendVisualTuningEntries(entries);
 	auto saveWindowVisible =
 		[&entries](const char* key, bool visible) {
 			entries.push_back({

@@ -4,6 +4,7 @@
 #include "ParticleManager.h"
 #include "GameParticleEffects.h"
 #include "EnemyManager.h"
+#include "Player.h"
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
@@ -72,7 +73,9 @@ void BossPresentation::Reset()
 	resultTransitionRequested_ = false;
 }
 
-void BossPresentation::StartEntrance(EnemyManager& enemyManager)
+void BossPresentation::StartEntrance(
+	EnemyManager& enemyManager,
+	const Player* player)
 {
 	Reset();
 	enemyManager.StartBossPhase();
@@ -81,6 +84,14 @@ void BossPresentation::StartEntrance(EnemyManager& enemyManager)
 	entranceStartBossPosition_.y += kEntranceBossDropHeight;
 	enemyManager.SetBossPresentationPosition(entranceStartBossPosition_);
 	CaptureCamera(entranceStartCameraPosition_, entranceStartCameraRotation_);
+	entranceReturnCameraPosition_ = entranceStartCameraPosition_;
+	entranceReturnCameraRotation_ = entranceStartCameraRotation_;
+	if (player) {
+		const PlayerCameraController::CameraPose returnPose =
+			player->CalculateCameraPoseFacingTarget(entranceFocusPosition_);
+		entranceReturnCameraPosition_ = returnPose.position;
+		entranceReturnCameraRotation_ = returnPose.rotation;
+	}
 }
 
 bool BossPresentation::UpdateEntrance(
@@ -173,15 +184,15 @@ void BossPresentation::UpdateEntranceCamera(float progress)
 		return;
 	}
 
-	float blend = 1.0f;
+	float approachBlend = 1.0f;
 	float returnProgress = 0.0f;
 	if (progress < kEntranceApproachEnd) {
-		blend = SmoothStep(progress / kEntranceApproachEnd);
+		approachBlend = SmoothStep(progress / kEntranceApproachEnd);
 	} else if (progress > kEntranceHoldEnd) {
 		returnProgress = Clamp01(
 			(progress - kEntranceHoldEnd) / (1.0f - kEntranceHoldEnd));
-		blend = 1.0f - SmoothStep(returnProgress);
 	}
+	const float returnBlend = SmoothStep(returnProgress);
 	const Vector3 focusPosition{
 		entranceFocusPosition_.x,
 		entranceFocusPosition_.y + kEntranceFocusHeight,
@@ -193,12 +204,22 @@ void BossPresentation::UpdateEntranceCamera(float progress)
 		entranceFocusPosition_.z - kEntranceCameraDistance,
 	};
 	const Vector3 targetRotation = LookAtRotation(targetPosition, focusPosition);
-	camera->SetTranslate(Lerp(
-		entranceStartCameraPosition_, targetPosition, blend));
-	camera->SetRotate(Lerp(
+	const Vector3 holdPosition = Lerp(
+		entranceStartCameraPosition_,
+		targetPosition,
+		approachBlend);
+	const Vector3 holdRotation = Lerp(
 		entranceStartCameraRotation_,
 		targetRotation,
-		blend));
+		approachBlend);
+	camera->SetTranslate(Lerp(
+		holdPosition,
+		entranceReturnCameraPosition_,
+		returnBlend));
+	camera->SetRotate(Lerp(
+		holdRotation,
+		entranceReturnCameraRotation_,
+		returnBlend));
 	camera->SetFarClip(500.0f);
 	camera->Update();
 }

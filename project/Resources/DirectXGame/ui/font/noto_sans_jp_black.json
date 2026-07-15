@@ -1876,17 +1876,6 @@
       "y": 423
     },
     {
-      "char": "高",
-      "codepoint": 39640,
-      "width": 72,
-      "height": 69,
-      "bearingX": 0,
-      "bearingY": -62,
-      "advance": 72,
-      "x": 809,
-      "y": 423
-    },
-    {
       "char": "往",
       "codepoint": 24448,
       "width": 72,
@@ -1894,7 +1883,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 889,
+      "x": 809,
       "y": 423
     },
     {
@@ -1905,7 +1894,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 969,
+      "x": 889,
       "y": 423
     },
     {
@@ -1916,7 +1905,7 @@
       "bearingX": 0,
       "bearingY": -59,
       "advance": 72,
-      "x": 1049,
+      "x": 969,
       "y": 423
     },
     {
@@ -1927,7 +1916,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1129,
+      "x": 1049,
       "y": 423
     },
     {
@@ -1938,7 +1927,7 @@
       "bearingX": 0,
       "bearingY": -55,
       "advance": 72,
-      "x": 1209,
+      "x": 1129,
       "y": 423
     },
     {
@@ -1949,7 +1938,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1289,
+      "x": 1209,
       "y": 423
     },
     {
@@ -1960,7 +1949,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1369,
+      "x": 1289,
       "y": 423
     },
     {
@@ -1971,7 +1960,7 @@
       "bearingX": 0,
       "bearingY": -61,
       "advance": 72,
-      "x": 1449,
+      "x": 1369,
       "y": 423
     },
     {
@@ -1982,7 +1971,7 @@
       "bearingX": 0,
       "bearingY": -59,
       "advance": 72,
-      "x": 1529,
+      "x": 1449,
       "y": 423
     },
     {
@@ -1993,7 +1982,7 @@
       "bearingX": 0,
       "bearingY": -58,
       "advance": 72,
-      "x": 1609,
+      "x": 1529,
       "y": 423
     },
     {
@@ -2004,7 +1993,7 @@
       "bearingX": 0,
       "bearingY": -57,
       "advance": 72,
-      "x": 1689,
+      "x": 1609,
       "y": 423
     },
     {
@@ -2015,7 +2004,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1769,
+      "x": 1689,
       "y": 423
     },
     {
@@ -2026,7 +2015,7 @@
       "bearingX": 0,
       "bearingY": -61,
       "advance": 72,
-      "x": 1849,
+      "x": 1769,
       "y": 423
     },
     {
@@ -2037,7 +2026,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1929,
+      "x": 1849,
       "y": 423
     },
     {
@@ -2048,8 +2037,8 @@
       "bearingX": 0,
       "bearingY": -56,
       "advance": 72,
-      "x": 8,
-      "y": 502
+      "x": 1929,
+      "y": 423
     },
     {
       "char": "ド",
@@ -2059,7 +2048,7 @@
       "bearingX": 0,
       "bearingY": -59,
       "advance": 72,
-      "x": 88,
+      "x": 8,
       "y": 502
     },
     {
@@ -2070,7 +2059,7 @@
       "bearingX": 0,
       "bearingY": -59,
       "advance": 72,
-      "x": 168,
+      "x": 88,
       "y": 502
     },
     {
@@ -2081,7 +2070,7 @@
       "bearingX": 0,
       "bearingY": -57,
       "advance": 72,
-      "x": 248,
+      "x": 168,
       "y": 502
     },
     {
@@ -2092,7 +2081,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 328,
+      "x": 248,
       "y": 502
     },
     {
@@ -2103,7 +2092,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 408,
+      "x": 328,
       "y": 502
     },
     {
@@ -2114,7 +2103,7 @@
       "bearingX": 0,
       "bearingY": -56,
       "advance": 72,
-      "x": 488,
+      "x": 408,
       "y": 502
     },
     {
@@ -2125,7 +2114,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 568,
+      "x": 488,
       "y": 502
     },
     {
@@ -2136,7 +2125,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 648,
+      "x": 568,
       "y": 502
     },
     {
@@ -2147,7 +2136,7 @@
       "bearingX": 0,
       "bearingY": -63,
       "advance": 72,
-      "x": 728,
+      "x": 648,
       "y": 502
     },
     {
@@ -2158,7 +2147,7 @@
       "bearingX": 0,
       "bearingY": -63,
       "advance": 72,
-      "x": 808,
+      "x": 728,
       "y": 502
     },
     {
@@ -2169,7 +2158,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 888,
+      "x": 808,
       "y": 502
     },
     {
@@ -2180,7 +2169,7 @@
       "bearingX": 0,
       "bearingY": -59,
       "advance": 72,
-      "x": 968,
+      "x": 888,
       "y": 502
     },
     {
@@ -2191,7 +2180,7 @@
       "bearingX": 0,
       "bearingY": -58,
       "advance": 72,
-      "x": 1048,
+      "x": 968,
       "y": 502
     },
     {
@@ -2202,7 +2191,7 @@
       "bearingX": 0,
       "bearingY": -61,
       "advance": 72,
-      "x": 1128,
+      "x": 1048,
       "y": 502
     },
     {
@@ -2213,7 +2202,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1208,
+      "x": 1128,
       "y": 502
     },
     {
@@ -2224,7 +2213,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1288,
+      "x": 1208,
       "y": 502
     },
     {
@@ -2235,7 +2224,7 @@
       "bearingX": 0,
       "bearingY": -60,
       "advance": 72,
-      "x": 1368,
+      "x": 1288,
       "y": 502
     },
     {
@@ -2246,7 +2235,7 @@
       "bearingX": 0,
       "bearingY": -59,
       "advance": 72,
-      "x": 1448,
+      "x": 1368,
       "y": 502
     },
     {
@@ -2257,7 +2246,7 @@
       "bearingX": 0,
       "bearingY": -61,
       "advance": 72,
-      "x": 1528,
+      "x": 1448,
       "y": 502
     },
     {
@@ -2268,7 +2257,7 @@
       "bearingX": 0,
       "bearingY": -58,
       "advance": 72,
-      "x": 1608,
+      "x": 1528,
       "y": 502
     },
     {
@@ -2279,7 +2268,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1688,
+      "x": 1608,
       "y": 502
     },
     {
@@ -2290,7 +2279,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1768,
+      "x": 1688,
       "y": 502
     },
     {
@@ -2301,7 +2290,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1848,
+      "x": 1768,
       "y": 502
     },
     {
@@ -2312,7 +2301,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 1928,
+      "x": 1848,
       "y": 502
     },
     {
@@ -2323,8 +2312,8 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 8,
-      "y": 580
+      "x": 1928,
+      "y": 502
     },
     {
       "char": "運",
@@ -2334,7 +2323,7 @@
       "bearingX": 0,
       "bearingY": -60,
       "advance": 72,
-      "x": 88,
+      "x": 8,
       "y": 580
     },
     {
@@ -2345,7 +2334,7 @@
       "bearingX": 0,
       "bearingY": -53,
       "advance": 72,
-      "x": 168,
+      "x": 88,
       "y": 580
     },
     {
@@ -2356,7 +2345,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 248,
+      "x": 168,
       "y": 580
     },
     {
@@ -2367,7 +2356,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 328,
+      "x": 248,
       "y": 580
     },
     {
@@ -2378,7 +2367,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 408,
+      "x": 328,
       "y": 580
     },
     {
@@ -2389,7 +2378,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 488,
+      "x": 408,
       "y": 580
     },
     {
@@ -2400,7 +2389,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 568,
+      "x": 488,
       "y": 580
     },
     {
@@ -2411,7 +2400,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 648,
+      "x": 568,
       "y": 580
     },
     {
@@ -2422,7 +2411,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 728,
+      "x": 648,
       "y": 580
     },
     {
@@ -2433,7 +2422,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 808,
+      "x": 728,
       "y": 580
     },
     {
@@ -2444,7 +2433,7 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
-      "x": 888,
+      "x": 808,
       "y": 580
     },
     {
@@ -2455,7 +2444,7 @@
       "bearingX": 0,
       "bearingY": -58,
       "advance": 72,
-      "x": 968,
+      "x": 888,
       "y": 580
     },
     {
@@ -2466,7 +2455,84 @@
       "bearingX": 0,
       "bearingY": -62,
       "advance": 72,
+      "x": 968,
+      "y": 580
+    },
+    {
+      "char": "吹",
+      "codepoint": 21561,
+      "width": 72,
+      "height": 69,
+      "bearingX": 0,
+      "bearingY": -62,
+      "advance": 72,
       "x": 1048,
+      "y": 580
+    },
+    {
+      "char": "き",
+      "codepoint": 12365,
+      "width": 72,
+      "height": 65,
+      "bearingX": 0,
+      "bearingY": -60,
+      "advance": 72,
+      "x": 1128,
+      "y": 580
+    },
+    {
+      "char": "飛",
+      "codepoint": 39131,
+      "width": 72,
+      "height": 68,
+      "bearingX": 0,
+      "bearingY": -60,
+      "advance": 72,
+      "x": 1208,
+      "y": 580
+    },
+    {
+      "char": "ば",
+      "codepoint": 12400,
+      "width": 72,
+      "height": 68,
+      "bearingX": 0,
+      "bearingY": -62,
+      "advance": 72,
+      "x": 1288,
+      "y": 580
+    },
+    {
+      "char": "ノ",
+      "codepoint": 12494,
+      "width": 72,
+      "height": 61,
+      "bearingX": 0,
+      "bearingY": -57,
+      "advance": 72,
+      "x": 1368,
+      "y": 580
+    },
+    {
+      "char": "ク",
+      "codepoint": 12463,
+      "width": 72,
+      "height": 67,
+      "bearingX": 0,
+      "bearingY": -61,
+      "advance": 72,
+      "x": 1448,
+      "y": 580
+    },
+    {
+      "char": "バ",
+      "codepoint": 12496,
+      "width": 72,
+      "height": 65,
+      "bearingX": 0,
+      "bearingY": -62,
+      "advance": 72,
+      "x": 1528,
       "y": 580
     }
   ]

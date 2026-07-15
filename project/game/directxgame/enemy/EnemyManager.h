@@ -85,6 +85,9 @@ public:
 	void StartBossPhase();
 	bool IsBossPhase() const { return bossPhase_; }
 	bool IsBossDefeated() const { return bossDefeated_; }
+	bool HasActiveBoss() const;
+	int32_t GetBossHP() const;
+	int32_t GetBossMaxHP() const;
 	bool GetBossPresentationPosition(Vector3& outPosition) const;
 	void SetBossPresentationPosition(const Vector3& position);
 	void UpdateBossDeathPresentation(float elapsedTime, float duration);

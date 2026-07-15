@@ -38,6 +38,13 @@ public:
 	float GetCameraLookSmoothing() const { return cameraController_.GetLookSmoothing(); }
 	float GetCameraFollowSmoothness() const { return cameraController_.GetFollowSmoothness(); }
 	CameraMode GetCameraMode() const { return cameraController_.GetMode(); }
+	PlayerCameraController::CameraPose CalculateCameraPoseFacingTarget(
+		const Vector3& targetPosition) const
+	{
+		return cameraController_.CalculatePoseFacingTarget(
+			position_,
+			targetPosition);
+	}
 	bool IsMouseAimEnabled() const { return aimController_.IsMouseAimEnabled(); }
 	AimInputDevice GetAimInputDevice() const { return aimController_.GetInputDevice(); }
 	void SetCameraHeight(float height) { cameraController_.SetHeight(height); }
@@ -47,6 +54,10 @@ public:
 	void SetCameraFollowSmoothness(float smoothness) { cameraController_.SetFollowSmoothness(smoothness); }
 	void SetCameraMode(CameraMode mode) { cameraController_.SetMode(mode); }
 	void SetMouseAimEnabled(bool enabled) { aimController_.SetMouseAimEnabled(enabled); }
+	void SyncCameraToTarget(const Vector3& targetPosition)
+	{
+		cameraController_.SyncToTarget(position_, targetPosition);
+	}
 	void SetVisible(bool visible) { visible_ = visible; }
 	void StartIntroPresentation();
 	void UpdateIntroPresentation(float elapsedTime, float duration);

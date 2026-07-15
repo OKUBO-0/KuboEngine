@@ -25,7 +25,7 @@
 
 namespace {
 
-constexpr float kGameTimeLimitSeconds = 300.0f;
+constexpr float kGameTimeLimitSeconds = 180.0f;
 constexpr char kAudioStart[] = "game.start";
 constexpr char kAudioPauseToggle[] = "game.pauseToggle";
 constexpr char kAudioLevelUp[] = "game.levelUp";
@@ -559,7 +559,7 @@ void PlayScene::StartBossPhase()
 		gameplayFlow_.EnterPlaying();
 		return;
 	}
-	bossPresentation_.StartEntrance(*enemyManager_);
+	bossPresentation_.StartEntrance(*enemyManager_, player_.get());
 }
 
 void PlayScene::UpdateBossEntrance(float deltaTime)
@@ -569,6 +569,12 @@ void PlayScene::UpdateBossEntrance(float deltaTime)
 			*enemyManager_,
 			particleEffects_,
 			deltaTime)) {
+		if (player_) {
+			Vector3 bossPosition{};
+			if (enemyManager_->GetBossPresentationPosition(bossPosition)) {
+				player_->SyncCameraToTarget(bossPosition);
+			}
+		}
 		gameplayFlow_.EnterBoss();
 	}
 }

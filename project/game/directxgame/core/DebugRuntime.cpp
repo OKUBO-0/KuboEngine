@@ -1,8 +1,12 @@
 #include "DebugRuntime.h"
+#include "DataPaths.h"
 #include "Enemy.h"
 #include "EnemyManager.h"
+#include "EnemyView.h"
 #include "PlayerManager.h"
+#include "UILayoutIO.h"
 #include <algorithm>
+#include <vector>
 #ifdef _DEBUG
 #include <imgui.h>
 #include <imgui_node_editor.h>
@@ -132,7 +136,7 @@ void DebugUI::Runtime::DrawColliderManager(
 	}
 
 	ImGui::SetNextWindowPos(ImVec2(1255.0f, 280.0f), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(360.0f, 220.0f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(380.0f, 360.0f), ImGuiCond_FirstUseEver);
 	ImGui::Begin("コライダー・当たり判定", open);
 	ImGui::Checkbox("DebugDraw collision / spawn range", debugDrawEnabled);
 	ImGui::SeparatorText("Runtime Tags");
@@ -158,6 +162,27 @@ void DebugUI::Runtime::DrawColliderManager(
 		ImGui::Text(
 			"Rock Projectiles: %zu",
 			playerManager->GetOrbitBullets().size());
+	}
+	ImGui::SeparatorText("Boss Visual Tuning");
+	float octopusOffsetY = EnemyView::GetOctopusModelGroundOffsetY();
+	if (ImGui::DragFloat(
+			"Octopus Ground Offset Y",
+			&octopusOffsetY,
+			0.01f,
+			0.0f,
+			8.0f,
+			"%.3f")) {
+		EnemyView::SetOctopusModelGroundOffsetY(octopusOffsetY);
+	}
+	ImGui::Text("Raise if buried, lower if floating.");
+	if (ImGui::Button("Save Boss Visual Tuning")) {
+		std::vector<UILayoutIO::Entry> entries;
+		EnemyView::AppendVisualTuningEntries(entries);
+		UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Reset Offset")) {
+		EnemyView::SetOctopusModelGroundOffsetY(4.7f);
 	}
 	ImGui::End();
 #else

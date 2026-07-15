@@ -29,8 +29,11 @@ public:
 	void SetText(const std::string& text);
 	void SetPosition(const Vector2& position);
 	void SetScale(float scale);
+	void SetScaleToFit(float baseScale, float maxWidth);
 	void SetAdvanceMultiplier(float multiplier);
 	void SetColor(const Vector4& color);
+	float MeasureWidth() const;
+	float MeasureWidth(float scale) const;
 	void Draw();
 
 private:
@@ -45,6 +48,7 @@ private:
 	bool LoadMetadata(const std::string& metadataPath);
 	void RebuildSprites();
 	void ApplyLayout();
+	float CalculateWidth(float scale) const;
 
 	TextureHandle textureHandle_ = 0;
 	Vector2 glyphSize_{ 18.0f, 26.0f };

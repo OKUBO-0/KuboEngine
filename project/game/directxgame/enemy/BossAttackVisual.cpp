@@ -53,9 +53,9 @@ void BossRushTelegraph::Update(const BossAttackTelegraph& telegraph)
 	object_->SetTranslate({ center.x, 0.08f, center.z });
 	object_->SetColor({
 		1.0f,
-		0.05f + telegraph.progress * 0.12f,
-		0.02f,
-		0.12f + telegraph.progress * 0.68f,
+		0.0f,
+		0.0f,
+		0.22f + telegraph.progress * 0.72f,
 	});
 	object_->Update();
 }
@@ -79,7 +79,7 @@ void BossSlamCube::Initialize(const Vector3& position, float delay)
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	ConfigureObject(*object_);
 	object_->SetScale({ 1.5f, 3.2f, 1.5f });
-	object_->SetColor({ 1.0f, 0.16f, 0.04f, 0.9f });
+	object_->SetColor({ 1.0f, 0.0f, 0.0f, 0.9f });
 	object_->SetTranslate({ position_.x, -3.2f, position_.z });
 	object_->Update();
 }
