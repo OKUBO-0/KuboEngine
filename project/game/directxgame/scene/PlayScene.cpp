@@ -2,6 +2,7 @@
 #include "DataPaths.h"
 #include "DebugDraw.h"
 #include "DebugUI.h"
+#include "GameAudioTuning.h"
 #include "GameMenuController.h"
 #include "GameModelCache.h"
 #include "SceneId.h"
@@ -26,10 +27,22 @@
 namespace {
 
 constexpr float kGameTimeLimitSeconds = 180.0f;
+constexpr char kGameBgmPath[] = "bgm/game_loop.wav";
+constexpr char kBossBgmPath[] = "bgm/boss_loop.wav";
+constexpr char kStartSePath[] = "se/game_start.wav";
+constexpr char kPauseSePath[] = "se/pause_toggle.wav";
+constexpr char kLevelUpSePath[] = "se/level_up.wav";
+constexpr char kGameOverSePath[] = "se/game_over.wav";
+constexpr char kBossPhaseSePath[] = "se/boss_phase.wav";
+constexpr char kBossDefeatSePath[] = "se/boss_defeat.wav";
+constexpr char kAudioGameBgm[] = "game.bgm";
+constexpr char kAudioBossBgm[] = "boss.bgm";
 constexpr char kAudioStart[] = "game.start";
 constexpr char kAudioPauseToggle[] = "game.pauseToggle";
 constexpr char kAudioLevelUp[] = "game.levelUp";
-constexpr char kAudioDeath[] = "game.death";
+constexpr char kAudioGameOver[] = "game.over";
+constexpr char kAudioBossPhase[] = "combat.bossPhase";
+constexpr char kAudioBossDefeat[] = "boss.defeat";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 
 const char* CharacterStatsKey(DirectXGame::CharacterId id)
@@ -54,6 +67,8 @@ PlayScene::PlayScene(std::shared_ptr<GameSession> sessionContext)
 
 void PlayScene::Initialize()
 {
+	LoadGameAudioTuning();
+	GameAudioCache::StopBus(AudioBus::Bgm);
 	gameplayFlow_.Reset();
 	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 
@@ -81,10 +96,7 @@ void PlayScene::Initialize()
 
 void PlayScene::Finalize()
 {
-	if (startSeHandle_) { GameAudioCache::Stop(startSeHandle_); }
-	if (pauseSeHandle_) { GameAudioCache::Stop(pauseSeHandle_); }
-	if (levelUpSeHandle_) { GameAudioCache::Stop(levelUpSeHandle_); }
-	if (gameOverSeHandle_) { GameAudioCache::Stop(gameOverSeHandle_); }
+	GameAudioCache::StopBus(AudioBus::Bgm);
 	Engine::CameraSystem::CameraManager::GetInstance()->RemoveCamera("directxgame_player");
 	debugContext_.FinalizeCamera();
 }
@@ -278,10 +290,22 @@ void PlayScene::InitializeUi()
 	levelUpSelectionHud_.Initialize();
 	pauseBuildHud_.Initialize();
 
-	startSeHandle_ = GameAudioCache::LoadWave("audio/se/se_exp.wav");
-	pauseSeHandle_ = GameAudioCache::LoadWave("audio/se/se_pause.wav");
-	levelUpSeHandle_ = GameAudioCache::LoadWave("audio/se/se_exp.wav");
-	gameOverSeHandle_ = GameAudioCache::LoadWave("audio/se/se_death.wav");
+	gameBgmHandle_ = GameAudioCache::LoadWave(kGameBgmPath, AudioBus::Bgm);
+	bossBgmHandle_ = GameAudioCache::LoadWave(kBossBgmPath, AudioBus::Bgm);
+	startSeHandle_ = GameAudioCache::LoadWave(kStartSePath);
+	pauseSeHandle_ = GameAudioCache::LoadWave(kPauseSePath);
+	levelUpSeHandle_ = GameAudioCache::LoadWave(kLevelUpSePath);
+	gameOverSeHandle_ = GameAudioCache::LoadWave(kGameOverSePath);
+	bossPhaseSeHandle_ = GameAudioCache::LoadWave(kBossPhaseSePath);
+	bossDefeatSeHandle_ = GameAudioCache::LoadWave(kBossDefeatSePath);
+	if (gameBgmHandle_) {
+		GameAudioCache::StopBus(AudioBus::Bgm);
+		GameAudioCache::SetVolumeFromTuning(gameBgmHandle_, kAudioGameBgm, 0.34f);
+		GameAudioCache::PlayLoop(gameBgmHandle_);
+	}
+	if (bossBgmHandle_) {
+		GameAudioCache::SetVolumeFromTuning(bossBgmHandle_, kAudioBossBgm, 0.4f);
+	}
 
 	uiInitialized_ = true;
 }
@@ -387,8 +411,7 @@ void PlayScene::UpdateGamePlay(float deltaTime)
 	}
 	if (playerManager_ && playerManager_->IsDead()) {
 		if (!gameOverSePlayed_ && gameOverSeHandle_) {
-			GameAudioCache::Play(gameOverSeHandle_);
-			GameAudioCache::SetVolumeFromTuning(gameOverSeHandle_, kAudioDeath, 1.0f);
+			GameAudioCache::PlayTuned(gameOverSeHandle_, kAudioGameOver, 0.78f);
 			gameOverSePlayed_ = true;
 		}
 		if (player_) {
@@ -523,8 +546,7 @@ void PlayScene::EnterPlaying()
 {
 	const bool enteringFromStart = gameplayFlow_.EnterPlaying();
 	if (enteringFromStart && startSeHandle_) {
-		GameAudioCache::Play(startSeHandle_);
-		GameAudioCache::SetVolumeFromTuning(startSeHandle_, kAudioStart, 1.0f);
+		GameAudioCache::PlayTuned(startSeHandle_, kAudioStart, 0.72f);
 	}
 	if (enteringFromStart && player_) {
 		player_->SuppressNextDodgeTrigger();
@@ -538,13 +560,11 @@ void PlayScene::TogglePause()
 	if (gameplayFlow_.BeginPause()) {
 		pauseBuildHud_.Start();
 		if (pauseSeHandle_) {
-			GameAudioCache::PlayTuned(
-				pauseSeHandle_, kAudioPauseToggle, 0.5f);
+			GameAudioCache::PlayTuned(pauseSeHandle_, kAudioPauseToggle, 0.58f, 0.08f);
 		}
 	} else if (gameplayFlow_.Is(GameplayState::Paused)) {
 		if (pauseSeHandle_) {
-			GameAudioCache::PlayTuned(
-				pauseSeHandle_, kAudioPauseToggle, 0.5f);
+			GameAudioCache::PlayTuned(pauseSeHandle_, kAudioPauseToggle, 0.58f, 0.08f);
 		}
 		EnterPlaying();
 	}
@@ -554,6 +574,17 @@ void PlayScene::StartBossPhase()
 {
 	if (!gameplayFlow_.BeginBossIntro()) {
 		return;
+	}
+	if (bossPhaseSeHandle_) {
+		GameAudioCache::PlayTuned(bossPhaseSeHandle_, kAudioBossPhase, 0.54f);
+	}
+	if (gameBgmHandle_) {
+		GameAudioCache::StopBus(AudioBus::Bgm);
+	}
+	if (bossBgmHandle_) {
+		GameAudioCache::SetVolumeFromTuning(bossBgmHandle_, kAudioBossBgm, 0.4f);
+		GameAudioCache::PlayLoop(bossBgmHandle_);
+		bossBgmPlaying_ = true;
 	}
 	if (!enemyManager_) {
 		gameplayFlow_.EnterPlaying();
@@ -584,6 +615,13 @@ void PlayScene::StartBossDefeatPresentation()
 	if (!gameplayFlow_.BeginBossDefeated()) {
 		return;
 	}
+	if (bossBgmPlaying_ && bossBgmHandle_) {
+		GameAudioCache::Stop(bossBgmHandle_);
+		bossBgmPlaying_ = false;
+	}
+	if (bossDefeatSeHandle_) {
+		GameAudioCache::PlayTuned(bossDefeatSeHandle_, kAudioBossDefeat, 0.78f);
+	}
 
 	if (enemyManager_) {
 		bossPresentation_.StartDefeat(*enemyManager_);
@@ -611,13 +649,13 @@ void PlayScene::RequestLevelUp()
 	gameplayFlow_.BeginLevelUp();
 	SpawnLevelUpConfetti();
 	if (levelUpSeHandle_) {
-		GameAudioCache::Play(levelUpSeHandle_);
-		GameAudioCache::SetVolumeFromTuning(levelUpSeHandle_, kAudioLevelUp, 1.0f);
+		GameAudioCache::PlayTuned(levelUpSeHandle_, kAudioLevelUp, 0.72f);
 	}
 }
 
 void PlayScene::RequestSceneChange(const char* sceneId)
 {
+	GameAudioCache::StopBus(AudioBus::Bgm);
 	sceneTransition_.Request(sceneId);
 }
 

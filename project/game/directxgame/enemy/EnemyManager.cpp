@@ -1,5 +1,6 @@
 #include "EnemyManager.h"
 #include "DataPaths.h"
+#include "GameAudioCache.h"
 #include "GameSession.h"
 #include "Player.h"
 #include "PlayerManager.h"
@@ -13,6 +14,12 @@
 #include <string_view>
 
 namespace DirectXGame {
+namespace {
+
+constexpr char kCoinGainSePath[] = "se/coin_gain.wav";
+constexpr char kAudioCoinGain[] = "combat.coinGain";
+
+}
 
 void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player, PlayerManager* playerManager)
 {
@@ -701,6 +708,9 @@ void EnemyManager::SpawnDeathDrop(const Enemy& enemy)
 			std::lround(static_cast<float>(enemy.GetCoinValue()) *
 				(playerManager_ ? playerManager_->GetCoinGainMultiplier() : 1.0f))));
 		session_->AddRunCoins(gainedCoins);
+		static SoundHandle coinGainSeHandle =
+			GameAudioCache::LoadWave(kCoinGainSePath);
+		GameAudioCache::PlayTuned(coinGainSeHandle, kAudioCoinGain, 0.36f, 0.035f);
 		recentFloatingNumberEvents_.push_back({
 			{ enemy.GetPosition().x + 1.15f, enemy.GetPosition().y + 2.85f, enemy.GetPosition().z },
 			gainedCoins,

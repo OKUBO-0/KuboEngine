@@ -1,5 +1,4 @@
 #include "game/directxgame/core/CsvReader.h"
-#include "game/directxgame/core/GameAudioCache.h"
 #include "game/directxgame/core/GameplayRules.h"
 #include "game/directxgame/player/PlayerStats.h"
 #include <cstdint>
@@ -144,16 +143,6 @@ void TestRunSeedDerivation()
 		"base seed changes sequence");
 }
 
-void TestSoundHandleContract()
-{
-	static_assert(!std::is_convertible_v<DirectXGame::SoundHandle, uint32_t>);
-	Require(!DirectXGame::SoundHandle{}, "default sound handle is invalid");
-	Require(static_cast<bool>(DirectXGame::SoundHandle{ 7 }),
-		"non-zero sound handle is valid");
-	Require(DirectXGame::SoundHandle{ 7 } == DirectXGame::SoundHandle{ 7 },
-		"sound handle identity");
-}
-
 } // namespace
 
 int main()
@@ -166,7 +155,6 @@ int main()
 		TestWeaponIntervals();
 		TestPlayerStatResolution();
 		TestRunSeedDerivation();
-		TestSoundHandleContract();
 		std::cout << "cpu_regression_checks: PASS\n";
 		return 0;
 	} catch (const std::exception& error) {

@@ -118,7 +118,7 @@ DebugUIAction DebugUI::Update(
 			ImVec2(1125.0f, 12.0f),
 			ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSize(
-			ImVec2(360.0f, 360.0f),
+			ImVec2(360.0f, 420.0f),
 			ImGuiCond_FirstUseEver);
 		DebugUI::Audio::Draw(
 			&windows.audio,

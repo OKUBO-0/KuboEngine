@@ -4,7 +4,7 @@
 
 namespace {
 
-constexpr char kDeathSePath[] = "audio/se/se_death.wav";
+constexpr char kDeathSePath[] = "se/enemy_death.wav";
 constexpr char kAudioEnemyDeath[] = "combat.enemyDeath";
 
 }
@@ -171,10 +171,7 @@ void Enemy::TakeDamage(int32_t damage, const Vector3& knockDirection, float stre
 		if (!sharedDeathSeHandle) {
 			sharedDeathSeHandle = GameAudioCache::LoadWave(kDeathSePath);
 		}
-		if (sharedDeathSeHandle) {
-			GameAudioCache::Play(sharedDeathSeHandle);
-			GameAudioCache::SetVolumeFromTuning(sharedDeathSeHandle, kAudioEnemyDeath, 1.0f);
-		}
+		GameAudioCache::PlayTuned(sharedDeathSeHandle, kAudioEnemyDeath, 0.54f, 0.035f);
 		active_ = false;
 		justDied_ = true;
 		return;

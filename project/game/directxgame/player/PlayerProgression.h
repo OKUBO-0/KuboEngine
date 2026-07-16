@@ -42,6 +42,7 @@ public:
 
 #ifdef _DEBUG
 	void ForceDebugDeath();
+	void DebugAdjustMaxHP(int32_t amount);
 #endif
 	void MakeDebugStrongest(Player* player);
 

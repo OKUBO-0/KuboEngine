@@ -170,6 +170,56 @@ bool PlayerManager::UpgradePassiveItem(PassiveItemType type)
 	return true;
 }
 
+void PlayerManager::DebugSetPassiveItemLevel(PassiveItemType type, int32_t level)
+{
+	const size_t index = PassiveItemIndex(type);
+	if (index >= passiveItemLevels_.size()) {
+		return;
+	}
+
+	const PassiveItemDefinition& definition = GetPassiveItemDefinition(type);
+	const int32_t targetLevel = std::clamp(level, 0, kPassiveItemMaxLevel);
+	int32_t& currentLevel = passiveItemLevels_[index];
+	const int32_t deltaLevel = targetLevel - currentLevel;
+	if (deltaLevel == 0) {
+		return;
+	}
+
+	if (currentLevel == 0 && targetLevel > 0 &&
+		std::find(
+			passiveItemAcquisitionOrder_.begin(),
+			passiveItemAcquisitionOrder_.end(),
+			type) == passiveItemAcquisitionOrder_.end()) {
+		passiveItemAcquisitionOrder_.push_back(type);
+	}
+
+	if (definition.type == PassiveItemType::MaxHp) {
+#ifdef _DEBUG
+		progression_.DebugAdjustMaxHP(
+			static_cast<int32_t>(definition.amount) * deltaLevel);
+#else
+		if (deltaLevel > 0) {
+			progression_.IncreaseMaxHPBy(
+				static_cast<int32_t>(definition.amount) * deltaLevel);
+		}
+#endif
+	} else {
+		progression_.UpgradeStat(
+			definition.statType,
+			definition.amount * static_cast<float>(deltaLevel));
+		if (definition.type == PassiveItemType::MoveSpeed) {
+			progression_.ApplyCurrentMovementSpeed(player_);
+		}
+	}
+
+	currentLevel = targetLevel;
+	if (currentLevel == 0) {
+		std::erase(
+			passiveItemAcquisitionOrder_,
+			type);
+	}
+}
+
 void PlayerManager::IncreaseMaxHP()
 {
 	progression_.IncreaseMaxHP();

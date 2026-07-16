@@ -296,6 +296,17 @@ void PlayerProgression::ForceDebugDeath()
 {
 	lifeStock_ = 0;
 }
+
+void PlayerProgression::DebugAdjustMaxHP(int32_t amount)
+{
+	const int32_t before = maxLifeStock_;
+	maxLifeStock_ = std::clamp(
+		maxLifeStock_ + amount,
+		1,
+		maxLifeStockCap_);
+	const int32_t delta = maxLifeStock_ - before;
+	lifeStock_ = std::clamp(lifeStock_ + delta, 0, maxLifeStock_);
+}
 #endif
 
 void PlayerProgression::MakeDebugStrongest(Player* player)

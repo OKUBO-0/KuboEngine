@@ -45,7 +45,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\game\directxgame\core\CsvReader.h" />
-    <ClInclude Include="..\game\directxgame\core\GameAudioCache.h" />
     <ClInclude Include="..\game\directxgame\core\GameplayRules.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

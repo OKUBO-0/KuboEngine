@@ -22,6 +22,12 @@ namespace {
 constexpr float kScreenWidth = 1280.0f;
 constexpr float kScreenHeight = 720.0f;
 constexpr float kVignetteBandSize = 45.0f;
+constexpr char kSelectSePath[] = "se/ui_select.wav";
+constexpr char kDecideSePath[] = "se/ui_decide.wav";
+constexpr char kBackSePath[] = "se/ui_back.wav";
+constexpr char kAudioUiSelect[] = "ui.select";
+constexpr char kAudioUiDecide[] = "ui.decide";
+constexpr char kAudioUiBack[] = "ui.back";
 
 bool IsPointInRect(const Vector2& point, const Vector2& position, const Vector2& size)
 {
@@ -131,6 +137,9 @@ void PauseBuildHud::Initialize()
 			? Vector4{ 1.0f, 0.9f, 0.15f, 1.0f }
 			: Vector4{ 1.0f, 1.0f, 1.0f, 1.0f });
 	}
+	selectSeHandle_ = GameAudioCache::LoadWave(kSelectSePath);
+	decideSeHandle_ = GameAudioCache::LoadWave(kDecideSePath);
+	backSeHandle_ = GameAudioCache::LoadWave(kBackSePath);
 	ApplyLayout();
 }
 
@@ -179,11 +188,26 @@ PauseMenuAction PauseBuildHud::Update(
 
 	if (moveDelta != 0) {
 		MoveSelection(moveDelta);
+		if (selectSeHandle_) {
+			GameAudioCache::PlayTuned(
+				selectSeHandle_,
+				kAudioUiSelect,
+				0.55f,
+				0.035f);
+		}
 	}
 	const int32_t hoveredMenuIndex = GetHoveredMenuIndex();
 	if (inputDevice == GameInputBindings::NavigationInputDevice::Mouse &&
-		hoveredMenuIndex >= 0) {
+		hoveredMenuIndex >= 0 &&
+		hoveredMenuIndex != selection_) {
 		selection_ = hoveredMenuIndex;
+		if (selectSeHandle_) {
+			GameAudioCache::PlayTuned(
+				selectSeHandle_,
+				kAudioUiSelect,
+				0.55f,
+				0.035f);
+		}
 	}
 	const Vector2 leftTarget = menuLayout_.leftCursorOffsets[static_cast<size_t>(selection_)];
 	const Vector2 rightTarget = menuLayout_.rightCursorOffsets[static_cast<size_t>(selection_)];
@@ -213,6 +237,9 @@ PauseMenuAction PauseBuildHud::Update(
 		? mouseConfirm
 		: confirmTriggered;
 	if (confirmed) {
+		if (decideSeHandle_) {
+			GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+		}
 		switch (selection_) {
 		case 0: return PauseMenuAction::Resume;
 		case 1: return PauseMenuAction::Restart;
@@ -221,6 +248,9 @@ PauseMenuAction PauseBuildHud::Update(
 		}
 	}
 	if (cancelTriggered) {
+		if (backSeHandle_) {
+			GameAudioCache::PlayTuned(backSeHandle_, kAudioUiBack, 0.52f);
+		}
 		return PauseMenuAction::Resume;
 	}
 	return PauseMenuAction::None;

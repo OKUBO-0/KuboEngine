@@ -98,17 +98,21 @@ private:
 	BossPresentation bossPresentation_{};
 	PlayerDeathPresentation playerDeathPresentation_{};
 
-	// 効果音ハンドル。Audio 側にロード済み音源を問い合わせるための軽量 ID。
+	SoundHandle gameBgmHandle_{};
+	SoundHandle bossBgmHandle_{};
 	SoundHandle startSeHandle_{};
 	SoundHandle pauseSeHandle_{};
 	SoundHandle levelUpSeHandle_{};
 	SoundHandle gameOverSeHandle_{};
+	SoundHandle bossPhaseSeHandle_{};
+	SoundHandle bossDefeatSeHandle_{};
 
 	// UI 入力と一度だけ行う初期化/再生制御の状態。
 	GameInputBindings::NavigationInputDevice navigationInputDevice_ =
 		GameInputBindings::NavigationInputDevice::Keyboard;
 	bool uiInitialized_ = false;
 	bool gameOverSePlayed_ = false;
+	bool bossBgmPlaying_ = false;
 };
 
 }

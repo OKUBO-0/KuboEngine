@@ -408,7 +408,7 @@ def page11(c: canvas.Canvas) -> None:
     ])
     box(c, MX + left + 24, y, CW - left - 24, 100, "Scene stress の意味", "`TitleScene -> PlayScene -> ResultScene` を自動遷移し、scene訪問回数とSRV使用量を記録する。descriptor使用量がscene遷移で増え続けないかを見る検証。", GREEN, PAPER, 8.2)
     y -= 160
-    box(c, MX, y, 260, 112, "CPU regression checks", "cell key packing\ngauge clamp\nstrict CSV parse\nweapon interval normalization\nrun seed derivation\nstrong SoundHandle", BLUE, colors.white, 7.8)
+    box(c, MX, y, 260, 112, "CPU regression checks", "cell key packing\ngauge clamp\nstrict CSV parse\nweapon interval normalization\nrun seed derivation", BLUE, colors.white, 7.8)
     box(c, MX + 282, y, 260, 112, "PIX preflight", "status=READY\nPIX installed=True\nCR-012 dynamic texture load latency\nCR-026 shadow pass timing", ORANGE, colors.white, 7.8)
     callout(c, MX + 564, y, CW - 564, "PIXは準備完了まで。GPU pass timeやdraw-call breakdownは未計測なので、提出資料では今後の改善に置く。", RED)
     footer(c, 11)

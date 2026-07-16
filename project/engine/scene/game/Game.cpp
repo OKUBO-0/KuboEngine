@@ -6,7 +6,6 @@
 #include "SrvManager.h"
 #include "DirectXCommon.h"
 #ifdef _DEBUG
-#include "Audio.h"
 #include "DebugEditorManager.h"
 #include "Input.h"
 #include <imgui.h>
@@ -86,7 +85,6 @@ void Game::DrawDebugEditorShell()
 		{ "シーン設定", &debugSceneSettingsOpen_ },
 		{ "キー操作デバッグ", &debugKeyInputOpen_ },
 		{ "オフスクリーン設定", &debugOffscreenOpen_ },
-		{ "オーディオ", &debugAudioOpen_ },
 		{ "ライト設定", &debugLightOpen_ },
 	};
 	constexpr size_t windowItemCount = sizeof(windowItems) / sizeof(windowItems[0]);
@@ -142,25 +140,6 @@ void Game::DrawDebugEditorShell()
 		if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
 			offscreen->DrawImGui(&debugOffscreenOpen_);
 		}
-	}
-
-	if (debugAudioOpen_) {
-		ImGui::Begin("オーディオ", &debugAudioOpen_);
-		if (ImGui::SliderFloat("Master Volume", &debugMasterVolume_, 0.0f, 1.0f)) {
-			Engine::AudioSystem::Audio::GetInstance()->SetVolume(debugMasterVolume_);
-		}
-		if (ImGui::Button("Stop All")) {
-			Engine::AudioSystem::Audio::GetInstance()->StopAudio();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Pause All")) {
-			Engine::AudioSystem::Audio::GetInstance()->PauseAudio();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Resume All")) {
-			Engine::AudioSystem::Audio::GetInstance()->ResumeAudio();
-		}
-		ImGui::End();
 	}
 
 	if (debugLightOpen_) {

@@ -29,6 +29,10 @@ constexpr float kChoiceTextOffsetX = 48.0f;
 constexpr float kChoiceTextRightPadding = 20.0f;
 constexpr float kChoiceTitleBaseScale = 0.40f;
 constexpr float kChoiceDetailBaseScale = 0.32f;
+constexpr char kSelectSePath[] = "se/ui_select.wav";
+constexpr char kDecideSePath[] = "se/ui_decide.wav";
+constexpr char kAudioUiSelect[] = "ui.select";
+constexpr char kAudioUiDecide[] = "ui.decide";
 
 void PreloadTextures()
 {
@@ -196,6 +200,8 @@ void LevelUpSelectionHud::Initialize()
 		text.SetAdvanceMultiplier(1.0f);
 		text.SetColor({ 0.82f, 0.9f, 1.0f, 0.95f });
 	}
+	selectSeHandle_ = GameAudioCache::LoadWave(kSelectSePath);
+	decideSeHandle_ = GameAudioCache::LoadWave(kDecideSePath);
 	ApplyLayout();
 }
 
@@ -252,11 +258,26 @@ bool LevelUpSelectionHud::Update(
 
 	if (moveDelta != 0) {
 		MoveSelection(moveDelta);
+		if (selectSeHandle_) {
+			GameAudioCache::PlayTuned(
+				selectSeHandle_,
+				kAudioUiSelect,
+				0.55f,
+				0.035f);
+		}
 	}
 	const int32_t hoveredChoiceIndex = GetHoveredChoiceIndex();
 	if (inputDevice == GameInputBindings::NavigationInputDevice::Mouse &&
-		hoveredChoiceIndex >= 0) {
+		hoveredChoiceIndex >= 0 &&
+		hoveredChoiceIndex != selection_) {
 		selection_ = hoveredChoiceIndex;
+		if (selectSeHandle_) {
+			GameAudioCache::PlayTuned(
+				selectSeHandle_,
+				kAudioUiSelect,
+				0.55f,
+				0.035f);
+		}
 	}
 
 	const float selectedPulse =
@@ -293,6 +314,9 @@ bool LevelUpSelectionHud::Update(
 	if (confirmed) {
 		selectionPending_ = true;
 		animationState_ = AnimationState::Exiting;
+		if (decideSeHandle_) {
+			GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+		}
 	}
 	return false;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameInputBindings.h"
+#include "GameAudioCache.h"
 #include "LevelUpChoiceService.h"
 #include "BitmapText.h"
 #include "UILabel.h"
@@ -58,6 +59,8 @@ private:
 	int32_t selection_ = 0;
 	AnimationState animationState_ = AnimationState::Hidden;
 	bool selectionPending_ = false;
+	SoundHandle selectSeHandle_{};
+	SoundHandle decideSeHandle_{};
 };
 
 }

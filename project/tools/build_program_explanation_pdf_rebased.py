@@ -490,7 +490,7 @@ def page_rendering_resource(c: canvas.Canvas) -> None:
     ], 6.8)
     x = MARGIN_X + left + 24
     box(c, x, y, CONTENT_W - left - 24, 72, "SrvManager", "SRV heapを単独所有し、allocate/free、used count、high-watermark、usage recordを記録。", BLUE, PAPER, 8.0)
-    box(c, x, y - 90, CONTENT_W - left - 24, 72, "Cache", "GameTextureCache、GameModelCache、GameAudioCacheで重複ロードと利用側APIを整理。", GREEN, PAPER, 8.0)
+    box(c, x, y - 90, CONTENT_W - left - 24, 72, "Cache", "GameTextureCache、GameModelCacheで重複ロードと利用側APIを整理。", GREEN, PAPER, 8.0)
     y -= 210
     text(c, MARGIN_X, y, "frame reuse", 13, NAVY, FONT_BOLD)
     node(c, MARGIN_X + 80, y - 30, 124, 36, "Frame 0\nupload / release", BLUE)

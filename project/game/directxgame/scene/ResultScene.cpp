@@ -1,6 +1,7 @@
 #include "ResultScene.h"
 #include "DirectXCommon.h"
 #include "DataPaths.h"
+#include "GameAudioTuning.h"
 #include "GameMenuController.h"
 #include "SceneId.h"
 #include "GameSession.h"
@@ -21,7 +22,10 @@
 
 namespace {
 
+constexpr char kResultFinishSePath[] = "se/result_finish.wav";
+constexpr char kDecideSePath[] = "se/ui_decide.wav";
 constexpr char kAudioResultFinish[] = "result.finish";
+constexpr char kAudioUiDecide[] = "ui.decide";
 constexpr char kResultBackgroundTexture[] = "ui/result/Result.png";
 constexpr char kResultFinishTexture[] = "ui/result/finish_ui.png";
 constexpr char kResultNumberTexture[] = "ui/font/noto_sans_jp_black.png";
@@ -46,6 +50,8 @@ ResultScene::ResultScene(std::shared_ptr<GameSession> sessionContext)
 
 void ResultScene::Initialize()
 {
+	LoadGameAudioTuning();
+	GameAudioCache::StopBus(AudioBus::Bgm);
 	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 	if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
 		offscreen->SetScenePostEffectType(PostEffectType::Fullscreen);
@@ -62,6 +68,9 @@ void ResultScene::Finalize()
 {
 	if (finishSeHandle_) {
 		GameAudioCache::Stop(finishSeHandle_);
+	}
+	if (decideSeHandle_) {
+		GameAudioCache::Stop(decideSeHandle_);
 	}
 }
 
@@ -139,6 +148,9 @@ void ResultScene::Update()
 		if (!IsCountUpFinished()) {
 			FinishCountUp();
 		} else {
+			if (decideSeHandle_) {
+				GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+			}
 			RequestSceneChange(SceneId::kTitle);
 		}
 	}
@@ -210,7 +222,8 @@ void ResultScene::InitializeUi()
 	curtain_->Initialize();
 	curtain_->StartOpen(20.0f);
 
-	finishSeHandle_ = GameAudioCache::LoadWave("audio/se/se_pause.wav");
+	finishSeHandle_ = GameAudioCache::LoadWave(kResultFinishSePath);
+	decideSeHandle_ = GameAudioCache::LoadWave(kDecideSePath);
 	for (BitmapText* text : { &expText_, &levelText_, &killText_, &totalScoreText_ }) {
 		text->Initialize(kResultNumberTexture, kResultNumberMetadata);
 	}
@@ -324,8 +337,7 @@ void ResultScene::UpdateCountUp(float deltaTime)
 		static_cast<int32_t>(displayedKills_) >= resultData.totalKillCount &&
 		static_cast<int32_t>(displayedTotalScore_) >= totalScore;
 	if (countUpFinished_ && !finishSePlayed_ && finishSeHandle_) {
-		GameAudioCache::Play(finishSeHandle_);
-		GameAudioCache::SetVolumeFromTuning(finishSeHandle_, kAudioResultFinish, 1.0f);
+		GameAudioCache::PlayTuned(finishSeHandle_, kAudioResultFinish, 0.72f);
 		finishSePlayed_ = true;
 	}
 }

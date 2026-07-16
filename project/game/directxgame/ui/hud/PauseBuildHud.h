@@ -2,6 +2,7 @@
 
 #include "Vector2.h"
 #include "GameInputBindings.h"
+#include "GameAudioCache.h"
 #include "UILabel.h"
 #include "UIPanel.h"
 #include "BitmapText.h"
@@ -110,6 +111,9 @@ private:
 	Vector2 currentLeftCursorPosition_{};
 	Vector2 currentRightCursorPosition_{};
 	bool cursorPositionInitialized_ = false;
+	SoundHandle selectSeHandle_{};
+	SoundHandle decideSeHandle_{};
+	SoundHandle backSeHandle_{};
 };
 
 }

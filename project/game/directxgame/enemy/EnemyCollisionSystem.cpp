@@ -21,11 +21,11 @@ constexpr float kFixedKnockbackStrength = 0.8f;
 using EnemyCellMap =
 	DirectXGame::EnemyCollisionContext::EnemyCellMap;
 
-constexpr char kHitSePath[] = "audio/se/se_hit.wav";
-constexpr char kPlayerDamageSePath[] = "audio/se/se_hit.wav";
+constexpr float kEnemySeparationStrength = 1.1f;
+constexpr char kHitSePath[] = "se/enemy_hit.wav";
+constexpr char kPlayerDamageSePath[] = "se/player_damage.wav";
 constexpr char kAudioEnemyHit[] = "combat.enemyHit";
 constexpr char kAudioPlayerDamage[] = "combat.playerDamage";
-constexpr float kEnemySeparationStrength = 1.1f;
 constexpr float kSpatialCellSize = 8.0f;
 constexpr float kEnemyQueryPadding = 2.0f;
 
@@ -275,16 +275,13 @@ void ApplyEnemyHit(
 {
 	static DirectXGame::SoundHandle sharedHitSeHandle{};
 	if (!sharedHitSeHandle) {
-		sharedHitSeHandle =
-			DirectXGame::GameAudioCache::LoadWave(kHitSePath);
+		sharedHitSeHandle = DirectXGame::GameAudioCache::LoadWave(kHitSePath);
 	}
-	if (sharedHitSeHandle) {
-		DirectXGame::GameAudioCache::Play(sharedHitSeHandle);
-		DirectXGame::GameAudioCache::SetVolumeFromTuning(
-			sharedHitSeHandle,
-			kAudioEnemyHit,
-			0.5f);
-	}
+	DirectXGame::GameAudioCache::PlayTuned(
+		sharedHitSeHandle,
+		kAudioEnemyHit,
+		0.44f,
+		0.025f);
 
 	const Vector3 enemyPosition = enemy.GetPosition();
 	Vector3 knockDirection{
@@ -325,17 +322,13 @@ void PlayPlayerDamageSound()
 	static DirectXGame::SoundHandle sharedPlayerDamageSeHandle{};
 	if (!sharedPlayerDamageSeHandle) {
 		sharedPlayerDamageSeHandle =
-			DirectXGame::GameAudioCache::LoadWave(
-				kPlayerDamageSePath);
+			DirectXGame::GameAudioCache::LoadWave(kPlayerDamageSePath);
 	}
-	if (sharedPlayerDamageSeHandle) {
-		DirectXGame::GameAudioCache::Play(
-			sharedPlayerDamageSeHandle);
-		DirectXGame::GameAudioCache::SetVolumeFromTuning(
-			sharedPlayerDamageSeHandle,
-			kAudioPlayerDamage,
-			0.8f);
-	}
+	DirectXGame::GameAudioCache::PlayTuned(
+		sharedPlayerDamageSeHandle,
+		kAudioPlayerDamage,
+		0.76f,
+		0.12f);
 }
 
 void CheckNormalBulletCollisions(

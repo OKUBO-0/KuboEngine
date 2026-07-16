@@ -300,7 +300,7 @@ def slide_9(c):
 def slide_10(c):
     title(c, 10, "検証", "壊れやすい処理を同じ条件で再確認できるようにする", GREEN)
     table(c, 60, 440, [150, 410, 150], ["確認方法", "対象", "結果・用途"], [
-        ("CPU回帰テスト", "セルキー、候補削減率、HP、CSV、武器間隔、乱数、SoundHandle", "Debug / Release PASS"),
+        ("CPU回帰テスト", "セルキー、候補削減率、HP、CSV、武器間隔、乱数", "Debug / Release PASS"),
         ("Scene Stress", "Title → Play → Resultを3周", "各シーン3回訪問"),
         ("SRV telemetry", "使用数 / High-watermark", "105 / 105"),
         ("衝突計測", "Spatial Grid / Brute Force切り替え", "CPU時間と候補数をCSV化"),

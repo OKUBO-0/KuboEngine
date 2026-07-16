@@ -61,6 +61,7 @@ private:
 	UILabel finishUi_;
 	std::unique_ptr<CurtainTransition> curtain_;
 	SoundHandle finishSeHandle_{};
+	SoundHandle decideSeHandle_{};
 	BitmapText expText_;
 	BitmapText levelText_;
 	BitmapText killText_;

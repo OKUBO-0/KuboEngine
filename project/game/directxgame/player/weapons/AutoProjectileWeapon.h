@@ -44,6 +44,56 @@ public:
 		ApplyLevel(settings);
 	}
 
+	void DebugReset()
+	{
+		bullets_.clear();
+		recentShotPositions_.clear();
+		recentReloadPositions_.clear();
+		active_ = false;
+		level_ = 0;
+		damageBonus_ = 0;
+		count_ = 1;
+		hitCount_ = config_.hitCount;
+		timer_ = 0.0f;
+		burstShotsRemaining_ = 0;
+		burstTimer_ = 0.0f;
+		interval_ = config_.interval;
+		speed_ = config_.speed;
+		range_ = config_.range;
+		scale_ = config_.scale;
+	}
+
+	void DebugSetLevel(
+		const std::unordered_map<std::string, float>& settings,
+		int32_t level)
+	{
+		const int32_t targetLevel = std::clamp(level, 0, kMaxLevel);
+		DebugReset();
+		for (int32_t currentLevel = 0; currentLevel < targetLevel; ++currentLevel) {
+			Upgrade(settings);
+		}
+	}
+
+	void DebugFire(
+		const Vector3& playerPosition,
+		const Vector3& aimDirection,
+		const PlayerStats& stats)
+	{
+		if (!active_) {
+			return;
+		}
+		WeaponRuntimeStats runtime = stats.Resolve({
+			config_.baseDamage + damageBonus_,
+			interval_,
+			speed_,
+			range_,
+			scale_,
+			count_,
+			}, GetWeaponStatApplicability(config_.weaponType));
+		runtime.projectileCount = (std::max)(1, runtime.projectileCount);
+		SpawnFan(playerPosition, aimDirection, runtime);
+	}
+
 	void Update(float deltaTime, const Vector3& playerPosition,
 		const Vector3& aimDirection, const PlayerStats& stats)
 	{

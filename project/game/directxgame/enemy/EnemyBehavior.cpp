@@ -1,5 +1,6 @@
 #include "EnemyBehavior.h"
 #include "Enemy.h"
+#include "GameAudioCache.h"
 #include "Player.h"
 #include <algorithm>
 #include <cmath>
@@ -22,6 +23,32 @@ Vector3 NormalizeXZ(Vector3 direction)
 	direction.y = 0.0f;
 	direction.z /= length;
 	return direction;
+}
+
+void PlayBossAttackSound(BossAttackType type)
+{
+	switch (type) {
+	case BossAttackType::Rush: {
+		static SoundHandle handle =
+			GameAudioCache::LoadWave("se/boss_rush.wav");
+		GameAudioCache::PlayTuned(handle, "boss.rush", 0.58f, 0.12f);
+		break;
+	}
+	case BossAttackType::TentacleSlam: {
+		static SoundHandle handle =
+			GameAudioCache::LoadWave("se/boss_slam.wav");
+		GameAudioCache::PlayTuned(handle, "boss.slam", 0.72f, 0.12f);
+		break;
+	}
+	case BossAttackType::InkBurst: {
+		static SoundHandle handle =
+			GameAudioCache::LoadWave("se/boss_ink.wav");
+		GameAudioCache::PlayTuned(handle, "boss.ink", 0.64f, 0.12f);
+		break;
+	}
+	default:
+		break;
+	}
 }
 
 void MoveEnemy(Enemy& enemy, const Vector3& direction, float speed)
@@ -443,10 +470,12 @@ private:
 			1.55f);
 		switch (currentAction_) {
 		case Action::TentacleSlam:
+			PlayBossAttackSound(BossAttackType::TentacleSlam);
 			enemy.QueueBossAttack(BossAttackType::TentacleSlam, rushDirection_);
 			BeginRecovery(phase);
 			break;
 		case Action::InkBurst:
+			PlayBossAttackSound(BossAttackType::InkBurst);
 			enemy.QueueBossAttack(BossAttackType::InkBurst, rushDirection_);
 			BeginRecovery(phase);
 			break;
@@ -456,11 +485,13 @@ private:
 			}
 			state_ = State::Rush;
 			stateTimer_ = rushDuration;
+			PlayBossAttackSound(BossAttackType::Rush);
 			break;
 		default:
 			rushesRemaining_ = 1;
 			state_ = State::Rush;
 			stateTimer_ = rushDuration;
+			PlayBossAttackSound(BossAttackType::Rush);
 			break;
 		}
 	}

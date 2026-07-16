@@ -1,6 +1,7 @@
 #include "TitleSceneDebugUIController.h"
 
 #include "DebugEditorManager.h"
+#include "DataPaths.h"
 #include "Input.h"
 #include "OffscreenRenderManager.h"
 #include "ResourceProbe.h"
@@ -9,20 +10,14 @@
 #include "SceneLighting.h"
 #include "ScreenUtil.h"
 #include "GameTitleScene.h"
+#include "UILayoutIO.h"
 #include <array>
 #include <iterator>
 #include <string>
+#include <vector>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
-
-namespace {
-
-constexpr char kAudioTitleBgm[] = "title.bgm";
-constexpr char kAudioTitleSelect[] = "title.select";
-constexpr char kAudioTitleDecide[] = "title.decide";
-
-}
 
 namespace DirectXGame {
 
@@ -143,6 +138,17 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 			offscreen->DrawImGui();
 		}
 	}
+	if (windows.audio) {
+		DebugUI::Audio::Draw(
+			&windows.audio,
+			GetGameAudioTuningEntries(),
+			[]() {
+				std::vector<UILayoutIO::Entry> entries;
+				AppendGameAudioTuningEntries(entries);
+				UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+			},
+			[]() { LoadGameAudioTuning(); });
+	}
 	if (windows.titleView) {
 		const Engine::Editor::DebugSceneViewportState sceneViewport =
 			Engine::Editor::DebugEditorManager::DrawSceneViewport(
@@ -157,15 +163,6 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 		}
 	} else {
 		ScreenUtil::ClearDebugSceneViewport();
-	}
-
-	if (windows.audio) {
-		const std::array<AudioTuningEntry, 3> titleAudioEntries{ {
-			{ "Title BGM", kAudioTitleBgm, 0.1f, scene.titleBgmHandle_ },
-			{ "Title Select", kAudioTitleSelect, 1.0f },
-			{ "Title Decide", kAudioTitleDecide, 1.0f },
-		} };
-		DebugUI::Audio::Draw(&windows.audio, titleAudioEntries);
 	}
 
 	if (windows.statisticsView) {

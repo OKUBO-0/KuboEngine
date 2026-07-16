@@ -44,12 +44,14 @@ constexpr char kPermanentAttackIconPath[] = "ui/game/lvup/attack_icon.png";
 constexpr char kPermanentMoveSpeedIconPath[] = "ui/game/lvup/speed_icon.png";
 constexpr char kPermanentExpPickupRangeIconPath[] = "ui/game/lvup/heal_icon.png";
 constexpr char kPermanentCoinGainIconPath[] = "ui/game/lvup/normal_icon.png";
-constexpr char kTitleBgmPath[] = "audio/bgm/title.wav";
-constexpr char kSelectSePath[] = "audio/se/se_pause.wav";
-constexpr char kDecideSePath[] = "audio/se/se_exp.wav";
+constexpr char kTitleBgmPath[] = "bgm/title_loop.wav";
+constexpr char kSelectSePath[] = "se/ui_select.wav";
+constexpr char kDecideSePath[] = "se/ui_decide.wav";
+constexpr char kBackSePath[] = "se/ui_back.wav";
 constexpr char kAudioTitleBgm[] = "title.bgm";
-constexpr char kAudioTitleSelect[] = "title.select";
-constexpr char kAudioTitleDecide[] = "title.decide";
+constexpr char kAudioUiSelect[] = "ui.select";
+constexpr char kAudioUiDecide[] = "ui.decide";
+constexpr char kAudioUiBack[] = "ui.back";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kTitleCameraName[] = "directxgame_title";
 constexpr Vector2 kPermanentUpgradeIconBasePosition{ 48.0f, 86.0f };
@@ -178,6 +180,7 @@ TitleScene::TitleScene(std::shared_ptr<GameSession> sessionContext)
 void TitleScene::Initialize()
 {
 	LoadGameAudioTuning();
+	GameAudioCache::StopBus(AudioBus::Bgm);
 	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 	if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance()) {
 		offscreen->SetScenePostEffectType(PostEffectType::Fullscreen);
@@ -196,10 +199,7 @@ void TitleScene::Initialize()
 
 void TitleScene::Finalize()
 {
-	if (titleBgmHandle_) {
-		GameAudioCache::Stop(titleBgmHandle_);
-	}
-
+	GameAudioCache::StopBus(AudioBus::Bgm);
 	Engine::CameraSystem::CameraManager::GetInstance()->RemoveCamera(kTitleCameraName);
 }
 
@@ -244,6 +244,7 @@ void TitleScene::Update()
 			if (titleBgmHandle_) {
 				GameAudioCache::Stop(titleBgmHandle_);
 			}
+			GameAudioCache::StopBus(AudioBus::Bgm);
 			Engine::Scene::SceneManager::GetInstance()->ChangeScene(SceneId::kGame);
 			DrawDebugUI();
 			return;
@@ -477,9 +478,10 @@ void TitleScene::InitializeResources()
 	curtain_->Initialize();
 	curtain_->StartOpen(20.0f);
 
-	titleBgmHandle_ = GameAudioCache::LoadWave(kTitleBgmPath);
+	titleBgmHandle_ = GameAudioCache::LoadWave(kTitleBgmPath, AudioBus::Bgm);
 	selectSeHandle_ = GameAudioCache::LoadWave(kSelectSePath);
 	decideSeHandle_ = GameAudioCache::LoadWave(kDecideSePath);
+	backSeHandle_ = GameAudioCache::LoadWave(kBackSePath);
 }
 
 void TitleScene::InitializeCameraAndObjects()
@@ -581,6 +583,9 @@ void TitleScene::UpdateNavigation()
 	if (showingUpgradeScreen_) {
 		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 		if (menuInput.cancel) {
+			if (backSeHandle_) {
+				GameAudioCache::PlayTuned(backSeHandle_, kAudioUiBack, 0.52f);
+			}
 			showingUpgradeScreen_ = false;
 			cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 		}
@@ -626,11 +631,6 @@ void TitleScene::UpdateNavigation()
 		break;
 	}
 
-	if (menuIndex_ != previousIndex && selectSeHandle_) {
-		GameAudioCache::Play(selectSeHandle_);
-		GameAudioCache::SetVolumeFromTuning(selectSeHandle_, kAudioTitleSelect, 1.0f);
-	}
-
 	const Vector2 cursorOffset = menuIndex_ == 1
 		? layoutSettings_.cursorShopOffset
 		: (menuIndex_ == 2 ? layoutSettings_.cursorQuitOffset : Vector2{});
@@ -643,6 +643,10 @@ void TitleScene::UpdateNavigation()
 	cursorPosition_.y += (cursorTarget.y - cursorPosition_.y) * easing;
 	cursorSprite_.SetPosition(cursorPosition_);
 
+	if (menuIndex_ != previousIndex && selectSeHandle_) {
+		GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
+	}
+
 	const bool confirmTriggered =
 		navigationInputDevice_ == GameInputBindings::NavigationInputDevice::Mouse
 		? IsMouseMenuConfirm(hoveredMenuIndex)
@@ -653,8 +657,7 @@ void TitleScene::UpdateNavigation()
 	}
 
 	if (decideSeHandle_) {
-		GameAudioCache::Play(decideSeHandle_);
-		GameAudioCache::SetVolumeFromTuning(decideSeHandle_, kAudioTitleDecide, 1.0f);
+		GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
 	}
 
 	switch (menuIndex_) {
@@ -720,13 +723,9 @@ void TitleScene::UpdatePermanentUpgradeInput()
 		if (purchased) {
 			permanentUpgradePurchaseFlashTimers_[static_cast<size_t>(index)] =
 				kPermanentUpgradePurchaseFlashDuration;
-		}
-		if (purchased && decideSeHandle_) {
-			GameAudioCache::Play(decideSeHandle_);
-			GameAudioCache::SetVolumeFromTuning(
-				decideSeHandle_,
-				kAudioTitleDecide,
-				1.0f);
+			if (decideSeHandle_) {
+				GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+			}
 		}
 		break;
 	}
@@ -759,11 +758,7 @@ void TitleScene::UpdateCharacterSelectionInput()
 			? sessionContext_->TrySelectCharacter(id)
 			: sessionContext_->TryUnlockCharacter(id);
 		if (changed && decideSeHandle_) {
-			GameAudioCache::Play(decideSeHandle_);
-			GameAudioCache::SetVolumeFromTuning(
-				decideSeHandle_,
-				kAudioTitleDecide,
-				1.0f);
+			GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
 		}
 		break;
 	}
@@ -776,8 +771,9 @@ void TitleScene::UpdateAudio()
 	}
 
 	if (!GameAudioCache::IsPlaying(titleBgmHandle_)) {
+		GameAudioCache::StopBus(AudioBus::Bgm);
+		GameAudioCache::SetVolumeFromTuning(titleBgmHandle_, kAudioTitleBgm, 0.42f);
 		GameAudioCache::PlayLoop(titleBgmHandle_);
-		GameAudioCache::SetVolumeFromTuning(titleBgmHandle_, kAudioTitleBgm, 0.1f);
 	}
 }
 

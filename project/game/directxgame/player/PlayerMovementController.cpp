@@ -1,11 +1,18 @@
 #include "PlayerMovementController.h"
 
+#include "GameAudioCache.h"
 #include "Input.h"
 #include "GameInputBindings.h"
 #include <algorithm>
 #include <cmath>
 
 namespace DirectXGame {
+namespace {
+
+constexpr char kDodgeSePath[] = "se/player_dodge.wav";
+constexpr char kAudioPlayerDodge[] = "player.dodge";
+
+}
 
 void PlayerMovementController::Update(
 	float deltaTime,
@@ -82,6 +89,8 @@ void PlayerMovementController::UpdateDodge(
 	dodgeTimer_ = kDodgeDuration;
 	dodgeCooldownTimer_ = kDodgeCooldown;
 	rotationY = std::atan2(direction.x, direction.z);
+	static SoundHandle dodgeSeHandle = GameAudioCache::LoadWave(kDodgeSePath);
+	GameAudioCache::PlayTuned(dodgeSeHandle, kAudioPlayerDodge, 0.48f, 0.12f);
 }
 
 Vector3 PlayerMovementController::ResolveMoveDirection(

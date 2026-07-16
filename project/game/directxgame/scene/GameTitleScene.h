@@ -2,11 +2,11 @@
 
 #include "BaseScene.h"
 #include "Camera.h"
+#include "GameAudioCache.h"
 #include "Object3D.h"
 #include "Sprite.h"
 #include "Vector2.h"
 #include "Vector3.h"
-#include "GameAudioCache.h"
 #include "GameTextureCache.h"
 #include "GameInputBindings.h"
 #include "CurtainTransition.h"
@@ -142,6 +142,7 @@ private:
 	SoundHandle titleBgmHandle_{};
 	SoundHandle selectSeHandle_{};
 	SoundHandle decideSeHandle_{};
+	SoundHandle backSeHandle_{};
 
 	int32_t menuIndex_ = 0;
 	int32_t shopItemIndex_ = 0;

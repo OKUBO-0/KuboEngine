@@ -44,11 +44,9 @@ private:
 	bool debugSceneSettingsOpen_ = true;
 	bool debugKeyInputOpen_ = true;
 	bool debugOffscreenOpen_ = true;
-	bool debugAudioOpen_ = false;
 	bool debugLightOpen_ = false;
 	bool debugWindowSwitcherOpen_ = false;
 	bool debugEditorShellEnabled_ = true;
-	float debugMasterVolume_ = 1.0f;
 };
 
 }

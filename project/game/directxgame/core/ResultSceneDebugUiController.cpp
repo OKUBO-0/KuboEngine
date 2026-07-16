@@ -1,6 +1,7 @@
 #include "ResultSceneDebugUIController.h"
 
 #include "DebugEditorManager.h"
+#include "DataPaths.h"
 #include "Input.h"
 #include "SceneId.h"
 #include "GameSession.h"
@@ -8,15 +9,15 @@
 #include "GameInputBindings.h"
 #include "ScreenUtil.h"
 #include "ResultScene.h"
+#include "UILayoutIO.h"
 #include <array>
 #include <iterator>
+#include <vector>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
 
 namespace {
-
-constexpr char kAudioResultFinish[] = "result.finish";
 
 #ifdef _DEBUG
 bool DrawVector2Setting(
@@ -116,12 +117,15 @@ void ResultSceneDebugUIController::Draw(ResultScene& scene)
 	}
 
 	if (windows.audio) {
-		const std::array<AudioTuningEntry, 1> resultAudioEntries{ {
-			{ "Result Finish Volume", kAudioResultFinish, 1.0f },
-		} };
 		DebugUI::Audio::Draw(
 			&windows.audio,
-			resultAudioEntries);
+			GetGameAudioTuningEntries(),
+			[]() {
+				std::vector<UILayoutIO::Entry> entries;
+				AppendGameAudioTuningEntries(entries);
+				UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+			},
+			[]() { LoadGameAudioTuning(); });
 	}
 
 	if (windows.sceneSettings) {

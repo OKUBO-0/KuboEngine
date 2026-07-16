@@ -84,6 +84,15 @@ public:
 	void UpgradeBoomerang();
 	void UpgradeWeapon(WeaponType type, Player* player);
 	void MaxAllWeapons(Player* player);
+	int32_t GetWeaponLevel(WeaponType type) const;
+	int32_t GetWeaponMaxLevel(WeaponType type) const;
+	void DebugSetWeaponLevel(WeaponType type, Player* player, int32_t level);
+	void DebugRemoveWeapon(WeaponType type, Player* player);
+	void DebugFireWeapon(
+		WeaponType type,
+		Player* player,
+		EnemyManager* enemyManager,
+		const PlayerStats& playerStats);
 	bool HasWeapon(WeaponType type) const;
 	size_t GetEquippedWeaponCount() const;
 	bool CanAcquireWeapon(WeaponType type) const;
@@ -334,6 +343,13 @@ private:
 	void ApplySwordUpgradeLevel(int32_t level);
 	void ApplyAuraUpgradeLevel(int32_t level);
 	void ApplyFlameShoesUpgradeLevel(int32_t level);
+	void ResetNormalBulletWeapon();
+	void ResetOrbitWeapon();
+	void ResetLightningWeapon();
+	void ResetExplosiveWeapon();
+	void ResetSwordWeapon();
+	void ResetAuraWeapon();
+	void ResetFlameShoesWeapon();
 
 	// CSV 設定の参照ヘルパー。
 	// 未設定キーは fallback を使い、古い CSV でも起動できるようにする。

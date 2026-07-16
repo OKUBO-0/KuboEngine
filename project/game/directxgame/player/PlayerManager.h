@@ -100,6 +100,15 @@ public:
 	{
 		return passiveItemLevels_[PassiveItemIndex(type)];
 	}
+	int32_t GetPassiveItemMaxLevel(PassiveItemType) const
+	{
+		return kPassiveItemMaxLevel;
+	}
+	void DebugSetPassiveItemLevel(PassiveItemType type, int32_t level);
+	void DebugRemovePassiveItem(PassiveItemType type)
+	{
+		DebugSetPassiveItemLevel(type, 0);
+	}
 	const std::vector<PassiveItemType>& GetPassiveItemAcquisitionOrder() const
 	{
 		return passiveItemAcquisitionOrder_;
@@ -330,6 +339,30 @@ public:
 	}
 
 	void MaxAllWeapons();
+	int32_t GetWeaponLevel(WeaponType type) const
+	{
+		return weapons_.GetWeaponLevel(type);
+	}
+	int32_t GetWeaponMaxLevel(WeaponType type) const
+	{
+		return weapons_.GetWeaponMaxLevel(type);
+	}
+	void DebugSetWeaponLevel(WeaponType type, int32_t level)
+	{
+		weapons_.DebugSetWeaponLevel(type, player_, level);
+	}
+	void DebugRemoveWeapon(WeaponType type)
+	{
+		weapons_.DebugRemoveWeapon(type, player_);
+	}
+	void DebugFireWeapon(WeaponType type)
+	{
+		weapons_.DebugFireWeapon(
+			type,
+			player_,
+			enemyManager_,
+			progression_.GetStats());
+	}
 	void PlayLevelUpEffect();
 
 private:

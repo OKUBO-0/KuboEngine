@@ -8,7 +8,7 @@
 namespace {
 
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
-constexpr char kShotSePath[] = "audio/se/se_shot.wav";
+constexpr char kShotSePath[] = "se/shot.wav";
 constexpr char kAudioShot[] = "combat.shot";
 constexpr float kBulletFallbackCollisionRadius = 0.75f;
 
@@ -77,10 +77,7 @@ void NormalBullet::InitializeForward(
 	if (!sharedShotSeHandle) {
 		sharedShotSeHandle = GameAudioCache::LoadWave(kShotSePath);
 	}
-	if (sharedShotSeHandle) {
-	GameAudioCache::Play(sharedShotSeHandle);
-	GameAudioCache::SetVolumeFromTuning(sharedShotSeHandle, kAudioShot, 1.0f);
-}
+	GameAudioCache::PlayTuned(sharedShotSeHandle, kAudioShot, 0.34f, 0.035f);
 }
 
 void NormalBullet::Update(const Vector3& playerPosition, float deltaTime)

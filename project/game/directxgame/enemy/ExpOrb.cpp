@@ -9,7 +9,7 @@
 namespace {
 
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
-constexpr char kPickupSePath[] = "audio/se/se_exp.wav";
+constexpr char kPickupSePath[] = "se/exp_pickup.wav";
 constexpr char kAudioExpPickup[] = "combat.expPickup";
 constexpr float kFrameDeltaBaseline = 0.016f;
 constexpr float kAttractRadiusSq = 70.0f;
@@ -112,10 +112,7 @@ void ExpOrb::Collect()
 	if (!sharedPickupSeHandle) {
 		sharedPickupSeHandle = GameAudioCache::LoadWave(kPickupSePath);
 	}
-	if (sharedPickupSeHandle) {
-		GameAudioCache::Play(sharedPickupSeHandle);
-		GameAudioCache::SetVolumeFromTuning(sharedPickupSeHandle, kAudioExpPickup, 1.0f);
-	}
+	GameAudioCache::PlayTuned(sharedPickupSeHandle, kAudioExpPickup, 0.45f, 0.025f);
 	active_ = false;
 }
 

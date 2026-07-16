@@ -4,11 +4,13 @@
 #include "CsvReader.h"
 #include "GameplayRules.h"
 #include "EnemyManager.h"
+#include "GameAudioCache.h"
 #include "Player.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
 
@@ -37,6 +39,21 @@ Vector3 PlayerFacingDirection(const DirectXGame::Player& player)
 {
 	const float angle = player.GetWorldRotationY();
 	return { std::sin(angle), 0.0f, std::cos(angle) };
+}
+
+void PlayWeaponSound(
+	const char* path,
+	std::string_view key,
+	float fallbackVolume,
+	float minimumIntervalSeconds)
+{
+	const DirectXGame::SoundHandle handle =
+		DirectXGame::GameAudioCache::LoadWave(path);
+	DirectXGame::GameAudioCache::PlayTuned(
+		handle,
+		key,
+		fallbackVolume,
+		minimumIntervalSeconds);
 }
 
 }
@@ -363,11 +380,149 @@ bool PlayerWeaponController::IsWeaponMaxLevel(WeaponType type) const
 	return true;
 }
 
+int32_t PlayerWeaponController::GetWeaponLevel(WeaponType type) const
+{
+	switch (type) {
+	case WeaponType::BowArrow: return GetNormalBulletLevel();
+	case WeaponType::Rock: return GetOrbitBulletLevel();
+	case WeaponType::ThunderStaff: return GetLightningLevel();
+	case WeaponType::FlameStaff: return GetExplosiveBulletLevel();
+	case WeaponType::Sword: return GetSwordLevel();
+	case WeaponType::Aura: return GetAuraLevel();
+	case WeaponType::FlameShoes: return GetFlameShoesLevel();
+	case WeaponType::Bone: return GetBoneLevel();
+	case WeaponType::Handgun: return GetHandgunLevel();
+	case WeaponType::Boomerang: return GetBoomerangLevel();
+	}
+	return 0;
+}
+
+int32_t PlayerWeaponController::GetWeaponMaxLevel(WeaponType type) const
+{
+	switch (type) {
+	case WeaponType::BowArrow: return kNormalBulletMaxLevel;
+	case WeaponType::Rock: return kOrbitBulletMaxLevel;
+	case WeaponType::ThunderStaff: return kLightningMaxLevel;
+	case WeaponType::FlameStaff: return kExplosiveBulletMaxLevel;
+	case WeaponType::Sword: return kSwordMaxLevel;
+	case WeaponType::Aura: return kAuraMaxLevel;
+	case WeaponType::FlameShoes: return kFlameShoesMaxLevel;
+	case WeaponType::Bone: return kBoneMaxLevel;
+	case WeaponType::Handgun: return kHandgunMaxLevel;
+	case WeaponType::Boomerang: return kBoomerangMaxLevel;
+	}
+	return 0;
+}
+
+void PlayerWeaponController::DebugSetWeaponLevel(
+	WeaponType type,
+	Player* player,
+	int32_t level)
+{
+	const int32_t targetLevel =
+		std::clamp(level, 0, GetWeaponMaxLevel(type));
+	switch (type) {
+	case WeaponType::BowArrow:
+		ResetNormalBulletWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasNormalBullets_ = true;
+		normalBulletLevel_ = 1;
+		for (int32_t currentLevel = 2; currentLevel <= targetLevel; ++currentLevel) {
+			normalBulletLevel_ = currentLevel;
+			ApplyNormalBulletUpgradeLevel(currentLevel);
+		}
+		break;
+	case WeaponType::Rock:
+		ResetOrbitWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasOrbitBullets_ = true;
+		for (int32_t currentLevel = 1; currentLevel <= targetLevel; ++currentLevel) {
+			orbitBulletLevel_ = currentLevel;
+			ApplyOrbitUpgradeLevel(currentLevel);
+		}
+		RebuildOrbitBullets(player);
+		break;
+	case WeaponType::ThunderStaff:
+		ResetLightningWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasLightning_ = true;
+		for (int32_t currentLevel = 1; currentLevel <= targetLevel; ++currentLevel) {
+			lightningLevel_ = currentLevel;
+			ApplyLightningUpgradeLevel(currentLevel);
+		}
+		break;
+	case WeaponType::FlameStaff:
+		ResetExplosiveWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasExplosiveBullets_ = true;
+		for (int32_t currentLevel = 1; currentLevel <= targetLevel; ++currentLevel) {
+			explosiveBulletLevel_ = currentLevel;
+			ApplyExplosiveBulletUpgradeLevel(currentLevel);
+		}
+		break;
+	case WeaponType::Sword:
+		ResetSwordWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasSword_ = true;
+		for (int32_t currentLevel = 1; currentLevel <= targetLevel; ++currentLevel) {
+			swordLevel_ = currentLevel;
+			ApplySwordUpgradeLevel(currentLevel);
+		}
+		break;
+	case WeaponType::Aura:
+		ResetAuraWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasAura_ = true;
+		for (int32_t currentLevel = 1; currentLevel <= targetLevel; ++currentLevel) {
+			auraLevel_ = currentLevel;
+			ApplyAuraUpgradeLevel(currentLevel);
+		}
+		break;
+	case WeaponType::FlameShoes:
+		ResetFlameShoesWeapon();
+		if (targetLevel <= 0) {
+			return;
+		}
+		hasFlameShoes_ = true;
+		for (int32_t currentLevel = 1; currentLevel <= targetLevel; ++currentLevel) {
+			flameShoesLevel_ = currentLevel;
+			ApplyFlameShoesUpgradeLevel(currentLevel);
+		}
+		break;
+	case WeaponType::Bone:
+		boneWeapon_.DebugSetLevel(upgradeSettings_, targetLevel);
+		break;
+	case WeaponType::Handgun:
+		handgunWeapon_.DebugSetLevel(upgradeSettings_, targetLevel);
+		break;
+	case WeaponType::Boomerang:
+		boomerangWeapon_.DebugSetLevel(upgradeSettings_, targetLevel);
+		break;
+	}
+}
+
+void PlayerWeaponController::DebugRemoveWeapon(WeaponType type, Player* player)
+{
+	DebugSetWeaponLevel(type, player, 0);
+}
+
 bool PlayerWeaponController::HasWeapon(WeaponType type) const
 {
 	switch (type) {
 	case WeaponType::BowArrow:
-		return true;
+		return hasNormalBullets_;
 	case WeaponType::Rock:
 		return hasOrbitBullets_;
 	case WeaponType::ThunderStaff:
@@ -405,6 +560,70 @@ bool PlayerWeaponController::CanAcquireWeapon(WeaponType type) const
 {
 	return HasWeapon(type) ||
 		GetEquippedWeaponCount() < kMaxEquippedWeaponTypes;
+}
+
+void PlayerWeaponController::DebugFireWeapon(
+	WeaponType type,
+	Player* player,
+	EnemyManager* enemyManager,
+	const PlayerStats& playerStats)
+{
+	if (!player || !HasWeapon(type)) {
+		return;
+	}
+	switch (type) {
+	case WeaponType::BowArrow:
+		normalBulletTimer_ = 999.0f;
+		UpdateNormalBullets(0.0f, player, enemyManager, playerStats);
+		break;
+	case WeaponType::Rock:
+		RebuildOrbitBullets(player);
+		UpdateOrbitBullets(1.0f / 60.0f, player, playerStats);
+		break;
+	case WeaponType::ThunderStaff:
+		lightningTimer_ = 999.0f;
+		UpdateLightning(0.0f, enemyManager, playerStats);
+		break;
+	case WeaponType::FlameStaff:
+		explosiveBulletTimer_ = 999.0f;
+		explosiveBurstTimer_ = 999.0f;
+		UpdateExplosiveBullets(0.0f, player, enemyManager, playerStats);
+		break;
+	case WeaponType::Sword:
+		swordTimer_ = 999.0f;
+		UpdateSword(0.0f, player, enemyManager, playerStats);
+		break;
+	case WeaponType::Aura:
+		auraTimer_ = 999.0f;
+		UpdateAura(0.0f, player, enemyManager, playerStats);
+		break;
+	case WeaponType::FlameShoes:
+		flameShoesPositionInitialized_ = true;
+		flameShoesLastSpawnPosition_ =
+			player->GetWorldPosition() -
+			PlayerFacingDirection(*player) * flameShoesSpawnDistance_;
+		flameShoesLastDirection_ = PlayerFacingDirection(*player);
+		UpdateFlameShoes(0.0f, player, enemyManager, playerStats);
+		break;
+	case WeaponType::Bone:
+		boneWeapon_.DebugFire(
+			player->GetWorldPosition(),
+			ResolveAimDirection(*player, enemyManager),
+			playerStats);
+		break;
+	case WeaponType::Handgun:
+		handgunWeapon_.DebugFire(
+			player->GetWorldPosition(),
+			ResolveAimDirection(*player, enemyManager),
+			playerStats);
+		break;
+	case WeaponType::Boomerang:
+		boomerangWeapon_.DebugFire(
+			player->GetWorldPosition(),
+			ResolveAimDirection(*player, enemyManager),
+			playerStats);
+		break;
+	}
 }
 
 void PlayerWeaponController::MaxAllWeapons(Player* player)
@@ -664,8 +883,9 @@ void PlayerWeaponController::UpdateSword(
 			radius,
 			swordHalfAngle_ * 0.55f,
 			directionSign,
-			});
+		});
 	}
+	PlayWeaponSound("se/weapon_sword.wav", "weapon.sword", 0.42f, 0.16f);
 	swordTimer_ = std::fmod(swordTimer_, effectiveInterval);
 }
 
@@ -697,6 +917,7 @@ void PlayerWeaponController::UpdateAura(
 		runtime.areaSize,
 		runtime.damage);
 	auraPulseThisFrame_ = true;
+	PlayWeaponSound("se/weapon_aura.wav", "weapon.aura", 0.34f, 0.20f);
 	auraTimer_ = std::fmod(auraTimer_, interval);
 }
 
@@ -765,6 +986,7 @@ void PlayerWeaponController::UpdateFlameShoes(
 				});
 			recentFlameZoneSpawns_.push_back(zonePosition);
 		}
+		PlayWeaponSound("se/weapon_flame.wav", "weapon.flame", 0.40f, 0.16f);
 		flameShoesLastSpawnPosition_ = playerPosition;
 	}
 
@@ -956,6 +1178,11 @@ void PlayerWeaponController::UpdateLightning(
 			lightningEffectTargets_ = targets;
 			lightningEffectTimer_ =
 				0.22f * durationMultiplier;
+			PlayWeaponSound(
+				"se/weapon_lightning.wav",
+				"weapon.lightning",
+				0.48f,
+				0.16f);
 		}
 		for (const Vector3& target : targets) {
 			enemyManager->ApplyLightningDamage(
@@ -1192,6 +1419,118 @@ void PlayerWeaponController::ApplyFlameShoesUpgradeLevel(int32_t level)
 	flameShoesDamageInterval_ = (std::max)(
 		kMinWeaponInterval,
 		PositiveFiniteOr(flameShoesDamageInterval_, kMinWeaponInterval));
+}
+
+void PlayerWeaponController::ResetNormalBulletWeapon()
+{
+	normalBullets_.clear();
+	normalBulletPool_.clear();
+	hasNormalBullets_ = false;
+	normalBulletInterval_ = 0.85f;
+	normalBulletTimer_ = 0.0f;
+	normalBulletLevel_ = 0;
+	normalBulletAmount_ = 1;
+	normalBulletDamageBonus_ = 0;
+	normalBulletPierceCount_ = 1;
+	normalBulletSpeed_ = 1.0f;
+	normalBulletRange_ = 30.0f;
+	normalBulletScale_ = 1.0f;
+	peakNormalBulletCount_ = 0;
+	normalBulletPruneCount_ = 0;
+	normalBulletMinInterval_ = 0.18f;
+}
+
+void PlayerWeaponController::ResetOrbitWeapon()
+{
+	orbitBullets_.clear();
+	hasOrbitBullets_ = false;
+	orbitBulletLevel_ = 0;
+	orbitBulletCount_ = 1;
+	orbitDamageBonus_ = 0;
+	orbitRadius_ = 10.0f;
+	orbitRadiusUpgradeStep_ = 2.0f;
+	orbitAngularSpeed_ = 0.03f;
+	orbitAngularSpeedUpgradeStep_ = 0.01f;
+	orbitBulletScale_ = 1.0f;
+	orbitBulletScaleUpgradeStep_ = 0.2f;
+	orbitHitInterval_ = 0.5f;
+	orbitHitIntervalUpgradeMultiplier_ = 0.8f;
+}
+
+void PlayerWeaponController::ResetLightningWeapon()
+{
+	hasLightning_ = false;
+	lightningLevel_ = 0;
+	lightningStrikeCount_ = 1;
+	lightningDamageBonus_ = 0;
+	lightningRadius_ = 6.0f;
+	lightningInterval_ = 2.4f;
+	lightningTimer_ = 0.0f;
+	lightningEffectTargets_.clear();
+	lightningEffectTimer_ = 0.0f;
+}
+
+void PlayerWeaponController::ResetExplosiveWeapon()
+{
+	explosiveBullets_.clear();
+	explosiveBulletPool_.clear();
+	hasExplosiveBullets_ = false;
+	explosiveBulletLevel_ = 0;
+	explosiveBulletDamageBonus_ = 4;
+	explosiveBulletInterval_ = 2.0f;
+	explosiveBulletTimer_ = 0.0f;
+	explosiveBulletSpeed_ = 0.82f;
+	explosiveBulletRange_ = 28.0f;
+	explosiveBulletRadius_ = 4.2f;
+	explosiveBulletCount_ = 1;
+	explosiveBurstShotsRemaining_ = 0;
+	explosiveBurstTimer_ = 0.0f;
+	explosiveBurstInterval_ = GetUpgradeSetting(
+		"flameStaff.burstInterval",
+		0.14f);
+}
+
+void PlayerWeaponController::ResetSwordWeapon()
+{
+	hasSword_ = false;
+	swordLevel_ = 0;
+	swordDamageBonus_ = 0;
+	swordInterval_ = 1.15f;
+	swordTimer_ = 0.0f;
+	swordRadius_ = 7.0f;
+	swordHalfAngle_ = 0.9f;
+	swordSlashCount_ = 1;
+	swordKnockbackStrength_ = 0.8f;
+	recentSwordSlashes_.clear();
+}
+
+void PlayerWeaponController::ResetAuraWeapon()
+{
+	hasAura_ = false;
+	auraLevel_ = 0;
+	auraDamageBonus_ = 0;
+	auraInterval_ = 0.65f;
+	auraTimer_ = 0.0f;
+	auraRadius_ = 6.0f;
+	auraPulseThisFrame_ = false;
+}
+
+void PlayerWeaponController::ResetFlameShoesWeapon()
+{
+	hasFlameShoes_ = false;
+	flameShoesLevel_ = 0;
+	flameShoesDamageBonus_ = 0;
+	flameShoesZoneDuration_ = 1.5f;
+	flameShoesDamageInterval_ = 0.6f;
+	flameShoesRadius_ = 3.2f;
+	flameShoesSpawnDistance_ = 7.0f;
+	flameShoesZoneCount_ = 1;
+	flameShoesLastSpawnPosition_ = {};
+	flameShoesLastDirection_ = { 0.0f, 0.0f, 1.0f };
+	flameShoesPositionInitialized_ = false;
+	flameZones_.clear();
+	flameZoneVisuals_.clear();
+	recentFlameZoneSpawns_.clear();
 }
 
 int32_t PlayerWeaponController::GetLevelUpgradeSettingInt(

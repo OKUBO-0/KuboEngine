@@ -581,7 +581,7 @@ def build():
         doc,
         ["確認方法", "対象", "結果・用途"],
         [
-            ("CPU回帰テスト", "セルキー、候補削減率、HP、CSV、武器間隔、乱数、SoundHandle", "Debug / Release PASS"),
+            ("CPU回帰テスト", "セルキー、候補削減率、HP、CSV、武器間隔、乱数", "Debug / Release PASS"),
             ("Scene Stress", "Title -> Play -> Resultを3周", "各シーン3回訪問"),
             ("SRV telemetry", "使用数 / High-watermark", "105 / 105"),
             ("衝突計測", "Spatial Grid / Brute Force切り替え", "CPU時間と候補数をCSV化"),

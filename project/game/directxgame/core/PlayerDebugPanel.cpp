@@ -1,12 +1,188 @@
 #include "PlayerDebugPanel.h"
 #include "Player.h"
 #include "PlayerManager.h"
+#include "WeaponUpgradeData.h"
+#include <algorithm>
 #include <iterator>
 #ifdef _DEBUG
 #include <imgui.h>
 #endif
 
 namespace DirectXGame {
+
+namespace {
+
+const char* DebugWeaponName(WeaponType type)
+{
+	switch (type) {
+	case WeaponType::BowArrow: return "Bow Arrow";
+	case WeaponType::Rock: return "Rock";
+	case WeaponType::ThunderStaff: return "Thunder Staff";
+	case WeaponType::FlameStaff: return "Flame Staff";
+	case WeaponType::Sword: return "Sword";
+	case WeaponType::Aura: return "Aura";
+	case WeaponType::FlameShoes: return "Flame Shoes";
+	case WeaponType::Bone: return "Bone";
+	case WeaponType::Handgun: return "Handgun";
+	case WeaponType::Boomerang: return "Boomerang";
+	}
+	return "Unknown";
+}
+
+void DrawWeaponDebugControls(PlayerManager& playerManager)
+{
+#ifdef _DEBUG
+	if (!ImGui::CollapsingHeader("武器デバッグ", ImGuiTreeNodeFlags_DefaultOpen)) {
+		return;
+	}
+	ImGui::TextUnformatted("追加 / 削除 / 攻撃 / レベル調整");
+	if (ImGui::BeginTable(
+			"WeaponDebugTable",
+			6,
+			ImGuiTableFlags_BordersInnerV |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_SizingStretchProp)) {
+		ImGui::TableSetupColumn("Weapon");
+		ImGui::TableSetupColumn("State");
+		ImGui::TableSetupColumn("Equip");
+		ImGui::TableSetupColumn("Attack");
+		ImGui::TableSetupColumn("Level");
+		ImGui::TableSetupColumn("Set");
+		ImGui::TableHeadersRow();
+
+		for (WeaponType type : kUpgradeableWeaponTypes) {
+			const char* name = DebugWeaponName(type);
+			const bool hasWeapon = playerManager.HasWeapon(type);
+			const int32_t level = playerManager.GetWeaponLevel(type);
+			const int32_t maxLevel = playerManager.GetWeaponMaxLevel(type);
+
+			ImGui::PushID(name);
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(name);
+			ImGui::TableSetColumnIndex(1);
+			ImGui::Text(
+				"%s Lv %d / %d",
+				hasWeapon ? "ON" : "OFF",
+				level,
+				maxLevel);
+			ImGui::TableSetColumnIndex(2);
+			if (ImGui::Button("追加")) {
+				playerManager.DebugSetWeaponLevel(
+					type,
+					(std::max)(1, level));
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("削除")) {
+				playerManager.DebugRemoveWeapon(type);
+			}
+			ImGui::TableSetColumnIndex(3);
+			ImGui::BeginDisabled(!hasWeapon);
+			if (ImGui::Button("攻撃")) {
+				playerManager.DebugFireWeapon(type);
+			}
+			ImGui::EndDisabled();
+			ImGui::TableSetColumnIndex(4);
+			ImGui::BeginDisabled(level <= 0);
+			if (ImGui::Button("-")) {
+				playerManager.DebugSetWeaponLevel(type, level - 1);
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(level >= maxLevel);
+			if (ImGui::Button("+")) {
+				playerManager.DebugSetWeaponLevel(type, level + 1);
+			}
+			ImGui::EndDisabled();
+			ImGui::TableSetColumnIndex(5);
+			int32_t requestedLevel = level;
+			ImGui::SetNextItemWidth(64.0f);
+			if (ImGui::InputInt("##level", &requestedLevel, 1, 1)) {
+				playerManager.DebugSetWeaponLevel(type, requestedLevel);
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndTable();
+	}
+#else
+	(void)playerManager;
+#endif
+}
+
+void DrawPassiveItemDebugControls(PlayerManager& playerManager)
+{
+#ifdef _DEBUG
+	if (!ImGui::CollapsingHeader("アイテムデバッグ", ImGuiTreeNodeFlags_DefaultOpen)) {
+		return;
+	}
+	ImGui::TextUnformatted("追加 / 削除 / レベル調整");
+	if (ImGui::BeginTable(
+			"PassiveItemDebugTable",
+			5,
+			ImGuiTableFlags_BordersInnerV |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_SizingStretchProp)) {
+		ImGui::TableSetupColumn("Item");
+		ImGui::TableSetupColumn("State");
+		ImGui::TableSetupColumn("Equip");
+		ImGui::TableSetupColumn("Level");
+		ImGui::TableSetupColumn("Set");
+		ImGui::TableHeadersRow();
+
+		for (const PassiveItemDefinition& definition : kPassiveItemDefinitions) {
+			const PassiveItemType type = definition.type;
+			const int32_t level = playerManager.GetPassiveItemLevel(type);
+			const int32_t maxLevel = playerManager.GetPassiveItemMaxLevel(type);
+			const bool hasItem = level > 0;
+
+			ImGui::PushID(static_cast<int32_t>(PassiveItemIndex(type)));
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(definition.name.data());
+			ImGui::TableSetColumnIndex(1);
+			ImGui::Text(
+				"%s Lv %d / %d",
+				hasItem ? "ON" : "OFF",
+				level,
+				maxLevel);
+			ImGui::TableSetColumnIndex(2);
+			if (ImGui::Button("追加")) {
+				playerManager.DebugSetPassiveItemLevel(
+					type,
+					(std::max)(1, level));
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("削除")) {
+				playerManager.DebugRemovePassiveItem(type);
+			}
+			ImGui::TableSetColumnIndex(3);
+			ImGui::BeginDisabled(level <= 0);
+			if (ImGui::Button("-")) {
+				playerManager.DebugSetPassiveItemLevel(type, level - 1);
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			ImGui::BeginDisabled(level >= maxLevel);
+			if (ImGui::Button("+")) {
+				playerManager.DebugSetPassiveItemLevel(type, level + 1);
+			}
+			ImGui::EndDisabled();
+			ImGui::TableSetColumnIndex(4);
+			int32_t requestedLevel = level;
+			ImGui::SetNextItemWidth(64.0f);
+			if (ImGui::InputInt("##level", &requestedLevel, 1, 1)) {
+				playerManager.DebugSetPassiveItemLevel(type, requestedLevel);
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndTable();
+	}
+#else
+	(void)playerManager;
+#endif
+}
+
+}
 
 void DebugUI::PlayerPanel::Draw(
 	bool* objectViewOpen,
@@ -69,8 +245,8 @@ void DebugUI::PlayerPanel::Draw(
 
 	if (*objectSettingsOpen) {
 		ImGui::SetNextWindowPos(ImVec2(1495.0f, 390.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(360.0f, 360.0f), ImGuiCond_FirstUseEver);
-		ImGui::Begin("プレイヤー設定・武器デバッグ", objectSettingsOpen);
+		ImGui::SetNextWindowSize(ImVec2(700.0f, 620.0f), ImGuiCond_FirstUseEver);
+		ImGui::Begin("プレイヤー設定・デバッグ", objectSettingsOpen);
 		if (player) {
 			ImGui::SeparatorText("移動・照準");
 
@@ -150,33 +326,8 @@ void DebugUI::PlayerPanel::Draw(
 		if (ImGui::Button("Add EXP +10")) {
 			playerManager->AddEXP(10);
 		}
-		ImGui::SameLine();
-		if (ImGui::Button("Bow Arrow Up")) {
-			playerManager->UpgradeNormalBullets();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Rock Up")) {
-			playerManager->UpgradeOrbitBullets();
-		}
-		if (ImGui::Button("Thunder Staff Up")) {
-			playerManager->UpgradeLightning();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Sword Up")) {
-			playerManager->UpgradeSword();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Aura Up")) {
-			playerManager->UpgradeAura();
-		}
-		if (ImGui::Button("Flame Shoes Up")) {
-			playerManager->UpgradeFlameShoes();
-		}
-		if (ImGui::Button("Bone Up")) playerManager->UpgradeBone();
-		ImGui::SameLine();
-		if (ImGui::Button("Handgun Up")) playerManager->UpgradeHandgun();
-		ImGui::SameLine();
-		if (ImGui::Button("Boomerang Up")) playerManager->UpgradeBoomerang();
+		DrawWeaponDebugControls(*playerManager);
+		DrawPassiveItemDebugControls(*playerManager);
 		if (ImGui::Button("Max Weapons")) {
 			playerManager->MaxAllWeapons();
 		}
