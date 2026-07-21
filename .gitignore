@@ -19,19 +19,6 @@
 generated/
 Bin/
 
-# Local one-off downloaded/converted weapon model candidates.
-# Keep the curated CC0 weapon bundle under project/Resources/DirectXGame/quaternius_weapons/.
-project/Resources/DirectXGame/bone_poly/
-project/Resources/DirectXGame/boomerang_axe/
-project/Resources/DirectXGame/bow_poly/
-project/Resources/DirectXGame/pistol_ammo/
-project/Resources/DirectXGame/pistol_bullet/
-project/Resources/DirectXGame/pistol_poly/
-project/Resources/DirectXGame/rock_poly/
-project/Resources/DirectXGame/rock_round/
-project/Resources/DirectXGame/spear/
-project/Resources/DirectXGame/sword_poly/
-
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 # Uncomment if you have tasks that create the project's static files in wwwroot
