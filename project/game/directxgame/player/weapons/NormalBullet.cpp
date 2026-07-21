@@ -192,15 +192,31 @@ void NormalBullet::ApplyTransform()
 		return;
 	}
 	if (movementMode_ == MovementMode::ReturnToPlayer) {
-		object_->SetRotate({
-			0.0f,
-			rotationY_ + spinAngle_ * 0.22f,
-			spinAngle_,
-			});
+		if (visualStyle_.spinAroundY) {
+			object_->SetRotate({
+				visualStyle_.rotationOffset.x,
+				rotationY_ + spinAngle_ + visualStyle_.rotationOffset.y,
+				visualStyle_.rotationOffset.z,
+				});
+		} else {
+			object_->SetRotate({
+				visualStyle_.rotationOffset.x,
+				rotationY_ + spinAngle_ * 0.22f + visualStyle_.rotationOffset.y,
+				spinAngle_ + visualStyle_.rotationOffset.z,
+				});
+		}
 	} else {
-		object_->SetRotate({ 0.0f, rotationY_, 0.0f });
+		object_->SetRotate({
+			visualStyle_.rotationOffset.x,
+			rotationY_ + visualStyle_.rotationOffset.y,
+			visualStyle_.rotationOffset.z,
+			});
 	}
-	object_->SetTranslate(position_);
+	object_->SetTranslate({
+		position_.x,
+		position_.y + visualStyle_.yOffset,
+		position_.z,
+		});
 }
 
 } // namespace DirectXGame

@@ -12,6 +12,12 @@ namespace {
 constexpr float kGamePadAxisMaxValue = 32767.0f;
 constexpr float kGamePadDeadZone = 0.2f;
 constexpr float kGamePadVibrationMaxValue = 65535.0f;
+
+float NormalizeStickAxis(SHORT rawValue)
+{
+	const float value = static_cast<float>(rawValue) / kGamePadAxisMaxValue;
+	return std::fabs(value) < kGamePadDeadZone ? 0.0f : value;
+}
 }
 
 Input* Input::GetInstance()
@@ -151,28 +157,32 @@ float Input::GetGamePadStickX(bool right)
 {
 	if (!gamepadConnected_) return 0.0f;
 
-	SHORT rawX = right ? state_.Gamepad.sThumbRX : state_.Gamepad.sThumbLX;
-	float normX = rawX / kGamePadAxisMaxValue; // -1.0 ~ 1.0 に正規化
-
-	// 微小入力で不要に反応しないよう中央付近は切り捨てる
-	// デッドゾーン処理
-	if (std::fabs(normX) < kGamePadDeadZone) return 0.0f;
-
-	return normX;
+	const SHORT rawX = right ? state_.Gamepad.sThumbRX : state_.Gamepad.sThumbLX;
+	return NormalizeStickAxis(rawX);
 }
 
 float Input::GetGamePadStickY(bool right)
 {
 	if (!gamepadConnected_) return 0.0f;
 
-	SHORT rawY = right ? state_.Gamepad.sThumbRY : state_.Gamepad.sThumbLY;
-	float normY = rawY / kGamePadAxisMaxValue; // -1.0 ~ 1.0 に正規化
+	const SHORT rawY = right ? state_.Gamepad.sThumbRY : state_.Gamepad.sThumbLY;
+	return NormalizeStickAxis(rawY);
+}
 
-	// 微小入力で不要に反応しないよう中央付近は切り捨てる
-	// デッドゾーン処理
-	if (std::fabs(normY) < kGamePadDeadZone) return 0.0f;
+float Input::GetPreviousGamePadStickX(bool right)
+{
+	if (!gamepadConnected_) return 0.0f;
 
-	return normY; // Y軸は通常、上がマイナスなので反転
+	const SHORT rawX = right ? prevState_.Gamepad.sThumbRX : prevState_.Gamepad.sThumbLX;
+	return NormalizeStickAxis(rawX);
+}
+
+float Input::GetPreviousGamePadStickY(bool right)
+{
+	if (!gamepadConnected_) return 0.0f;
+
+	const SHORT rawY = right ? prevState_.Gamepad.sThumbRY : prevState_.Gamepad.sThumbLY;
+	return NormalizeStickAxis(rawY);
 }
 
 BYTE Input::GetGamePadTrigger(bool right)

@@ -23,6 +23,48 @@ float Clamp01(float value)
 	return std::clamp(value, 0.0f, 1.0f);
 }
 
+bool EmitClampedTrail(
+	Engine::Particle::ParticleManager* particleManager,
+	Engine::Particle::ParticleGroupHandle handle,
+	const Vector3& previous,
+	const Vector3& current,
+	float width,
+	float lengthMultiplier,
+	float maxFrameDistance)
+{
+	if (!particleManager) {
+		return false;
+	}
+	return particleManager->EmitTrailSegmentClamped(
+		handle,
+		previous,
+		current,
+		width,
+		lengthMultiplier,
+		maxFrameDistance);
+}
+
+void EmitCircleTrail(
+	Engine::Particle::ParticleManager* particleManager,
+	Engine::Particle::ParticleGroupHandle handle,
+	const Vector3& center,
+	float radius,
+	float yOffset,
+	float width,
+	int32_t segments)
+{
+	if (!particleManager || radius <= 0.0f || segments <= 0) {
+		return;
+	}
+	particleManager->EmitTrailCircle(
+		handle,
+		center,
+		radius,
+		yOffset,
+		width,
+		segments);
+}
+
 void DrawGroundCircle(
 	Engine::LineSystem::Line& line,
 	const Vector3& center,
@@ -51,6 +93,65 @@ void DrawGroundCircle(
 				center.z + std::sin(endAngle) * radius,
 			},
 			color);
+	}
+}
+
+void DrawThickGroundCircle(
+	Engine::LineSystem::Line& line,
+	const Vector3& center,
+	float radius,
+	float yOffset,
+	const Vector4& color,
+	int32_t segments,
+	float thickness,
+	int32_t layers)
+{
+	if (radius <= 0.0f || layers <= 0) {
+		return;
+	}
+	const float layerCount = static_cast<float>((std::max)(1, layers));
+	for (int32_t layerIndex = 0; layerIndex < layers; ++layerIndex) {
+		const float centered =
+			static_cast<float>(layerIndex) -
+			(layerCount - 1.0f) * 0.5f;
+		const float layerRadius =
+			(std::max)(0.05f, radius + centered * thickness);
+		Vector4 layerColor = color;
+		layerColor.w *= 1.0f - std::abs(centered) / layerCount * 0.32f;
+		DrawGroundCircle(
+			line,
+			center,
+			layerRadius,
+			yOffset + static_cast<float>(layerIndex) * 0.006f,
+			layerColor,
+			segments);
+	}
+}
+
+void EmitCirclePoints(
+	Engine::Particle::ParticleManager* particleManager,
+	Engine::Particle::ParticleGroupHandle handle,
+	const Vector3& center,
+	float radius,
+	float yOffset,
+	uint32_t count,
+	float phase)
+{
+	if (!particleManager || radius <= 0.0f || count == 0u) {
+		return;
+	}
+	for (uint32_t index = 0; index < count; ++index) {
+		const float angle =
+			(static_cast<float>(index) / static_cast<float>(count) + phase) *
+			kPi * 2.0f;
+		particleManager->Emit(
+			handle,
+			{
+				center.x + std::cos(angle) * radius,
+				center.y + yOffset,
+				center.z + std::sin(angle) * radius,
+			},
+			1u);
 	}
 }
 
@@ -89,6 +190,10 @@ void DrawFlameStrokes(
 			base - side * (radius * 0.10f),
 			tip,
 			flameColor);
+		line.Draw(
+			base,
+			tip + forward * (radius * 0.10f),
+			{ 1.0f, 0.74f, 0.10f, flameColor.w * 0.72f });
 	}
 }
 
@@ -111,22 +216,47 @@ void QueueFlameShoeZoneCircles(
 			1.0f,
 			0.18f + lifeRatio * 0.30f,
 			0.02f,
+			0.88f,
+		};
+		const Vector4 midColor{
+			1.0f,
+			0.34f + lifeRatio * 0.22f,
+			0.03f,
 			0.72f,
 		};
 		const Vector4 innerColor{
 			1.0f,
 			0.56f + lifeRatio * 0.18f,
 			0.06f,
-			0.50f,
+			0.62f,
 		};
-		DrawGroundCircle(line, visual.position, radius, 0.08f, outerColor, 44);
-		DrawGroundCircle(
+		DrawThickGroundCircle(
+			line,
+			visual.position,
+			radius,
+			0.08f,
+			outerColor,
+			40,
+			radius * 0.018f,
+			3);
+		DrawThickGroundCircle(
+			line,
+			visual.position,
+			radius * 0.78f,
+			0.10f,
+			midColor,
+			32,
+			radius * 0.015f,
+			2);
+		DrawThickGroundCircle(
 			line,
 			visual.position,
 			radius * (0.50f + lifeRatio * 0.18f),
 			0.10f,
 			innerColor,
-			32);
+			32,
+			radius * 0.012f,
+			2);
 		DrawFlameStrokes(line, visual, radius, lifeRatio);
 	}
 }
@@ -141,10 +271,36 @@ void QueueAuraCircle(
 	Engine::LineSystem::Line line;
 	const float radius = playerManager.GetAuraRadius();
 	const Vector3 center = player.GetWorldPosition();
-	const Vector4 outerColor{ 0.45f, 0.82f, 1.0f, 0.58f };
-	const Vector4 innerColor{ 0.76f, 0.95f, 1.0f, 0.34f };
-	DrawGroundCircle(line, center, radius, 0.07f, outerColor, 56);
-	DrawGroundCircle(line, center, radius * 0.72f, 0.09f, innerColor, 40);
+	const Vector4 outerColor{ 0.34f, 0.82f, 1.0f, 0.84f };
+	const Vector4 middleColor{ 0.52f, 0.95f, 1.0f, 0.56f };
+	const Vector4 innerColor{ 0.82f, 1.0f, 1.0f, 0.40f };
+	DrawThickGroundCircle(
+		line,
+		center,
+		radius,
+		0.07f,
+			outerColor,
+		56,
+		radius * 0.010f,
+		4);
+	DrawThickGroundCircle(
+		line,
+		center,
+		radius * 0.84f,
+		0.085f,
+			middleColor,
+		44,
+		radius * 0.008f,
+		2);
+	DrawThickGroundCircle(
+		line,
+		center,
+		radius * 0.62f,
+		0.10f,
+		innerColor,
+		48,
+		radius * 0.006f,
+		2);
 }
 
 void QueueExplosionRangeCircle(
@@ -204,7 +360,7 @@ bool CombatEffectsPresentation::Update(
 			enemyManager->GetRecentHitEffectPositions();
 		for (const Vector3& hitPosition : hitPositions) {
 			particleManager->Emit(
-				handles.enemyHitSpark,
+				particleEffects.GetSparkBindingHandle("enemyHit"),
 				hitPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyHitSparkCount)));
 		}
@@ -217,11 +373,11 @@ bool CombatEffectsPresentation::Update(
 		for (const Vector3& deathPosition :
 			enemyManager->GetRecentDeathEffectPositions()) {
 			particleManager->Emit(
-				handles.enemyHitSpark,
+				particleEffects.GetSparkBindingHandle("enemyDeath"),
 				deathPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSparkCount)));
 			particleManager->Emit(
-				handles.deathSmoke,
+				particleEffects.GetSmokeBindingHandle("enemyDeathSmoke"),
 				deathPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSmokeCount)));
 		}
@@ -235,7 +391,7 @@ bool CombatEffectsPresentation::Update(
 				explosionPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.explosionBurstCount)));
 			particleManager->Emit(
-				handles.explosionSmoke,
+				particleEffects.GetSmokeBindingHandle("explosionSmoke"),
 				explosionPosition,
 				static_cast<uint32_t>((std::max)(0, tuning.explosionSmokeCount)));
 			particleManager->Emit(handles.ripple, explosionPosition, 4u);
@@ -247,11 +403,11 @@ bool CombatEffectsPresentation::Update(
 		int32_t phase = 0;
 		if (enemyManager->ConsumeBossPhaseChanged(phasePosition, phase)) {
 			particleManager->Emit(
-				handles.enemyHitSpark,
+				particleEffects.GetSparkBindingHandle("enemyDeath"),
 				phasePosition,
 				phase == 3 ? 64u : 42u);
 			particleManager->Emit(
-				handles.deathSmoke,
+				particleEffects.GetSmokeBindingHandle("bossDeathSmoke"),
 				phasePosition,
 				phase == 3 ? 20u : 12u);
 			particleManager->Emit(
@@ -274,18 +430,36 @@ bool CombatEffectsPresentation::Update(
 
 	const Vector3 playerPosition = player.GetWorldPosition();
 	QueueAuraCircle(player, playerManager);
+	const GameParticleEffects::Tuning& bowTrailTuning = particleEffects.GetTuning();
+	for (const std::unique_ptr<NormalBullet>& bullet :
+		playerManager.GetNormalBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		EmitClampedTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("bowProjectile"),
+			bullet->GetPreviousPosition(),
+			bullet->GetPosition(),
+			bowTrailTuning.bowTrailWidth,
+			bowTrailTuning.bowTrailLengthMultiplier,
+			bowTrailTuning.bowTrailMaxFrameDistance);
+	}
 	for (const std::unique_ptr<NormalBullet>& bullet :
 		playerManager.GetExplosiveBullets()) {
 		if (!bullet || !bullet->IsActive()) {
 			continue;
 		}
-		particleManager->EmitTrailSegment(
-			handles.flameProjectileTrail,
+		EmitClampedTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("flameProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.30f);
+			0.30f,
+			1.15f,
+			6.0f);
 		particleManager->Emit(
-			handles.flameProjectileGlow,
+			particleEffects.GetSparkBindingHandle("flameProjectileGlow"),
 			bullet->GetPosition(),
 			2u);
 	}
@@ -294,16 +468,19 @@ bool CombatEffectsPresentation::Update(
 		if (!bullet || !bullet->IsActive()) {
 			continue;
 		}
-		particleManager->EmitTrailSegment(
-			handles.handgunBulletTrail,
+		EmitClampedTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("handgunProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.13f);
+			0.13f,
+			1.20f,
+			8.0f);
 	}
 	for (const Vector3& shotPosition :
 		playerManager.GetRecentHandgunShotPositions()) {
 		particleManager->Emit(
-			handles.handgunMuzzleFlash,
+			particleEffects.GetSparkBindingHandle("handgunMuzzleFlash"),
 			shotPosition,
 			7u);
 		particleManager->Emit(
@@ -314,7 +491,7 @@ bool CombatEffectsPresentation::Update(
 	for (const Vector3& reloadPosition :
 		playerManager.GetRecentHandgunReloadPositions()) {
 		particleManager->Emit(
-			handles.handgunReloadSmoke,
+			particleEffects.GetSmokeBindingHandle("handgunReloadSmoke"),
 			reloadPosition,
 			5u);
 	}
@@ -323,22 +500,42 @@ bool CombatEffectsPresentation::Update(
 		if (!bullet || !bullet->IsActive()) {
 			continue;
 		}
-		particleManager->EmitTrailSegment(
-			handles.boomerangTrail,
+		EmitClampedTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("boomerangProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.22f);
+			0.22f,
+			1.28f,
+			8.0f);
+	}
+	for (const std::unique_ptr<NormalBullet>& bullet :
+		playerManager.GetBoneBullets()) {
+		if (!bullet || !bullet->IsActive()) {
+			continue;
+		}
+		EmitClampedTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("boneProjectile"),
+			bullet->GetPreviousPosition(),
+			bullet->GetPosition(),
+			0.20f,
+			1.45f,
+			7.0f);
 	}
 	for (const std::unique_ptr<OrbitBullet>& bullet :
 		playerManager.GetOrbitBullets()) {
 		if (!bullet || !bullet->IsActive()) {
 			continue;
 		}
-		particleManager->EmitTrailSegment(
-			handles.rockTrail,
+		EmitClampedTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("rockOrbit"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.18f);
+			0.18f,
+			1.05f,
+			5.0f);
 	}
 	const std::vector<SwordSlashEvent>& swordSlashes =
 		playerManager.GetRecentSwordSlashes();
@@ -351,16 +548,29 @@ bool CombatEffectsPresentation::Update(
 		};
 		const Vector3 slashCenter =
 			slash.center + slash.forward * (slash.radius * 0.58f);
-		particleManager->Emit(handles.enemyHitSpark, slashCenter, 8u);
 		particleManager->Emit(
-			handles.enemyHitSpark,
+			particleEffects.GetSparkBindingHandle("enemyHit"),
+			slashCenter,
+			8u);
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("enemyHit"),
 			slashCenter + side * (slash.radius * 0.26f),
 			4u);
 		particleManager->Emit(
-			handles.enemyHitSpark,
+			particleEffects.GetSparkBindingHandle("enemyHit"),
 			slashCenter - side * (slash.radius * 0.26f),
 			4u);
 		particleManager->Emit(handles.ripple, slashCenter, 1u);
+		particleManager->EmitTrailSegment(
+			particleEffects.GetTrailBindingHandle("swordSlash"),
+			slash.center + side * (slash.radius * 0.46f),
+			slashCenter - side * (slash.radius * 0.46f),
+			0.18f);
+		particleManager->EmitTrailSegment(
+			particleEffects.GetTrailBindingHandle("swordSlash"),
+			slash.center + slash.forward * (slash.radius * 0.24f),
+			slashCenter + slash.forward * (slash.radius * 0.42f),
+			0.12f);
 		SpawnSwordSlashVisual(
 			slash.center,
 			slash.forward,
@@ -369,12 +579,69 @@ bool CombatEffectsPresentation::Update(
 	}
 	if (playerManager.DidAuraPulseThisFrame()) {
 		particleManager->Emit(handles.ripple, playerPosition, 1u);
+		EmitCircleTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("auraPulse"),
+			playerPosition,
+			playerManager.GetAuraRadius(),
+			0.64f,
+			0.26f,
+			18);
+		EmitCirclePoints(
+			particleManager,
+			particleEffects.GetSparkBindingHandle("auraGlow"),
+			playerPosition,
+			playerManager.GetAuraRadius() * 0.86f,
+			0.34f,
+			6u,
+			0.04f);
+	} else if (playerManager.HasAura()) {
+		EmitCirclePoints(
+			particleManager,
+			particleEffects.GetSparkBindingHandle("auraGlow"),
+			playerPosition,
+			playerManager.GetAuraRadius() * 0.95f,
+			0.32f,
+			1u,
+			0.0f);
 	}
 	QueueFlameShoeZoneCircles(playerManager);
+	for (const DirectXGame::FlameZoneVisual& visual :
+		playerManager.GetFlameZoneVisuals()) {
+		if (visual.radius <= 0.0f || visual.remainingDuration <= 0.0f) {
+			continue;
+		}
+		const float lifeRatio = Clamp01(
+			visual.remainingDuration /
+			(std::max)(0.001f, visual.totalDuration));
+		EmitCirclePoints(
+			particleManager,
+			particleEffects.GetSparkBindingHandle("flameShoeGlow"),
+			visual.position,
+			visual.radius * (0.42f + lifeRatio * 0.24f),
+			0.16f,
+			lifeRatio > 0.45f ? 2u : 1u,
+			1.0f - lifeRatio);
+	}
+	for (const Vector3& flamePosition :
+		playerManager.GetRecentFlameZoneSpawns()) {
+		EmitCircleTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("flameShoeSpawn"),
+			flamePosition,
+			2.7f,
+			0.28f,
+			0.36f,
+			16);
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("flameShoeGlow"),
+			flamePosition,
+			5u);
+	}
 	const int32_t hp = playerManager.GetHP();
 	if (hp < previousHp_) {
 		particleManager->Emit(
-			handles.spark,
+			particleEffects.GetSparkBindingHandle("playerDamage"),
 			playerPosition,
 			static_cast<uint32_t>((std::max)(0, tuning.playerDamageSparkCount)));
 		particleManager->Emit(
@@ -387,7 +654,7 @@ bool CombatEffectsPresentation::Update(
 	const int32_t totalExp = playerManager.GetTotalEXP();
 	if (totalExp > previousTotalExp_) {
 		particleManager->Emit(
-			handles.expSpark,
+			particleEffects.GetSparkBindingHandle("expPickup"),
 			playerPosition,
 			static_cast<uint32_t>((std::max)(0, tuning.expSparkCount)));
 	}
@@ -396,6 +663,16 @@ bool CombatEffectsPresentation::Update(
 	const float lightningTimer = playerManager.GetLightningEffectTimer();
 	if (lightningTimer > previousLightningTimer_) {
 		for (const Vector3& target : playerManager.GetLightningEffectTargets()) {
+			particleManager->EmitTrailSegment(
+				particleEffects.GetTrailBindingHandle("lightningStrike"),
+				{ target.x, target.y + 8.2f, target.z },
+				{ target.x, target.y + 0.45f, target.z },
+				0.24f);
+			particleManager->EmitTrailSegment(
+				particleEffects.GetTrailBindingHandle("lightningStrike"),
+				{ target.x - 0.36f, target.y + 5.4f, target.z + 0.22f },
+				{ target.x + 0.18f, target.y + 1.3f, target.z - 0.12f },
+				0.12f);
 			particleManager->Emit(
 				handles.lightningImpact,
 				target,

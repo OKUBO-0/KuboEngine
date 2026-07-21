@@ -327,6 +327,7 @@ void DebugUI::PlayerPanel::Draw(
 			playerManager->AddEXP(10);
 		}
 		DrawWeaponDebugControls(*playerManager);
+		playerManager->DrawWeaponVisualDebugUI();
 		DrawPassiveItemDebugControls(*playerManager);
 		if (ImGui::Button("Max Weapons")) {
 			playerManager->MaxAllWeapons();

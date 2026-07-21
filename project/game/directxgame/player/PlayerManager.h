@@ -5,6 +5,7 @@
 #include "PlayerProgression.h"
 #include "PlayerWeaponController.h"
 #include "PassiveItemData.h"
+#include "UILayoutIO.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -14,6 +15,7 @@
 
 namespace DirectXGame {
 
+enum class CharacterId : int32_t;
 class EnemyManager;
 
 class PlayerManager {
@@ -32,7 +34,26 @@ public:
 	{
 		progression_.LoadCharacterStats(filePath, characterKey, player_);
 	}
+	void SetCharacterId(CharacterId characterId)
+	{
+		weapons_.SetCharacterId(characterId);
+	}
 	void LoadWeaponUpgradeSettings(const std::string& filePath);
+	void LoadWeaponVisualTuning(const UILayoutIO::LayoutMap& tuning)
+	{
+		weapons_.LoadVisualTuning(tuning);
+	}
+	void AppendWeaponVisualTuningEntries(
+		std::vector<UILayoutIO::Entry>& entries) const
+	{
+		weapons_.AppendVisualTuningEntries(entries);
+	}
+#ifdef _DEBUG
+	void DrawWeaponVisualDebugUI()
+	{
+		weapons_.DrawWeaponVisualDebugUI();
+	}
+#endif
 	void Update(float deltaTime);
 	void Draw();
 

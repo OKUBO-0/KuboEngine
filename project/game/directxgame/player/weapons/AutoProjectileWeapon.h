@@ -239,7 +239,7 @@ public:
 	BoneWeapon() : AutoProjectileWeapon({ WeaponType::Bone, "bone", 9.0f, 1.3f, 0.82f,
 		36.0f, 1.0f, 2, "bounceCount", 1,
 		NormalBullet::MovementMode::Straight, false, 0.075f,
-		{ "cube.obj", { 0.96f, 0.92f, 0.78f, 1.0f }, { 0.58f, 0.58f, 1.05f } } }) {}
+		{ "quaternius_weapons/bone.glb", { 0.96f, 0.92f, 0.78f, 1.0f }, { 1.28f, 1.28f, 1.82f }, { 0.0f, 0.0f, 1.57079633f }, 0.50f } }) {}
 };
 
 class HandgunWeapon final : public AutoProjectileWeapon {
@@ -247,7 +247,7 @@ public:
 	HandgunWeapon() : AutoProjectileWeapon({ WeaponType::Handgun, "handgun", 11.0f, 0.48f,
 		1.65f, 48.0f, 0.72f, 0, "ricochetCount", 1,
 		NormalBullet::MovementMode::Straight, true, 0.075f,
-		{ "bullet.obj", { 1.0f, 0.88f, 0.25f, 1.0f }, { 0.58f, 0.58f, 0.86f } } }) {}
+		{ "pistol_bullet.glb", { 1.0f, 0.88f, 0.25f, 1.0f }, { 760.0f, 760.0f, 1180.0f }, { 0.0f, 1.57079633f, 0.0f }, 0.56f } }) {}
 };
 
 class BoomerangWeapon final : public AutoProjectileWeapon {
@@ -255,7 +255,7 @@ public:
 	BoomerangWeapon() : AutoProjectileWeapon({ WeaponType::Boomerang, "boomerang", 8.0f, 1.55f,
 		0.78f, 38.0f, 1.15f, 8, "maxHits", 0,
 		NormalBullet::MovementMode::ReturnToPlayer, false, 0.075f,
-		{ "boomerang.obj", { 0.55f, 1.0f, 0.76f, 1.0f }, { 1.05f, 0.72f, 0.92f } } }) {}
+		{ "quaternius_weapons/axe_small.glb", { 0.55f, 1.0f, 0.76f, 1.0f }, { 220.0f, 220.0f, 220.0f }, { 1.57079633f, 0.0f, 0.0f }, 0.54f, true } }) {}
 };
 
 } // namespace DirectXGame

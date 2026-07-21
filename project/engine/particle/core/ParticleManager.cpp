@@ -8,6 +8,7 @@
 #include "CameraManager.h"
 #include <MyMath.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <numbers>
 #include <imgui.h>
@@ -17,6 +18,13 @@ constexpr float kTwoPi = 2.0f * std::numbers::pi_v<float>;
 constexpr float kQuadHalfSize = 0.5f;
 const Vector3 kDefaultParticleNormal = { 0.0f, 0.0f, 1.0f };
 const Vector4 kInitialParticleColor = { 1.0f, 1.0f, 1.0f, 0.0f };
+
+bool IsFiniteVector(const Vector3& value)
+{
+	return std::isfinite(value.x) &&
+		std::isfinite(value.y) &&
+		std::isfinite(value.z);
+}
 }
 
 namespace Engine::Particle {
@@ -95,7 +103,11 @@ void ParticleManager::Update(float deltaTime)
 	Matrix4x4 projectionMatrix = activeCamera->GetProjectionMatrix();
 
 	for (auto& particleGroupEntry : particleGroups) {
-		UpdateParticleGroup(particleGroupEntry.second, appliedDeltaTime, viewMatrix, projectionMatrix);
+		ParticleGroup& particleGroup = particleGroupEntry.second;
+		particleGroup.droppedLastFrame = particleGroup.droppedThisFrame;
+		particleGroup.droppedThisFrame = 0;
+		particleGroup.emittedThisFrame = 0;
+		UpdateParticleGroup(particleGroup, appliedDeltaTime, viewMatrix, projectionMatrix);
 	}
 }
 
@@ -332,15 +344,24 @@ void ParticleManager::Emit(
 		return;
 	}
 
+	const uint32_t frameBudget = ResolveEffectiveEmissionLimit(particleGroup);
+	const uint32_t remainingFrameBudget =
+		particleGroup.emittedThisFrame < frameBudget
+			? frameBudget - particleGroup.emittedThisFrame
+			: 0u;
+	if (remainingFrameBudget == 0u) {
+		particleGroup.droppedThisFrame += count;
+		return;
+	}
 	const size_t activeCount = particleGroup.particles.size();
 	const uint32_t availableCount = activeCount < particleGroup.maxInstanceCount
 		? particleGroup.maxInstanceCount - static_cast<uint32_t>(activeCount)
 		: 0u;
-	const uint32_t emitCount = (std::min)(count, availableCount);
+	const uint32_t emitCount = (std::min)(
+		(std::min)(count, availableCount),
+		remainingFrameBudget);
+	particleGroup.droppedThisFrame += count - emitCount;
 	if (emitCount == 0) {
-		particleGroup.instanceCount = (std::min)(
-			static_cast<uint32_t>(particleGroup.particles.size()),
-			particleGroup.maxInstanceCount);
 		return;
 	}
 
@@ -348,11 +369,7 @@ void ParticleManager::Emit(
 	for (uint32_t i = 0; i < emitCount; ++i) {
 		particleGroup.particles.push_back(particleGroup.behavior->Create(randomEngine, position));
 	}
-
-	// 次の Update までの暫定描画数として今回追加分を記録する
-	particleGroup.instanceCount = (std::min)(
-		static_cast<uint32_t>(particleGroup.particles.size()),
-		particleGroup.maxInstanceCount);
+	particleGroup.emittedThisFrame += emitCount;
 }
 
 void ParticleManager::EmitTrailSegment(
@@ -381,6 +398,13 @@ void ParticleManager::EmitTrailSegment(
 	}
 	ParticleGroup& particleGroup = *resolvedGroup;
 	if (!particleGroup.behavior || particleGroup.particles.size() >= particleGroup.maxInstanceCount) {
+		if (particleGroup.particles.size() >= particleGroup.maxInstanceCount) {
+			++particleGroup.droppedThisFrame;
+		}
+		return;
+	}
+	if (particleGroup.emittedThisFrame >= ResolveEffectiveEmissionLimit(particleGroup)) {
+		++particleGroup.droppedThisFrame;
 		return;
 	}
 
@@ -405,9 +429,126 @@ void ParticleManager::EmitTrailSegment(
 		0.0f,
 	};
 	particleGroup.particles.push_back(particle);
-	particleGroup.instanceCount = (std::min)(
-		static_cast<uint32_t>(particleGroup.particles.size()),
-		particleGroup.maxInstanceCount);
+	++particleGroup.emittedThisFrame;
+}
+
+bool ParticleManager::EmitTrailSegmentClamped(
+	const std::string& name,
+	const Vector3& previous,
+	const Vector3& current,
+	float width,
+	float lengthMultiplier,
+	float maxFrameDistance)
+{
+	const std::optional<ParticleGroupHandle> handle =
+		GetParticleGroupHandle(name);
+	if (!handle) {
+		return false;
+	}
+	return EmitTrailSegmentClamped(
+		*handle,
+		previous,
+		current,
+		width,
+		lengthMultiplier,
+		maxFrameDistance);
+}
+
+bool ParticleManager::EmitTrailSegmentClamped(
+	ParticleGroupHandle handle,
+	const Vector3& previous,
+	const Vector3& current,
+	float width,
+	float lengthMultiplier,
+	float maxFrameDistance)
+{
+	if (!IsFiniteVector(previous) || !IsFiniteVector(current)) {
+		return false;
+	}
+
+	const Vector3 delta{
+		current.x - previous.x,
+		current.y - previous.y,
+		current.z - previous.z,
+	};
+	const float deltaLength = std::sqrt(
+		delta.x * delta.x +
+		delta.y * delta.y +
+		delta.z * delta.z);
+	if (deltaLength <= 0.001f) {
+		return false;
+	}
+
+	const float clampedMaxDistance = std::clamp(maxFrameDistance, 0.2f, 14.0f);
+	const float clampedScale = deltaLength > clampedMaxDistance
+		? clampedMaxDistance / deltaLength
+		: 1.0f;
+	const Vector3 clampedDelta{
+		delta.x * clampedScale,
+		delta.y * clampedScale,
+		delta.z * clampedScale,
+	};
+	const float clampedLengthMultiplier =
+		std::clamp(lengthMultiplier, 0.0f, 8.0f);
+	const Vector3 trailStart{
+		current.x - clampedDelta.x * clampedLengthMultiplier,
+		current.y - clampedDelta.y * clampedLengthMultiplier,
+		current.z - clampedDelta.z * clampedLengthMultiplier,
+	};
+	EmitTrailSegment(handle, trailStart, current, width);
+	return true;
+}
+
+void ParticleManager::EmitTrailCircle(
+	const std::string& name,
+	const Vector3& center,
+	float radius,
+	float yOffset,
+	float width,
+	int32_t segments)
+{
+	const std::optional<ParticleGroupHandle> handle =
+		GetParticleGroupHandle(name);
+	if (!handle) {
+		return;
+	}
+	EmitTrailCircle(*handle, center, radius, yOffset, width, segments);
+}
+
+void ParticleManager::EmitTrailCircle(
+	ParticleGroupHandle handle,
+	const Vector3& center,
+	float radius,
+	float yOffset,
+	float width,
+	int32_t segments)
+{
+	if (!IsFiniteVector(center) || radius <= 0.0f || segments <= 0) {
+		return;
+	}
+
+	const float y = center.y + yOffset;
+	for (int32_t segmentIndex = 0; segmentIndex < segments; ++segmentIndex) {
+		const float startAngle =
+			static_cast<float>(segmentIndex) /
+			static_cast<float>(segments) * kTwoPi;
+		const float endAngle =
+			static_cast<float>(segmentIndex + 1) /
+			static_cast<float>(segments) * kTwoPi;
+		EmitTrailSegment(
+			handle,
+			{
+				center.x + std::cos(startAngle) * radius,
+				y,
+				center.z + std::sin(startAngle) * radius,
+			},
+			{
+				center.x + std::cos(endAngle) * radius,
+				y,
+				center.z + std::sin(endAngle) * radius,
+			},
+			width);
+	}
 }
 
 void ParticleManager::SetModel(const std::string& filepath)
@@ -570,6 +711,77 @@ std::optional<uint32_t> ParticleManager::GetParticleGroupMaxInstanceCount(const 
 		return std::nullopt;
 	}
 	return it->second.maxInstanceCount;
+}
+
+void ParticleManager::SetParticleGroupEmissionLimit(
+	ParticleGroupHandle handle,
+	uint32_t maxEmitsPerFrame)
+{
+	if (ParticleGroup* particleGroup = ResolveParticleGroup(handle)) {
+		particleGroup->maxEmitsPerFrame =
+			maxEmitsPerFrame == 0u ? UINT32_MAX : maxEmitsPerFrame;
+	}
+}
+
+void ParticleManager::SetParticleGroupEmissionLimit(
+	const std::string& groupName,
+	uint32_t maxEmitsPerFrame)
+{
+	const auto handle = GetParticleGroupHandle(groupName);
+	if (!handle) {
+		return;
+	}
+	SetParticleGroupEmissionLimit(*handle, maxEmitsPerFrame);
+}
+
+std::optional<uint32_t> ParticleManager::GetParticleGroupEmissionLimit(
+	const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return it->second.maxEmitsPerFrame;
+}
+
+std::optional<uint32_t> ParticleManager::GetParticleGroupEffectiveEmissionLimit(
+	const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return ResolveEffectiveEmissionLimit(it->second);
+}
+
+std::optional<uint32_t> ParticleManager::GetParticleGroupDroppedLastFrame(
+	const std::string& groupName) const
+{
+	const auto it = particleGroups.find(groupName);
+	if (it == particleGroups.end()) {
+		return std::nullopt;
+	}
+	return it->second.droppedLastFrame;
+}
+
+void ParticleManager::SetGlobalEmissionScale(float emissionScale)
+{
+	globalEmissionScale_ = std::clamp(emissionScale, 0.0f, 1.0f);
+}
+
+uint32_t ParticleManager::ResolveEffectiveEmissionLimit(
+	const ParticleGroup& particleGroup) const
+{
+	if (particleGroup.maxEmitsPerFrame == UINT32_MAX) {
+		return UINT32_MAX;
+	}
+	if (globalEmissionScale_ <= 0.0f) {
+		return 0;
+	}
+	return (std::max)(
+		1u,
+		static_cast<uint32_t>(
+			std::ceil(static_cast<float>(particleGroup.maxEmitsPerFrame) * globalEmissionScale_)));
 }
 
 void ParticleManager::SetParticleGroupDebugName(const std::string& groupName, const std::string& debugName)

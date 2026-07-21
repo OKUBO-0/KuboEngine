@@ -14,6 +14,9 @@ constexpr float kFixedDeltaTime = 1.0f / 60.0f;
 constexpr char kGameCameraName[] = "directxgame_player";
 constexpr float kMegabonkMouseYawSensitivity = 0.0026f;
 constexpr float kMegabonkMaxMouseDelta = 80.0f;
+constexpr float kMegabonkGamepadYawSpeed = 2.8f;
+constexpr float kMegabonkGamepadPitchSpeed = 1.8f;
+constexpr float kMegabonkGamepadLookDeadZone = 0.18f;
 constexpr float kMegabonkMinPitch = 0.52f;
 constexpr float kMegabonkMaxPitch = 1.02f;
 constexpr float kMegabonkLookAheadDistance = 7.0f;
@@ -47,6 +50,17 @@ float YawToTarget(const Vector3& from, const Vector3& target)
 {
 	return NormalizeAngle(
 		std::atan2(target.x - from.x, target.z - from.z));
+}
+
+float ApplyDeadZone(float value, float deadZone)
+{
+	const float absValue = std::abs(value);
+	if (absValue <= deadZone) {
+		return 0.0f;
+	}
+	const float normalized =
+		(absValue - deadZone) / (1.0f - deadZone);
+	return std::copysign(std::clamp(normalized, 0.0f, 1.0f), value);
 }
 
 }
@@ -93,8 +107,18 @@ void PlayerCameraController::Update(
 			targetYaw_ = NormalizeAngle(
 				targetYaw_ +
 				horizontalDelta * kMegabonkMouseYawSensitivity);
+			const float gamepadLookX = ApplyDeadZone(
+				GameInputBindings::ClampAxis(input->GetGamePadStickX(true)),
+				kMegabonkGamepadLookDeadZone);
+			const float gamepadLookY = ApplyDeadZone(
+				GameInputBindings::ClampAxis(input->GetGamePadStickY(true)),
+				kMegabonkGamepadLookDeadZone);
+			targetYaw_ = NormalizeAngle(
+				targetYaw_ +
+				gamepadLookX * kMegabonkGamepadYawSpeed * kFixedDeltaTime);
 			targetPitch_ = std::clamp(
-				targetPitch_,
+				targetPitch_ -
+				gamepadLookY * kMegabonkGamepadPitchSpeed * kFixedDeltaTime,
 				kMegabonkMinPitch,
 				kMegabonkMaxPitch);
 		}

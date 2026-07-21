@@ -251,22 +251,38 @@ inline bool IsKeyboardPauseTriggered(Engine::InputSystem::Input* input)
 
 inline bool IsGamepadMenuUpTriggered(Engine::InputSystem::Input* input)
 {
-	return input && !IsGameInputSuppressedByImGui() && input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_UP);
+	constexpr float kMenuStickThreshold = 0.55f;
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_UP) ||
+			(input->GetGamePadStickY() >= kMenuStickThreshold &&
+				input->GetPreviousGamePadStickY() < kMenuStickThreshold));
 }
 
 inline bool IsGamepadMenuDownTriggered(Engine::InputSystem::Input* input)
 {
-	return input && !IsGameInputSuppressedByImGui() && input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_DOWN);
+	constexpr float kMenuStickThreshold = 0.55f;
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_DOWN) ||
+			(input->GetGamePadStickY() <= -kMenuStickThreshold &&
+				input->GetPreviousGamePadStickY() > -kMenuStickThreshold));
 }
 
 inline bool IsGamepadMenuLeftTriggered(Engine::InputSystem::Input* input)
 {
-	return input && !IsGameInputSuppressedByImGui() && input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_LEFT);
+	constexpr float kMenuStickThreshold = 0.55f;
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_LEFT) ||
+			(input->GetGamePadStickX() <= -kMenuStickThreshold &&
+				input->GetPreviousGamePadStickX() > -kMenuStickThreshold));
 }
 
 inline bool IsGamepadMenuRightTriggered(Engine::InputSystem::Input* input)
 {
-	return input && !IsGameInputSuppressedByImGui() && input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_RIGHT);
+	constexpr float kMenuStickThreshold = 0.55f;
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->TriggerGamePadButton(XINPUT_GAMEPAD_DPAD_RIGHT) ||
+			(input->GetGamePadStickX() >= kMenuStickThreshold &&
+				input->GetPreviousGamePadStickX() < kMenuStickThreshold));
 }
 
 inline bool IsGamepadConfirmTriggered(Engine::InputSystem::Input* input)

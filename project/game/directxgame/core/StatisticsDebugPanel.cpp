@@ -188,29 +188,67 @@ void StatisticsDebugPanel::Draw(
 		}
 
 		if (ImGui::TreeNode("Particle Groups")) {
-			constexpr std::array<const char*, 12> kParticleGroups{
+			ImGui::Text(
+				"Emission Scale: %.2f",
+				particleManager->GetGlobalEmissionScale());
+			constexpr std::array<const char*, 35> kParticleGroups{
 				"DirectXGame.Ripple",
 				"DirectXGame.Spark",
 				"DirectXGame.EnemyHitSpark",
 				"DirectXGame.ExpSpark",
 				"DirectXGame.LightningImpact",
+				"DirectXGame.ExplosionBurst",
+				"DirectXGame.ExplosionSmoke",
 				"DirectXGame.PlayerDeathSpark",
 				"DirectXGame.DeathSmoke",
 				"DirectXGame.Confetti",
 				"DirectXGame.SuicideEnemyTrail",
+				"DirectXGame.BowArrowTrail",
+				"DirectXGame.FlameProjectileTrail",
+				"DirectXGame.FlameProjectileGlow",
+				"DirectXGame.HandgunBulletTrail",
+				"DirectXGame.BoomerangTrail",
+				"DirectXGame.RockTrail",
+				"DirectXGame.BoneTrail",
+				"DirectXGame.LightningTrail",
+				"DirectXGame.SwordSlashTrail",
+				"DirectXGame.AuraPulseTrail",
+				"DirectXGame.AuraGlow",
+				"DirectXGame.FlameShoeTrail",
+				"DirectXGame.FlameShoeGlow",
+				"DirectXGame.HandgunMuzzleFlash",
+				"DirectXGame.HandgunReloadSmoke",
+				"DirectXGame.ScratchTrail",
+				"DirectXGame.CustomTrail0",
+				"DirectXGame.CustomTrail1",
+				"DirectXGame.CustomTrail2",
+				"DirectXGame.CustomTrail3",
+				"DirectXGame.CustomSpark0",
+				"DirectXGame.CustomSpark1",
+				"DirectXGame.CustomSmoke0",
+				"DirectXGame.CustomSmoke1",
 			};
 			for (const char* groupName : kParticleGroups) {
 				const std::optional<size_t> activeCount =
 					particleManager->GetActiveParticleCount(groupName);
 				const std::optional<uint32_t> maxInstanceCount =
 					particleManager->GetParticleGroupMaxInstanceCount(groupName);
+				const std::optional<uint32_t> emitLimit =
+					particleManager->GetParticleGroupEmissionLimit(groupName);
+				const std::optional<uint32_t> effectiveEmitLimit =
+					particleManager->GetParticleGroupEffectiveEmissionLimit(groupName);
+				const std::optional<uint32_t> droppedLastFrame =
+					particleManager->GetParticleGroupDroppedLastFrame(groupName);
 				const std::optional<std::string> debugName =
 					particleManager->GetParticleGroupDebugName(groupName);
 				ImGui::Text(
-					"%s: %zu / %u",
+					"%s: %zu / %u  emit<=%u/%u  drop:%u",
 					debugName.value_or(groupName).c_str(),
 					activeCount.value_or(0),
-					maxInstanceCount.value_or(0));
+					maxInstanceCount.value_or(0),
+					effectiveEmitLimit.value_or(0),
+					emitLimit.value_or(0),
+					droppedLastFrame.value_or(0));
 			}
 			ImGui::TreePop();
 		}

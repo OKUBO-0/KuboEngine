@@ -161,9 +161,23 @@ const ResourceProbeStatus& ResourceProbe::Verify()
 	const ModelHandle fireballModel = GameModelCache::Load("fireball.obj");
 	status.modelLoaded =
 		status.modelLoaded && GameModelCache::Get(fireballModel) != nullptr;
-	const ModelHandle boomerangModel = GameModelCache::Load("boomerang.obj");
+	const ModelHandle boomerangModel = GameModelCache::Load("quaternius_weapons/axe_small.glb");
 	status.modelLoaded =
 		status.modelLoaded && GameModelCache::Get(boomerangModel) != nullptr;
+	for (const char* modelName : {
+		"quaternius_weapons/bow.glb",
+		"quaternius_weapons/arrow.glb",
+		"quaternius_weapons/rock.glb",
+		"quaternius_weapons/bone.glb",
+		"quaternius_weapons/pistol.glb",
+		"pistol_bullet.glb",
+		"quaternius_weapons/sword.glb",
+		"quaternius_weapons/axe_small.glb",
+		}) {
+		const ModelHandle model = GameModelCache::Load(modelName);
+		status.modelLoaded =
+			status.modelLoaded && GameModelCache::Get(model) != nullptr;
+	}
 
 	std::ifstream csvFile(ResourcePaths::MakeDataPath("playerStatus.csv"));
 	assert(csvFile.is_open());

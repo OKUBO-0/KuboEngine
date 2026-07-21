@@ -41,11 +41,11 @@ void PlayerDeathPresentation::Start(
 		Engine::Particle::ParticleManager::GetInstance();
 	const Vector3& position = player.GetWorldPosition();
 	particleManager->Emit(
-		handles.playerDeathSpark,
+		particleEffects.GetSparkBindingHandle("playerDeath"),
 		position,
 		static_cast<uint32_t>((std::max)(0, tuning.playerDeathSparkCount)));
 	particleManager->Emit(
-		handles.deathSmoke,
+		particleEffects.GetSmokeBindingHandle("playerDeathSmoke"),
 		position,
 		static_cast<uint32_t>((std::max)(0, tuning.playerDeathSmokeCount)));
 	particleManager->Emit(

@@ -269,6 +269,7 @@ void TitleScene::Update()
 	UpdateModelAnimation();
 	UpdateCameraAnimation();
 	UpdateCoinDisplay();
+	UpdateCharacterSelectionDisplay();
 	UpdateShopLevelDisplay();
 
 	if (titleObject_) {
@@ -321,6 +322,8 @@ void TitleScene::Draw()
 	if (showingUpgradeScreen_) {
 		DrawCoinDisplay();
 		DrawShopDisplay();
+		DrawPermanentUpgradeDisplay();
+		DrawCharacterSelectionDisplay();
 	}
 	if (curtain_) {
 		curtain_->Draw();
@@ -683,52 +686,133 @@ void TitleScene::UpdatePermanentUpgradeInput()
 	}
 
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
-		return;
-	}
+	const GameMenuInputState menuInput =
+		GameMenuController::Update(input, navigationInputDevice_);
+	navigationInputDevice_ = menuInput.device;
 
-	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
-	for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
-		if (!IsPointInRect(
-			mousePosition,
-			layoutSettings_.shopItemPositions[static_cast<size_t>(index)],
-			layoutSettings_.shopItemHitboxSize)) {
-			continue;
-		}
-		shopItemIndex_ = index;
-		if (!input->TriggerMouse(0)) {
-			break;
-		}
-
-		bool purchased = false;
-		switch (kPermanentUpgradeDefinitions[static_cast<size_t>(index)].type) {
-		case PermanentUpgradeType::MaxHP:
-			purchased = sessionContext_->TryPurchasePermanentMaxHP();
-			break;
-		case PermanentUpgradeType::Attack:
-			purchased = sessionContext_->TryPurchasePermanentAttack();
-			break;
-		case PermanentUpgradeType::MoveSpeed:
-			purchased = sessionContext_->TryPurchasePermanentMoveSpeed();
-			break;
-		case PermanentUpgradeType::ExpPickupRange:
-			purchased = sessionContext_->TryPurchasePermanentExpPickupRange();
-			break;
-		case PermanentUpgradeType::CoinGain:
-			purchased = sessionContext_->TryPurchasePermanentCoinGain();
-			break;
-		default:
-			break;
-		}
-		if (purchased) {
-			permanentUpgradePurchaseFlashTimers_[static_cast<size_t>(index)] =
-				kPermanentUpgradePurchaseFlashDuration;
-			if (decideSeHandle_) {
-				GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+	bool selectionChanged = false;
+	bool handledMouseConfirm = false;
+	if (input && ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+		const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
+		for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
+			if (IsPointInRect(
+				mousePosition,
+				layoutSettings_.shopItemPositions[static_cast<size_t>(index)],
+				layoutSettings_.shopItemHitboxSize)) {
+				selectionChanged =
+					shopCharacterSelectionActive_ || shopItemIndex_ != index;
+				shopCharacterSelectionActive_ = false;
+				shopItemIndex_ = index;
+				if (input->TriggerMouse(0)) {
+					handledMouseConfirm = true;
+					TryPurchasePermanentUpgrade(shopItemIndex_);
+				}
+				break;
 			}
 		}
+		for (int32_t index = 0; index < kCharacterCount; ++index) {
+			if (IsPointInRect(
+				mousePosition,
+				CharacterIconPosition(index),
+				kCharacterRowHitboxSize)) {
+				selectionChanged =
+					!shopCharacterSelectionActive_ || characterItemIndex_ != index;
+				shopCharacterSelectionActive_ = true;
+				characterItemIndex_ = index;
+				if (input->TriggerMouse(0)) {
+					handledMouseConfirm = true;
+					TryActivateCharacter(characterItemIndex_);
+				}
+				break;
+			}
+		}
+	}
+
+	if (menuInput.device != GameInputBindings::NavigationInputDevice::Mouse) {
+		if (GameInputBindings::IsMenuUpTriggered(input) ||
+			GameInputBindings::IsMenuDownTriggered(input)) {
+			shopCharacterSelectionActive_ = !shopCharacterSelectionActive_;
+			if (shopCharacterSelectionActive_) {
+				characterItemIndex_ = std::clamp(
+					characterItemIndex_,
+					0,
+					kCharacterCount - 1);
+			} else {
+				shopItemIndex_ = std::clamp(
+					shopItemIndex_,
+					0,
+					kPermanentUpgradeCount - 1);
+			}
+			selectionChanged = true;
+		}
+		if (GameInputBindings::IsMenuLeftTriggered(input)) {
+			if (shopCharacterSelectionActive_) {
+				characterItemIndex_ =
+					(characterItemIndex_ + kCharacterCount - 1) % kCharacterCount;
+			} else {
+				shopItemIndex_ =
+					(shopItemIndex_ + kPermanentUpgradeCount - 1) %
+					kPermanentUpgradeCount;
+			}
+			selectionChanged = true;
+		}
+		if (GameInputBindings::IsMenuRightTriggered(input)) {
+			if (shopCharacterSelectionActive_) {
+				characterItemIndex_ = (characterItemIndex_ + 1) % kCharacterCount;
+			} else {
+				shopItemIndex_ = (shopItemIndex_ + 1) % kPermanentUpgradeCount;
+			}
+			selectionChanged = true;
+		}
+		if (menuInput.confirm) {
+			if (shopCharacterSelectionActive_) {
+				TryActivateCharacter(characterItemIndex_);
+			} else {
+				TryPurchasePermanentUpgrade(shopItemIndex_);
+			}
+		}
+	}
+
+	if (selectionChanged && selectSeHandle_) {
+		GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
+	}
+	(void)handledMouseConfirm;
+}
+
+bool TitleScene::TryPurchasePermanentUpgrade(int32_t index)
+{
+	if (!sessionContext_ || index < 0 || index >= kPermanentUpgradeCount) {
+		return false;
+	}
+
+	bool purchased = false;
+	switch (kPermanentUpgradeDefinitions[static_cast<size_t>(index)].type) {
+	case PermanentUpgradeType::MaxHP:
+		purchased = sessionContext_->TryPurchasePermanentMaxHP();
+		break;
+	case PermanentUpgradeType::Attack:
+		purchased = sessionContext_->TryPurchasePermanentAttack();
+		break;
+	case PermanentUpgradeType::MoveSpeed:
+		purchased = sessionContext_->TryPurchasePermanentMoveSpeed();
+		break;
+	case PermanentUpgradeType::ExpPickupRange:
+		purchased = sessionContext_->TryPurchasePermanentExpPickupRange();
+		break;
+	case PermanentUpgradeType::CoinGain:
+		purchased = sessionContext_->TryPurchasePermanentCoinGain();
+		break;
+	default:
 		break;
 	}
+	if (purchased) {
+		permanentUpgradePurchaseFlashTimers_[static_cast<size_t>(index)] =
+			kPermanentUpgradePurchaseFlashDuration;
+		if (decideSeHandle_) {
+			GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+		}
+	}
+	return purchased;
 }
 
 void TitleScene::UpdateCharacterSelectionInput()
@@ -738,30 +822,49 @@ void TitleScene::UpdateCharacterSelectionInput()
 	}
 
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (!input->TriggerMouse(0) ||
-		!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+	if (!input || !ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+		return;
+	}
+	if (navigationInputDevice_ != GameInputBindings::NavigationInputDevice::Mouse) {
 		return;
 	}
 
 	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 	for (int32_t index = 0; index < kCharacterCount; ++index) {
-		if (!IsPointInRect(
+		if (IsPointInRect(
 			mousePosition,
 			CharacterIconPosition(index),
 			kCharacterRowHitboxSize)) {
-			continue;
+			if (!shopCharacterSelectionActive_ || characterItemIndex_ != index) {
+				shopCharacterSelectionActive_ = true;
+				characterItemIndex_ = index;
+				if (selectSeHandle_) {
+					GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
+				}
+			}
+			if (input->TriggerMouse(0)) {
+				TryActivateCharacter(characterItemIndex_);
+			}
+			break;
 		}
-
-		const CharacterId id =
-			kCharacterUiDefinitions[static_cast<size_t>(index)].id;
-		const bool changed = sessionContext_->IsCharacterUnlocked(id)
-			? sessionContext_->TrySelectCharacter(id)
-			: sessionContext_->TryUnlockCharacter(id);
-		if (changed && decideSeHandle_) {
-			GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
-		}
-		break;
 	}
+}
+
+bool TitleScene::TryActivateCharacter(int32_t index)
+{
+	if (!sessionContext_ || index < 0 || index >= kCharacterCount) {
+		return false;
+	}
+
+	const CharacterId id =
+		kCharacterUiDefinitions[static_cast<size_t>(index)].id;
+	const bool changed = sessionContext_->IsCharacterUnlocked(id)
+		? sessionContext_->TrySelectCharacter(id)
+		: sessionContext_->TryUnlockCharacter(id);
+	if (changed && decideSeHandle_) {
+		GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+	}
+	return changed;
 }
 
 void TitleScene::UpdateAudio()
@@ -955,15 +1058,19 @@ void TitleScene::UpdateCharacterSelectionDisplay()
 			kCharacterUiDefinitions[static_cast<size_t>(index)].id;
 		const bool unlocked = sessionContext_ ? sessionContext_->IsCharacterUnlocked(id) : id == CharacterId::Octopus;
 		const bool selected = unlocked && id == selectedId;
+		const bool focused =
+			shopCharacterSelectionActive_ && index == characterItemIndex_;
 		const int32_t unlockCost = sessionContext_ ? sessionContext_->GetCharacterUnlockCost(id) : 0;
 		const bool affordable = !unlocked && ownedCoins >= unlockCost;
 		const Vector4 iconColor = selected
 			? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
-			: (unlocked
+			: (focused
+				? Vector4{ 1.0f, 0.88f, 0.12f, 0.95f }
+				: (unlocked
 				? Vector4{ 0.45f, 0.78f, 1.0f, 0.9f }
 				: (affordable
 					? Vector4{ 1.0f, 0.86f, 0.32f, 0.78f }
-					: Vector4{ 0.36f, 0.36f, 0.36f, 0.62f }));
+					: Vector4{ 0.36f, 0.36f, 0.36f, 0.62f })));
 		characterIcons_[index].SetColor(iconColor);
 
 		const Vector2 iconPosition = CharacterIconPosition(index);
@@ -1080,7 +1187,7 @@ void TitleScene::UpdateShopLevelDisplay()
 		UIPanel& highlight = shopHighlights_[static_cast<size_t>(itemIndex)];
 		highlight.SetPosition(itemPosition);
 		highlight.SetSize(layoutSettings_.shopItemHitboxSize);
-		highlight.SetColor(itemIndex == shopItemIndex_
+		highlight.SetColor(!shopCharacterSelectionActive_ && itemIndex == shopItemIndex_
 			? Vector4{ 1.0f, 0.88f, 0.12f, 0.22f }
 			: Vector4{ 0.0f, 0.0f, 0.0f, 0.0f });
 		for (int32_t levelIndex = 0; levelIndex < kShopMaxLevelSlots; ++levelIndex) {

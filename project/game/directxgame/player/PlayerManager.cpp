@@ -1,7 +1,9 @@
 #include "PlayerManager.h"
 
 #include "CsvReader.h"
+#include "DataPaths.h"
 #include "ResourcePaths.h"
+#include "UILayoutIO.h"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -14,6 +16,8 @@ void PlayerManager::Initialize(Player* player)
 	weapons_.Initialize(
 		ResourcePaths::MakeDataPath(
 			"weaponUpgradeSettings.csv"));
+	weapons_.LoadVisualTuning(
+		UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {}));
 	if (player_) {
 		player_->SetVisible(visible_);
 	}

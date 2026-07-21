@@ -5,22 +5,34 @@
 #include "GameplayRules.h"
 #include "EnemyManager.h"
 #include "GameAudioCache.h"
+#include "GameModelCache.h"
+#include "GameSession.h"
+#include "Object3D.h"
+#include "Object3DCommon.h"
 #include "Player.h"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
 #include <string_view>
+#ifdef _DEBUG
+#include "DataPaths.h"
+#include <imgui.h>
+#endif
 
 namespace {
 
 constexpr float kMinWeaponInterval =
 	DirectXGame::GameplayRules::kMinimumWeaponInterval;
 constexpr int32_t kMaxCatchUpAttacksPerFrame = 4;
+constexpr char kEnvironmentTexturePath[] =
+	"Resources/textures/skybox/test.dds";
 const DirectXGame::NormalBullet::VisualStyle kBowArrowVisual{
-	"bullet.obj",
+	"quaternius_weapons/arrow.glb",
 	{ 0.66f, 0.94f, 1.0f, 1.0f },
-	{ 0.52f, 0.52f, 1.45f },
+	{ 60.0f, 60.0f, 86.0f },
+	{ 0.0f, 0.0f, 0.0f },
+	0.42f,
 };
 const DirectXGame::NormalBullet::VisualStyle kFlameStaffVisual{
 	"fireball.obj",
@@ -60,6 +72,8 @@ void PlayWeaponSound(
 
 namespace DirectXGame {
 
+PlayerWeaponController::~PlayerWeaponController() = default;
+
 void PlayerWeaponController::Initialize(
 	const std::string& upgradeSettingsPath)
 {
@@ -67,6 +81,11 @@ void PlayerWeaponController::Initialize(
 	explosiveBurstInterval_ = GetUpgradeSetting(
 		"flameStaff.burstInterval",
 		explosiveBurstInterval_);
+}
+
+void PlayerWeaponController::SetCharacterId(CharacterId characterId)
+{
+	characterId_ = characterId;
 }
 
 bool PlayerWeaponController::LoadStatusValue(
@@ -130,6 +149,46 @@ void PlayerWeaponController::LoadUpgradeSettings(
 	}
 }
 
+void PlayerWeaponController::LoadVisualTuning(
+	const UILayoutIO::LayoutMap& tuning)
+{
+	heldBowVisual_.scale = UILayoutIO::GetFloat(
+		tuning, "weaponVisual.bowScale", heldBowVisual_.scale);
+	heldBowVisual_.position = UILayoutIO::GetVector3(
+		tuning, "weaponVisual.bowPosition", heldBowVisual_.position);
+	heldBowVisual_.rotation = UILayoutIO::GetVector3(
+		tuning, "weaponVisual.bowRotation", heldBowVisual_.rotation);
+}
+
+void PlayerWeaponController::AppendVisualTuningEntries(
+	std::vector<UILayoutIO::Entry>& entries) const
+{
+	entries.insert(entries.end(), {
+		{ "weaponVisual.bowScale", { heldBowVisual_.scale } },
+		{ "weaponVisual.bowPosition", { heldBowVisual_.position.x, heldBowVisual_.position.y, heldBowVisual_.position.z } },
+		{ "weaponVisual.bowRotation", { heldBowVisual_.rotation.x, heldBowVisual_.rotation.y, heldBowVisual_.rotation.z } },
+	});
+}
+
+#ifdef _DEBUG
+void PlayerWeaponController::DrawWeaponVisualDebugUI()
+{
+	if (!ImGui::CollapsingHeader("武器モデルSRT調整")) {
+		return;
+	}
+	ImGui::TextUnformatted("現在の基本プレイヤーは弓本体のみ表示します。");
+	ImGui::DragFloat("Bow Scale", &heldBowVisual_.scale, 1.0f, 10.0f, 600.0f);
+	ImGui::DragFloat3("Bow Position", &heldBowVisual_.position.x, 0.02f, -4.0f, 4.0f);
+	ImGui::DragFloat3("Bow Rotation", &heldBowVisual_.rotation.x, 0.02f, -6.28f, 6.28f);
+	ImGui::TextUnformatted("Position はプレイヤー正面基準です。x は未使用、z が正面距離です。");
+	if (ImGui::Button("Save Bow SRT")) {
+		std::vector<UILayoutIO::Entry> entries;
+		AppendVisualTuningEntries(entries);
+		UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+	}
+}
+#endif
+
 void PlayerWeaponController::Update(
 	float deltaTime,
 	Player* player,
@@ -147,11 +206,22 @@ void PlayerWeaponController::Update(
 	UpdateBone(deltaTime, player, enemyManager, playerStats);
 	UpdateHandgun(deltaTime, player, enemyManager, playerStats);
 	UpdateBoomerang(deltaTime, player, enemyManager, playerStats);
+	if (player &&
+		HasWeapon(WeaponType::BowArrow) &&
+		ShouldDrawHeldWeapon(WeaponType::BowArrow)) {
+		EnsureBowModel();
+		UpdateBowModel(*player);
+	}
 }
 
 void PlayerWeaponController::Draw()
 {
 	// Draw は所有中の弾・投射物だけを描画する。範囲攻撃系の見た目は Presentation 側がイベントから描く。
+	if (HasWeapon(WeaponType::BowArrow) &&
+		ShouldDrawHeldWeapon(WeaponType::BowArrow) &&
+		bowObject_) {
+		bowObject_->Draw();
+	}
 	for (std::unique_ptr<NormalBullet>& bullet : normalBullets_) {
 		bullet->Draw();
 	}
@@ -164,6 +234,61 @@ void PlayerWeaponController::Draw()
 	boneWeapon_.Draw();
 	handgunWeapon_.Draw();
 	boomerangWeapon_.Draw();
+}
+
+bool PlayerWeaponController::ShouldDrawHeldWeapon(WeaponType type) const
+{
+	switch (characterId_) {
+	case CharacterId::Flame:
+		return type == WeaponType::BowArrow;
+	case CharacterId::Octopus:
+	case CharacterId::Blade:
+	case CharacterId::Storm:
+	default:
+		return false;
+	}
+}
+
+void PlayerWeaponController::EnsureBowModel()
+{
+	if (bowObject_) {
+		return;
+	}
+	const ModelHandle bowHandle = GameModelCache::Load("quaternius_weapons/bow.glb");
+	bowObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
+	bowObject_->Initialize(
+		Engine::Graphics3D::Object3DCommon::GetInstance());
+	GameModelCache::ApplyToObject(*bowObject_, bowHandle);
+	bowObject_->SetSkyboxFilePath(kEnvironmentTexturePath);
+	bowObject_->SetEnvironmentReflectionStrength(0.0f);
+	bowObject_->SetEnvironmentRoughness(1.0f);
+	bowObject_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+}
+
+void PlayerWeaponController::UpdateBowModel(const Player& player)
+{
+	if (!bowObject_) {
+		return;
+	}
+	const Vector3 playerPosition = player.GetWorldPosition();
+	const float yaw = player.GetWorldRotationY();
+	const Vector3 forward{ std::sin(yaw), 0.0f, std::cos(yaw) };
+	bowObject_->SetScale({
+		heldBowVisual_.scale,
+		heldBowVisual_.scale,
+		heldBowVisual_.scale,
+		});
+	bowObject_->SetRotate({
+		heldBowVisual_.rotation.x,
+		yaw + heldBowVisual_.rotation.y,
+		heldBowVisual_.rotation.z,
+		});
+	bowObject_->SetTranslate({
+		playerPosition.x + forward.x * heldBowVisual_.position.z,
+		playerPosition.y + heldBowVisual_.position.y,
+		playerPosition.z + forward.z * heldBowVisual_.position.z,
+		});
+	bowObject_->Update();
 }
 
 void PlayerWeaponController::UpgradeNormalBullets(Player*)

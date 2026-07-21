@@ -7,14 +7,20 @@
 #include "NormalBullet.h"
 #include "OrbitBullet.h"
 #include "AutoProjectileWeapon.h"
+#include "UILayoutIO.h"
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+namespace Engine::Graphics3D {
+class Object3D;
+}
+
 namespace DirectXGame {
 
+enum class CharacterId : int32_t;
 class EnemyManager;
 class Player;
 
@@ -38,6 +44,12 @@ struct FlameZoneVisual {
 
 class PlayerWeaponController final {
 public:
+	struct HeldBowVisualTuning {
+		float scale = 260.0f;
+		Vector3 position{ 0.0f, 1.02f, 1.58f };
+		Vector3 rotation{ 0.0f, -1.57079632679f, 0.0f };
+	};
+
 	// 武器ごとの最大レベルと実体数上限。
 	// レベルアップ候補生成、デバッグ強化、ソフトキャップ表示で同じ値を参照する。
 	static constexpr int32_t kNormalBulletMaxLevel = 8;
@@ -55,11 +67,18 @@ public:
 
 	// 初期化とデータ駆動設定。
 	// CSV のキーを内部パラメータに反映し、武器追加時にコード以外の調整余地を残す。
+	~PlayerWeaponController();
 	void Initialize(const std::string& upgradeSettingsPath);
+	void SetCharacterId(CharacterId characterId);
 	bool LoadStatusValue(
 		const std::string& key,
 		const std::string& value);
 	void LoadUpgradeSettings(const std::string& filePath);
+	void LoadVisualTuning(const UILayoutIO::LayoutMap& tuning);
+	void AppendVisualTuningEntries(std::vector<UILayoutIO::Entry>& entries) const;
+#ifdef _DEBUG
+	void DrawWeaponVisualDebugUI();
+#endif
 	void Update(
 		float deltaTime,
 		Player* player,
@@ -326,6 +345,9 @@ private:
 		EnemyManager* enemyManager, const PlayerStats& stats);
 	void UpdateBoomerang(float deltaTime, Player* player,
 		EnemyManager* enemyManager, const PlayerStats& stats);
+	bool ShouldDrawHeldWeapon(WeaponType type) const;
+	void EnsureBowModel();
+	void UpdateBowModel(const Player& player);
 	Vector3 ResolveAimDirection(
 		const Player& player,
 		const EnemyManager* enemyManager) const;
@@ -477,6 +499,9 @@ private:
 	BoneWeapon boneWeapon_{};
 	HandgunWeapon handgunWeapon_{};
 	BoomerangWeapon boomerangWeapon_{};
+	std::unique_ptr<Engine::Graphics3D::Object3D> bowObject_;
+	CharacterId characterId_{};
+	HeldBowVisualTuning heldBowVisual_{};
 
 	std::unordered_map<std::string, float> upgradeSettings_;
 };

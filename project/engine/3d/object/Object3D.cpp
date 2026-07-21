@@ -127,7 +127,7 @@ void Object3D::Draw()
 	commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
 	object3DCommon_->BindSceneLighting();
 	if (model_) {
-		model_->Draw(materialAddress);
+		model_->Draw(materialAddress, &materialData_);
 	}
 }
 
@@ -170,7 +170,7 @@ void Object3D::DrawSkinning()
 	commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
 	object3DCommon_->BindSceneLighting(true);
 	if (model_) {
-		model_->Draw(materialAddress);
+		model_->Draw(materialAddress, &materialData_);
 	}
 }
 

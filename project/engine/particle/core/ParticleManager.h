@@ -81,6 +81,10 @@ class ParticleManager
 		// インスタンス数
 		uint32_t instanceCount;
 		uint32_t maxInstanceCount = 0;
+		uint32_t maxEmitsPerFrame = UINT32_MAX;
+		uint32_t emittedThisFrame = 0;
+		uint32_t droppedThisFrame = 0;
+		uint32_t droppedLastFrame = 0;
 		// インスタンスデータ
 		std::vector<ParticleForGPU> instanceData;
 		//頂点
@@ -162,6 +166,34 @@ public:
 		const Vector3& start,
 		const Vector3& end,
 		float width);
+	bool EmitTrailSegmentClamped(
+		const std::string& name,
+		const Vector3& previous,
+		const Vector3& current,
+		float width,
+		float lengthMultiplier,
+		float maxFrameDistance);
+	bool EmitTrailSegmentClamped(
+		ParticleGroupHandle handle,
+		const Vector3& previous,
+		const Vector3& current,
+		float width,
+		float lengthMultiplier,
+		float maxFrameDistance);
+	void EmitTrailCircle(
+		const std::string& name,
+		const Vector3& center,
+		float radius,
+		float yOffset,
+		float width,
+		int32_t segments);
+	void EmitTrailCircle(
+		ParticleGroupHandle handle,
+		const Vector3& center,
+		float radius,
+		float yOffset,
+		float width,
+		int32_t segments);
 
 	/// @brief モデル参照を設定する
 	/// @param filepath 読み込むモデルパス
@@ -210,6 +242,20 @@ public:
 	/// @param groupName 対象グループ名
 	/// @return グループが存在する場合は最大数、存在しない場合は std::nullopt
 	std::optional<uint32_t> GetParticleGroupMaxInstanceCount(const std::string& groupName) const;
+	void SetParticleGroupEmissionLimit(
+		ParticleGroupHandle handle,
+		uint32_t maxEmitsPerFrame);
+	void SetParticleGroupEmissionLimit(
+		const std::string& groupName,
+		uint32_t maxEmitsPerFrame);
+	std::optional<uint32_t> GetParticleGroupEmissionLimit(
+		const std::string& groupName) const;
+	std::optional<uint32_t> GetParticleGroupEffectiveEmissionLimit(
+		const std::string& groupName) const;
+	std::optional<uint32_t> GetParticleGroupDroppedLastFrame(
+		const std::string& groupName) const;
+	void SetGlobalEmissionScale(float emissionScale);
+	float GetGlobalEmissionScale() const { return globalEmissionScale_; }
 
 	/// @brief 指定グループのデバッグ表示名を設定する
 	/// @param groupName 対象グループ名
@@ -260,6 +306,7 @@ private:
 	void InitializeParticleGroupVertices(ParticleGroup& particleGroup, VerticesType verticesType);
 	void InitializeParticleGroupTexture(ParticleGroup& particleGroup, const std::string& textureFilePath);
 	void InitializeParticleGroupInstances(ParticleGroup& particleGroup);
+	uint32_t ResolveEffectiveEmissionLimit(const ParticleGroup& particleGroup) const;
 	ParticleGroup* ResolveParticleGroup(ParticleGroupHandle handle);
 	const ParticleGroup* ResolveParticleGroup(ParticleGroupHandle handle) const;
 
@@ -275,6 +322,7 @@ private:
 	float lastAppliedDeltaTime_ = kFixedParticleDeltaTime;
 	uint32_t lastDrawCallCount_ = 0;
 	uint32_t lastDrawnInstanceCount_ = 0;
+	float globalEmissionScale_ = 1.0f;
 
 	std::mt19937 randomEngine;
 

@@ -19,6 +19,9 @@ public:
 		const char* modelPath = "bullet.obj";
 		Vector4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
 		Vector3 scaleMultiplier{ 1.0f, 1.0f, 1.0f };
+		Vector3 rotationOffset{ 0.0f, 0.0f, 0.0f };
+		float yOffset = 0.0f;
+		bool spinAroundY = false;
 	};
 	void InitializeForward(
 		const Vector3& startPosition,

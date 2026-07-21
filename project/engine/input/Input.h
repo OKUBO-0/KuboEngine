@@ -99,6 +99,14 @@ public:
 	/// @param right true なら右スティック、false なら左スティック
 	/// @return 正規化したスティック値
 	float GetGamePadStickY(bool right = false);
+	/// @brief 前フレームのゲームパッド X 軸スティック値を取得する
+	/// @param right true なら右スティック、false なら左スティック
+	/// @return 正規化したスティック値
+	float GetPreviousGamePadStickX(bool right = false);
+	/// @brief 前フレームのゲームパッド Y 軸スティック値を取得する
+	/// @param right true なら右スティック、false なら左スティック
+	/// @return 正規化したスティック値
+	float GetPreviousGamePadStickY(bool right = false);
 	/// @brief ゲームパッドのトリガー値を取得する
 	/// @param right true なら右トリガー、false なら左トリガー
 	/// @return トリガーの入力値

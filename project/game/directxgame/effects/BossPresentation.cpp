@@ -110,8 +110,14 @@ bool BossPresentation::UpdateEntrance(
 			particleEffects.GetHandles();
 		Engine::Particle::ParticleManager* particleManager =
 			Engine::Particle::ParticleManager::GetInstance();
-		particleManager->Emit(handles.enemyHitSpark, entranceFocusPosition_, 42);
-		particleManager->Emit(handles.deathSmoke, entranceFocusPosition_, 18);
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("enemyDeath"),
+			entranceFocusPosition_,
+			42);
+		particleManager->Emit(
+			particleEffects.GetSmokeBindingHandle("bossEntranceSmoke"),
+			entranceFocusPosition_,
+			18);
 		particleManager->Emit(handles.ripple, entranceFocusPosition_, 3);
 		entranceEffectEmitted_ = true;
 	}
@@ -148,11 +154,11 @@ bool BossPresentation::UpdateDefeat(
 		Engine::Particle::ParticleManager* particleManager =
 			Engine::Particle::ParticleManager::GetInstance();
 		particleManager->Emit(
-			handles.enemyHitSpark,
+			particleEffects.GetSparkBindingHandle("enemyDeath"),
 			defeatFocusPosition_,
 			static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSparkCount * 2)));
 		particleManager->Emit(
-			handles.deathSmoke,
+			particleEffects.GetSmokeBindingHandle("bossDeathSmoke"),
 			defeatFocusPosition_,
 			static_cast<uint32_t>((std::max)(0, tuning.enemyDeathSmokeCount * 2)));
 		particleManager->Emit(handles.ripple, defeatFocusPosition_, 2);

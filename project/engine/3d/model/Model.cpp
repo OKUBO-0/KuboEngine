@@ -7,6 +7,7 @@
 #include "MyMath.h"
 #include <Windows.h>
 #include <assimp/Importer.hpp>
+#include <assimp/material.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <algorithm>
@@ -26,6 +27,7 @@ namespace {
 
 Engine::Graphics3D::ModelLoadDiagnostics g_modelLoadDiagnostics{};
 constexpr float kDefaultAnimationTicksPerSecond = 25.0f;
+constexpr const char* kFallbackTexturePath = "Resources/DirectXGame/white1x1.png";
 
 float ResolveAnimationTicksPerSecond(const aiAnimation& animation)
 {
@@ -155,22 +157,38 @@ void Model::CreateMaterialBuffer()
 void Model::LoadMaterialTexture()
 {
 	// テクスチャ読み込みとインデックス取得
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(modelData.material.textureFilePath);
-	modelData.material.textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath);
+	Engine::Base::TextureManager* textureManager =
+		Engine::Base::TextureManager::GetInstance();
+	for (MaterialData& material : modelData.materials) {
+		textureManager->LoadTexture(material.textureFilePath);
+		material.textureIndex =
+			textureManager->GetTextureIndexByFilePath(material.textureFilePath);
+	}
+	if (modelData.materials.empty()) {
+		textureManager->LoadTexture(modelData.material.textureFilePath);
+		modelData.material.textureIndex =
+			textureManager->GetTextureIndexByFilePath(modelData.material.textureFilePath);
+		return;
+	}
+	modelData.material = modelData.materials.front();
 }
 
-void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
+void Model::Draw(
+	D3D12_GPU_VIRTUAL_ADDRESS materialAddress,
+	const Material* materialOverride)
 {
 	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
 		modelCommon_->GetDxCommon();
 	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+	const Material& baseMaterial =
+		materialOverride ? *materialOverride : materialData_;
 	if (materialAddress == 0) {
 		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
 			dxCommon->AllocateFrameUpload(sizeof(Material), 256);
 		std::memcpy(
 			materialAllocation.cpuAddress,
-			&materialData_,
-			sizeof(materialData_));
+			&baseMaterial,
+			sizeof(baseMaterial));
 		materialAddress = materialAllocation.gpuAddress;
 	}
 
@@ -190,6 +208,40 @@ void Model::Draw(D3D12_GPU_VIRTUAL_ADDRESS materialAddress)
 	commandList->SetGraphicsRootConstantBufferView(
 		0,
 		materialAddress);
+
+	if (!modelData.submeshes.empty() && !modelData.materials.empty()) {
+		for (const SubmeshData& submesh : modelData.submeshes) {
+			const MaterialData& submeshMaterial =
+				modelData.materials[(std::min)(
+					static_cast<size_t>(submesh.materialIndex),
+					modelData.materials.size() - 1)];
+			Material drawMaterial = baseMaterial;
+			drawMaterial.color.x *= submeshMaterial.diffuseColor.x;
+			drawMaterial.color.y *= submeshMaterial.diffuseColor.y;
+			drawMaterial.color.z *= submeshMaterial.diffuseColor.z;
+			drawMaterial.color.w *= submeshMaterial.diffuseColor.w;
+			const Engine::Base::DirectXCommon::FrameUploadAllocation submeshMaterialAllocation =
+				dxCommon->AllocateFrameUpload(sizeof(Material), 256);
+			std::memcpy(
+				submeshMaterialAllocation.cpuAddress,
+				&drawMaterial,
+				sizeof(drawMaterial));
+			commandList->SetGraphicsRootConstantBufferView(
+				0,
+				submeshMaterialAllocation.gpuAddress);
+			modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(
+				2,
+				Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
+					submeshMaterial.textureFilePath));
+			commandList->DrawIndexedInstanced(
+				submesh.indexCount,
+				1,
+				submesh.startIndex,
+				0,
+				0);
+		}
+		return;
+	}
 
 	// テクスチャSRV設定
 	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath));
@@ -340,9 +392,20 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
 
         const uint32_t baseVertex =
             static_cast<uint32_t>(modelData.vertices.size());
+        const uint32_t startIndex =
+            static_cast<uint32_t>(modelData.indices.size());
         LoadVerticesFromMesh(mesh, modelData);
         LoadIndicesFromMesh(mesh, baseVertex, modelData);
         LoadSkinClusterDataFromMesh(mesh, baseVertex, modelData);
+        const uint32_t indexCount =
+            static_cast<uint32_t>(modelData.indices.size()) - startIndex;
+        if (indexCount > 0) {
+            modelData.submeshes.push_back({
+                startIndex,
+                indexCount,
+                mesh->mMaterialIndex,
+                });
+        }
     }
     CalculateBounds(modelData);
 
@@ -414,16 +477,52 @@ void Model::LoadSkinClusterDataFromMesh(
 
 void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& directoryPath, ModelData& modelData)
 {
-    for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
-        aiMaterial* material = scene->mMaterials[materialIndex];
-        if (material->GetTextureCount(aiTextureType_DIFFUSE) == 0) {
-            continue;
-        }
+	for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
+		aiMaterial* material = scene->mMaterials[materialIndex];
+		MaterialData materialData;
+		materialData.textureFilePath = kFallbackTexturePath;
 
-        aiString texturePath;
-        material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath);
-        modelData.material.textureFilePath = ResolveModelResourcePath(directoryPath, texturePath.C_Str());
-    }
+		aiColor4D diffuseColor;
+		if (AI_SUCCESS == aiGetMaterialColor(
+			material,
+			AI_MATKEY_BASE_COLOR,
+			&diffuseColor) ||
+			AI_SUCCESS == aiGetMaterialColor(
+			material,
+			AI_MATKEY_COLOR_DIFFUSE,
+			&diffuseColor)) {
+			materialData.diffuseColor = {
+				diffuseColor.r,
+				diffuseColor.g,
+				diffuseColor.b,
+				diffuseColor.a,
+			};
+		}
+
+		const aiTextureType textureType =
+			material->GetTextureCount(aiTextureType_BASE_COLOR) > 0
+				? aiTextureType_BASE_COLOR
+				: aiTextureType_DIFFUSE;
+		if (material->GetTextureCount(textureType) > 0) {
+			aiString texturePath;
+			material->GetTexture(textureType, 0, &texturePath);
+			const std::string texturePathString = texturePath.C_Str();
+			if (!texturePathString.empty() && texturePathString.front() != '*') {
+				materialData.textureFilePath =
+					ResolveModelResourcePath(directoryPath, texturePathString);
+			}
+		}
+
+		modelData.materials.push_back(materialData);
+	}
+	if (modelData.materials.empty()) {
+		modelData.materials.push_back({
+			kFallbackTexturePath,
+			0,
+			{ 1.0f, 1.0f, 1.0f, 1.0f },
+			});
+	}
+	modelData.material = modelData.materials.front();
 }
 
 SkinCluster Model::CreateSkinCluster()

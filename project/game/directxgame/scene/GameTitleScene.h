@@ -89,6 +89,7 @@ private:
 	void UpdateCurtain();
 	void UpdateNavigation();
 	void UpdatePermanentUpgradeInput();
+	bool TryPurchasePermanentUpgrade(int32_t index);
 	void UpdateAudio();
 	void UpdateModelAnimation();
 	void UpdateCameraAnimation();
@@ -97,6 +98,7 @@ private:
 	void UpdateCoinDisplay();
 	void UpdatePermanentUpgradeDisplay();
 	void UpdateCharacterSelectionInput();
+	bool TryActivateCharacter(int32_t index);
 	void UpdateCharacterSelectionDisplay();
 	void DrawCoinDisplay();
 	void DrawPermanentUpgradeDisplay();
@@ -146,10 +148,12 @@ private:
 
 	int32_t menuIndex_ = 0;
 	int32_t shopItemIndex_ = 0;
+	int32_t characterItemIndex_ = 0;
 	Vector2 cursorPosition_{};
 	bool curtainStarted_ = false;
 	bool curtainOpening_ = true;
 	bool showingUpgradeScreen_ = false;
+	bool shopCharacterSelectionActive_ = false;
 	bool finished_ = false;
 	float animationTime_ = 0.0f;
 	DirectXGame::GameInputBindings::NavigationInputDevice navigationInputDevice_ =

@@ -226,6 +226,14 @@ void PlayScene::InitializeWorld()
 	GameModelCache::LoadBatch({
 		"cube.obj",
 		"bullet.obj",
+		"quaternius_weapons/bow.glb",
+		"quaternius_weapons/arrow.glb",
+		"quaternius_weapons/rock.glb",
+		"quaternius_weapons/bone.glb",
+		"quaternius_weapons/pistol.glb",
+		"pistol_bullet.glb",
+		"quaternius_weapons/sword.glb",
+		"quaternius_weapons/axe_small.glb",
 		"ExpOrb.obj",
 		"plane.obj",
 		"skydome.obj",
@@ -243,6 +251,7 @@ void PlayScene::InitializeWorld()
 	playerManager_->Initialize(player_.get());
 	playerManager_->LoadStatusFromCSV(DataPaths::kPlayerStatus);
 	if (sessionContext_) {
+		playerManager_->SetCharacterId(sessionContext_->GetSelectedCharacterId());
 		playerManager_->LoadCharacterStats(
 			DataPaths::Resolve(DataPaths::kCharacterStats),
 			CharacterStatsKey(sessionContext_->GetSelectedCharacterId()));
