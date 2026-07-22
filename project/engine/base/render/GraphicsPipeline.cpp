@@ -239,16 +239,16 @@ D3D12_INPUT_LAYOUT_DESC CreateInputLayoutDesc(
 }
 
 std::pair<Microsoft::WRL::ComPtr<IDxcBlob>, Microsoft::WRL::ComPtr<IDxcBlob>> CompileShaderPair(
-	Engine::Base::DirectXCommon* dxCommon,
+	Engine::Base::DirectXCommon& dxCommon,
 	const wchar_t* vertexShaderPath,
 	const wchar_t* pixelShaderPath)
 {
 	Microsoft::WRL::ComPtr<IDxcBlob> vertexShaderBlob =
-		dxCommon->CompileShader(vertexShaderPath, L"vs_6_0");
+		dxCommon.CompileShader(vertexShaderPath, L"vs_6_0");
 	assert(vertexShaderBlob != nullptr);
 
 	Microsoft::WRL::ComPtr<IDxcBlob> pixelShaderBlob =
-		pixelShaderPath ? dxCommon->CompileShader(pixelShaderPath, L"ps_6_0") : nullptr;
+		pixelShaderPath ? dxCommon.CompileShader(pixelShaderPath, L"ps_6_0") : nullptr;
 	assert(pixelShaderPath == nullptr || pixelShaderBlob != nullptr);
 
 	return { vertexShaderBlob, pixelShaderBlob };
@@ -256,7 +256,7 @@ std::pair<Microsoft::WRL::ComPtr<IDxcBlob>, Microsoft::WRL::ComPtr<IDxcBlob>> Co
 
 Microsoft::WRL::ComPtr<ID3D12PipelineState> CreatePipelineFromDefinition(
 	Engine::Base::GraphicsPipeline& owner,
-	Engine::Base::DirectXCommon* dxCommon,
+	Engine::Base::DirectXCommon& dxCommon,
 	const PipelineDefinition& definition)
 {
 	const std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements =
@@ -303,9 +303,11 @@ namespace Engine::Base {
 
 void GraphicsPipeline::Create()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 
 	RootSignatureCreate();
-	graphicsPipelineState = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineState = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"Object3D",
 		&rootSignature,
 		L"Resources/Shaders/object/Object3d.VS.hlsl",
@@ -317,15 +319,19 @@ void GraphicsPipeline::Create()
 
 void GraphicsPipeline::RootSignatureCreate()
 {
-	CreateObjectRootSignature(dxCommon_, rootSignature.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateObjectRootSignature(*dxCommon, rootSignature.GetAddressOf());
 }
 
 
 void GraphicsPipeline::CreateParticle()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 
 	RootSignatureParticleCreate();
-	graphicsPipelineStateParticle = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineStateParticle = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"Particle",
 		&rootSignatureParticle,
 		L"Resources/Shaders/particle/Particle.VS.hlsl",
@@ -339,7 +345,9 @@ void GraphicsPipeline::CreateParticle()
 
 void GraphicsPipeline::RootSignatureParticleCreate()
 {
-	CreateParticleRootSignature(dxCommon_, rootSignatureParticle.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateParticleRootSignature(*dxCommon, rootSignatureParticle.GetAddressOf());
 }
 
 
@@ -348,8 +356,10 @@ void GraphicsPipeline::RootSignatureParticleCreate()
 
 void GraphicsPipeline::CreateSprite()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	RootSignatureSpriteCreate();
-	graphicsPipelineStateSprite = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineStateSprite = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"Sprite",
 		&rootSignatureSprite,
 		L"Resources/Shaders/sprite/Sprite.VS.hlsl",
@@ -361,18 +371,24 @@ void GraphicsPipeline::CreateSprite()
 
 void GraphicsPipeline::RootSignatureLineCreate()
 {
-	CreateLineRootSignature(dxCommon_, rootSignatureLine.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateLineRootSignature(*dxCommon, rootSignatureLine.GetAddressOf());
 }
 
 void GraphicsPipeline::RootSignatureSkinningCreate()
 {
-	CreateSkinningRootSignature(dxCommon_, rootSignatureSkinning.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSkinningRootSignature(*dxCommon, rootSignatureSkinning.GetAddressOf());
 }
 
 void GraphicsPipeline::CreateShadowMap()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	RootSignatureShadowMapCreate();
-	graphicsPipelineStateShadowMap = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineStateShadowMap = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"ShadowMap",
 		&rootSignatureShadowMap,
 		L"Resources/Shaders/object/ShadowMap.VS.hlsl",
@@ -394,13 +410,17 @@ void GraphicsPipeline::CreateShadowMap()
 
 void GraphicsPipeline::RootSignatureShadowMapCreate()
 {
-	CreateShadowMapRootSignature(dxCommon_, rootSignatureShadowMap.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateShadowMapRootSignature(*dxCommon, rootSignatureShadowMap.GetAddressOf());
 }
 
 void GraphicsPipeline::CreateSkinning()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	RootSignatureSkinningCreate();
-	graphicsPipelineStateSkinning = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineStateSkinning = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"Skinning",
 		&rootSignatureSkinning,
 		L"Resources/Shaders/object/SkinningObject3d.VS.hlsl",
@@ -411,8 +431,10 @@ void GraphicsPipeline::CreateSkinning()
 
 void GraphicsPipeline::CreateLine()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	RootSignatureLineCreate(); 
-	graphicsPipelineStateLine = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineStateLine = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"Line",
 		&rootSignatureLine,
 		L"Resources/Shaders/line/Line.VS.hlsl",
@@ -429,14 +451,18 @@ void GraphicsPipeline::CreateLine()
 
 void GraphicsPipeline::RootSignatureSpriteCreate()
 {
-	CreateSpriteRootSignature(dxCommon_, rootSignatureSprite.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSpriteRootSignature(*dxCommon, rootSignatureSprite.GetAddressOf());
 }
 void GraphicsPipeline::CreateCopyImage(PostEffectType type, const std::wstring& psFilename)
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	RootSignatureCopyImageCreate();
 	const std::string key = "PostEffect." + std::to_string(static_cast<int>(type));
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso =
-		CreatePipelineFromDefinition(*this, dxCommon_, {
+		CreatePipelineFromDefinition(*this, *dxCommon, {
 			key.c_str(),
 			&rootSignatureCopyImage,
 			L"Resources/Shaders/post/fullscreen/Fullscreen.VS.hlsl",
@@ -458,7 +484,9 @@ void GraphicsPipeline::CreateAllPostEffects() {
 
 void GraphicsPipeline::RootSignatureCopyImageCreate()
 {
-	CreateCopyImageRootSignature(dxCommon_, rootSignatureCopyImage.GetAddressOf());
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateCopyImageRootSignature(*dxCommon, rootSignatureCopyImage.GetAddressOf());
 }
 
 
@@ -466,8 +494,10 @@ void GraphicsPipeline::RootSignatureCopyImageCreate()
 
 void GraphicsPipeline::CreateSkybox()
 {
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	RootSignatureSkyboxCreate();
-	graphicsPipelineStateSkybox = CreatePipelineFromDefinition(*this, dxCommon_, {
+	graphicsPipelineStateSkybox = CreatePipelineFromDefinition(*this, *dxCommon, {
 		"Skybox",
 		&rootSignatureSkybox,
 		L"Resources/Shaders/skybox/Skybox.VS.hlsl",
@@ -480,15 +510,9 @@ void GraphicsPipeline::CreateSkybox()
 
 void GraphicsPipeline::RootSignatureSkyboxCreate()
 {
-	CreateSkyboxRootSignature(dxCommon_, rootSignatureSkybox.GetAddressOf());
-}
-
-ID3D12PipelineState* GraphicsPipeline::GetGraphicsPipelineStateCopyImage(PostEffectType type) {
-	auto it = copyImagePipelines_.find(type);
-	if (it != copyImagePipelines_.end()) {
-		return it->second.Get();
-	}
-	return nullptr; // または assert(false)
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSkyboxRootSignature(*dxCommon, rootSignatureSkybox.GetAddressOf());
 }
 
 Microsoft::WRL::ComPtr<ID3D12PipelineState>
@@ -517,9 +541,11 @@ GraphicsPipeline::CreateAndRegisterPipelineState(
 {
 	GraphicsPipelineStateRequest adjustedRequest = request;
 	adjustedRequest.rootSignature = rootSignature.Get();
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
 	CreateGraphicsPipelineState(
-		dxCommon_,
+		*dxCommon,
 		adjustedRequest,
 		pipelineState.GetAddressOf());
 	RegisterPipeline(key, rootSignature, pipelineState);
@@ -547,8 +573,9 @@ GraphicsPipeline::GetPipelineStateHandle(const std::string& key) const
 	return pipeline ? pipeline->pipelineState : nullptr;
 }
 
-void GraphicsPipeline::Initialize(Engine::Base::DirectXCommon* dxCommon)
+void GraphicsPipeline::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon)
 {
+	assert(dxCommon);
 	dxCommon_ = dxCommon;
 
 }

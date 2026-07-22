@@ -114,7 +114,7 @@ public:
 	/// @param dxCommon DirectX共通管理
 	/// @param srvManager SRV管理
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon,Engine::Base::SrvManager*srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon,Engine::Base::SrvManager*srvManager);
 
 
 
@@ -309,8 +309,9 @@ private:
 	uint32_t ResolveEffectiveEmissionLimit(const ParticleGroup& particleGroup) const;
 	ParticleGroup* ResolveParticleGroup(ParticleGroupHandle handle);
 	const ParticleGroup* ResolveParticleGroup(ParticleGroupHandle handle) const;
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
 
-	Engine::Base::DirectXCommon* dxCommon_=nullptr;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 
 

@@ -99,7 +99,6 @@ private:
 	static const std::array<VertexDataLine, 2> kDefaultLineVertices_;
 
 	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
-	Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr;
 	Engine::Base::SrvManager* srvManager_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;
 

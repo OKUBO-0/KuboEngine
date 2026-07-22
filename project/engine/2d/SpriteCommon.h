@@ -40,8 +40,7 @@ private:
     SpriteCommon(const SpriteCommon&) = delete;
     SpriteCommon& operator=(const SpriteCommon&) = delete;
 
-    std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_; // Framework所有。公開時だけ shared_ptr 化する
-    Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr; // フレーム内描画用の非所有キャッシュ
+    std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_; // Framework所有。使用時だけ shared_ptr 化する
     std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_; // グラフィックスパイプライン
 };
 

@@ -5,6 +5,7 @@
 #include "StringUtility.h"
 #include <Windows.h>
 #include <array>
+#include <cassert>
 #include <filesystem>
 #include <sstream>
 #include <stdexcept>
@@ -77,8 +78,8 @@ void TextureManager::Finalize()
 	if (srvManager_) {
 		for (const auto& [path, textureData] : textureDatas) {
 			static_cast<void>(path);
-			if (dxCommon_ && textureData.resource) {
-				dxCommon_->UntrackResourceState(textureData.resource.Get());
+			if (const auto dxCommon = dxCommon_.lock(); dxCommon && textureData.resource) {
+				dxCommon->UntrackResourceState(textureData.resource.Get());
 			}
 			if (textureData.srvIndex != UINT32_MAX) {
 				srvManager_->Free(textureData.srvIndex);
@@ -86,13 +87,14 @@ void TextureManager::Finalize()
 		}
 	}
 	textureDatas.clear();
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
 	srvManager_ = nullptr;
 
 }
 
-void TextureManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+void TextureManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
+	assert(dxCommon);
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
 	textureDatas.reserve(srvManager_->GetMaxCount());
@@ -158,7 +160,7 @@ void TextureManager::LoadTextures(const std::vector<std::string>& filePaths)
 			mipImageBatch[index]));
 	}
 
-	dxCommon_->CommandKick();
+	GetDirectXCommon()->CommandKick();
 	try {
 		for (TexturData& textureData : textureDataBatch) {
 			CreateTextureSrv(textureData);
@@ -166,7 +168,7 @@ void TextureManager::LoadTextures(const std::vector<std::string>& filePaths)
 	} catch (...) {
 		for (const TexturData& textureData : textureDataBatch) {
 			if (textureData.resource) {
-				dxCommon_->UntrackResourceState(textureData.resource.Get());
+				GetDirectXCommon()->UntrackResourceState(textureData.resource.Get());
 			}
 			if (textureData.srvIndex != UINT32_MAX) {
 				srvManager_->Free(textureData.srvIndex);
@@ -222,7 +224,7 @@ void TextureManager::UploadTextureResource(TexturData& textureData, const Direct
 {
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource =
 		RecordTextureUpload(textureData, mipImages);
-	dxCommon_->DeferResourceRelease(std::move(intermediateResource));
+	GetDirectXCommon()->DeferResourceRelease(std::move(intermediateResource));
 	try {
 		CreateTextureSrv(textureData);
 	} catch (...) {
@@ -231,8 +233,8 @@ void TextureManager::UploadTextureResource(TexturData& textureData, const Direct
 			textureData.srvIndex = UINT32_MAX;
 		}
 		// The recorded copy still references the destination until this frame completes.
-		dxCommon_->UntrackResourceState(textureData.resource.Get());
-		dxCommon_->DeferResourceRelease(std::move(textureData.resource));
+		GetDirectXCommon()->UntrackResourceState(textureData.resource.Get());
+		GetDirectXCommon()->DeferResourceRelease(std::move(textureData.resource));
 		throw;
 	}
 }
@@ -241,8 +243,8 @@ Microsoft::WRL::ComPtr<ID3D12Resource> TextureManager::RecordTextureUpload(
 	TexturData& textureData, const DirectX::ScratchImage& mipImages)
 {
 	textureData.metadata = mipImages.GetMetadata();
-	textureData.resource = dxCommon_->CreateTextureResource(textureData.metadata);
-	return dxCommon_->UploadTextureData(textureData.resource, mipImages);
+	textureData.resource = GetDirectXCommon()->CreateTextureResource(textureData.metadata);
+	return GetDirectXCommon()->UploadTextureData(textureData.resource, mipImages);
 }
 
 void TextureManager::CreateTextureSrv(TexturData& textureData)
@@ -279,6 +281,13 @@ const TextureManager::TexturData& TextureManager::GetLoadedTexture(
 			"TextureManager texture is not loaded: " + filePath);
 	}
 	return it->second;
+}
+
+std::shared_ptr<Engine::Base::DirectXCommon> TextureManager::GetDirectXCommon() const
+{
+	auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	return dxCommon;
 }
 
 }

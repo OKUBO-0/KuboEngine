@@ -21,6 +21,9 @@ class Player;
 class PlayerManager;
 class GameSession;
 
+/// @brief 敵、ボス、EXP ドロップ、敵側攻撃、衝突判定を統合する管理クラス
+/// @details PlayScene と PlayerManager から呼ばれる敵側の窓口。
+///          敵コンテナを所有し、撃破時の演出イベントやドロップ生成もここで同期する。
 class EnemyManager {
 public:
 	// EnemyManager は敵生成、EXP ドロップ、敵側攻撃、ボス進行、衝突判定の統合窓口。

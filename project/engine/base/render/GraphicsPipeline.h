@@ -3,6 +3,7 @@
 #include <wrl.h>
 #include "PipelineStateBuilder.h"
 #include <map>
+#include <memory>
 #include <string>
 
 enum class PostEffectType;
@@ -23,7 +24,7 @@ public:
 	/// @brief DirectX 共通参照を保持する
 	/// @param dxCommon DirectX 共通管理
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon);
 
 	/// @brief 3Dオブジェクト用PSOを生成する
 	void Create();
@@ -84,40 +85,26 @@ public:
 	/// @brief PSO を ComPtr で取得し、呼び出し側が保持中に解放されないようにする
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetPipelineStateHandle(const std::string& key) const;
 
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureObjectHandle() const { return rootSignature; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateObjectHandle() const { return graphicsPipelineState; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureParticleHandle() const { return rootSignatureParticle; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateParticleHandle() const { return graphicsPipelineStateParticle; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureSpriteHandle() const { return rootSignatureSprite; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateSpriteHandle() const { return graphicsPipelineStateSprite; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureCopyImageHandle() const { return rootSignatureCopyImage; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureLineHandle() const { return rootSignatureLine; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateLineHandle() const { return graphicsPipelineStateLine; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureSkinningHandle() const { return rootSignatureSkinning; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateSkinningHandle() const { return graphicsPipelineStateSkinning; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureShadowMapHandle() const { return rootSignatureShadowMap; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateShadowMapHandle() const { return graphicsPipelineStateShadowMap; }
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> GetRootSignatureSkyboxHandle() const { return rootSignatureSkybox; }
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateSkyboxHandle() const { return graphicsPipelineStateSkybox; }
 
-
-	//ゲッター
-	ID3D12RootSignature* GetRootSignature()const { return rootSignature.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineState()const { return graphicsPipelineState.Get(); }
-	//パーティクル用のPSO
-	ID3D12RootSignature* GetRootSignatureParticle()const { return rootSignatureParticle.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateParticle()const { return graphicsPipelineStateParticle.Get(); }
-
-	//スプライト用のPSO
-	ID3D12RootSignature* GetRootSignatureSprite()const { return rootSignatureSprite.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateSprite()const { return graphicsPipelineStateSprite.Get(); }
-
-	//コピーイメージ用のPSO
-	ID3D12RootSignature* GetRootSignatureCopyImage()const { return rootSignatureCopyImage.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateCopyImage(PostEffectType type);
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> GetGraphicsPipelineStateCopyImageHandle(PostEffectType type) const;
 
-	//ライン用のPSO
-	ID3D12RootSignature* GetRootSignatureLine()const { return rootSignatureLine.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateLine()const { return graphicsPipelineStateLine.Get(); }
-
-	//スキニング用のPSO
-	ID3D12RootSignature* GetRootSignatureSkinning()const { return rootSignatureSkinning.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateSkinning()const { return graphicsPipelineStateSkinning.Get(); }
-	ID3D12RootSignature* GetRootSignatureShadowMap()const { return rootSignatureShadowMap.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateShadowMap()const { return graphicsPipelineStateShadowMap.Get(); }
-
-	//Skybox用のPSO
-	ID3D12RootSignature* GetRootSignatureSkybox()const { return rootSignatureSkybox.Get(); }
-	ID3D12PipelineState* GetGraphicsPipelineStateSkybox()const { return graphicsPipelineStateSkybox.Get(); }
-
 private:
-	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 
 	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> graphicsPipelineState = nullptr;

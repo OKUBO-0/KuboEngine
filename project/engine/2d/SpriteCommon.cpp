@@ -15,10 +15,9 @@ SpriteCommon* SpriteCommon::GetInstance()
 void SpriteCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon)
 {
     dxCommon_ = dxCommon;
-    dxCommonRaw_ = dxCommon.get();
     // グラフィックスパイプライン生成
     graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-    graphicsPipeline_->Initialize(dxCommonRaw_);
+    graphicsPipeline_->Initialize(dxCommon);
     graphicsPipeline_->CreateSprite();
 }
 
@@ -26,15 +25,20 @@ void SpriteCommon::Finalize()
 {
     graphicsPipeline_.reset();
     dxCommon_.reset();
-    dxCommonRaw_ = nullptr;
 }
 
 void SpriteCommon::CommonDraw()
 {
+    const auto dxCommon = dxCommon_.lock();
+    if (!dxCommon) {
+        return;
+    }
     // RootSignatureとPSOを設定し、プリミティブトポロジを三角形リストに指定
-    dxCommonRaw_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureSprite());
-    dxCommonRaw_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateSprite());
-    dxCommonRaw_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    const auto rootSignature = graphicsPipeline_->GetRootSignatureSpriteHandle();
+    const auto pipelineState = graphicsPipeline_->GetGraphicsPipelineStateSpriteHandle();
+    dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+    dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+    dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
 }

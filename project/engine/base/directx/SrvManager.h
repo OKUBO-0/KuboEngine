@@ -2,6 +2,7 @@
 #include <d3d12.h>
 #include <wrl.h>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -37,7 +38,7 @@ public:
 	/// @brief SRV管理を初期化する
 	/// @param dxCommon DirectX共通管理
 	/// @return なし
-	void Initialize(DirectXCommon* dxCommon);
+	void Initialize(std::shared_ptr<DirectXCommon> dxCommon);
 
 	//アロケータ（ヒープのアドレスを指定するやつ）
 	uint32_t Allocate();
@@ -65,12 +66,13 @@ public:
 	UsageSummary GetUsageSummary() const;
 	void LabelUsage(uint32_t srvIndex, const std::string& usage);
 private:
+	std::shared_ptr<DirectXCommon> GetDirectXCommon() const;
 	void SetUsage(uint32_t srvIndex, const std::string& usage);
 	void ReclaimCompletedDescriptors();
 	void ValidateIndex(uint32_t srvIndex) const;
 	void ValidateAllocated(uint32_t srvIndex) const;
 
-	DirectXCommon* directXCommon = nullptr;
+	std::weak_ptr<DirectXCommon> directXCommon_;
 	//最大SRV数（最大テクスチャ枚数）
 	static const uint32_t kMaxSRVCount;
 	//SRV用のデスクリプタサイズ

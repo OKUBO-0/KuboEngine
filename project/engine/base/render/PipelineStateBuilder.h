@@ -25,7 +25,7 @@ struct GraphicsPipelineStateRequest
 };
 
 void CreateGraphicsPipelineState(
-	DirectXCommon* dxCommon,
+	DirectXCommon& dxCommon,
 	const GraphicsPipelineStateRequest& request,
 	ID3D12PipelineState** pipelineState);
 

@@ -50,7 +50,6 @@ private:
 
 	// DirectX共通
 	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
-	Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr;
 	// シェーダーリソースマネージャー
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 	// パイプライン

@@ -7,11 +7,10 @@
 namespace Engine::Base {
 
 void CreateGraphicsPipelineState(
-	DirectXCommon* dxCommon,
+	DirectXCommon& dxCommon,
 	const GraphicsPipelineStateRequest& request,
 	ID3D12PipelineState** pipelineState)
 {
-	assert(dxCommon != nullptr);
 	assert(request.rootSignature != nullptr);
 	assert(request.vertexShader != nullptr);
 	assert(pipelineState != nullptr);
@@ -41,7 +40,7 @@ void CreateGraphicsPipelineState(
 	pipelineDesc.DepthStencilState = request.depthStencilState;
 	pipelineDesc.DSVFormat = request.depthStencilFormat;
 
-	const HRESULT hr = dxCommon->GetDevice()->CreateGraphicsPipelineState(
+	const HRESULT hr = dxCommon.GetDevice()->CreateGraphicsPipelineState(
 		&pipelineDesc,
 		IID_PPV_ARGS(pipelineState));
 	ThrowIfFailed(hr, request.failureContext);

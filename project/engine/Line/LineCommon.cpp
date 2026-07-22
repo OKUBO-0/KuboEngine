@@ -27,14 +27,18 @@ LineCommon* LineCommon::GetInstance()
 void LineCommon::InitializePipeline()
 {
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	graphicsPipeline_->Initialize(dxCommonRaw_);
+	graphicsPipeline_->Initialize(dxCommon_.lock());
 	graphicsPipeline_->CreateLine();
 }
 
 void LineCommon::InitializeVertexResources()
 {
+	const auto dxCommon = dxCommon_.lock();
+	if (!dxCommon) {
+		return;
+	}
 	const size_t vertexBytes = sizeof(VertexDataLine) * linevertices.size();
-	vertexResource_ = dxCommonRaw_->CreateDefaultBufferResource(
+	vertexResource_ = dxCommon->CreateDefaultBufferResource(
 		linevertices.data(),
 		vertexBytes,
 		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
@@ -46,7 +50,6 @@ void LineCommon::InitializeVertexResources()
 void LineCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
 	dxCommon_ = dxCommon;
-	dxCommonRaw_ = dxCommon.get();
 	srvManager_ = srvManager;
 	InitializePipeline();
 	InitializeVertexResources();
@@ -77,22 +80,27 @@ void LineCommon::Finalize()
 		}
 	}
 	graphicsPipeline_.reset();
-	if (dxCommonRaw_) {
-		dxCommonRaw_->UntrackResourceState(vertexResource_.Get());
+	if (const auto dxCommon = dxCommon_.lock()) {
+		dxCommon->UntrackResourceState(vertexResource_.Get());
 	}
 	vertexResource_.Reset();
 	instances_.clear();
 	dxCommon_.reset();
-	dxCommonRaw_ = nullptr;
 	srvManager_ = nullptr;
 }
 
 void LineCommon::CommonDraw()
 {
-	dxCommonRaw_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureLine());
-	dxCommonRaw_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateLine());
+	const auto dxCommon = dxCommon_.lock();
+	if (!dxCommon) {
+		return;
+	}
+	const auto rootSignature = graphicsPipeline_->GetRootSignatureLineHandle();
+	const auto pipelineState = graphicsPipeline_->GetGraphicsPipelineStateLineHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
 	// 1本ずつ独立した線なので LINESTRIP ではなく LINELIST
-	dxCommonRaw_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
 }
 
 void LineCommon::Update()
@@ -103,16 +111,20 @@ void LineCommon::Update()
 void LineCommon::Draw()
 {
 	if (instances_.empty()) return;
+	const auto dxCommon = dxCommon_.lock();
+	if (!dxCommon) {
+		return;
+	}
 
 	const Engine::Base::DirectXCommon::FrameUploadAllocation cameraAllocation =
-		dxCommonRaw_->AllocateFrameUpload(sizeof(CameraBufferforGpu), 256);
+		dxCommon->AllocateFrameUpload(sizeof(CameraBufferforGpu), 256);
 	memcpy(cameraAllocation.cpuAddress, &cameraData_, sizeof(cameraData_));
 	const size_t instanceSize =
 		sizeof(LineInstanceData) * instances_.size();
 	const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
-		dxCommonRaw_->AllocateFrameUpload(instanceSize, sizeof(LineInstanceData));
+		dxCommon->AllocateFrameUpload(instanceSize, sizeof(LineInstanceData));
 	memcpy(instanceAllocation.cpuAddress, instances_.data(), instanceSize);
-	const uint32_t frameIndex = dxCommonRaw_->GetCurrentFrameIndex();
+	const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
 	const uint32_t srvIndex = instanceSrvIndices_[frameIndex];
 	srvManager_->CreateSRVforStructuredBuffer(
 		srvIndex,
@@ -122,13 +134,13 @@ void LineCommon::Draw()
 		instanceAllocation.offset / sizeof(LineInstanceData));
 
 	CommonDraw();
-	dxCommonRaw_->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView_);
+	dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView_);
 	// RootParameter[0] → b0：カメラ（CBV）
-	dxCommonRaw_->GetCommandList()->SetGraphicsRootConstantBufferView(
+	dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
 		0,
 		cameraAllocation.gpuAddress);
 	srvManager_->SetGraphicsRootDescriptorTable(1, srvIndex);
-	dxCommonRaw_->GetCommandList()->DrawInstanced(2, static_cast<UINT>(instances_.size()), 0, 0);
+	dxCommon->GetCommandList()->DrawInstanced(2, static_cast<UINT>(instances_.size()), 0, 0);
 
 	instances_.clear(); // ← 正しい変数名
 

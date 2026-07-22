@@ -18,6 +18,9 @@ namespace DirectXGame {
 enum class CharacterId : int32_t;
 class EnemyManager;
 
+/// @brief プレイヤーの成長、HP、武器、パッシブ取得を統合する管理クラス
+/// @details PlayScene から直接武器コントローラや成長データを操作しないためのファサード。
+///          Player の所有権は持たず、フレーム更新と描画時に必要な非所有参照として扱う。
 class PlayerManager {
 public:
 	// PlayerManager は PlayerProgression と PlayerWeaponController の窓口。

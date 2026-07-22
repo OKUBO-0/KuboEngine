@@ -9,13 +9,14 @@
 namespace Engine::Base {
 
 const uint32_t SrvManager::kMaxSRVCount = 512;
-void SrvManager::Initialize(DirectXCommon* dxCommon)
+void SrvManager::Initialize(std::shared_ptr<DirectXCommon> dxCommon)
 {
-	directXCommon = dxCommon;
+	assert(dxCommon);
+	directXCommon_ = dxCommon;
 	//デスクリプタヒープの生成
-	descriptorHeap = directXCommon->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kMaxSRVCount, true);
+	descriptorHeap = dxCommon->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kMaxSRVCount, true);
 	//デスクリプタ1個分のサイズを取得して記録
-	descriptorSize = directXCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	descriptorSize = dxCommon->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	useIndex = 0;
 	activeCount_ = 0;
 	freeIndices_.clear();
@@ -59,7 +60,7 @@ bool SrvManager::Free(uint32_t srvIndex)
 
 	allocated_[srvIndex] = 0;
 	--activeCount_;
-	const uint64_t fenceValue = directXCommon->GetPendingSubmissionFenceValue();
+	const uint64_t fenceValue = GetDirectXCommon()->GetPendingSubmissionFenceValue();
 	retiredDescriptors_.push_back({ srvIndex, fenceValue });
 	SetUsage(srvIndex, "Retired");
 	return true;
@@ -103,7 +104,7 @@ void SrvManager::CreateSRVforTexture2D(uint32_t srvIndex, ID3D12Resource* pResou
 	}
 
 
-	directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
+	GetDirectXCommon()->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
 	SetUsage(srvIndex, metadata.IsCubemap() ? "TextureCube" : "Texture2D");
 
 }
@@ -125,7 +126,7 @@ void SrvManager::CreateSRVforStructuredBuffer(
 	srvDesc.Buffer.NumElements = numElements;
 	srvDesc.Buffer.StructureByteStride = structureByteStride;
 
-	directXCommon->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
+	GetDirectXCommon()->GetDevice()->CreateShaderResourceView(pResource, &srvDesc, GetCPUDescriptorHandle(srvIndex));
 	SetUsage(srvIndex,
 		"StructuredBuffer elements=" + std::to_string(numElements) +
 		" stride=" + std::to_string(structureByteStride));
@@ -136,14 +137,14 @@ void SrvManager::PreDraw()
 {
 	//描画用のDescriptorHeapの設定
 	ID3D12DescriptorHeap* descriptorHeaps[] = { descriptorHeap.Get() };
-	directXCommon->GetCommandList()->SetDescriptorHeaps(1, descriptorHeaps);
+	GetDirectXCommon()->GetCommandList()->SetDescriptorHeaps(1, descriptorHeaps);
 
 }
 
 void SrvManager::SetGraphicsRootDescriptorTable(UINT rootParameterIndex, uint32_t srvIndex)
 {
 	ValidateAllocated(srvIndex);
-	directXCommon->GetCommandList()->SetGraphicsRootDescriptorTable(rootParameterIndex, GetGPUDescriptorHandle(srvIndex));
+	GetDirectXCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(rootParameterIndex, GetGPUDescriptorHandle(srvIndex));
 }
 
 bool SrvManager::CheckTexturesNumber()
@@ -160,7 +161,7 @@ uint32_t SrvManager::GetRemainingCount()
 
 void SrvManager::ReclaimCompletedDescriptors()
 {
-	const uint64_t completedFenceValue = directXCommon->GetCompletedFenceValue();
+	const uint64_t completedFenceValue = GetDirectXCommon()->GetCompletedFenceValue();
 	auto firstPending = std::remove_if(
 		retiredDescriptors_.begin(),
 		retiredDescriptors_.end(),
@@ -178,6 +179,13 @@ void SrvManager::ReclaimCompletedDescriptors()
 bool SrvManager::IsAllocated(uint32_t srvIndex) const
 {
 	return srvIndex < allocated_.size() && allocated_[srvIndex] != 0;
+}
+
+std::shared_ptr<DirectXCommon> SrvManager::GetDirectXCommon() const
+{
+	auto dxCommon = directXCommon_.lock();
+	assert(dxCommon);
+	return dxCommon;
 }
 
 SrvManager::UsageSummary SrvManager::GetUsageSummary() const

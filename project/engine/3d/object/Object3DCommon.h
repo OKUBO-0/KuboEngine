@@ -97,8 +97,8 @@ private:
 	Object3DCommon& operator=(const Object3DCommon&) = delete;
 
 private:
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
 	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
-	Engine::Base::DirectXCommon* dxCommonRaw_ = nullptr;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;

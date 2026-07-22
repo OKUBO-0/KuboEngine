@@ -44,18 +44,18 @@ void Framework::InitializeCoreServices()
 	dxCommon->Initialize(winApp.get());
 
 	srvManager = std::make_unique<Engine::Base::SrvManager>();
-	srvManager->Initialize(dxCommon.get());
+	srvManager->Initialize(dxCommon);
 
 	offscreenRenderManager = std::make_unique<Engine::Base::OffscreenRenderManager>();
-	offscreenRenderManager->Initialize(dxCommon.get(), srvManager.get());
+	offscreenRenderManager->Initialize(dxCommon, srvManager.get());
 }
 
 void Framework::InitializeSharedManagers()
 {
-	Engine::Base::TextureManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::Base::TextureManager::GetInstance()->Initialize(dxCommon, srvManager.get());
 	Engine::InputSystem::Input::GetInstance()->Initialize(winApp.get());
 	Engine::AudioSystem::Audio::GetInstance()->Initialize();
-	Engine::Particle::ParticleManager::GetInstance()->Initialize(dxCommon.get(), srvManager.get());
+	Engine::Particle::ParticleManager::GetInstance()->Initialize(dxCommon, srvManager.get());
 	Engine::CameraSystem::CameraManager::GetInstance()->Initialize();
 }
 
@@ -72,7 +72,7 @@ void Framework::InitializeDebugTools()
 {
 #ifdef _DEBUG
 	imGuiManager = std::make_unique<Engine::Base::ImGuiManager>();
-	imGuiManager->Initialize(dxCommon.get(), winApp.get());
+	imGuiManager->Initialize(dxCommon, winApp.get());
 #endif // _DEBUG
 }
 

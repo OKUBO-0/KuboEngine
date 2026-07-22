@@ -39,7 +39,14 @@ OffscreenRenderManager::~OffscreenRenderManager()
 	}
 }
 
-void OffscreenRenderManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+std::shared_ptr<DirectXCommon> OffscreenRenderManager::GetDirectXCommon() const
+{
+	auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	return dxCommon;
+}
+
+void OffscreenRenderManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
 	instance_ = this;
 	dxCommon_ = dxCommon;
@@ -53,13 +60,13 @@ void OffscreenRenderManager::Initialize(Engine::Base::DirectXCommon* dxCommon, E
 		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
 		kClearColor
 	);
-	dxCommon_->TrackResourceState(
+	GetDirectXCommon()->TrackResourceState(
 		renderTargetTextureResource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET);
-	renderTargetTextureHandle = dxCommon_->GetRTVCPUDescriptorHandle(2);
+	renderTargetTextureHandle = GetDirectXCommon()->GetRTVCPUDescriptorHandle(2);
 
-	dxCommon_->GetDevice()->CreateRenderTargetView(renderTargetTextureResource.Get(),
-		&dxCommon_->GetRTVDesc(), renderTargetTextureHandle);
+	GetDirectXCommon()->GetDevice()->CreateRenderTargetView(renderTargetTextureResource.Get(),
+		&GetDirectXCommon()->GetRTVDesc(), renderTargetTextureHandle);
 
 
 	//SRVの作成
@@ -69,7 +76,7 @@ void OffscreenRenderManager::Initialize(Engine::Base::DirectXCommon* dxCommon, E
 
 	//graphicsPipelineの初期化
 	graphicsPipeline_ = std::make_unique<GraphicsPipeline>();
-	graphicsPipeline_->Initialize(dxCommon_);
+	graphicsPipeline_->Initialize(dxCommon);
 
 	graphicsPipeline_->RootSignatureCopyImageCreate();
 	graphicsPipeline_->CreateAllPostEffects(); // ←これだけ！
@@ -82,36 +89,36 @@ void OffscreenRenderManager::Finalize()
 		srvIndex = UINT32_MAX;
 	}
 	graphicsPipeline_.reset();
-	if (dxCommon_ && renderTargetTextureResource) {
-		dxCommon_->UntrackResourceState(renderTargetTextureResource.Get());
+	if (dxCommon_.lock() && renderTargetTextureResource) {
+		GetDirectXCommon()->UntrackResourceState(renderTargetTextureResource.Get());
 	}
 	renderTargetTextureResource.Reset();
 	imGuiSceneTextureReady_ = false;
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
 	srvManager_ = nullptr;
 }
 
 void OffscreenRenderManager::Begin()
 {
-	dxCommon_->TransitionResource(
+	GetDirectXCommon()->TransitionResource(
 		renderTargetTextureResource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	//描画先のRTVとDSVを設定する
-	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = dxCommon_->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
-	dxCommon_->GetCommandList()->OMSetRenderTargets(1, &renderTargetTextureHandle, false, &dsvHandle);
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = GetDirectXCommon()->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
+	GetDirectXCommon()->GetCommandList()->OMSetRenderTargets(1, &renderTargetTextureHandle, false, &dsvHandle);
 	//指定した色で画面全体をクリアする
 	float clearColor[] = { kClearColor.x,kClearColor.y,kClearColor.z,kClearColor.w };
-	dxCommon_->GetCommandList()->ClearRenderTargetView(renderTargetTextureHandle, clearColor, 0, nullptr);
-	dxCommon_->GetCommandList()->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	GetDirectXCommon()->GetCommandList()->ClearRenderTargetView(renderTargetTextureHandle, clearColor, 0, nullptr);
+	GetDirectXCommon()->GetCommandList()->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 
 
 	const D3D12_VIEWPORT viewport = GameViewport();
 	const D3D12_RECT scissorRect = GameScissor();
 
-	dxCommon_->GetCommandList()->RSSetViewports(1, &viewport);
-	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissorRect);
+	GetDirectXCommon()->GetCommandList()->RSSetViewports(1, &viewport);
+	GetDirectXCommon()->GetCommandList()->RSSetScissorRects(1, &scissorRect);
 
 
 }
@@ -119,18 +126,18 @@ void OffscreenRenderManager::Begin()
 void OffscreenRenderManager::BindRenderTarget()
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
-		dxCommon_->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
-	dxCommon_->GetCommandList()->OMSetRenderTargets(
+		GetDirectXCommon()->GetDSVDescriptorHeap()->GetCPUDescriptorHandleForHeapStart();
+	GetDirectXCommon()->GetCommandList()->OMSetRenderTargets(
 		1, &renderTargetTextureHandle, false, &dsvHandle);
 	const D3D12_VIEWPORT viewport = GameViewport();
 	const D3D12_RECT scissorRect = GameScissor();
-	dxCommon_->GetCommandList()->RSSetViewports(1, &viewport);
-	dxCommon_->GetCommandList()->RSSetScissorRects(1, &scissorRect);
+	GetDirectXCommon()->GetCommandList()->RSSetViewports(1, &viewport);
+	GetDirectXCommon()->GetCommandList()->RSSetScissorRects(1, &scissorRect);
 }
 
 void OffscreenRenderManager::End()
 {
-	dxCommon_->TransitionResource(
+	GetDirectXCommon()->TransitionResource(
 		renderTargetTextureResource.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
@@ -141,15 +148,15 @@ void OffscreenRenderManager::Draw()
 		graphicsPipeline_->GetGraphicsPipelineStateCopyImageHandle(currentEffectType_);
 	const Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature =
 		graphicsPipeline_->GetRootSignatureHandle("PostEffect." + std::to_string(static_cast<int>(currentEffectType_)));
-	dxCommon_->GetCommandList()->SetPipelineState(pipelineState.Get());
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	GetDirectXCommon()->GetCommandList()->SetPipelineState(pipelineState.Get());
+	GetDirectXCommon()->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	GetDirectXCommon()->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	//heapの設定
 	srvManager_->SetGraphicsRootDescriptorTable(0, srvIndex);
 
 	//描画	
-	dxCommon_->GetCommandList()->DrawInstanced(3, 1, 0, 0);
+	GetDirectXCommon()->GetCommandList()->DrawInstanced(3, 1, 0, 0);
 
 
 
@@ -176,7 +183,7 @@ void OffscreenRenderManager::CreateImGuiSceneTextureSrv(
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MipLevels = 1;
-	dxCommon_->GetDevice()->CreateShaderResourceView(
+	GetDirectXCommon()->GetDevice()->CreateShaderResourceView(
 		renderTargetTextureResource.Get(),
 		&srvDesc,
 		imGuiSceneTextureCpuHandle);
@@ -212,7 +219,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTarge
 
 	// リソース作成
 	Microsoft::WRL::ComPtr<ID3D12Resource> resource;
-	HRESULT hr = dxCommon_->GetDevice()->CreateCommittedResource(
+	HRESULT hr = GetDirectXCommon()->GetDevice()->CreateCommittedResource(
 		&heapProperties,//Heapの設定
 		D3D12_HEAP_FLAG_NONE,//Heapの特殊設定。特になし
 		&resourceDesc,//Resourceの設定
@@ -239,7 +246,7 @@ void OffscreenRenderManager::DrawImGui(bool* open)
 	}
 	ImGui::Text(
 		"Tracked GPU Resource States: %zu",
-		dxCommon_ ? dxCommon_->GetTrackedResourceStateCount() : size_t{ 0 });
+		dxCommon_.lock() ? GetDirectXCommon()->GetTrackedResourceStateCount() : size_t{ 0 });
 
 	const char* items[] = {
 	   "Fullscreen",

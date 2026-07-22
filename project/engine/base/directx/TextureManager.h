@@ -3,6 +3,7 @@
 #include"externals/DirectXTex/DirectXTex.h"
 #include <d3d12.h>
 #include <wrl.h>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -47,7 +48,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief 読み込み済みテクスチャのメタデータを取得する
 	/// @param filepath テクスチャのファイルパス
@@ -75,6 +76,7 @@ public:
 	static uint32_t kSRVIndexTop;
 
 private:
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
 	DirectX::ScratchImage LoadTextureImage(const std::string& filePath);
 	DirectX::ScratchImage CreateMipImages(DirectX::ScratchImage&& image);
 	void UploadTextureResource(TexturData& textureData, const DirectX::ScratchImage& mipImages);
@@ -86,7 +88,7 @@ private:
 
 	//テクスチャデータ
 	
-	Engine::Base::DirectXCommon* dxCommon_=nullptr;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	std::unordered_map<std::string, TexturData> textureDatas;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 

@@ -70,7 +70,7 @@ D3D12_STATIC_SAMPLER_DESC CreateShadowComparisonSamplerDesc()
 }
 
 void CreateRootSignatureFromDesc(
-	Engine::Base::DirectXCommon* dxCommon,
+	Engine::Base::DirectXCommon& dxCommon,
 	const D3D12_ROOT_SIGNATURE_DESC& descriptionRootSignature,
 	ID3D12RootSignature** rootSignature)
 {
@@ -86,7 +86,7 @@ void CreateRootSignatureFromDesc(
 	}
 	Engine::Base::ThrowIfFailed(hr, "D3D12SerializeRootSignature");
 
-	hr = dxCommon->GetDevice()->CreateRootSignature(
+	hr = dxCommon.GetDevice()->CreateRootSignature(
 		0,
 		signatureBlob->GetBufferPointer(),
 		signatureBlob->GetBufferSize(),
@@ -95,7 +95,7 @@ void CreateRootSignatureFromDesc(
 }
 
 void CreateRootSignatureWithParameters(
-	Engine::Base::DirectXCommon* dxCommon,
+	Engine::Base::DirectXCommon& dxCommon,
 	const D3D12_ROOT_PARAMETER* rootParameters,
 	UINT rootParameterCount,
 	const D3D12_STATIC_SAMPLER_DESC* staticSamplers,
@@ -202,7 +202,7 @@ std::array<D3D12_ROOT_PARAMETER, 1> CreateCopyImageRootParameters(D3D12_DESCRIPT
 
 namespace Engine::Base {
 
-void CreateObjectRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateObjectRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	std::array<D3D12_DESCRIPTOR_RANGE, 3> descriptorRanges{};
 	const auto rootParameters = CreateObjectRootParameters(descriptorRanges);
@@ -214,7 +214,7 @@ void CreateObjectRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** ro
 		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignature);
 }
 
-void CreateParticleRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateParticleRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
 	const auto rootParameters = CreateParticleRootParameters(descriptorRange);
@@ -224,7 +224,7 @@ void CreateParticleRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** 
 		&staticSampler, 1, rootSignature);
 }
 
-void CreateLineRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateLineRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
 	const auto rootParameters = CreateLineRootParameters(descriptorRange);
@@ -232,7 +232,7 @@ void CreateLineRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** root
 		nullptr, 0, rootSignature);
 }
 
-void CreateSkinningRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateSkinningRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	std::array<D3D12_DESCRIPTOR_RANGE, 4> descriptorRanges{};
 	const auto rootParameters = CreateSkinningRootParameters(descriptorRanges);
@@ -244,7 +244,7 @@ void CreateSkinningRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** 
 		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignature);
 }
 
-void CreateShadowMapRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateShadowMapRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	const std::array<D3D12_ROOT_PARAMETER, 2> rootParameters = {
 		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
@@ -254,7 +254,7 @@ void CreateShadowMapRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature**
 		static_cast<UINT>(rootParameters.size()), nullptr, 0, rootSignature);
 }
 
-void CreateSpriteRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateSpriteRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
 	const auto rootParameters = CreateSpriteRootParameters(descriptorRange);
@@ -264,7 +264,7 @@ void CreateSpriteRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** ro
 		&staticSampler, 1, rootSignature);
 }
 
-void CreateCopyImageRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateCopyImageRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
 	const auto rootParameters = CreateCopyImageRootParameters(descriptorRange);
@@ -274,7 +274,7 @@ void CreateCopyImageRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature**
 		&staticSampler, 1, rootSignature);
 }
 
-void CreateSkyboxRootSignature(DirectXCommon* dxCommon, ID3D12RootSignature** rootSignature)
+void CreateSkyboxRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
 	const auto rootParameters = CreateSkyboxRootParameters(descriptorRange);

@@ -27,6 +27,9 @@ namespace DirectXGame {
 
 class GameSession;
 
+/// @brief ゲームプレイ中のシーン全体を束ねる上位シーン
+/// @details プレイヤー、敵、HUD、演出、遷移を生成・接続する。
+///          戦闘や成長の詳細処理は PlayerManager / EnemyManager / Presentation 群へ委譲する。
 class PlayScene : public Engine::Scene::BaseScene {
 public:
 	explicit PlayScene(std::shared_ptr<GameSession> sessionContext);

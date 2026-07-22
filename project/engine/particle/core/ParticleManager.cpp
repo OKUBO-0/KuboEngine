@@ -38,7 +38,14 @@ ParticleManager* ParticleManager::GetInstance()
 	return &instance;
 }
 
-void ParticleManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+std::shared_ptr<Engine::Base::DirectXCommon> ParticleManager::GetDirectXCommon() const
+{
+	auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	return dxCommon;
+}
+
+void ParticleManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
 	static_assert(kBufferedFrameCount == Engine::Base::DirectXCommon::kFrameCount);
 
@@ -53,7 +60,7 @@ void ParticleManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::
 
 	// 全グループ共通で使うパーティクル用パイプラインを生成する
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	graphicsPipeline_->Initialize(dxCommon_);
+	graphicsPipeline_->Initialize(dxCommon);
 	graphicsPipeline_->CreateParticle();
 }
 
@@ -63,8 +70,8 @@ void ParticleManager::Finalize()
 	if (srvManager_) {
 		for (const auto& [name, particleGroup] : particleGroups) {
 			static_cast<void>(name);
-			if (dxCommon_) {
-				dxCommon_->UntrackResourceState(
+			if (const auto dxCommon = dxCommon_.lock()) {
+				dxCommon->UntrackResourceState(
 					particleGroup.vertexResource.Get());
 			}
 			for (uint32_t srvIndex : particleGroup.srvIndices) {
@@ -81,7 +88,7 @@ void ParticleManager::Finalize()
 		particleGroupGeneration_ = 1;
 	}
 	model_ = nullptr;
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
 	srvManager_ = nullptr;
 }
 
@@ -169,6 +176,7 @@ void ParticleManager::UpdateAliveParticle(Particle& particle, ParticleGroup& par
 
 void ParticleManager::Draw()
 {
+	const auto dxCommon = GetDirectXCommon();
 	lastDrawCallCount_ = 0;
 	lastDrawnInstanceCount_ = 0;
 
@@ -178,11 +186,13 @@ void ParticleManager::Draw()
 	}
 
 	//ルートシグネチャを設定
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureParticle());
+	const auto rootSignature = graphicsPipeline_->GetRootSignatureParticleHandle();
+	const auto pipelineState = graphicsPipeline_->GetGraphicsPipelineStateParticleHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
 	//psoを設定
-	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateParticle());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
 	// primitive topology を設定
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	// グループごとに頂点バッファ、material、instance SRV、texture SRV を切り替えて描画する
 	for (const auto& particleGroupEntry : particleGroups) {
@@ -192,7 +202,7 @@ void ParticleManager::Draw()
 		}
 
 		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
-			dxCommon_->AllocateFrameUpload(sizeof(Material), 256);
+			dxCommon->AllocateFrameUpload(sizeof(Material), 256);
 		std::memcpy(
 			materialAllocation.cpuAddress,
 			&particleGroup.materialData,
@@ -200,12 +210,12 @@ void ParticleManager::Draw()
 		const size_t instanceBytes =
 			sizeof(ParticleForGPU) * particleGroup.instanceCount;
 		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
-			dxCommon_->AllocateFrameUpload(instanceBytes, sizeof(ParticleForGPU));
+			dxCommon->AllocateFrameUpload(instanceBytes, sizeof(ParticleForGPU));
 		std::memcpy(
 			instanceAllocation.cpuAddress,
 			particleGroup.instanceData.data(),
 			instanceBytes);
-		const uint32_t frameIndex = dxCommon_->GetCurrentFrameIndex();
+		const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
 		const uint32_t srvIndex = particleGroup.srvIndices[frameIndex];
 		srvManager_->CreateSRVforStructuredBuffer(
 			srvIndex,
@@ -214,11 +224,11 @@ void ParticleManager::Draw()
 			sizeof(ParticleForGPU),
 			instanceAllocation.offset / sizeof(ParticleForGPU));
 
-		dxCommon_->GetCommandList()->IASetVertexBuffers(0, 1, &particleGroup.vertexBufferView);
-		dxCommon_->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
+		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &particleGroup.vertexBufferView);
+		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
 		srvManager_->SetGraphicsRootDescriptorTable(2, particleGroup.materialdata.textureIndex);
 		srvManager_->SetGraphicsRootDescriptorTable(1, srvIndex);
-		dxCommon_->GetCommandList()->DrawInstanced(UINT(particleGroup.vertexCount), particleGroup.instanceCount, 0, 0);
+		dxCommon->GetCommandList()->DrawInstanced(UINT(particleGroup.vertexCount), particleGroup.instanceCount, 0, 0);
 		++lastDrawCallCount_;
 		lastDrawnInstanceCount_ += particleGroup.instanceCount;
 	}
@@ -269,6 +279,7 @@ void ParticleManager::InitializeParticleGroupMaterial(ParticleGroup& particleGro
 
 void ParticleManager::InitializeParticleGroupVertices(ParticleGroup& particleGroup, VerticesType verticesType)
 {
+	const auto dxCommon = GetDirectXCommon();
 	std::vector<VertexData> vertices = MakeCylinderVertices();
 	switch (verticesType) {
 	case VerticesType::Quad:
@@ -284,7 +295,7 @@ void ParticleManager::InitializeParticleGroupVertices(ParticleGroup& particleGro
 
 	particleGroup.vertexCount = static_cast<uint32_t>(vertices.size());
 	const size_t vertexBytes = sizeof(VertexData) * vertices.size();
-	particleGroup.vertexResource = dxCommon_->CreateDefaultBufferResource(
+	particleGroup.vertexResource = dxCommon->CreateDefaultBufferResource(
 		vertices.data(),
 		vertexBytes,
 		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
