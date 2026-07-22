@@ -120,10 +120,14 @@ void Sprite::InitializeTransformationData()
 
 void Sprite::UpdateVertexData()
 {
+    // Anchor はスプライト矩形内の基準点を 0..1 で表す。
+    // ここでは左上(0,0)-右下(1,1)の単位矩形を、Anchor が原点に来るローカル座標へずらす。
     float left = 0.0f - anchorPoint_.x;
     float right = 1.0f - anchorPoint_.x;
     float top = 0.0f - anchorPoint_.y;
     float bottom = 1.0f - anchorPoint_.y;
+    // 反転は頂点順ではなく矩形の左右/上下座標を入れ替えることで表現する。
+    // Index は固定のままなので、以降の描画順を変えずに向きだけ反転できる。
     if (isFlipX_) {
         left = -left;
         right = -right;
@@ -133,20 +137,26 @@ void Sprite::UpdateVertexData()
         bottom = -bottom;
     }
 
+    // textureLeftTop_ と textureSize_ はピクセル単位の切り出し範囲。
+    // シェーダーへ渡す UV は 0..1 の正規化座標なので、元テクスチャの幅/高さで割る。
     const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
     const float texLeft = textureLeftTop_.x / metadata.width;
     const float texRight = (textureLeftTop_.x + textureSize_.x) / metadata.width;
     const float texTop = textureLeftTop_.y / metadata.height;
     const float texBottom = (textureLeftTop_.y + textureSize_.y) / metadata.height;
 
+    // 下2頂点と上2頂点で X に skewX_ を加え、矩形を平行四辺形に傾ける。
+    // 実際の画面サイズ・回転・移動は UpdateMatrices() の World 行列で後段適用する。
     vertexData_[0].position = { left, bottom, 0.0f, 1.0f };
     vertexData_[1].position = { left + skewX_, top, 0.0f, 1.0f };
     vertexData_[2].position = { right, bottom, 0.0f, 1.0f };
     vertexData_[3].position = { right + skewX_, top, 0.0f, 1.0f };
+    // 頂点配列と同じ順に、切り出し範囲の左下/左上/右下/右上 UV を対応させる。
     vertexData_[0].texcoord = { texLeft, texBottom };
     vertexData_[1].texcoord = { texLeft, texTop };
     vertexData_[2].texcoord = { texRight, texBottom };
     vertexData_[3].texcoord = { texRight, texTop };
+    // 2D はカメラへ向いた平面として扱うため、全頂点で同じ法線を持たせる。
     vertexData_[0].normal = { 0.0f,0.0f,-1.0f };
     vertexData_[1].normal = { 0.0f,0.0f,-1.0f };
     vertexData_[2].normal = { 0.0f,0.0f,-1.0f };

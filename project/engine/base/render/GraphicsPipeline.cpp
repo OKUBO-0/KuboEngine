@@ -6,8 +6,47 @@
 #include "PipelineRootSignatureFactory.h"
 #include "PipelineStateBuilder.h"
 #include <array>
+#include <vector>
 
 namespace {
+
+enum class PipelineInputLayout {
+	Standard,
+	Skinning,
+	Line,
+	Empty,
+};
+
+enum class PipelineBlendMode {
+	Alpha,
+	Additive,
+	Disabled,
+};
+
+enum class PipelineDepthMode {
+	ReadWrite,
+	ReadOnly,
+	Disabled,
+};
+
+struct PipelineDefinition {
+	const char* key;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature>* rootSignature;
+	const wchar_t* vertexShaderPath;
+	const wchar_t* pixelShaderPath;
+	PipelineInputLayout inputLayout = PipelineInputLayout::Standard;
+	PipelineBlendMode blendMode = PipelineBlendMode::Alpha;
+	PipelineDepthMode depthMode = PipelineDepthMode::ReadWrite;
+	D3D12_PRIMITIVE_TOPOLOGY_TYPE topology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_NONE;
+	UINT renderTargetCount = 1;
+	DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	int depthBias = 0;
+	float slopeScaledDepthBias = 0.0f;
+	float depthBiasClamp = 0.0f;
+	const char* failureContext = "ID3D12Device::CreateGraphicsPipelineState";
+};
 
 D3D12_BLEND_DESC CreateAlphaBlendDesc(D3D12_BLEND destBlend)
 {
@@ -23,11 +62,42 @@ D3D12_BLEND_DESC CreateAlphaBlendDesc(D3D12_BLEND destBlend)
 	return blendDesc;
 }
 
+D3D12_BLEND_DESC CreateDisabledBlendDesc()
+{
+	D3D12_BLEND_DESC blendDesc{};
+	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	blendDesc.RenderTarget[0].BlendEnable = false;
+	return blendDesc;
+}
+
+D3D12_BLEND_DESC CreateBlendDesc(PipelineBlendMode mode)
+{
+	switch (mode) {
+	case PipelineBlendMode::Alpha:
+		return CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
+	case PipelineBlendMode::Additive:
+		return CreateAlphaBlendDesc(D3D12_BLEND_ONE);
+	case PipelineBlendMode::Disabled:
+	default:
+		return CreateDisabledBlendDesc();
+	}
+}
+
 D3D12_RASTERIZER_DESC CreateSolidRasterizerDesc(D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_NONE)
 {
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.CullMode = cullMode;
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+	return rasterizerDesc;
+}
+
+D3D12_RASTERIZER_DESC CreateRasterizerDesc(const PipelineDefinition& definition)
+{
+	D3D12_RASTERIZER_DESC rasterizerDesc =
+		CreateSolidRasterizerDesc(definition.cullMode);
+	rasterizerDesc.DepthBias = definition.depthBias;
+	rasterizerDesc.SlopeScaledDepthBias = definition.slopeScaledDepthBias;
+	rasterizerDesc.DepthBiasClamp = definition.depthBiasClamp;
 	return rasterizerDesc;
 }
 
@@ -48,7 +118,20 @@ D3D12_DEPTH_STENCIL_DESC CreateDisabledDepthStencilDesc()
 	return depthStencilDesc;
 }
 
-void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[3])
+D3D12_DEPTH_STENCIL_DESC CreateDepthStencilDesc(PipelineDepthMode mode)
+{
+	switch (mode) {
+	case PipelineDepthMode::ReadWrite:
+		return CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
+	case PipelineDepthMode::ReadOnly:
+		return CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
+	case PipelineDepthMode::Disabled:
+	default:
+		return CreateDisabledDepthStencilDesc();
+	}
+}
+
+void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
 {
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -66,7 +149,7 @@ void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[3]
 	inputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
 }
 
-void SetupSkinningInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[5])
+void SetupSkinningInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
 {
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -96,7 +179,7 @@ void SetupSkinningInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[5]
 	inputElementDescs[4].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
 }
 
-void SetupLineInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[1])
+void SetupLineInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
 {
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -120,6 +203,41 @@ D3D12_INPUT_LAYOUT_DESC CreateEmptyInputLayoutDesc()
 	return inputLayoutDesc;
 }
 
+std::vector<D3D12_INPUT_ELEMENT_DESC> CreateInputElements(PipelineInputLayout inputLayout)
+{
+	switch (inputLayout) {
+	case PipelineInputLayout::Standard: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(3);
+		SetupStandardInputElements(inputElements.data());
+		return inputElements;
+	}
+	case PipelineInputLayout::Skinning: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(5);
+		SetupSkinningInputElements(inputElements.data());
+		return inputElements;
+	}
+	case PipelineInputLayout::Line: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(1);
+		SetupLineInputElements(inputElements.data());
+		return inputElements;
+	}
+	case PipelineInputLayout::Empty:
+	default:
+		return {};
+	}
+}
+
+D3D12_INPUT_LAYOUT_DESC CreateInputLayoutDesc(
+	const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements)
+{
+	if (inputElements.empty()) {
+		return CreateEmptyInputLayoutDesc();
+	}
+	return CreateInputLayoutDesc(
+		const_cast<D3D12_INPUT_ELEMENT_DESC*>(inputElements.data()),
+		static_cast<UINT>(inputElements.size()));
+}
+
 std::pair<Microsoft::WRL::ComPtr<IDxcBlob>, Microsoft::WRL::ComPtr<IDxcBlob>> CompileShaderPair(
 	Engine::Base::DirectXCommon* dxCommon,
 	const wchar_t* vertexShaderPath,
@@ -130,10 +248,42 @@ std::pair<Microsoft::WRL::ComPtr<IDxcBlob>, Microsoft::WRL::ComPtr<IDxcBlob>> Co
 	assert(vertexShaderBlob != nullptr);
 
 	Microsoft::WRL::ComPtr<IDxcBlob> pixelShaderBlob =
-		dxCommon->CompileShader(pixelShaderPath, L"ps_6_0");
-	assert(pixelShaderBlob != nullptr);
+		pixelShaderPath ? dxCommon->CompileShader(pixelShaderPath, L"ps_6_0") : nullptr;
+	assert(pixelShaderPath == nullptr || pixelShaderBlob != nullptr);
 
 	return { vertexShaderBlob, pixelShaderBlob };
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState> CreatePipelineFromDefinition(
+	Engine::Base::GraphicsPipeline& owner,
+	Engine::Base::DirectXCommon* dxCommon,
+	const PipelineDefinition& definition)
+{
+	const std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements =
+		CreateInputElements(definition.inputLayout);
+	const D3D12_INPUT_LAYOUT_DESC inputLayoutDesc =
+		CreateInputLayoutDesc(inputElements);
+	auto [vertexShaderBlob, pixelShaderBlob] = CompileShaderPair(
+		dxCommon,
+		definition.vertexShaderPath,
+		definition.pixelShaderPath);
+	return owner.CreateAndRegisterPipelineState(
+		definition.key,
+		*definition.rootSignature,
+		{
+			definition.rootSignature->Get(),
+			inputLayoutDesc,
+			vertexShaderBlob.Get(),
+			pixelShaderBlob.Get(),
+			CreateBlendDesc(definition.blendMode),
+			CreateRasterizerDesc(definition),
+			CreateDepthStencilDesc(definition.depthMode),
+			definition.topology,
+			definition.renderTargetCount,
+			definition.renderTargetFormat,
+			definition.depthStencilFormat,
+			definition.failureContext,
+		});
 }
 
 using PostEffectEntry = std::pair<PostEffectType, const wchar_t*>;
@@ -155,31 +305,12 @@ void GraphicsPipeline::Create()
 {
 
 	RootSignatureCreate();
-
-	// Object3D 用の頂点レイアウトを組み立てる
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-
-	// 通常 3D 描画用のシェーダーを読み込み、共通 PSO を生成する
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/object/Object3d.VS.hlsl", L"Resources/Shaders/object/Object3d.PS.hlsl");
-
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignature.Get(),
-		inputLayoutDesc,
-		vertexshaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	}, graphicsPipelineState.GetAddressOf());
-	RegisterPipeline("Object3D", rootSignature, graphicsPipelineState);
+	graphicsPipelineState = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"Object3D",
+		&rootSignature,
+		L"Resources/Shaders/object/Object3d.VS.hlsl",
+		L"Resources/Shaders/object/Object3d.PS.hlsl",
+	});
 
 }
 
@@ -194,30 +325,15 @@ void GraphicsPipeline::CreateParticle()
 {
 
 	RootSignatureParticleCreate();
-
-	// パーティクルは通常メッシュと同じ頂点を使いつつ、加算合成で描画する
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_ONE);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/particle/Particle.VS.hlsl", L"Resources/Shaders/particle/Particle.PS.hlsl");
-
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignatureParticle.Get(),
-		inputLayoutDesc,
-		vertexshaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	}, graphicsPipelineStateParticle.GetAddressOf());
-	RegisterPipeline("Particle", rootSignatureParticle, graphicsPipelineStateParticle);
+	graphicsPipelineStateParticle = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"Particle",
+		&rootSignatureParticle,
+		L"Resources/Shaders/particle/Particle.VS.hlsl",
+		L"Resources/Shaders/particle/Particle.PS.hlsl",
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Additive,
+		PipelineDepthMode::ReadOnly,
+	});
 
 }
 
@@ -233,30 +349,12 @@ void GraphicsPipeline::RootSignatureParticleCreate()
 void GraphicsPipeline::CreateSprite()
 {
 	RootSignatureSpriteCreate();
-
-	// Sprite 用の最小構成パイプラインを作成する
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/sprite/Sprite.VS.hlsl", L"Resources/Shaders/sprite/Sprite.PS.hlsl");
-
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignatureSprite.Get(),
-		inputLayoutDesc,
-		vertexshaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	}, graphicsPipelineStateSprite.GetAddressOf());
-	RegisterPipeline("Sprite", rootSignatureSprite, graphicsPipelineStateSprite);
+	graphicsPipelineStateSprite = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"Sprite",
+		&rootSignatureSprite,
+		L"Resources/Shaders/sprite/Sprite.VS.hlsl",
+		L"Resources/Shaders/sprite/Sprite.PS.hlsl",
+	});
 
 }
 
@@ -274,33 +372,24 @@ void GraphicsPipeline::RootSignatureSkinningCreate()
 void GraphicsPipeline::CreateShadowMap()
 {
 	RootSignatureShadowMapCreate();
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	const D3D12_INPUT_LAYOUT_DESC inputLayoutDesc =
-		CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	Microsoft::WRL::ComPtr<IDxcBlob> vertexShaderBlob =
-		dxCommon_->CompileShader(L"Resources/Shaders/object/ShadowMap.VS.hlsl", L"vs_6_0");
-	assert(vertexShaderBlob != nullptr);
-
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc(D3D12_CULL_MODE_NONE);
-	rasterizerDesc.DepthBias = 180;
-	rasterizerDesc.SlopeScaledDepthBias = 1.0f;
-	rasterizerDesc.DepthBiasClamp = 0.002f;
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignatureShadowMap.Get(),
-		inputLayoutDesc,
-		vertexShaderBlob.Get(),
+	graphicsPipelineStateShadowMap = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"ShadowMap",
+		&rootSignatureShadowMap,
+		L"Resources/Shaders/object/ShadowMap.VS.hlsl",
 		nullptr,
-		CreateAlphaBlendDesc(D3D12_BLEND_ZERO),
-		rasterizerDesc,
-		CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL),
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
 		0,
 		DXGI_FORMAT_UNKNOWN,
 		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
 		"ID3D12Device::CreateGraphicsPipelineState shadow map",
-	}, graphicsPipelineStateShadowMap.GetAddressOf());
-	RegisterPipeline("ShadowMap", rootSignatureShadowMap, graphicsPipelineStateShadowMap);
+	});
 }
 
 void GraphicsPipeline::RootSignatureShadowMapCreate()
@@ -311,51 +400,28 @@ void GraphicsPipeline::RootSignatureShadowMapCreate()
 void GraphicsPipeline::CreateSkinning()
 {
 	RootSignatureSkinningCreate();
-
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[5] = {};
-	SetupSkinningInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/object/SkinningObject3d.VS.hlsl", L"Resources/Shaders/object/SkinningObject3d.PS.hlsl");
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignatureSkinning.Get(),
-		inputLayoutDesc,
-		vertexshaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	}, graphicsPipelineStateSkinning.GetAddressOf());
-	RegisterPipeline("Skinning", rootSignatureSkinning, graphicsPipelineStateSkinning);
+	graphicsPipelineStateSkinning = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"Skinning",
+		&rootSignatureSkinning,
+		L"Resources/Shaders/object/SkinningObject3d.VS.hlsl",
+		L"Resources/Shaders/object/SkinningObject3d.PS.hlsl",
+		PipelineInputLayout::Skinning,
+	});
 }
 
 void GraphicsPipeline::CreateLine()
 {
-	// RootSignature作成（ライン用）
 	RootSignatureLineCreate(); 
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[1] = {};
-	SetupLineInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	auto [vertexShaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/line/Line.VS.hlsl", L"Resources/Shaders/line/Line.PS.hlsl");
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignatureLine.Get(),
-		inputLayoutDesc,
-		vertexShaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
+	graphicsPipelineStateLine = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"Line",
+		&rootSignatureLine,
+		L"Resources/Shaders/line/Line.VS.hlsl",
+		L"Resources/Shaders/line/Line.PS.hlsl",
+		PipelineInputLayout::Line,
+		PipelineBlendMode::Alpha,
+		PipelineDepthMode::ReadWrite,
 		D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE,
-	}, graphicsPipelineStateLine.GetAddressOf());
-	RegisterPipeline("Line", rootSignatureLine, graphicsPipelineStateLine);
+	});
 }
 
 
@@ -368,31 +434,17 @@ void GraphicsPipeline::RootSignatureSpriteCreate()
 void GraphicsPipeline::CreateCopyImage(PostEffectType type, const std::wstring& psFilename)
 {
 	RootSignatureCopyImageCreate();
-
-	// フルスクリーン三角形で共通 VS とポストエフェクト別 PS を組み合わせる
-	auto [vertexShaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/post/fullscreen/Fullscreen.VS.hlsl", psFilename.c_str());
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateEmptyInputLayoutDesc();
-	D3D12_BLEND_DESC blendDesc{};
-	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDisabledDepthStencilDesc();
+	const std::string key = "PostEffect." + std::to_string(static_cast<int>(type));
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso =
-		CreateAndRegisterPipelineState(
-			"PostEffect." + std::to_string(static_cast<int>(type)),
-			rootSignatureCopyImage,
-			{
-		rootSignatureCopyImage.Get(),
-		inputLayoutDesc,
-		vertexShaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	});
-
-	// 後段描画で種類ごとに切り替えられるよう PSO を保持する
+		CreatePipelineFromDefinition(*this, dxCommon_, {
+			key.c_str(),
+			&rootSignatureCopyImage,
+			L"Resources/Shaders/post/fullscreen/Fullscreen.VS.hlsl",
+			psFilename.c_str(),
+			PipelineInputLayout::Empty,
+			PipelineBlendMode::Disabled,
+			PipelineDepthMode::Disabled,
+		});
 	copyImagePipelines_[type] = pso;
 }
 
@@ -415,27 +467,15 @@ void GraphicsPipeline::RootSignatureCopyImageCreate()
 void GraphicsPipeline::CreateSkybox()
 {
 	RootSignatureSkyboxCreate();
-
-	// スカイボックスは通常メッシュと同じ頂点形式を使うが、深度書き込みだけ無効化する
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/skybox/Skybox.VS.hlsl", L"Resources/Shaders/skybox/Skybox.PS.hlsl");
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
-	CreateGraphicsPipelineState(dxCommon_, {
-		rootSignatureSkybox.Get(),
-		inputLayoutDesc,
-		vertexshaderBlob.Get(),
-		pixelShaderBlob.Get(),
-		blendDesc,
-		rasterizerDesc,
-		depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
-	}, graphicsPipelineStateSkybox.GetAddressOf());
-	RegisterPipeline("Skybox", rootSignatureSkybox, graphicsPipelineStateSkybox);
+	graphicsPipelineStateSkybox = CreatePipelineFromDefinition(*this, dxCommon_, {
+		"Skybox",
+		&rootSignatureSkybox,
+		L"Resources/Shaders/skybox/Skybox.VS.hlsl",
+		L"Resources/Shaders/skybox/Skybox.PS.hlsl",
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Alpha,
+		PipelineDepthMode::ReadOnly,
+	});
 }
 
 void GraphicsPipeline::RootSignatureSkyboxCreate()

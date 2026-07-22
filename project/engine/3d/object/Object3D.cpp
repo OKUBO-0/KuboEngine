@@ -97,8 +97,13 @@ void Object3D::SkinClusterUpdate(const SkinCluster& skinCluster, const Skeleton&
 	for (size_t jointIndex = 0; jointIndex < skeleton.joints.size(); ++jointIndex)
 	{
 		assert(jointIndex < skinCluster.inverseBindPoseMatrices.size());
+		// inverseBindPose は「メッシュのバインド姿勢」から各Joint空間へ戻す行列。
+		// そこへ現在フレームの skeletonSpaceMatrix を掛け、頂点を現在姿勢のSkeleton空間へ移す。
+		// この順序にすることで、バインド時との差分変形だけがスキニングへ反映される。
 		skinPaletteData_[jointIndex].skeletonSpaceMatrix =
 			skinCluster.inverseBindPoseMatrices[jointIndex] * skeleton.joints[jointIndex].skeletonSpaceMatrix;
+		// 法線は平行移動を含む通常行列ではなく、変形行列の逆転置で変換する。
+		// 非一様スケールが入ってもライティング用法線の向きが破綻しにくくなる。
 		skinPaletteData_[jointIndex].skeletonSpaceInverseTransposeMatrix =
 			MyMath::Transpose(skinPaletteData_[jointIndex].skeletonSpaceMatrix.Inverse());
 	}
