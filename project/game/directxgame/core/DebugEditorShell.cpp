@@ -34,6 +34,7 @@ bool DebugUI::EditorShell::Draw(
 		{ "コライダー・当たり判定", &windows.colliderTagManager, ICON_FA_TAGS },
 		{ "オーディオ", &windows.audio, ICON_FA_VOLUME_UP },
 		{ "キー操作デバッグ", &windows.keyInputDebug, ICON_FA_KEYBOARD },
+		{ "調整・ホットリロード", &windows.hotReload, ICON_FA_SYNC },
 		{ "シーン固有デバッグ", &windows.sceneSpecificDebug, ICON_FA_BUG },
 		{ "プレイヤー設定・武器デバッグ", &windows.objectSettings, ICON_FA_SLIDERS_H },
 	};

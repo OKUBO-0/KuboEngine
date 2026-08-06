@@ -18,6 +18,10 @@ public:
 	void Draw();
 
 	bool IsActive() const { return active_; }
+	Engine::Graphics3D::Object3D* GetRenderObject() const
+	{
+		return active_ ? object_.get() : nullptr;
+	}
 	const Vector3& GetPosition() const { return position_; }
 	const Vector3& GetPreviousPosition() const { return previousPosition_; }
 	float GetCollisionRadius() const;

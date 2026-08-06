@@ -9,6 +9,7 @@
 #include "GameSession.h"
 #include "ScreenUtil.h"
 #include "SceneLighting.h"
+#include "UILayoutIO.h"
 #include "CameraManager.h"
 #include "Input.h"
 #include "LineCommon.h"
@@ -48,12 +49,12 @@ constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 const char* CharacterStatsKey(DirectXGame::CharacterId id)
 {
 	switch (id) {
-	case DirectXGame::CharacterId::Octopus: return "Octopus";
-	case DirectXGame::CharacterId::Flame: return "Flame";
-	case DirectXGame::CharacterId::Blade: return "Blade";
-	case DirectXGame::CharacterId::Storm: return "Storm";
+	case DirectXGame::CharacterId::Default: return "Default";
+	case DirectXGame::CharacterId::Bow: return "Bow";
+	case DirectXGame::CharacterId::Sword: return "Sword";
+	case DirectXGame::CharacterId::Handgun: return "Handgun";
 	}
-	return "Octopus";
+	return "Default";
 }
 
 }
@@ -81,6 +82,7 @@ void PlayScene::Initialize()
 	debugContext_.InitializeCamera();
 	particleEffects_.Initialize();
 	debugContext_.Load(player_.get(), particleEffects_);
+	debugHotReload_.InitializeDefaultFiles();
 	if (player_) {
 		player_->StartIntroPresentation();
 	}
@@ -107,6 +109,11 @@ void PlayScene::Update()
 	if (UpdateSceneStressTelemetry()) {
 		return;
 	}
+
+#ifdef _DEBUG
+	debugHotReload_.Poll();
+	ApplyDebugHotReloadRequest(debugHotReload_.ConsumeAutoReloadRequest());
+#endif
 
 	navigationInputDevice_ = GameInputBindings::DetectNavigationInputDevice(
 		Engine::InputSystem::Input::GetInstance(),
@@ -170,11 +177,20 @@ void PlayScene::Draw()
 {
 	Engine::Graphics3D::Object3DCommon* objectCommon =
 		Engine::Graphics3D::Object3DCommon::GetInstance();
+	objectCommon->ResetDrawCullStatistics();
+	objectCommon->ResetSkinningCacheStatistics();
+	objectCommon->ResetInstanceBatchStatistics();
+	Engine::Graphics3D::Object3D::ClearSubmittedDraws();
+	Engine::Graphics3D::Object3D::ClearSubmittedShadows();
 	if (player_ && objectCommon->BeginShadowPass(player_->GetWorldPosition())) {
+		if (gridPlane_) {
+			gridPlane_->DrawShadow();
+		}
 		player_->DrawShadow();
-		if (enemyManager_) {
+		if (enemyManager_ && !gameplayFlow_.Is(GameplayState::Dead)) {
 			enemyManager_->DrawShadow();
 		}
+		Engine::Graphics3D::Object3D::FlushSubmittedShadows();
 		objectCommon->EndShadowPass();
 	}
 
@@ -185,21 +201,29 @@ void PlayScene::Draw()
 	if (skyDome_) {
 		skyDome_->Draw();
 	}
+	const bool playerDeathPresentationActive =
+		gameplayFlow_.Is(GameplayState::Dead);
 	if (player_) {
 		player_->Draw();
 	}
-	if (enemyManager_) {
-		enemyManager_->Draw();
+	if (!playerDeathPresentationActive) {
+		if (enemyManager_) {
+			enemyManager_->Draw();
+		}
+		if (playerManager_) {
+			playerManager_->Draw();
+		}
 	}
-	if (playerManager_) {
-		playerManager_->Draw();
-	}
+	Engine::Graphics3D::Object3D::FlushSubmittedDraws();
 	combatEffectsPresentation_.Draw();
+	Engine::Graphics3D::Object3D::FlushSubmittedDraws();
 	Engine::Particle::ParticleManager::GetInstance()->Draw();
 	Engine::LineSystem::LineCommon::GetInstance()->Draw();
 
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
-	floatingNumberPresentation_.Draw();
+	if (!playerDeathPresentationActive) {
+		floatingNumberPresentation_.Draw();
+	}
 	DrawUi();
 	sceneTransition_.Draw();
 }
@@ -228,13 +252,14 @@ void PlayScene::InitializeWorld()
 		"bullet.obj",
 		"quaternius_weapons/bow.glb",
 		"quaternius_weapons/arrow.glb",
-		"quaternius_weapons/rock.glb",
+		"quaternius_items/diamond.glb",
+		"quaternius_items/bomb.glb",
 		"quaternius_weapons/bone.glb",
 		"quaternius_weapons/pistol.glb",
 		"pistol_bullet.glb",
 		"quaternius_weapons/sword.glb",
 		"quaternius_weapons/axe_small.glb",
-		"ExpOrb.obj",
+		"quaternius_weapons/rock.glb",
 		"plane.obj",
 		"skydome.obj",
 		"Enemy1.obj",
@@ -242,10 +267,33 @@ void PlayScene::InitializeWorld()
 		"Enemy3.obj",
 		"Enemy4.obj",
 		"octopus.obj",
+		"cube_world/cube_guy.glb",
+		"cube_world/zombie.glb",
+		"cube_world/goblin.glb",
+		"cube_world/skeleton.glb",
+		"cube_world/wolf.glb",
+		"cube_world/yeti.glb",
+		"cube_world/giant.glb",
+		"cube_world/demon.glb",
+		"cube_world/tree.glb",
+		"cube_world/dead_tree.glb",
+		"cube_world/rock.glb",
+		"cube_world/grass.glb",
+		"cube_world/grass_small.glb",
+		"cube_world/bush.glb",
+		"cube_world/flowers.glb",
+		"cube_world/mushroom.glb",
+		"cube_world/plant.glb",
+		"quaternius_characters/adventurer.glb",
+		"quaternius_characters/king.glb",
+		"quaternius_characters/swat.glb",
 		});
 
 	player_ = std::make_unique<Player>();
 	player_->Initialize();
+	if (sessionContext_) {
+		player_->SetCharacterId(sessionContext_->GetSelectedCharacterId());
+	}
 
 	playerManager_ = std::make_unique<PlayerManager>();
 	playerManager_->Initialize(player_.get());
@@ -265,12 +313,18 @@ void PlayScene::InitializeWorld()
 	playerManager_->LoadWeaponUpgradeSettings(DataPaths::kWeaponUpgradeSettings);
 	if (sessionContext_) {
 		switch (sessionContext_->GetSelectedCharacterId()) {
-		case CharacterId::Storm:
-			playerManager_->AddLightning();
+		case CharacterId::Sword:
+			playerManager_->DebugSetWeaponLevel(WeaponType::BowArrow, 0);
+			playerManager_->UpgradeSword();
 			break;
-		case CharacterId::Octopus:
-		case CharacterId::Flame:
-		case CharacterId::Blade:
+		case CharacterId::Handgun:
+			playerManager_->DebugSetWeaponLevel(WeaponType::BowArrow, 0);
+			playerManager_->UpgradeHandgun();
+			break;
+		case CharacterId::Default:
+		case CharacterId::Bow:
+			// 弓は PlayerWeaponController の標準初期武器なので追加処理は不要。
+			break;
 		default:
 			break;
 		}
@@ -543,6 +597,11 @@ void PlayScene::DrawUi()
 		return;
 	}
 
+	if (gameplayFlow_.Is(GameplayState::Dead)) {
+		gameplayHud_.DrawDeathForeground(gameplayFlow_);
+		return;
+	}
+
 	gameplayHud_.Draw(gameplayFlow_);
 	if (gameplayFlow_.Is(GameplayState::Paused)) {
 		pauseBuildHud_.Draw();
@@ -584,6 +643,9 @@ void PlayScene::StartBossPhase()
 	if (!gameplayFlow_.BeginBossIntro()) {
 		return;
 	}
+	if (player_) {
+		player_->BeginCinematicPresentation();
+	}
 	if (bossPhaseSeHandle_) {
 		GameAudioCache::PlayTuned(bossPhaseSeHandle_, kAudioBossPhase, 0.54f);
 	}
@@ -604,6 +666,9 @@ void PlayScene::StartBossPhase()
 
 void PlayScene::UpdateBossEntrance(float deltaTime)
 {
+	if (player_) {
+		player_->UpdateCinematicPresentation();
+	}
 	if (enemyManager_ &&
 		bossPresentation_.UpdateEntrance(
 			*enemyManager_,
@@ -624,6 +689,9 @@ void PlayScene::StartBossDefeatPresentation()
 	if (!gameplayFlow_.BeginBossDefeated()) {
 		return;
 	}
+	if (player_) {
+		player_->BeginCinematicPresentation();
+	}
 	if (bossBgmPlaying_ && bossBgmHandle_) {
 		GameAudioCache::Stop(bossBgmHandle_);
 		bossBgmPlaying_ = false;
@@ -641,6 +709,9 @@ void PlayScene::StartBossDefeatPresentation()
 void PlayScene::UpdateBossDefeatPresentation(float deltaTime)
 {
 	RecordResultSummary();
+	if (player_) {
+		player_->UpdateCinematicPresentation();
+	}
 	if (enemyManager_ &&
 		bossPresentation_.UpdateDefeat(
 			*enemyManager_, particleEffects_, deltaTime)) {
@@ -725,6 +796,7 @@ void PlayScene::UpdateDebugUI()
 			navigationInputDevice_,
 			uiInitialized_,
 			playerDeathPresentation_.GetElapsedTime(),
+			&debugHotReload_,
 			[this]() { SpawnLevelUpConfetti(); });
 	if (action == DebugUIAction::RequestResult) {
 		RequestResultScene();
@@ -733,7 +805,70 @@ void PlayScene::UpdateDebugUI()
 		StartBossPhase();
 	} else if (action == DebugUIAction::BackToTitle) {
 		RequestSceneChange(SceneId::kTitle);
+	} else if (action == DebugUIAction::ReloadTuning) {
+		ReloadLiveTuning();
+	} else if (action == DebugUIAction::ReloadGameplayData) {
+		ReloadGameplayData();
+	} else if (action == DebugUIAction::ReloadAll) {
+		ReloadGameplayData();
+		ReloadLiveTuning();
 	}
+}
+
+void PlayScene::ReloadLiveTuning()
+{
+#ifdef _DEBUG
+	debugContext_.Load(player_.get(), particleEffects_);
+	const UILayoutIO::LayoutMap tuning =
+		UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {});
+	if (playerManager_) {
+		playerManager_->LoadWeaponVisualTuning(tuning);
+	}
+	debugHotReload_.ClearChangedFlags();
+#endif
+}
+
+void PlayScene::ReloadGameplayData()
+{
+#ifdef _DEBUG
+	if (playerManager_) {
+		playerManager_->LoadStatusFromCSV(DataPaths::kPlayerStatus);
+		if (sessionContext_) {
+			playerManager_->SetCharacterId(sessionContext_->GetSelectedCharacterId());
+			playerManager_->LoadCharacterStats(
+				DataPaths::Resolve(DataPaths::kCharacterStats),
+				CharacterStatsKey(sessionContext_->GetSelectedCharacterId()));
+			playerManager_->ApplyPermanentUpgrades(
+				sessionContext_->GetPermanentMaxHPLevel(),
+				sessionContext_->GetPermanentAttackLevel(),
+				sessionContext_->GetPermanentMoveSpeedLevel(),
+				sessionContext_->GetPermanentExpPickupRangeLevel(),
+				sessionContext_->GetPermanentCoinGainLevel());
+		}
+		playerManager_->LoadWeaponUpgradeSettings(DataPaths::kWeaponUpgradeSettings);
+	}
+	if (enemyManager_) {
+		enemyManager_->LoadEnemyTypes(DataPaths::Resolve(DataPaths::kEnemyTypes));
+		enemyManager_->LoadSpawnSettings(DataPaths::Resolve(DataPaths::kEnemySpawnSettings));
+	}
+	debugHotReload_.ClearChangedFlags();
+#endif
+}
+
+void PlayScene::ApplyDebugHotReloadRequest(DebugHotReloadRequest request)
+{
+#ifdef _DEBUG
+	if (request == DebugHotReloadRequest::ReloadTuning) {
+		ReloadLiveTuning();
+	} else if (request == DebugHotReloadRequest::ReloadGameplayData) {
+		ReloadGameplayData();
+	} else if (request == DebugHotReloadRequest::ReloadAll) {
+		ReloadGameplayData();
+		ReloadLiveTuning();
+	}
+#else
+	(void)request;
+#endif
 }
 
 void PlayScene::ApplyPostEffect() const
@@ -752,7 +887,7 @@ void PlayScene::ApplyPostEffect() const
 		effect = PostEffectType::Fullscreen;
 		break;
 	case GameplayState::Dead:
-		effect = PostEffectType::Grayscale;
+		effect = PostEffectType::Fullscreen;
 		break;
 	case GameplayState::Start:
 	case GameplayState::Playing:

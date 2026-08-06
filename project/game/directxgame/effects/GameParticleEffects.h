@@ -117,9 +117,9 @@ public:
 		float confettiScaleMultiplier = 0.55f;
 		float particleEmissionScale = 1.0f;
 		float bowTrailWidth = 0.18f;
-		float bowTrailLengthMultiplier = 1.85f;
-		float bowTrailMaxFrameDistance = 4.5f;
-		float bowTrailLifetime = 0.24f;
+		float bowTrailLengthMultiplier = 1.20f;
+		float bowTrailMaxFrameDistance = 3.4f;
+		float bowTrailLifetime = 0.18f;
 		float bowTrailShrinkRate = 0.88f;
 		float bowTrailFadeInRatio = 0.03f;
 		float bowTrailFadeOutPower = 2.1f;

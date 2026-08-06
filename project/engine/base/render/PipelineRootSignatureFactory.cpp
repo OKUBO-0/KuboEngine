@@ -130,6 +130,27 @@ std::array<D3D12_ROOT_PARAMETER, 9> CreateObjectRootParameters(
 	};
 }
 
+std::array<D3D12_ROOT_PARAMETER, 10> CreateObjectInstancingRootParameters(
+	std::array<D3D12_DESCRIPTOR_RANGE, 4>& descriptorRanges)
+{
+	descriptorRanges[0] = CreateSrvDescriptorRange(0);
+	descriptorRanges[1] = CreateSrvDescriptorRange(1);
+	descriptorRanges[2] = CreateSrvDescriptorRange(2);
+	descriptorRanges[3] = CreateSrvDescriptorRange(3);
+	return {
+		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateDescriptorTableRootParameter(&descriptorRanges[0], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(2, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_VERTEX),
+	};
+}
+
 std::array<D3D12_ROOT_PARAMETER, 3> CreateParticleRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
 {
 	descriptorRange = CreateSrvDescriptorRange(0);
@@ -167,6 +188,29 @@ std::array<D3D12_ROOT_PARAMETER, 10> CreateSkinningRootParameters(
 		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_VERTEX),
 		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
+	};
+}
+
+std::array<D3D12_ROOT_PARAMETER, 11> CreateSkinningInstancingRootParameters(
+	std::array<D3D12_DESCRIPTOR_RANGE, 5>& descriptorRanges)
+{
+	descriptorRanges[0] = CreateSrvDescriptorRange(0);
+	descriptorRanges[1] = CreateSrvDescriptorRange(1);
+	descriptorRanges[2] = CreateSrvDescriptorRange(2);
+	descriptorRanges[3] = CreateSrvDescriptorRange(3);
+	descriptorRanges[4] = CreateSrvDescriptorRange(4);
+	return {
+		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateDescriptorTableRootParameter(&descriptorRanges[0], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(2, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_PIXEL),
+		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
+		CreateDescriptorTableRootParameter(&descriptorRanges[4], 1, D3D12_SHADER_VISIBILITY_VERTEX),
 	};
 }
 
@@ -214,6 +258,18 @@ void CreateObjectRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** ro
 		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignature);
 }
 
+void CreateObjectInstancingRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
+{
+	std::array<D3D12_DESCRIPTOR_RANGE, 4> descriptorRanges{};
+	const auto rootParameters = CreateObjectInstancingRootParameters(descriptorRanges);
+	const std::array<D3D12_STATIC_SAMPLER_DESC, 2> staticSamplers = {
+		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP),
+		CreateShadowComparisonSamplerDesc(),
+	};
+	CreateRootSignatureWithParameters(dxCommon, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
+		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignature);
+}
+
 void CreateParticleRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
 {
 	D3D12_DESCRIPTOR_RANGE descriptorRange{};
@@ -236,6 +292,18 @@ void CreateSkinningRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** 
 {
 	std::array<D3D12_DESCRIPTOR_RANGE, 4> descriptorRanges{};
 	const auto rootParameters = CreateSkinningRootParameters(descriptorRanges);
+	const std::array<D3D12_STATIC_SAMPLER_DESC, 2> staticSamplers = {
+		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP),
+		CreateShadowComparisonSamplerDesc(),
+	};
+	CreateRootSignatureWithParameters(dxCommon, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
+		staticSamplers.data(), static_cast<UINT>(staticSamplers.size()), rootSignature);
+}
+
+void CreateSkinningInstancingRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
+{
+	std::array<D3D12_DESCRIPTOR_RANGE, 5> descriptorRanges{};
+	const auto rootParameters = CreateSkinningInstancingRootParameters(descriptorRanges);
 	const std::array<D3D12_STATIC_SAMPLER_DESC, 2> staticSamplers = {
 		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP),
 		CreateShadowComparisonSamplerDesc(),

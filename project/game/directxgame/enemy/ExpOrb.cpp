@@ -9,6 +9,7 @@
 namespace {
 
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
+constexpr char kExpOrbModelPath[] = "quaternius_items/diamond.glb";
 constexpr char kPickupSePath[] = "se/exp_pickup.wav";
 constexpr char kAudioExpPickup[] = "combat.expPickup";
 constexpr float kFrameDeltaBaseline = 0.016f;
@@ -18,6 +19,9 @@ constexpr float kAttractBaseSpeed = 36.0f;
 constexpr float kAttractDistanceSpeed = 4.0f;
 constexpr float kHorizontalScatterDamping = 0.95f;
 constexpr float kVerticalDamping = 0.95f;
+constexpr float kExpOrbSpawnHeightY = 1.18f;
+constexpr float kExpOrbMinHeightY = 0.92f;
+constexpr float kExpOrbVisualScale = 320.0f;
 
 }
 
@@ -26,7 +30,7 @@ namespace DirectXGame {
 void ExpOrb::Initialize(const Vector3& position, int32_t expValue)
 {
 	position_ = position;
-	position_.y = 0.7f;
+	position_.y = kExpOrbSpawnHeightY;
 	expValue_ = expValue;
 	active_ = true;
 	spin_ = 0.0f;
@@ -35,14 +39,15 @@ void ExpOrb::Initialize(const Vector3& position, int32_t expValue)
 	static std::uniform_real_distribution<float> distribution(-0.5f, 0.5f);
 	velocity_ = { distribution(rng) * 0.05f, 0.05f, distribution(rng) * 0.05f };
 
-	const ModelHandle modelHandle = GameModelCache::Load("ExpOrb.obj");
+	const ModelHandle modelHandle = GameModelCache::Load(kExpOrbModelPath);
 	object_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	object_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
 	GameModelCache::ApplyToObject(*object_, modelHandle);
 	object_->SetSkyboxFilePath(kEnvironmentTexturePath);
-	object_->SetEnvironmentReflectionStrength(0.15f);
-	object_->SetEnvironmentRoughness(0.45f);
-	object_->SetColor({ 0.45f, 1.0f, 0.45f, 1.0f });
+	object_->SetEnvironmentReflectionStrength(0.0f);
+	object_->SetEnvironmentRoughness(1.0f);
+	object_->SetCastsShadow(true);
+	object_->SetColor({ 0.24f, 1.0f, 0.92f, 1.0f });
 	ApplyTransform();
 	object_->Update();
 }
@@ -82,7 +87,7 @@ void ExpOrb::Update(
 	}
 
 	position_.y += velocity_.y * velocityScale;
-	position_.y = (std::max)(0.35f, position_.y);
+	position_.y = (std::max)(kExpOrbMinHeightY, position_.y);
 	velocity_.y *= kVerticalDamping;
 	spin_ += deltaTime * 3.0f;
 
@@ -102,7 +107,14 @@ void ExpOrb::Update(
 void ExpOrb::Draw()
 {
 	if (active_ && object_) {
-		object_->Draw();
+		Engine::Graphics3D::Object3D::SubmitForDraw(object_.get());
+	}
+}
+
+void ExpOrb::DrawShadow()
+{
+	if (active_ && object_) {
+		Engine::Graphics3D::Object3D::SubmitForShadow(object_.get());
 	}
 }
 
@@ -121,7 +133,9 @@ void ExpOrb::ApplyTransform()
 	if (!object_) {
 		return;
 	}
-	object_->SetScale({ 0.7f, 0.7f, 0.7f });
+	const float pulse = 1.0f + std::sin(spin_ * 2.0f) * 0.06f;
+	const float scale = kExpOrbVisualScale * pulse;
+	object_->SetScale({ scale, scale, scale });
 	object_->SetRotate({ 0.0f, spin_, 0.0f });
 	object_->SetTranslate(position_);
 }

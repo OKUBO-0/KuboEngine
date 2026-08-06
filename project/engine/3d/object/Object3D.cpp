@@ -13,11 +13,94 @@
 #include <cstring>
 #include <memory>
 #include <numbers>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace {
 constexpr float kFixedAnimationDeltaTime = 1.0f / 60.0f;
 constexpr float kDefaultEnvironmentReflectionStrength = 0.5f;
 constexpr float kDefaultEnvironmentRoughness = 0.5f;
+constexpr float kSkinPaletteCacheSampleRate = 30.0f;
+constexpr size_t kMaxSkinPaletteCacheEntries = 512;
+
+struct ObjectInstanceForGPU {
+	TransformationMatrix transform;
+	Vector4 color;
+};
+
+struct SkinPaletteCacheKey {
+	const Engine::Graphics3D::Model* model = nullptr;
+	std::string clipName;
+	uint32_t sampleFrame = 0;
+
+	bool operator==(const SkinPaletteCacheKey& other) const
+	{
+		return model == other.model &&
+			sampleFrame == other.sampleFrame &&
+			clipName == other.clipName;
+	}
+};
+
+struct SkinPaletteCacheKeyHash {
+	size_t operator()(const SkinPaletteCacheKey& key) const
+	{
+		size_t value = std::hash<const void*>{}(key.model);
+		value ^= std::hash<uint32_t>{}(key.sampleFrame) + 0x9e3779b9u +
+			(value << 6) + (value >> 2);
+		value ^= std::hash<std::string>{}(key.clipName) + 0x9e3779b9u +
+			(value << 6) + (value >> 2);
+		return value;
+	}
+};
+
+struct SkinPaletteCacheEntry {
+	std::vector<Engine::Graphics3D::WellForGPU> palette;
+	std::array<ID3D12Resource*, Engine::Base::DirectXCommon::kFrameCount> gpuUploadResources{};
+	std::array<UINT64, Engine::Base::DirectXCommon::kFrameCount> gpuFirstElements{};
+	std::array<uint64_t, Engine::Base::DirectXCommon::kFrameCount> gpuFrameSerials{};
+};
+
+std::unordered_map<SkinPaletteCacheKey, SkinPaletteCacheEntry, SkinPaletteCacheKeyHash>
+	gSkinPaletteCache;
+std::vector<Engine::Graphics3D::Object3D*> gSubmittedDrawObjects;
+std::vector<Engine::Graphics3D::Object3D*> gSubmittedShadowObjects;
+
+std::string_view StripSkinPrefix(std::string_view jointName)
+{
+	const size_t separator = jointName.find("::");
+	if (separator == std::string_view::npos) {
+		return jointName;
+	}
+	return jointName.substr(separator + 2);
+}
+
+uint32_t QuantizeAnimationFrame(float animationTime)
+{
+	const float safeTime = std::isfinite(animationTime)
+		? (std::max)(0.0f, animationTime)
+		: 0.0f;
+	return static_cast<uint32_t>(safeTime * kSkinPaletteCacheSampleRate);
+}
+
+void AdvanceAnimationTime(
+	float& animationTime,
+	const Animation& animation,
+	float animationSpeed,
+	bool animationLoop)
+{
+	animationTime += kFixedAnimationDeltaTime *
+		(std::max)(0.0f, animationSpeed);
+	const float duration = animation.duration;
+	if (std::isfinite(duration) && duration > 0.0f) {
+		animationTime = animationLoop
+			? std::fmod(animationTime, duration)
+			: (std::min)(animationTime, duration);
+	} else {
+		animationTime = 0.0f;
+	}
+}
 }
 
 namespace Engine::Graphics3D {
@@ -72,7 +155,8 @@ void Object3D::ApplyAnimation(Skeleton& skeleton, const Animation& animation, fl
 	for (Joint& joint : skeleton.joints) {
 		// 対象のJointのAnimationがあれば、値の適用を行う。
 		// 下記のif文はC++17から可能になった初期化付きif文。
-		if (auto it = animation.nodeAnimations.find(joint.name); it != animation.nodeAnimations.end()) {
+		const std::string animationJointName{ StripSkinPrefix(joint.name) };
+		if (auto it = animation.nodeAnimations.find(animationJointName); it != animation.nodeAnimations.end()) {
 			const NodeAnimation& nodeAnimation = it->second;
 
 			if (!nodeAnimation.translate.empty()) {
@@ -114,6 +198,11 @@ void Object3D::SkinClusterUpdate(const SkinCluster& skinCluster, const Skeleton&
 
 void Object3D::Draw()
 {
+	const bool insideCameraFrustum = IsInsideActiveCameraFrustum();
+	object3DCommon_->RecordDrawCandidate(insideCameraFrustum);
+	if (!insideCameraFrustum) {
+		return;
+	}
 	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
 		object3DCommon_->GetDxCommon();
 	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
@@ -136,9 +225,25 @@ void Object3D::Draw()
 	}
 }
 
+void Object3D::DrawAnimated()
+{
+	if (!CanDrawSkinning()) {
+		Draw();
+		return;
+	}
+	object3DCommon_->SkinningCommonDraw();
+	DrawSkinning();
+	object3DCommon_->CommonDraw();
+}
+
 void Object3D::DrawSkinning()
 {
 	if (!model_ || skinPaletteData_.empty()) {
+		return;
+	}
+	const bool insideCameraFrustum = IsInsideActiveCameraFrustum();
+	object3DCommon_->RecordDrawCandidate(insideCameraFrustum);
+	if (!insideCameraFrustum) {
 		return;
 	}
 
@@ -153,18 +258,7 @@ void Object3D::DrawSkinning()
 		UploadFrameConstant(&environmentReflectionSettingData_, sizeof(environmentReflectionSettingData_));
 	const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
 		UploadFrameConstant(&materialData_, sizeof(materialData_));
-	const size_t paletteBytes = sizeof(WellForGPU) * skinPaletteData_.size();
-	const Engine::Base::DirectXCommon::FrameUploadAllocation paletteAllocation =
-		dxCommon->AllocateFrameUpload(paletteBytes, sizeof(WellForGPU));
-	std::memcpy(paletteAllocation.cpuAddress, skinPaletteData_.data(), paletteBytes);
-	const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
-	const uint32_t paletteSrvIndex = skinPaletteSrvIndices_[frameIndex];
-	object3DCommon_->GetSrvManager()->CreateSRVforStructuredBuffer(
-		paletteSrvIndex,
-		paletteAllocation.resource,
-		static_cast<UINT>(skinPaletteData_.size()),
-		sizeof(WellForGPU),
-		paletteAllocation.offset / sizeof(WellForGPU));
+	const uint32_t paletteSrvIndex = ResolveSkinPaletteSrvIndex();
 
 	commandList->SetGraphicsRootConstantBufferView(1, transformAddress);
 	commandList->SetGraphicsRootConstantBufferView(4, cameraAddress);
@@ -196,12 +290,612 @@ void Object3D::DrawShadow()
 	if (!insideShadowFrustum) {
 		return;
 	}
+	if (CanDrawSkinning()) {
+		object3DCommon_->SkinningShadowCommonDraw();
+		DrawSkinningShadow();
+		return;
+	}
+	object3DCommon_->ShadowCommonDraw();
 	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
 		UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
 	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
 		object3DCommon_->GetDxCommon();
 	dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, transformAddress);
 	model_->DrawGeometry();
+}
+
+void Object3D::DrawSkinningShadow()
+{
+	if (!model_ || skinPaletteData_.empty()) {
+		return;
+	}
+
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		object3DCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+	const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+		UploadFrameConstant(
+			&transformationMatrixData_,
+			sizeof(transformationMatrixData_));
+	const uint32_t paletteSrvIndex = ResolveSkinPaletteSrvIndex();
+
+	commandList->SetGraphicsRootConstantBufferView(1, transformAddress);
+	commandList->SetGraphicsRootDescriptorTable(
+		7,
+		object3DCommon_->GetSrvManager()->GetGPUDescriptorHandle(
+			paletteSrvIndex));
+	model_->DrawSkinnedGeometry();
+}
+
+void Object3D::SubmitForDraw(Object3D* object)
+{
+	if (!object) {
+		return;
+	}
+	gSubmittedDrawObjects.push_back(object);
+}
+
+void Object3D::FlushSubmittedDraws()
+{
+	if (gSubmittedDrawObjects.empty()) {
+		return;
+	}
+	std::vector<Object3D*> staticObjects;
+	std::vector<Object3D*> skinnedObjects;
+	staticObjects.reserve(gSubmittedDrawObjects.size());
+	skinnedObjects.reserve(gSubmittedDrawObjects.size());
+	for (Object3D* object : gSubmittedDrawObjects) {
+		if (!object || !object->model_) {
+			continue;
+		}
+		if (object->CanDrawSkinning()) {
+			skinnedObjects.push_back(object);
+		} else {
+			staticObjects.push_back(object);
+		}
+	}
+	DrawStaticBatch(staticObjects);
+	DrawSkinningBatch(skinnedObjects);
+	if (Object3DCommon* common = Object3DCommon::GetInstance()) {
+		common->RecordRenderQueueFlush(
+			static_cast<uint32_t>(gSubmittedDrawObjects.size()),
+			static_cast<uint32_t>(staticObjects.size()),
+			static_cast<uint32_t>(skinnedObjects.size()));
+	}
+	gSubmittedDrawObjects.clear();
+}
+
+void Object3D::ClearSubmittedDraws()
+{
+	gSubmittedDrawObjects.clear();
+}
+
+void Object3D::SubmitForShadow(Object3D* object)
+{
+	if (!object) {
+		return;
+	}
+	gSubmittedShadowObjects.push_back(object);
+}
+
+void Object3D::FlushSubmittedShadows()
+{
+	if (gSubmittedShadowObjects.empty()) {
+		return;
+	}
+	std::vector<Object3D*> staticObjects;
+	std::vector<Object3D*> skinnedObjects;
+	staticObjects.reserve(gSubmittedShadowObjects.size());
+	skinnedObjects.reserve(gSubmittedShadowObjects.size());
+	for (Object3D* object : gSubmittedShadowObjects) {
+		if (!object || !object->model_) {
+			continue;
+		}
+		if (object->CanDrawSkinning()) {
+			skinnedObjects.push_back(object);
+		} else {
+			staticObjects.push_back(object);
+		}
+	}
+	if (Object3DCommon* common = Object3DCommon::GetInstance()) {
+		common->RecordShadowQueueFlush(
+			static_cast<uint32_t>(gSubmittedShadowObjects.size()));
+	}
+	DrawStaticShadowBatch(staticObjects);
+	DrawSkinningShadowBatch(skinnedObjects);
+	gSubmittedShadowObjects.clear();
+}
+
+void Object3D::ClearSubmittedShadows()
+{
+	gSubmittedShadowObjects.clear();
+}
+
+void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
+{
+	struct BatchKey {
+		Object3DCommon* common = nullptr;
+		Model* model = nullptr;
+		std::string clipName;
+		uint32_t sampleFrame = 0;
+		int32_t enableLighting = 0;
+
+		bool operator==(const BatchKey& other) const
+		{
+			return common == other.common &&
+				model == other.model &&
+				sampleFrame == other.sampleFrame &&
+				clipName == other.clipName &&
+				enableLighting == other.enableLighting;
+		}
+	};
+	struct BatchKeyHash {
+		size_t operator()(const BatchKey& key) const
+		{
+			size_t value = std::hash<const void*>{}(key.common);
+			value ^= std::hash<const void*>{}(key.model) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<std::string>{}(key.clipName) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<uint32_t>{}(key.sampleFrame) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<int32_t>{}(key.enableLighting) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			return value;
+		}
+	};
+	struct Batch {
+		Object3D* representative = nullptr;
+		std::vector<Object3D*> objects;
+		std::vector<ObjectInstanceForGPU> instances;
+	};
+
+	std::unordered_map<BatchKey, Batch, BatchKeyHash> batches;
+	std::vector<Object3D*> fallbackObjects;
+	for (Object3D* object : objects) {
+		if (!object || !object->CanDrawSkinning()) {
+			continue;
+		}
+		const bool insideCameraFrustum = object->IsInsideActiveCameraFrustum();
+		object->object3DCommon_->RecordDrawCandidate(insideCameraFrustum);
+		if (!insideCameraFrustum) {
+			continue;
+		}
+		if (!object->skinPaletteCacheKeyValid_) {
+			fallbackObjects.push_back(object);
+			continue;
+		}
+		const BatchKey key{
+			object->object3DCommon_,
+			object->model_,
+			object->skinPaletteCacheClipName_,
+			object->skinPaletteCacheSampleFrame_,
+			object->materialData_.enableLighting,
+		};
+		Batch& batch = batches[key];
+		if (!batch.representative) {
+			batch.representative = object;
+		}
+		batch.objects.push_back(object);
+		batch.instances.push_back({
+			object->transformationMatrixData_,
+			object->materialData_.color,
+			});
+	}
+
+	for (Object3D* object : fallbackObjects) {
+		object->DrawSkinning();
+	}
+	for (auto& [key, batch] : batches) {
+		Object3D* object = batch.representative;
+		if (!object || batch.instances.empty()) {
+			continue;
+		}
+		Object3DCommon* common = object->object3DCommon_;
+		common->SkinningInstancingCommonDraw();
+		const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+			common->GetDxCommon();
+		ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+		const size_t instanceBytes =
+			sizeof(ObjectInstanceForGPU) * batch.instances.size();
+		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
+			dxCommon->AllocateFrameUpload(instanceBytes, sizeof(ObjectInstanceForGPU));
+		std::memcpy(
+			instanceAllocation.cpuAddress,
+			batch.instances.data(),
+			instanceBytes);
+		const uint32_t instanceSrvIndex = common->BindSkinningInstanceTransforms(
+			instanceAllocation.resource,
+			static_cast<UINT>(batch.instances.size()),
+			instanceAllocation.offset,
+			sizeof(ObjectInstanceForGPU));
+		if (instanceSrvIndex == UINT32_MAX) {
+			for (Object3D* batchObject : batch.objects) {
+				if (batchObject) {
+					batchObject->DrawSkinning();
+				}
+			}
+			continue;
+		}
+		common->RecordSkinningInstanceBatch(
+			static_cast<uint32_t>(batch.instances.size()));
+
+		const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+			object->UploadFrameConstant(
+				&object->transformationMatrixData_,
+				sizeof(object->transformationMatrixData_));
+		const D3D12_GPU_VIRTUAL_ADDRESS cameraAddress =
+			object->UploadFrameConstant(
+				&object->cameraForGpu_,
+				sizeof(object->cameraForGpu_));
+		const D3D12_GPU_VIRTUAL_ADDRESS environmentAddress =
+			object->UploadFrameConstant(
+				&object->environmentReflectionSettingData_,
+				sizeof(object->environmentReflectionSettingData_));
+		Material batchMaterial = object->materialData_;
+		batchMaterial.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
+			object->UploadFrameConstant(
+				&batchMaterial,
+				sizeof(batchMaterial));
+		const uint32_t paletteSrvIndex = object->ResolveSkinPaletteSrvIndex();
+
+		commandList->SetGraphicsRootConstantBufferView(1, transformAddress);
+		commandList->SetGraphicsRootConstantBufferView(4, cameraAddress);
+		commandList->SetGraphicsRootDescriptorTable(
+			7,
+			common->GetSrvManager()->GetGPUDescriptorHandle(paletteSrvIndex));
+		common->GetSrvManager()->SetGraphicsRootDescriptorTable(
+			5,
+			Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
+				object->skyboxFilePath_));
+		commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
+		common->BindSceneLighting(true);
+		object->model_->DrawInstanced(
+			static_cast<UINT>(batch.instances.size()),
+			materialAddress,
+			&batchMaterial);
+	}
+	Object3DCommon::GetInstance()->CommonDraw();
+}
+
+void Object3D::DrawStaticBatch(const std::vector<Object3D*>& objects)
+{
+	struct BatchKey {
+		Object3DCommon* common = nullptr;
+		Model* model = nullptr;
+		std::string skyboxFilePath;
+		int32_t enableLighting = 0;
+		float reflectionStrength = 0.0f;
+		float roughness = 0.0f;
+		float textureInfluence = 0.0f;
+
+		bool operator==(const BatchKey& other) const
+		{
+			return common == other.common &&
+				model == other.model &&
+				skyboxFilePath == other.skyboxFilePath &&
+				enableLighting == other.enableLighting &&
+				reflectionStrength == other.reflectionStrength &&
+				roughness == other.roughness &&
+				textureInfluence == other.textureInfluence;
+		}
+	};
+	struct BatchKeyHash {
+		size_t operator()(const BatchKey& key) const
+		{
+			size_t value = std::hash<const void*>{}(key.common);
+			value ^= std::hash<const void*>{}(key.model) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<std::string>{}(key.skyboxFilePath) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<int32_t>{}(key.enableLighting) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<float>{}(key.reflectionStrength) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<float>{}(key.roughness) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<float>{}(key.textureInfluence) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			return value;
+		}
+	};
+	struct Batch {
+		Object3D* representative = nullptr;
+		std::vector<ObjectInstanceForGPU> instances;
+	};
+
+	std::unordered_map<BatchKey, Batch, BatchKeyHash> batches;
+	for (Object3D* object : objects) {
+		if (!object || !object->model_ || object->CanDrawSkinning()) {
+			continue;
+		}
+		const bool insideCameraFrustum = object->IsInsideActiveCameraFrustum();
+		object->object3DCommon_->RecordDrawCandidate(insideCameraFrustum);
+		if (!insideCameraFrustum) {
+			continue;
+		}
+		const BatchKey key{
+			object->object3DCommon_,
+			object->model_,
+			object->skyboxFilePath_,
+			object->materialData_.enableLighting,
+			object->environmentReflectionSettingData_.reflectionStrength,
+			object->environmentReflectionSettingData_.roughness,
+			object->environmentReflectionSettingData_.textureInfluence,
+		};
+		Batch& batch = batches[key];
+		if (!batch.representative) {
+			batch.representative = object;
+		}
+		batch.instances.push_back({
+			object->transformationMatrixData_,
+			object->materialData_.color,
+			});
+	}
+
+	for (auto& [key, batch] : batches) {
+		Object3D* object = batch.representative;
+		if (!object || batch.instances.empty()) {
+			continue;
+		}
+		Object3DCommon* common = object->object3DCommon_;
+		common->ObjectInstancingCommonDraw();
+		const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+			common->GetDxCommon();
+		ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+		const size_t instanceBytes =
+			sizeof(ObjectInstanceForGPU) * batch.instances.size();
+		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
+			dxCommon->AllocateFrameUpload(instanceBytes, sizeof(ObjectInstanceForGPU));
+		std::memcpy(
+			instanceAllocation.cpuAddress,
+			batch.instances.data(),
+			instanceBytes);
+		const uint32_t instanceSrvIndex = common->BindObjectInstanceData(
+			instanceAllocation.resource,
+			static_cast<UINT>(batch.instances.size()),
+			instanceAllocation.offset,
+			sizeof(ObjectInstanceForGPU));
+		if (instanceSrvIndex == UINT32_MAX) {
+			for (Object3D* fallback : objects) {
+				if (fallback && fallback->model_ == object->model_) {
+					fallback->Draw();
+				}
+			}
+			continue;
+		}
+		common->RecordObjectInstanceBatch(
+			static_cast<uint32_t>(batch.instances.size()));
+
+		const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+			object->UploadFrameConstant(
+				&object->transformationMatrixData_,
+				sizeof(object->transformationMatrixData_));
+		const D3D12_GPU_VIRTUAL_ADDRESS cameraAddress =
+			object->UploadFrameConstant(
+				&object->cameraForGpu_,
+				sizeof(object->cameraForGpu_));
+		const D3D12_GPU_VIRTUAL_ADDRESS environmentAddress =
+			object->UploadFrameConstant(
+				&object->environmentReflectionSettingData_,
+				sizeof(object->environmentReflectionSettingData_));
+		Material batchMaterial = object->materialData_;
+		batchMaterial.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
+			object->UploadFrameConstant(&batchMaterial, sizeof(batchMaterial));
+
+		commandList->SetGraphicsRootConstantBufferView(1, transformAddress);
+		commandList->SetGraphicsRootConstantBufferView(4, cameraAddress);
+		common->GetSrvManager()->SetGraphicsRootDescriptorTable(
+			5,
+			Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
+				object->skyboxFilePath_));
+		commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
+		common->BindSceneLighting(false);
+		object->model_->DrawInstanced(
+			static_cast<UINT>(batch.instances.size()),
+			materialAddress,
+			&batchMaterial);
+	}
+	Object3DCommon::GetInstance()->CommonDraw();
+}
+
+void Object3D::DrawStaticShadowBatch(const std::vector<Object3D*>& objects)
+{
+	struct Batch {
+		Object3D* representative = nullptr;
+		std::vector<ObjectInstanceForGPU> instances;
+	};
+
+	std::unordered_map<Model*, Batch> batches;
+	for (Object3D* object : objects) {
+		if (!object || !object->model_ || object->CanDrawSkinning()) {
+			continue;
+		}
+		if (!object->castsShadow_) {
+			continue;
+		}
+		const float boundingRadius = object->GetScaledModelBoundingRadius(1.0f);
+		const Vector3 worldCenter{
+			object->transformationMatrixData_.World.m[3][0],
+			object->transformationMatrixData_.World.m[3][1],
+			object->transformationMatrixData_.World.m[3][2],
+		};
+		const bool insideShadowFrustum =
+			object->object3DCommon_->IsInsideShadowFrustum(
+				worldCenter,
+				boundingRadius);
+		object->object3DCommon_->RecordShadowCandidate(insideShadowFrustum);
+		if (!insideShadowFrustum) {
+			continue;
+		}
+		Batch& batch = batches[object->model_];
+		if (!batch.representative) {
+			batch.representative = object;
+		}
+		batch.instances.push_back({
+			object->transformationMatrixData_,
+			object->materialData_.color,
+			});
+	}
+
+	for (auto& [model, batch] : batches) {
+		Object3D* object = batch.representative;
+		if (!object || !model || batch.instances.empty()) {
+			continue;
+		}
+		Object3DCommon* common = object->object3DCommon_;
+		common->ObjectInstancingShadowCommonDraw();
+		const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+			common->GetDxCommon();
+		const size_t instanceBytes =
+			sizeof(ObjectInstanceForGPU) * batch.instances.size();
+		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
+			dxCommon->AllocateFrameUpload(instanceBytes, sizeof(ObjectInstanceForGPU));
+		std::memcpy(
+			instanceAllocation.cpuAddress,
+			batch.instances.data(),
+			instanceBytes);
+		const uint32_t instanceSrvIndex = common->BindObjectInstanceData(
+			instanceAllocation.resource,
+			static_cast<UINT>(batch.instances.size()),
+			instanceAllocation.offset,
+			sizeof(ObjectInstanceForGPU));
+		if (instanceSrvIndex == UINT32_MAX) {
+			for (Object3D* fallback : objects) {
+				if (fallback && fallback->model_ == model) {
+					fallback->DrawShadow();
+				}
+			}
+			continue;
+		}
+		common->RecordObjectInstanceBatch(
+			static_cast<uint32_t>(batch.instances.size()));
+		model->DrawGeometryInstanced(
+			static_cast<UINT>(batch.instances.size()));
+	}
+}
+
+void Object3D::DrawSkinningShadowBatch(const std::vector<Object3D*>& objects)
+{
+	struct BatchKey {
+		Object3DCommon* common = nullptr;
+		Model* model = nullptr;
+		std::string clipName;
+		uint32_t sampleFrame = 0;
+
+		bool operator==(const BatchKey& other) const
+		{
+			return common == other.common &&
+				model == other.model &&
+				sampleFrame == other.sampleFrame &&
+				clipName == other.clipName;
+		}
+	};
+	struct BatchKeyHash {
+		size_t operator()(const BatchKey& key) const
+		{
+			size_t value = std::hash<const void*>{}(key.common);
+			value ^= std::hash<const void*>{}(key.model) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<std::string>{}(key.clipName) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			value ^= std::hash<uint32_t>{}(key.sampleFrame) + 0x9e3779b9u +
+				(value << 6) + (value >> 2);
+			return value;
+		}
+	};
+	struct Batch {
+		Object3D* representative = nullptr;
+		std::vector<Object3D*> objects;
+		std::vector<TransformationMatrix> instances;
+	};
+
+	std::unordered_map<BatchKey, Batch, BatchKeyHash> batches;
+	std::vector<Object3D*> fallbackObjects;
+	for (Object3D* object : objects) {
+		if (!object || !object->CanDrawSkinning()) {
+			continue;
+		}
+		if (!object->castsShadow_) {
+			continue;
+		}
+		const float boundingRadius = object->GetScaledModelBoundingRadius(1.0f);
+		const Vector3 worldCenter{
+			object->transformationMatrixData_.World.m[3][0],
+			object->transformationMatrixData_.World.m[3][1],
+			object->transformationMatrixData_.World.m[3][2],
+		};
+		const bool insideShadowFrustum =
+			object->object3DCommon_->IsInsideShadowFrustum(
+				worldCenter,
+				boundingRadius);
+		object->object3DCommon_->RecordShadowCandidate(insideShadowFrustum);
+		if (!insideShadowFrustum) {
+			continue;
+		}
+		if (!object->skinPaletteCacheKeyValid_) {
+			fallbackObjects.push_back(object);
+			continue;
+		}
+		const BatchKey key{
+			object->object3DCommon_,
+			object->model_,
+			object->skinPaletteCacheClipName_,
+			object->skinPaletteCacheSampleFrame_,
+		};
+		Batch& batch = batches[key];
+		if (!batch.representative) {
+			batch.representative = object;
+		}
+		batch.objects.push_back(object);
+		batch.instances.push_back(object->transformationMatrixData_);
+	}
+
+	for (Object3D* object : fallbackObjects) {
+		object->DrawShadow();
+	}
+	for (auto& [key, batch] : batches) {
+		Object3D* object = batch.representative;
+		if (!object || batch.instances.empty()) {
+			continue;
+		}
+		Object3DCommon* common = object->object3DCommon_;
+		common->SkinningInstancingShadowCommonDraw();
+		const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+			common->GetDxCommon();
+		ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+		const size_t instanceBytes =
+			sizeof(TransformationMatrix) * batch.instances.size();
+		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
+			dxCommon->AllocateFrameUpload(instanceBytes, sizeof(TransformationMatrix));
+		std::memcpy(
+			instanceAllocation.cpuAddress,
+			batch.instances.data(),
+			instanceBytes);
+		const uint32_t instanceSrvIndex = common->BindSkinningInstanceTransforms(
+			instanceAllocation.resource,
+			static_cast<UINT>(batch.instances.size()),
+			instanceAllocation.offset,
+			sizeof(TransformationMatrix));
+		if (instanceSrvIndex == UINT32_MAX) {
+			for (Object3D* batchObject : batch.objects) {
+				if (batchObject) {
+					batchObject->DrawShadow();
+				}
+			}
+			continue;
+		}
+		common->RecordSkinningInstanceBatch(
+			static_cast<uint32_t>(batch.instances.size()));
+		const uint32_t paletteSrvIndex = object->ResolveSkinPaletteSrvIndex();
+		commandList->SetGraphicsRootDescriptorTable(
+			7,
+			common->GetSrvManager()->GetGPUDescriptorHandle(paletteSrvIndex));
+		object->model_->DrawSkinnedGeometryInstanced(
+			static_cast<UINT>(batch.instances.size()));
+	}
 }
 
 void Object3D::SetModel(Model* model)
@@ -219,6 +913,40 @@ void Object3D::SetModel(const std::string& filepath)
 void Object3D::SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath)
 {
 	SetModel(ModelManager::GetInstance()->FindModelFromResourceRoot(resourceRoot, filepath));
+}
+
+void Object3D::SetAnimationClip(const std::string& clipName)
+{
+	if (animationClipName_ == clipName) {
+		return;
+	}
+	animationClipName_ = clipName;
+	animationTime = 0.0f;
+	animationUpdateFrame_ = 0;
+	if (model_ && model_->FindAnimationClip(animationClipName_)) {
+		skeleton_ = model_->GetSkeleton();
+		SkeletonUpdate(skeleton_);
+		SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
+	}
+}
+
+void Object3D::SetAnimationUpdateStride(uint32_t stride)
+{
+	animationUpdateStride_ = (std::max)(1u, stride);
+}
+
+bool Object3D::HasAnimationClip(const std::string& clipName) const
+{
+	return model_ && model_->FindAnimationClip(clipName) != nullptr;
+}
+
+bool Object3D::CanDrawSkinning() const
+{
+	return model_ &&
+		model_->HasSkinningData() &&
+		(model_->FindAnimationClip(animationClipName_) != nullptr ||
+			model_->FindAnimationClip("default") != nullptr) &&
+		!skinPaletteData_.empty();
 }
 
 float Object3D::GetScaledModelBoundingRadius(float fallback) const
@@ -316,6 +1044,36 @@ Engine::Math::OBB Object3D::GetScaledModelObb(float fallbackRadius) const
 	return obb;
 }
 
+bool Object3D::IsInsideActiveCameraFrustum() const
+{
+	if (!frustumCullingEnabled_ || !model_) {
+		return true;
+	}
+	Engine::CameraSystem::Camera* activeCamera =
+		Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
+	if (!activeCamera) {
+		return true;
+	}
+
+	const Engine::Math::OBB bounds = GetScaledModelObb();
+	const float radius = std::sqrt(
+		bounds.size.x * bounds.size.x +
+		bounds.size.y * bounds.size.y +
+		bounds.size.z * bounds.size.z);
+	const Vector3 clipCenter =
+		MyMath::Transform(bounds.center, activeCamera->GetViewProjectionMatrix());
+	const Vector3 viewCenter =
+		MyMath::Transform(bounds.center, activeCamera->GetViewMatrix());
+	const float depth = (std::max)(1.0f, std::abs(viewCenter.z));
+	const float margin = std::clamp(radius / depth * 2.2f, 0.08f, 1.25f);
+	return clipCenter.x >= -1.0f - margin &&
+		clipCenter.x <= 1.0f + margin &&
+		clipCenter.y >= -1.0f - margin &&
+		clipCenter.y <= 1.0f + margin &&
+		clipCenter.z >= -0.18f &&
+		clipCenter.z <= 1.18f;
+}
+
 void Object3D::InitializeTransformResources()
 {
 	transformationMatrixData_.WVP =
@@ -378,6 +1136,9 @@ void Object3D::InitializeSkinningState()
 	skeleton_ = {};
 	skeletonPose_.clear();
 	skinPaletteData_.clear();
+	skinPaletteCacheKeyValid_ = false;
+	skinPaletteCacheClipName_.clear();
+	skinPaletteCacheSampleFrame_ = 0;
 	animationTime = 0.0f;
 
 	if (!object3DCommon_ || !model_ || !model_->HasSkinningData() || model_->GetSkeleton().joints.empty()) {
@@ -409,18 +1170,141 @@ void Object3D::ReleaseSkinningDescriptors()
 
 void Object3D::UpdateAnimationState()
 {
-	if (!enableAnimation_ || !model_ || model_->GetAnimation().nodeAnimations.empty()) {
+	if (!enableAnimation_ || !model_) {
+		skinPaletteCacheKeyValid_ = false;
+		return;
+	}
+	const Animation* animation = model_->FindAnimationClip(animationClipName_);
+	std::string resolvedClipName = animationClipName_;
+	if (!animation) {
+		animation = model_->FindAnimationClip("default");
+		resolvedClipName = "default";
+	}
+	if (!animation || animation->nodeAnimations.empty()) {
+		skinPaletteCacheKeyValid_ = false;
 		return;
 	}
 
-	ApplyAnimation(skeleton_, model_->GetAnimation(), animationTime);
+	const uint32_t stride = (std::max)(1u, animationUpdateStride_);
+	const bool shouldSample = stride == 1 ||
+		(animationUpdateFrame_++ % stride) == 0;
+	if (!shouldSample) {
+		AdvanceAnimationTime(
+			animationTime,
+			*animation,
+			animationSpeed_,
+			animationLoop_);
+		return;
+	}
+
+	const SkinPaletteCacheKey cacheKey{
+		model_,
+		resolvedClipName,
+		QuantizeAnimationFrame(animationTime),
+	};
+	const auto cacheIt = gSkinPaletteCache.find(cacheKey);
+	if (cacheIt != gSkinPaletteCache.end()) {
+		skinPaletteData_ = cacheIt->second.palette;
+		skinPaletteCacheKeyValid_ = true;
+		skinPaletteCacheClipName_ = cacheKey.clipName;
+		skinPaletteCacheSampleFrame_ = cacheKey.sampleFrame;
+		if (object3DCommon_) {
+			object3DCommon_->RecordSkinningCacheHit();
+		}
+		AdvanceAnimationTime(
+			animationTime,
+			*animation,
+			animationSpeed_,
+			animationLoop_);
+		return;
+	}
+
+	ApplyAnimation(skeleton_, *animation, animationTime);
 	SkeletonUpdate(skeleton_);
 	SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
-	animationTime += kFixedAnimationDeltaTime;
-	const float duration = model_->GetAnimation().duration;
-	animationTime = std::isfinite(duration) && duration > 0.0f
-		? std::fmod(animationTime, duration)
-		: 0.0f;
+	if (object3DCommon_) {
+		object3DCommon_->RecordSkinningCacheMiss();
+	}
+	if (gSkinPaletteCache.size() >= kMaxSkinPaletteCacheEntries) {
+		gSkinPaletteCache.clear();
+	}
+	gSkinPaletteCache.emplace(
+		cacheKey,
+		SkinPaletteCacheEntry{ skinPaletteData_ });
+	skinPaletteCacheKeyValid_ = true;
+	skinPaletteCacheClipName_ = cacheKey.clipName;
+	skinPaletteCacheSampleFrame_ = cacheKey.sampleFrame;
+	AdvanceAnimationTime(
+		animationTime,
+		*animation,
+		animationSpeed_,
+		animationLoop_);
+}
+
+uint32_t Object3D::ResolveSkinPaletteSrvIndex()
+{
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		object3DCommon_->GetDxCommon();
+	const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
+	const uint32_t paletteSrvIndex = skinPaletteSrvIndices_[frameIndex];
+	const size_t paletteBytes = sizeof(WellForGPU) * skinPaletteData_.size();
+	const uint64_t frameSerial = dxCommon->GetPendingSubmissionFenceValue();
+
+	if (skinPaletteCacheKeyValid_ && model_) {
+		const SkinPaletteCacheKey cacheKey{
+			model_,
+			skinPaletteCacheClipName_,
+			skinPaletteCacheSampleFrame_,
+		};
+		auto cacheIt = gSkinPaletteCache.find(cacheKey);
+		if (cacheIt != gSkinPaletteCache.end() &&
+			cacheIt->second.palette.size() == skinPaletteData_.size()) {
+			SkinPaletteCacheEntry& cacheEntry = cacheIt->second;
+			if (cacheEntry.gpuFrameSerials[frameIndex] != frameSerial ||
+				!cacheEntry.gpuUploadResources[frameIndex]) {
+				const Engine::Base::DirectXCommon::FrameUploadAllocation paletteAllocation =
+					dxCommon->AllocateFrameUpload(paletteBytes, sizeof(WellForGPU));
+				std::memcpy(
+					paletteAllocation.cpuAddress,
+					cacheEntry.palette.data(),
+					paletteBytes);
+				cacheEntry.gpuUploadResources[frameIndex] = paletteAllocation.resource;
+				cacheEntry.gpuFirstElements[frameIndex] =
+					paletteAllocation.offset / sizeof(WellForGPU);
+				cacheEntry.gpuFrameSerials[frameIndex] = frameSerial;
+				if (object3DCommon_) {
+					object3DCommon_->RecordSkinningGpuUploadCacheMiss();
+				}
+			} else if (object3DCommon_) {
+				object3DCommon_->RecordSkinningGpuUploadCacheHit();
+			}
+
+			object3DCommon_->GetSrvManager()->CreateSRVforStructuredBuffer(
+				paletteSrvIndex,
+				cacheEntry.gpuUploadResources[frameIndex],
+				static_cast<UINT>(cacheEntry.palette.size()),
+				sizeof(WellForGPU),
+				cacheEntry.gpuFirstElements[frameIndex]);
+			return paletteSrvIndex;
+		}
+	}
+
+	const Engine::Base::DirectXCommon::FrameUploadAllocation paletteAllocation =
+		dxCommon->AllocateFrameUpload(paletteBytes, sizeof(WellForGPU));
+	std::memcpy(
+		paletteAllocation.cpuAddress,
+		skinPaletteData_.data(),
+		paletteBytes);
+	object3DCommon_->GetSrvManager()->CreateSRVforStructuredBuffer(
+		paletteSrvIndex,
+		paletteAllocation.resource,
+		static_cast<UINT>(skinPaletteData_.size()),
+		sizeof(WellForGPU),
+		paletteAllocation.offset / sizeof(WellForGPU));
+	if (object3DCommon_) {
+		object3DCommon_->RecordSkinningGpuUploadCacheMiss();
+	}
+	return paletteSrvIndex;
 }
 
 void Object3D::ApplyModelSettings()

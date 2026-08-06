@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -73,7 +74,14 @@ public:
     void Draw(
         D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0,
         const Material* materialOverride = nullptr);
+    void DrawInstanced(
+        UINT instanceCount,
+        D3D12_GPU_VIRTUAL_ADDRESS materialAddress = 0,
+        const Material* materialOverride = nullptr);
     void DrawGeometry();
+    void DrawGeometryInstanced(UINT instanceCount);
+    void DrawSkinnedGeometry();
+    void DrawSkinnedGeometryInstanced(UINT instanceCount);
 
     /// @brief Assimp ノードを再帰的に読み込んで内部ノードへ変換する
     /// @param node 読み込み対象の Assimp ノード
@@ -99,6 +107,9 @@ public:
     bool HasBounds() const { return modelData.hasBounds; }
     bool HasSkinningData() const { return !modelData.skinClusterData.empty(); }
     Animation& GetAnimation() { return animation; }
+    const Animation* FindAnimationClip(const std::string& clipName) const;
+    bool HasAnimationClip(const std::string& clipName) const;
+    bool LoadAnimationClip(const std::string& clipName, const std::string& directoryPath, const std::string& filename);
     Skeleton& GetSkeleton() { return skeleton; }
     SkinCluster& GetSkinCluster() { return skinCluster; }
 
@@ -179,20 +190,39 @@ private:
     void LoadSkinClusterDataFromMesh(
         aiMesh* mesh,
         uint32_t baseVertex,
-        ModelData& modelData);
+        ModelData& modelData,
+        const std::string& skinPrefix = {});
 
     /// @brief シーン内マテリアルから代表テクスチャを抽出する
     /// @param scene Assimp シーン
     /// @param directoryPath モデルディレクトリ
+    /// @param filename モデルファイル名
     /// @param modelData 書き込み先モデルデータ
     /// @return なし
-    void LoadMaterialFromScene(const aiScene* scene, const std::string& directoryPath, ModelData& modelData);
+    void LoadMaterialFromScene(
+        const aiScene* scene,
+        const std::string& directoryPath,
+        const std::string& filename,
+        ModelData& modelData);
 
     /// @brief Assimp アニメーションの全チャンネルを内部形式へ変換する
     /// @param animationAssimp 読み込み元アニメーション
     /// @param animation 書き込み先アニメーション
     /// @return なし
     void LoadAnimationChannels(const aiAnimation* animationAssimp, Animation& animation);
+
+    /// @brief モデルファイルに含まれる全アニメーションクリップを登録する
+    /// @param directoryPath モデルディレクトリ
+    /// @param filename モデルファイル名
+    /// @return なし
+    void LoadEmbeddedAnimationClips(
+        const std::string& directoryPath,
+        const std::string& filename);
+
+    /// @brief Assimp アニメーションを内部クリップ形式へ変換する
+    /// @param animationAssimp 読み込み元アニメーション
+    /// @return 内部クリップ
+    Animation BuildAnimationClip(const aiAnimation* animationAssimp);
 
     /// @brief 位置キーフレーム列を読み込む
     /// @param nodeAnimationAssimp 読み込み元チャンネル
@@ -234,6 +264,7 @@ private:
 
     ModelData modelData;   // モデルデータ
     Animation animation;   // アニメーションデータ
+    std::unordered_map<std::string, Animation> animationClips_;
     Skeleton skeleton;     // スケルトン
     SkinCluster skinCluster; // スキンクラスター
 

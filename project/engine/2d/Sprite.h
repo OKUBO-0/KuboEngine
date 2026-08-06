@@ -81,14 +81,12 @@ private:
     void InitializeMaterialData();
     void InitializeTransformationData();
     void UpdateVertexData();
-    void UpdateIndexData();
     void UpdateMatrices();
     D3D12_GPU_VIRTUAL_ADDRESS UploadFrameConstant(const void* data, size_t size);
 
     SpriteCommon* spriteCommon_ = nullptr;
 
     std::array<VertexData, 4> vertexData_{};
-    std::array<uint32_t, 6> indexData_{};
     MaterialSprite materialData_{};
     TransformationMatrixsprite transformationMatrixData_{};
 

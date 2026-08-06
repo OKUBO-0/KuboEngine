@@ -1,8 +1,8 @@
-maxActiveEnemies,96
-spawnUnlockInterval,10.8
+maxActiveEnemies,128
+spawnUnlockInterval,6.5
 spawnDistance,50.0
-respawnDistance,75.0
-respawnRadius,60.0
-minSpawnInterval,0.75
-baseSpawnInterval,1.75
-spawnAcceleration,0.0085
+respawnDistance,78.0
+respawnRadius,56.0
+minSpawnInterval,0.26
+baseSpawnInterval,1.20
+spawnAcceleration,0.012

@@ -2,8 +2,8 @@ hpPosition,440,690
 coinDigitPosition,70,58
 killDigitPosition,150,58
 counterDigitSize,14,20
-gameplayMiniMapPosition,1094,72
-gameplayMiniMapScale,0.21
+gameplayMiniMapPosition,1102,96
+gameplayMiniMapScale,0.30
 bossHpPosition,340,118
 bossHpSize,600,24
 expFramePosition,0,0
@@ -20,10 +20,13 @@ timerPosition,590,55
 miniMapEnemyIconSize,20
 timerScale,1
 miniMapBackgroundPosition,0,0
-miniMapBackgroundSize,1280,720
-miniMapCenter,320,360
-miniMapRadius,267
+miniMapBackgroundSize,512,512
+miniMapCenter,256,256
+miniMapRadius,238
 miniMapScale,3
 miniMapPlayerIconSize,20
 miniMapOrbIconSize,20
 miniMapVisible,1
+keyUiPosition,70,500
+keyUiSize,240,124
+keyUiVisible,1

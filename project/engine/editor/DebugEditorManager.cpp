@@ -401,7 +401,7 @@ DebugSceneViewportState DebugEditorManager::DrawSceneViewport(bool* open)
 		ImGui::GetWindowDrawList()->AddRectFilled(
 			contentMin,
 			contentMax,
-			IM_COL32(0, 0, 0, 255));
+			ImGui::GetColorU32(ImGuiCol_WindowBg));
 		const ImVec2 imageMin{
 			contentMin.x + (availableSize.x - imageSize.x) * 0.5f,
 			contentMin.y + (availableSize.y - imageSize.y) * 0.5f,

@@ -20,6 +20,8 @@ if errorlevel 1 (
   --variation Black ^
   --padding 4 ^
   --atlas-width 2048 ^
+  --scan game\directxgame\scene\GameTitleScene.cpp ^
+  --scan game\directxgame\ui\hud\LevelUpSelectionHud.cpp ^
   --scan game\directxgame\core\LevelUpChoiceService.cpp ^
   --scan game\directxgame\player\PassiveItemData.h ^
   --output-png Resources\DirectXGame\ui\font\noto_sans_jp_black.png ^

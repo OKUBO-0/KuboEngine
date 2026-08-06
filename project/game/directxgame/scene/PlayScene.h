@@ -4,6 +4,7 @@
 #include "GameAudioCache.h"
 #include "GameInputBindings.h"
 #include "DebugContext.h"
+#include "DebugHotReload.h"
 #include "GameplayFlowController.h"
 #include "EnemyManager.h"
 #include "BossPresentation.h"
@@ -74,6 +75,9 @@ private:
 	void SpawnLevelUpConfetti();
 	void QueueDebugDraw();
 	void UpdateDebugUI();
+	void ReloadLiveTuning();
+	void ReloadGameplayData();
+	void ApplyDebugHotReloadRequest(DebugHotReloadRequest request);
 	void ApplyPostEffect() const;
 
 	// Title / Play / Result をまたぐスコアや選択キャラクターを保持する共有文脈。
@@ -89,6 +93,7 @@ private:
 	// 表示・演出系。ゲーム状態を直接所有せず、Manager の状態を読み取って描画へ変換する。
 	SceneTransitionPresentation sceneTransition_{};
 	DebugContext debugContext_{};
+	DebugHotReload debugHotReload_{};
 
 	// 進行制御と HUD。入力停止、レベルアップ待ち、ポーズなどの状態を集約する。
 	GameplayFlowController gameplayFlow_{};

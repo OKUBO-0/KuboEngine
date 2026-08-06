@@ -65,6 +65,7 @@ void NormalBullet::InitializeForward(
 		modelPath_ = requestedModel;
 	}
 	object_->SetColor(visualStyle_.color);
+	object_->SetTextureInfluence(0.35f);
 	object_->SetScale({
 		scale_ * visualStyle_.scaleMultiplier.x,
 		scale_ * visualStyle_.scaleMultiplier.y,
@@ -133,7 +134,7 @@ void NormalBullet::Update(const Vector3& playerPosition, float deltaTime)
 void NormalBullet::Draw()
 {
 	if (active_ && object_) {
-		object_->Draw();
+		Engine::Graphics3D::Object3D::SubmitForDraw(object_.get());
 	}
 }
 
@@ -194,7 +195,7 @@ void NormalBullet::ApplyTransform()
 	if (movementMode_ == MovementMode::ReturnToPlayer) {
 		if (visualStyle_.spinAroundY) {
 			object_->SetRotate({
-				visualStyle_.rotationOffset.x,
+				visualStyle_.rotationOffset.x + spinAngle_ * 0.08f,
 				rotationY_ + spinAngle_ + visualStyle_.rotationOffset.y,
 				visualStyle_.rotationOffset.z,
 				});

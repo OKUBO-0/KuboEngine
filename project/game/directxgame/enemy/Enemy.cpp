@@ -16,6 +16,7 @@ void Enemy::Initialize()
 	active_ = true;
 	justDied_ = false;
 	deathPresentationActive_ = false;
+	deathPresentationElapsed_ = 0.0f;
 	spawnPresentationTimer_ = 0.0f;
 	spawnPresentationDuration_ = 0.0f;
 	groundImpactPending_ = false;
@@ -24,7 +25,7 @@ void Enemy::Initialize()
 	reactionController_.Reset();
 
 	view_.Initialize();
-	view_.SetFloatingEnabled(false);
+	view_.SetFloatingEnabled(true);
 	view_.ClearBehaviorVisual();
 	view_.Update(position_, rotationY_, false, false);
 }
@@ -66,9 +67,29 @@ void Enemy::Update(float deltaTime)
 		reactionController_.IsPhaseFlashActive());
 }
 
+void Enemy::SetAnimationUpdateStride(uint32_t stride)
+{
+	view_.SetAnimationUpdateStride(stride);
+}
+
+void Enemy::SetSimplifiedRenderEnabled(bool enabled)
+{
+	view_.SetSimplifiedRenderEnabled(enabled);
+}
+
 void Enemy::Draw()
 {
 	view_.Draw(active_ || deathPresentationActive_);
+}
+
+void Enemy::DrawFloatingShadow()
+{
+	view_.DrawFloatingShadow(active_ || deathPresentationActive_);
+}
+
+void Enemy::DrawModel()
+{
+	view_.DrawModel(active_ || deathPresentationActive_);
 }
 
 void Enemy::DrawShadow()
@@ -76,9 +97,18 @@ void Enemy::DrawShadow()
 	view_.DrawShadow(active_ || deathPresentationActive_);
 }
 
+Engine::Graphics3D::Object3D* Enemy::GetRenderObject() const
+{
+	return active_ || deathPresentationActive_
+		? view_.GetObject()
+		: nullptr;
+}
+
 void Enemy::StartDeathPresentation()
 {
 	deathPresentationActive_ = true;
+	deathPresentationElapsed_ = 0.0f;
+	view_.SetSimplifiedRenderEnabled(false);
 	view_.ApplyDeathPose(position_, rotationY_, 0.0f);
 }
 
@@ -94,6 +124,31 @@ void Enemy::UpdateDeathPresentation(float elapsedTime, float duration)
 		position_,
 		rotationY_,
 		progress * progress * (3.0f - 2.0f * progress));
+}
+
+bool Enemy::UpdateDeathPresentationFrame(float deltaTime, float duration)
+{
+	if (!deathPresentationActive_) {
+		return true;
+	}
+	deathPresentationElapsed_ += (std::max)(0.0f, deltaTime);
+	UpdateDeathPresentation(deathPresentationElapsed_, duration);
+	return deathPresentationElapsed_ >= duration;
+}
+
+void Enemy::FinishDeathPresentation()
+{
+	deathPresentationActive_ = false;
+}
+
+void Enemy::NotifyAttack()
+{
+	view_.NotifyAttack();
+}
+
+void Enemy::NotifyJump()
+{
+	view_.NotifyJump();
 }
 
 void Enemy::SetPosition(const Vector3& position)
@@ -141,13 +196,13 @@ void Enemy::SetModelByType(int32_t type)
 void Enemy::SetBehavior(EnemyBehaviorType type)
 {
 	behavior_ = CreateEnemyBehavior(type);
-	view_.SetFloatingEnabled(false);
+	view_.SetFloatingEnabled(true);
 }
 
 void Enemy::SetBoss(bool boss)
 {
 	reactionController_.SetBoss(boss);
-	view_.SetFloatingEnabled(false);
+	view_.SetFloatingEnabled(true);
 }
 
 void Enemy::StartSpawnPresentation(float duration)
@@ -195,9 +250,10 @@ void Enemy::ClearBehaviorVisual()
 
 void Enemy::QueueBossAttack(
 	BossAttackType type,
-	const Vector3& direction)
+	const Vector3& direction,
+	const Vector3& targetPosition)
 {
-	pendingBossAttack_ = { type, position_, direction };
+	pendingBossAttack_ = { type, position_, direction, targetPosition };
 }
 
 bool Enemy::ConsumeBossAttack(BossAttackEvent& outEvent)
@@ -214,12 +270,14 @@ void Enemy::SetBossAttackTelegraph(
 	BossAttackType type,
 	const Vector3& direction,
 	float progress,
-	float range)
+	float range,
+	const Vector3& targetPosition)
 {
 	bossAttackTelegraph_ = {
 		type,
 		position_,
 		direction,
+		targetPosition,
 		std::clamp(progress, 0.0f, 1.0f),
 		(std::max)(0.0f, range),
 	};

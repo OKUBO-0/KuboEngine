@@ -6,7 +6,7 @@ resultPosition,0,0
 resultSize,1280,720
 totalScoreScale,1.55
 resultUIPosition,0,0
-debug.sceneSettings,0
+debug.sceneSettings,1
 digitSize,24,32
 finishUIPosition,640,690
 finishUISize,320,48
@@ -18,4 +18,4 @@ debug.windowSwitcher,0
 scoreScale,1.55
 debug.sceneView,1
 debug.statisticsView,1
-debug.audio,0
+debug.audio,1

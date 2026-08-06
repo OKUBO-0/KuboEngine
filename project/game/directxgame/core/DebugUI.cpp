@@ -7,6 +7,7 @@
 #include "DebugEditorShell.h"
 #include "GameplayFlowController.h"
 #include "DebugInput.h"
+#include "DebugHotReload.h"
 #include "PlayerDebugPanel.h"
 #include "RenderingDebugPanel.h"
 #include "DebugRuntime.h"
@@ -44,6 +45,7 @@ DebugUIAction DebugUI::Update(
 	GameInputBindings::NavigationInputDevice navigationInputDevice,
 	bool uiInitialized,
 	float deathPresentationElapsed,
+	DebugHotReload* hotReload,
 	const std::function<void()>& emitLevelUpConfetti)
 {
 #ifdef _DEBUG
@@ -52,6 +54,9 @@ DebugUIAction DebugUI::Update(
 		Engine::InputSystem::Input::GetInstance();
 	if (input->TriggerKey(DIK_F5)) {
 		debugContext.Load(player, particleEffects);
+		if (hotReload) {
+			hotReload->ClearChangedFlags();
+		}
 	}
 	if (input->TriggerKey(DIK_F6) && playerManager) {
 		playerManager->ForceDebugDeath();
@@ -102,6 +107,17 @@ DebugUIAction DebugUI::Update(
 			&windows.keyInputDebug,
 			input,
 			state);
+	}
+	if (windows.hotReload && hotReload) {
+		const DebugHotReloadRequest reloadRequest =
+			hotReload->DrawPanel(&windows.hotReload);
+		if (reloadRequest == DebugHotReloadRequest::ReloadTuning) {
+			action = DebugUIAction::ReloadTuning;
+		} else if (reloadRequest == DebugHotReloadRequest::ReloadGameplayData) {
+			action = DebugUIAction::ReloadGameplayData;
+		} else if (reloadRequest == DebugHotReloadRequest::ReloadAll) {
+			action = DebugUIAction::ReloadAll;
+		}
 	}
 	if (windows.lightSettings) {
 		DebugUI::Rendering::DrawLighting(
@@ -196,7 +212,8 @@ DebugUIAction DebugUI::Update(
 		DebugUI::Runtime::DrawObjectManager(
 			&windows.objectManager,
 			objectStatus,
-			enemyManager);
+			enemyManager,
+			gridPlane);
 	}
 	if (windows.motionEditor) {
 		DebugUI::Runtime::DrawMotionEditor(
@@ -229,6 +246,7 @@ DebugUIAction DebugUI::Update(
 	(void)navigationInputDevice;
 	(void)uiInitialized;
 	(void)deathPresentationElapsed;
+	(void)hotReload;
 	(void)emitLevelUpConfetti;
 	return DebugUIAction::None;
 #endif

@@ -47,6 +47,7 @@ public:
 		float playerRotationY,
 		Engine::Graphics3D::Object3D* playerObject,
 		Engine::CameraSystem::Camera* camera);
+	void UpdateMotion(float deltaTime, bool isMoving, bool isDodging);
 	void ApplyPlayerTransform(
 		Engine::Graphics3D::Object3D* playerObject,
 		const Vector3& playerPosition,
@@ -68,6 +69,8 @@ private:
 	float deathStartCameraHeight_ = 80.0f;
 	float deathStartCameraDistance_ = 45.0f;
 	float deathStartCameraPitch_ = 1.0f;
+	float motionTime_ = 0.0f;
+	float moveBlend_ = 0.0f;
 };
 
 } // namespace DirectXGame

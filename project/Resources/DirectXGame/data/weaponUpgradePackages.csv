@@ -1,20 +1,29 @@
 weapon,level,rarity,statTags,effectText
+bowArrow,3,Common,Cooldown,攻撃間隔-6%
+bowArrow,6,Common,Cooldown,攻撃間隔-10%
 bowArrow,5,Rare,Projectile Speed,弾速+25%
 bowArrow,5,Rare,Size,サイズ+15%
 bowArrow,7,Epic,Quantity,矢数3本
 bowArrow,7,Epic,Pierce,貫通数5
 bowArrow,8,Rare,Damage,ダメージ+5
 bowArrow,8,Rare,Projectile Speed,弾速+20%
+bowArrow,8,Rare,Cooldown,攻撃間隔-8%
 rock,3,Rare,Projectile Speed,回転速度+35%
 rock,3,Rare,Size,サイズ+20%
+rock,4,Common,Hit Rate,ヒット間隔-8%
 rock,6,Rare,Projectile Speed,回転速度+30%
 rock,6,Rare,Size,サイズ+20%
 rock,8,Epic,Quantity,岩5個
 rock,8,Epic,Damage,ダメージ+4
-thunderStaff,8,Epic,Quantity,雷撃4回
-thunderStaff,8,Epic,Size,範囲+25%
+thunderStaff,5,Common,Cooldown,攻撃間隔-8%
+thunderStaff,7,Rare,Cooldown,攻撃間隔-16%
+thunderStaff,8,Epic,Quantity,チェイン数4
+thunderStaff,8,Epic,Size,チェイン距離+1.5
+flameStaff,5,Common,Cooldown,攻撃間隔-6%
 flameStaff,8,Epic,Quantity,火球3個を連続発射
 flameStaff,8,Epic,Damage,ダメージ+5
+flameStaff,8,Epic,Cooldown,攻撃間隔-8%
+sword,2,Common,Cooldown,攻撃間隔-4%
 sword,4,Rare,Cooldown,攻撃間隔-12%
 sword,4,Rare,Quantity,斬撃2回
 sword,6,Rare,Size,斬撃角度拡大
@@ -22,14 +31,22 @@ sword,6,Rare,Knockback,ノックバック強化
 sword,8,Epic,Damage,ダメージ+6
 sword,8,Epic,Quantity,斬撃3回
 sword,8,Epic,Knockback,ノックバック強化
+aura,5,Common,Cooldown,攻撃間隔-6%
 flameShoes,4,Rare,Duration,持続時間+0.18秒
 flameShoes,4,Rare,Quantity,炎床2個
+flameShoes,5,Common,Spawn Rate,炎床生成間隔-8%
 flameShoes,6,Rare,Duration,持続時間+0.18秒
-flameShoes,6,Rare,Spawn Rate,炎床生成間隔-18%
+flameShoes,6,Rare,Spawn Rate,炎床生成間隔-14%
 flameShoes,8,Epic,Damage,ダメージ+5
 flameShoes,8,Epic,Size,炎床範囲+0.55
 flameShoes,8,Epic,Quantity,炎床3個
-handgun,8,Epic,Quantity,6連射
+bone,5,Rare,Cooldown,攻撃間隔-10%
+bone,8,Epic,Cooldown,攻撃間隔-8%
+handgun,5,Common,Projectile Speed / Fire Rate,弾速+20% 連射間隔-5%
+handgun,7,Common,Cooldown,攻撃間隔-8%
+handgun,8,Epic,Quantity,4発バースト
 handgun,8,Epic,Damage,ダメージ+4
+boomerang,5,Rare,Cooldown,攻撃間隔-10%
 boomerang,8,Epic,Quantity,2個発射
 boomerang,8,Epic,Damage,ダメージ+4
+boomerang,8,Epic,Cooldown,攻撃間隔-8%

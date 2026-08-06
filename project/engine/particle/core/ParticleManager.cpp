@@ -105,6 +105,8 @@ void ParticleManager::Update(float deltaTime)
 	}
 	const float appliedDeltaTime = ResolveDeltaTime(deltaTime);
 	lastAppliedDeltaTime_ = appliedDeltaTime;
+	globalDroppedLastFrame_ = globalDroppedThisFrame_;
+	globalDroppedThisFrame_ = 0;
 
 	Matrix4x4 viewMatrix = activeCamera->GetViewMatrix();
 	Matrix4x4 projectionMatrix = activeCamera->GetProjectionMatrix();
@@ -365,13 +367,21 @@ void ParticleManager::Emit(
 		return;
 	}
 	const size_t activeCount = particleGroup.particles.size();
+	const size_t totalActiveCount = GetTotalActiveParticleCount();
+	const uint32_t globalAvailableCount =
+		totalActiveCount < maxTotalActiveParticleCount_
+		? static_cast<uint32_t>(maxTotalActiveParticleCount_ - totalActiveCount)
+		: 0u;
 	const uint32_t availableCount = activeCount < particleGroup.maxInstanceCount
 		? particleGroup.maxInstanceCount - static_cast<uint32_t>(activeCount)
 		: 0u;
 	const uint32_t emitCount = (std::min)(
-		(std::min)(count, availableCount),
-		remainingFrameBudget);
+		(std::min)(
+			(std::min)(count, availableCount),
+			remainingFrameBudget),
+		globalAvailableCount);
 	particleGroup.droppedThisFrame += count - emitCount;
+	globalDroppedThisFrame_ += count - emitCount;
 	if (emitCount == 0) {
 		return;
 	}
@@ -411,11 +421,18 @@ void ParticleManager::EmitTrailSegment(
 	if (!particleGroup.behavior || particleGroup.particles.size() >= particleGroup.maxInstanceCount) {
 		if (particleGroup.particles.size() >= particleGroup.maxInstanceCount) {
 			++particleGroup.droppedThisFrame;
+			++globalDroppedThisFrame_;
 		}
+		return;
+	}
+	if (GetTotalActiveParticleCount() >= maxTotalActiveParticleCount_) {
+		++particleGroup.droppedThisFrame;
+		++globalDroppedThisFrame_;
 		return;
 	}
 	if (particleGroup.emittedThisFrame >= ResolveEffectiveEmissionLimit(particleGroup)) {
 		++particleGroup.droppedThisFrame;
+		++globalDroppedThisFrame_;
 		return;
 	}
 
@@ -778,6 +795,11 @@ std::optional<uint32_t> ParticleManager::GetParticleGroupDroppedLastFrame(
 void ParticleManager::SetGlobalEmissionScale(float emissionScale)
 {
 	globalEmissionScale_ = std::clamp(emissionScale, 0.0f, 1.0f);
+}
+
+void ParticleManager::SetMaxTotalActiveParticleCount(size_t maxCount)
+{
+	maxTotalActiveParticleCount_ = (std::max)(size_t{ 1 }, maxCount);
 }
 
 uint32_t ParticleManager::ResolveEffectiveEmissionLimit(

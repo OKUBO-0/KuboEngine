@@ -70,7 +70,8 @@ void DebugUI::Input::Draw(
 			mouseMove.lX != 0 ||
 			mouseMove.lY != 0 ||
 			input->PushMouse(0) ||
-			input->PushMouse(1);
+			input->PushMouse(1) ||
+			input->PushMouse(2);
 
 		ImGui::Text(
 			"Priority Device: %s",
@@ -90,6 +91,11 @@ void DebugUI::Input::Draw(
 			mouseMove.lY,
 			input->GetMousePos().x,
 			input->GetMousePos().y);
+		ImGui::Text(
+			"Mouse Buttons: L move %s / R dodge-cancel %s / M pause %s",
+			BoolText(input->PushMouse(0)),
+			BoolText(input->PushMouse(1)),
+			BoolText(input->PushMouse(2)));
 		ImGui::Text(
 			"Right Stick Aim: %s  %.2f, %.2f",
 			BoolText(rightStickAimActive),

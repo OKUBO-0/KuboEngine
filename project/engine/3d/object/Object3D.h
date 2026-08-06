@@ -44,11 +44,23 @@ public:
 	/// @param なし
 	/// @return なし
 	void Draw();
+	void DrawAnimated();
 	/// @brief スキニング描画用のコマンドを積む
 	/// @param なし
 	/// @return なし
 	void DrawSkinning();
 	void DrawShadow();
+	void DrawSkinningShadow();
+	static void SubmitForDraw(Object3D* object);
+	static void FlushSubmittedDraws();
+	static void ClearSubmittedDraws();
+	static void SubmitForShadow(Object3D* object);
+	static void FlushSubmittedShadows();
+	static void ClearSubmittedShadows();
+	static void DrawStaticBatch(const std::vector<Object3D*>& objects);
+	static void DrawSkinningBatch(const std::vector<Object3D*>& objects);
+	static void DrawStaticShadowBatch(const std::vector<Object3D*>& objects);
+	static void DrawSkinningShadowBatch(const std::vector<Object3D*>& objects);
 	void SetCastsShadow(bool castsShadow) { castsShadow_ = castsShadow; }
 	bool CastsShadow() const { return castsShadow_; }
 
@@ -57,6 +69,13 @@ public:
 	void SetModel(Model* model);
 	void SetModel(const std::string& filepath);
 	void SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath);
+	void SetAnimationClip(const std::string& clipName);
+	void SetAnimationSpeed(float animationSpeed) { animationSpeed_ = animationSpeed; }
+	void SetAnimationLoop(bool loop) { animationLoop_ = loop; }
+	void SetAnimationUpdateStride(uint32_t stride);
+	void SetFrustumCullingEnabled(bool enabled) { frustumCullingEnabled_ = enabled; }
+	bool HasAnimationClip(const std::string& clipName) const;
+	bool CanDrawSkinning() const;
 	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;
 	Engine::Math::AABB GetScaledModelAabb(float fallbackRadius = 1.0f) const;
 	Engine::Math::OBB GetScaledModelObb(float fallbackRadius = 1.0f) const;
@@ -160,8 +179,10 @@ private:
 	void InitializeSkinningState();
 	void ReleaseSkinningDescriptors();
 	void UpdateAnimationState();
+	uint32_t ResolveSkinPaletteSrvIndex();
 	void ApplyModelSettings();
 	void UpdateTransformationMatrices();
+	bool IsInsideActiveCameraFrustum() const;
 	D3D12_GPU_VIRTUAL_ADDRESS UploadFrameConstant(const void* data, size_t size);
 
 	Object3DCommon* object3DCommon_ = nullptr;//Object3DCommonのポインタ
@@ -186,11 +207,17 @@ private:
 	//ライトのオンオフ
 	bool enableLighting = true;
 	bool castsShadow_ = true;
+	bool frustumCullingEnabled_ = true;
 	//カメラforGPU
 	CameraForGpu cameraForGpu_{};
 	//アニメーション
 	float animationTime = 0.0f;
+	float animationSpeed_ = 1.0f;
+	uint32_t animationUpdateStride_ = 1;
+	uint32_t animationUpdateFrame_ = 0;
+	bool animationLoop_ = true;
 	bool enableAnimation_= true;
+	std::string animationClipName_ = "default";
 
 	Vector4 color_ = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルトは白
 	static constexpr uint32_t kBufferedFrameCount = 2;
@@ -201,6 +228,9 @@ private:
 		UINT32_MAX,
 		UINT32_MAX,
 	};
+	bool skinPaletteCacheKeyValid_ = false;
+	std::string skinPaletteCacheClipName_;
+	uint32_t skinPaletteCacheSampleFrame_ = 0;
 
 	std::string debugName_;
 	std::string skyboxFilePath_ ; // スカイボックスのファイルパス

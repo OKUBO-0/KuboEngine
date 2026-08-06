@@ -4,9 +4,9 @@
 #include "GameSession.h"
 #include "Player.h"
 #include "PlayerManager.h"
-#include "Line.h"
 #include <algorithm>
 #include <charconv>
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -18,6 +18,92 @@ namespace {
 
 constexpr char kCoinGainSePath[] = "se/coin_gain.wav";
 constexpr char kAudioCoinGain[] = "combat.coinGain";
+constexpr float kEnemyShadowLodDistanceSq = 42.0f * 42.0f;
+constexpr float kEnemyAnimationLodNearDistanceSq = 28.0f * 28.0f;
+constexpr float kEnemyAnimationLodMidDistanceSq = 52.0f * 52.0f;
+constexpr float kEnemySimplifiedNearDistanceSq = 38.0f * 38.0f;
+constexpr float kEnemySimplifiedFarDistanceSq = 62.0f * 62.0f;
+constexpr size_t kEnemyFullModelBudget = 128;
+constexpr float kNormalEnemyDeathPresentationDuration = 0.52f;
+constexpr float kBossSummonCrystalOffset = 12.0f;
+
+uint32_t ResolveEnemyAnimationStride(
+	size_t activeEnemyCount,
+	const Vector3& playerPosition,
+	const Enemy& enemy)
+{
+	if (enemy.IsBoss()) {
+		return 1u;
+	}
+
+	const Vector3 offset = enemy.GetPosition() - playerPosition;
+	const float distanceSq =
+		offset.x * offset.x + offset.y * offset.y + offset.z * offset.z;
+	const uint32_t loadStride =
+		activeEnemyCount >= 210 ? 4u :
+		activeEnemyCount >= 145 ? 3u :
+		activeEnemyCount >= 90 ? 2u :
+		1u;
+	const uint32_t distanceStride =
+		distanceSq >= kEnemyAnimationLodMidDistanceSq ? 4u :
+		distanceSq >= kEnemyAnimationLodNearDistanceSq ? 2u :
+		1u;
+	return (std::max)(loadStride, distanceStride);
+}
+
+bool ShouldUseSimplifiedEnemyRender(
+	size_t activeEnemyCount,
+	const Vector3& playerPosition,
+	const Enemy& enemy)
+{
+	if (enemy.IsBoss() || enemy.IsDeathPresentationActive()) {
+		return false;
+	}
+	if (activeEnemyCount <= kEnemyFullModelBudget) {
+		return false;
+	}
+	const Vector3 offset = enemy.GetPosition() - playerPosition;
+	const float distanceSq =
+		offset.x * offset.x + offset.y * offset.y + offset.z * offset.z;
+	if (distanceSq >= kEnemySimplifiedFarDistanceSq) {
+		return true;
+	}
+	return activeEnemyCount >= 140 &&
+		distanceSq >= kEnemySimplifiedNearDistanceSq;
+}
+
+Vector3 RotateDirectionXZ(const Vector3& direction, float radians)
+{
+	const float s = std::sin(radians);
+	const float c = std::cos(radians);
+	return {
+		direction.x * c + direction.z * s,
+		0.0f,
+		-direction.x * s + direction.z * c,
+	};
+}
+
+bool IsPlayerInBeam(
+	const Vector3& playerPosition,
+	const Vector3& origin,
+	const Vector3& direction,
+	float length,
+	float halfWidth)
+{
+	const Vector3 offset = playerPosition - origin;
+	const float projection = offset.x * direction.x + offset.z * direction.z;
+	if (projection < 0.0f || projection > length) {
+		return false;
+	}
+	const Vector3 closest{
+		origin.x + direction.x * projection,
+		0.0f,
+		origin.z + direction.z * projection,
+	};
+	const Vector3 playerOffset = playerPosition - closest;
+	return playerOffset.x * playerOffset.x + playerOffset.z * playerOffset.z <=
+		halfWidth * halfWidth;
+}
 
 }
 
@@ -31,6 +117,10 @@ void EnemyManager::Initialize(const std::string& enemyTypesPath, Player* player,
 	pendingBossInkWaves_ = 0;
 	bossInkWaveTimer_ = 0.0f;
 	bossInkNextWaveIndex_ = 0;
+	bossBeamBursts_.clear();
+	bossShockwaveRings_.clear();
+	bossSummonCrystals_.clear();
+	bossShockwaveDamageWaves_.clear();
 	bossSlamCubes_.clear();
 	bossPhase_ = false;
 	bossDefeated_ = false;
@@ -156,37 +246,102 @@ void EnemyManager::Draw()
 {
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
 		if (enemy && (enemy->IsActive() || enemy->IsDeathPresentationActive())) {
-			enemy->Draw();
+			enemy->DrawFloatingShadow();
+			Engine::Graphics3D::Object3D* renderObject = enemy->GetRenderObject();
+			Engine::Graphics3D::Object3D::SubmitForDraw(renderObject);
 		}
 	}
+	std::vector<Engine::Graphics3D::Object3D*> staticObjects;
+	staticObjects.reserve(
+		expOrbs_.size() +
+		deathBombs_.size() +
+		bossInkProjectiles_.size() +
+		bossBeamBursts_.size() * 160u +
+		bossShockwaveRings_.size() * 96u +
+		bossSummonCrystals_.size() +
+		bossSlamCubes_.size() +
+		10u);
 	for (std::unique_ptr<ExpOrb>& orb : expOrbs_) {
-		orb->Draw();
+		if (!orb) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = orb->GetRenderObject()) {
+			staticObjects.push_back(object);
+		}
 	}
 	for (const std::unique_ptr<EnemyDeathBomb>& bomb : deathBombs_) {
-		if (bomb) {
-			bomb->Draw();
+		if (!bomb) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = bomb->GetRenderObject()) {
+			staticObjects.push_back(object);
 		}
 	}
 	for (const std::unique_ptr<BossInkProjectile>& projectile :
 		bossInkProjectiles_) {
-		if (projectile) {
-			projectile->Draw();
+		if (!projectile) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = projectile->GetRenderObject()) {
+			staticObjects.push_back(object);
 		}
 	}
-	bossRushTelegraph_.Draw();
+	bossRushTelegraph_.AppendRenderObjects(staticObjects);
+	bossAreaTelegraph_.AppendRenderObjects(staticObjects);
+	for (const std::unique_ptr<BossBeamBurst>& beam : bossBeamBursts_) {
+		if (beam) {
+			beam->AppendRenderObjects(staticObjects);
+		}
+	}
+	for (const std::unique_ptr<BossShockwaveRing>& ring : bossShockwaveRings_) {
+		if (ring) {
+			ring->AppendRenderObjects(staticObjects);
+		}
+	}
+	for (const std::unique_ptr<BossSummonCrystal>& crystal : bossSummonCrystals_) {
+		if (!crystal) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = crystal->GetRenderObject()) {
+			staticObjects.push_back(object);
+		}
+	}
 	for (const std::unique_ptr<BossSlamCube>& cube : bossSlamCubes_) {
-		if (cube) {
-			cube->Draw();
+		if (!cube) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = cube->GetRenderObject()) {
+			staticObjects.push_back(object);
 		}
 	}
-	DrawBossAttackTelegraph();
+	for (Engine::Graphics3D::Object3D* object : staticObjects) {
+		Engine::Graphics3D::Object3D::SubmitForDraw(object);
+	}
 }
 
 void EnemyManager::DrawShadow()
 {
+	const Vector3 playerPosition =
+		player_ ? player_->GetWorldPosition() : Vector3{};
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
 		if (enemy && (enemy->IsActive() || enemy->IsDeathPresentationActive())) {
+			if (!enemy->IsBoss()) {
+				const Vector3 enemyPosition = enemy->GetPosition();
+				const float dx = enemyPosition.x - playerPosition.x;
+				const float dz = enemyPosition.z - playerPosition.z;
+				if (dx * dx + dz * dz > kEnemyShadowLodDistanceSq) {
+					continue;
+				}
+			}
 			enemy->DrawShadow();
+		}
+	}
+	for (const std::unique_ptr<EnemyDeathBomb>& bomb : deathBombs_) {
+		if (!bomb) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = bomb->GetRenderObject()) {
+			Engine::Graphics3D::Object3D::SubmitForShadow(object);
 		}
 	}
 }
@@ -286,6 +441,57 @@ std::vector<Vector3> EnemyManager::PickLightningTargets(int32_t count) const
 			candidates.size() - 1)(randomEngine_);
 		targets.push_back(candidates[pickedIndex]);
 		candidates[pickedIndex] = candidates.back();
+		candidates.pop_back();
+	}
+
+	return targets;
+}
+
+std::vector<Vector3> EnemyManager::PickLightningChainTargets(
+	const Vector3& origin,
+	int32_t count,
+	float chainRange) const
+{
+	struct Candidate {
+		Enemy* enemy = nullptr;
+		Vector3 position{};
+	};
+	std::vector<Candidate> candidates;
+	candidates.reserve(enemies_.size());
+	for (const std::unique_ptr<Enemy>& enemy : enemies_) {
+		if (enemy && enemy->IsActive()) {
+			candidates.push_back({ enemy.get(), enemy->GetPosition() });
+		}
+	}
+
+	std::vector<Vector3> targets;
+	if (candidates.empty() || count <= 0) {
+		return targets;
+	}
+
+	targets.reserve(static_cast<size_t>(count));
+	Vector3 current = origin;
+	const float chainRangeSq = chainRange * chainRange;
+	for (int32_t chainIndex = 0; chainIndex < count && !candidates.empty(); ++chainIndex) {
+		size_t bestIndex = candidates.size();
+		float bestDistanceSq = FLT_MAX;
+		for (size_t index = 0; index < candidates.size(); ++index) {
+			const Vector3 offset = candidates[index].position - current;
+			const float distanceSq = offset.x * offset.x + offset.z * offset.z;
+			if (chainIndex > 0 && distanceSq > chainRangeSq) {
+				continue;
+			}
+			if (distanceSq < bestDistanceSq) {
+				bestDistanceSq = distanceSq;
+				bestIndex = index;
+			}
+		}
+		if (bestIndex >= candidates.size()) {
+			break;
+		}
+		current = candidates[bestIndex].position;
+		targets.push_back(current);
+		candidates[bestIndex] = candidates.back();
 		candidates.pop_back();
 	}
 
@@ -401,20 +607,61 @@ void EnemyManager::UpdateBossDeathPresentation(float elapsedTime, float duration
 
 void EnemyManager::UpdateEnemies(float deltaTime)
 {
+	const size_t activeEnemyCount = GetActiveEnemyCount();
+	const Vector3 playerPosition = player_
+		? player_->GetWorldPosition()
+		: Vector3{};
+	animationLodStats_ = {};
+	renderLodStats_ = {};
 	for (std::unique_ptr<Enemy>& enemy : enemies_) {
 		if (!enemy) {
 			continue;
 		}
 		if (enemy->IsActive()) {
+			const bool simplifiedRender = ShouldUseSimplifiedEnemyRender(
+				activeEnemyCount,
+				playerPosition,
+				*enemy);
+			enemy->SetSimplifiedRenderEnabled(simplifiedRender);
+			if (simplifiedRender) {
+				++renderLodStats_.simplifiedModelCount;
+			} else {
+				++renderLodStats_.fullModelCount;
+			}
+			const uint32_t animationStride = ResolveEnemyAnimationStride(
+				activeEnemyCount,
+				playerPosition,
+				*enemy);
+			switch (animationStride) {
+			case 1:
+				++animationLodStats_.stride1Count;
+				break;
+			case 2:
+				++animationLodStats_.stride2Count;
+				break;
+			case 3:
+				++animationLodStats_.stride3Count;
+				break;
+			default:
+				++animationLodStats_.stride4Count;
+				break;
+			}
+			enemy->SetAnimationUpdateStride(animationStride);
 			enemy->Update(deltaTime);
 			if (enemy->ConsumeGroundImpact()) {
 				recentDeathEffectPositions_.push_back(enemy->GetPosition());
 			}
+		} else if (enemy->IsDeathPresentationActive() && enemy.get() != bossEnemy_) {
+			if (enemy->UpdateDeathPresentationFrame(
+					deltaTime,
+					kNormalEnemyDeathPresentationDuration)) {
+				enemy->FinishDeathPresentation();
+			}
 		} else if (enemy->GetHP() <= 0 && enemy->JustDied()) {
 			if (enemy.get() == bossEnemy_) {
 				bossDefeated_ = true;
-				enemy->StartDeathPresentation();
 			}
+			enemy->StartDeathPresentation();
 			SpawnDeathDrop(*enemy);
 			SpawnDeathBomb(*enemy);
 			enemy->ResetJustDied();
@@ -483,49 +730,140 @@ void EnemyManager::ProcessBossAttackEvents()
 	}
 	BossAttackEvent event{};
 	while (bossEnemy_->ConsumeBossAttack(event)) {
-		if (event.type == BossAttackType::TentacleSlam) {
-			const Vector3 side{
-				-event.direction.z,
-				0.0f,
-				event.direction.x,
-			};
-			for (int32_t row = 1; row <= 6; ++row) {
-				const float forwardDistance = static_cast<float>(row) * 4.5f;
-				const float columnSpacing = 2.2f + static_cast<float>(row) * 1.8f;
-				for (int32_t column = -2; column <= 2; ++column) {
-					auto cube = std::make_unique<BossSlamCube>();
-					cube->Initialize(
-						event.position + event.direction * forwardDistance +
-							side * (columnSpacing * static_cast<float>(column)),
-						static_cast<float>(row - 1) * 0.045f);
-					bossSlamCubes_.push_back(std::move(cube));
-				}
+		bossEnemy_->NotifyAttack();
+		const int32_t bossDamage = bossEnemy_->GetAttackPower();
+		const auto damagePlayerIfInRadius = [&](const Vector3& center, float radius, int32_t damage) {
+			if (!player_ || !playerManager_ || player_->IsDodging() ||
+				playerManager_->IsInvincible()) {
+				return;
 			}
+			const Vector3 playerPosition = player_->GetWorldPosition();
+			const float dx = playerPosition.x - center.x;
+			const float dz = playerPosition.z - center.z;
+			if (dx * dx + dz * dz <= radius * radius) {
+				playerManager_->TakeDamage(damage);
+				recentExplosionEffectPositions_.push_back(center);
+			}
+		};
+		const auto spawnShockwaveImpact = [&](const Vector3& center, int32_t visualCount) {
+			for (int32_t index = 0; index < visualCount; ++index) {
+				auto cube = std::make_unique<BossSlamCube>();
+				cube->Initialize(center, static_cast<float>(index) * 0.08f);
+				bossSlamCubes_.push_back(std::move(cube));
+			}
+		};
+		const auto addShockwaveDamage = [&](const Vector3& center, float radius, float delay, int32_t damage) {
+			bossShockwaveDamageWaves_.push_back({
+				center,
+				radius,
+				delay,
+				0.0f,
+				damage,
+				false,
+			});
+		};
+
+		if (event.type == BossAttackType::Beam ||
+			event.type == BossAttackType::TripleBeam) {
+			const Vector3 beamTarget = player_ ? player_->GetWorldPosition() : event.targetPosition;
+			const Vector3 beamOffset = beamTarget - event.position;
+			const float beamDistance = std::sqrt(
+				beamOffset.x * beamOffset.x + beamOffset.z * beamOffset.z);
+			const float beamLength = (std::max)(36.0f, beamDistance + 32.0f);
+			auto beam = std::make_unique<BossBeamBurst>();
+			beam->Initialize(
+				event.position,
+				event.direction,
+				event.type == BossAttackType::TripleBeam ? 3 : 1,
+				beamLength);
+			bossBeamBursts_.push_back(std::move(beam));
 			if (!player_ || !playerManager_ || player_->IsDodging() ||
 				playerManager_->IsInvincible()) {
 				continue;
 			}
-			const Vector3 offset = player_->GetWorldPosition() - event.position;
-			const float distanceSq = offset.x * offset.x + offset.z * offset.z;
-			constexpr float kSlamRadius = 30.0f;
-			if (distanceSq > kSlamRadius * kSlamRadius) {
-				continue;
+			const Vector3 playerPosition = player_->GetWorldPosition();
+			const int32_t beamCount = event.type == BossAttackType::TripleBeam ? 3 : 1;
+			for (int32_t index = 0; index < beamCount; ++index) {
+				const float angleOffset = beamCount == 3
+					? (static_cast<float>(index) - 1.0f) * 0.38f
+					: 0.0f;
+				const Vector3 direction = RotateDirectionXZ(event.direction, angleOffset);
+				if (IsPlayerInBeam(playerPosition, event.position, direction, beamLength, 2.2f)) {
+					playerManager_->TakeDamage(bossDamage);
+					recentExplosionEffectPositions_.push_back(playerPosition);
+					break;
+				}
 			}
-			const float distance = std::sqrt(distanceSq);
-			const float directionDot = distance <= 0.001f
-				? 1.0f
-				: (offset.x * event.direction.x + offset.z * event.direction.z) /
-					distance;
-			if (directionDot >= std::cos(0.8f)) {
-				playerManager_->TakeDamage(bossEnemy_->GetAttackPower());
-				recentExplosionEffectPositions_.push_back(event.position);
+		} else if (event.type == BossAttackType::LeapShockwave ||
+			event.type == BossAttackType::SummonLeapShockwave) {
+			const float radius = event.type == BossAttackType::SummonLeapShockwave ? 155.0f : 135.0f;
+			spawnShockwaveImpact(event.targetPosition, 4);
+			auto ring = std::make_unique<BossShockwaveRing>();
+			ring->Initialize(
+				event.targetPosition,
+				radius,
+				0.0f,
+				{ 1.0f, 0.36f, 0.04f, 0.9f });
+			bossShockwaveRings_.push_back(std::move(ring));
+			addShockwaveDamage(event.targetPosition, radius, 0.0f, bossDamage);
+			if (event.type == BossAttackType::SummonLeapShockwave) {
+				for (int32_t index = 0; index < 4; ++index) {
+					const float angle = 2.0f * std::numbers::pi_v<float> *
+						static_cast<float>(index) / 4.0f + 0.785f;
+					Vector3 summonPosition = event.targetPosition;
+					summonPosition.x += std::sin(angle) * kBossSummonCrystalOffset;
+					summonPosition.z += std::cos(angle) * kBossSummonCrystalOffset;
+					auto crystal = std::make_unique<BossSummonCrystal>();
+					crystal->Initialize(summonPosition, 0.0f);
+					bossSummonCrystals_.push_back(std::move(crystal));
+					spawnShockwaveImpact(summonPosition, 2);
+					auto summonRing = std::make_unique<BossShockwaveRing>();
+					summonRing->Initialize(
+						summonPosition,
+						120.0f,
+						0.45f,
+						{ 1.0f, 0.55f, 0.05f, 0.75f });
+					bossShockwaveRings_.push_back(std::move(summonRing));
+					addShockwaveDamage(summonPosition, 120.0f, 0.45f, bossDamage * 2 / 3);
+				}
 			}
-		} else if (event.type == BossAttackType::InkBurst) {
+		} else if (event.type == BossAttackType::BulletHell) {
 			bossInkWavePosition_ = event.position;
 			SpawnBossInkWave(bossInkWavePosition_, 0);
-			pendingBossInkWaves_ = 2;
+			pendingBossInkWaves_ = 5;
 			bossInkNextWaveIndex_ = 1;
-			bossInkWaveTimer_ = 0.5f;
+			bossInkWaveTimer_ = 0.24f;
+		} else if (event.type == BossAttackType::ConvergingShockwave) {
+			const Vector3 center = player_ ? player_->GetWorldPosition() : event.targetPosition;
+			auto ring = std::make_unique<BossShockwaveRing>();
+			ring->Initialize(
+				center,
+				24.0f,
+				0.0f,
+				{ 0.82f, 0.08f, 1.0f, 0.85f });
+			bossShockwaveRings_.push_back(std::move(ring));
+			for (int32_t index = 0; index < 24; ++index) {
+				const float angle = 2.0f * std::numbers::pi_v<float> *
+					static_cast<float>(index) / 24.0f;
+				const Vector3 start{
+					center.x + std::sin(angle) * 23.5f,
+					0.0f,
+					center.z + std::cos(angle) * 23.5f,
+				};
+				auto projectile = std::make_unique<BossInkProjectile>();
+				projectile->Initialize(start, { center.x - start.x, 0.0f, center.z - start.z });
+				bossInkProjectiles_.push_back(std::move(projectile));
+			}
+		} else if (event.type == BossAttackType::DomeBurst) {
+			auto domeRing = std::make_unique<BossShockwaveRing>();
+			domeRing->Initialize(
+				event.position,
+				38.0f,
+				0.0f,
+				{ 1.0f, 0.08f, 0.16f, 0.9f });
+			bossShockwaveRings_.push_back(std::move(domeRing));
+			damagePlayerIfInRadius(event.position, 38.0f, bossDamage + bossDamage / 2);
+			recentExplosionEffectPositions_.push_back(event.position);
 		}
 	}
 }
@@ -576,9 +914,9 @@ void EnemyManager::SpawnBossInkWave(
 	const Vector3& position,
 	int32_t waveIndex)
 {
-	constexpr int32_t kProjectileCount = 12;
+	constexpr int32_t kProjectileCount = 18;
 	const float angleOffset =
-		static_cast<float>(waveIndex) * std::numbers::pi_v<float> / 12.0f;
+		static_cast<float>(waveIndex) * std::numbers::pi_v<float> / 18.0f;
 	for (int32_t index = 0; index < kProjectileCount; ++index) {
 		const float angle = angleOffset +
 			2.0f * std::numbers::pi_v<float> *
@@ -599,6 +937,61 @@ void EnemyManager::UpdateBossAttackVisuals(float deltaTime)
 		bossEnemy_ && bossEnemy_->IsActive()
 			? bossEnemy_->GetBossAttackTelegraph()
 			: emptyTelegraph);
+	bossAreaTelegraph_.Update(
+		bossEnemy_ && bossEnemy_->IsActive()
+			? bossEnemy_->GetBossAttackTelegraph()
+			: emptyTelegraph);
+	for (auto it = bossBeamBursts_.begin(); it != bossBeamBursts_.end();) {
+		if (!*it || !(*it)->Update(deltaTime)) {
+			it = bossBeamBursts_.erase(it);
+		} else {
+			++it;
+		}
+	}
+	for (auto it = bossShockwaveRings_.begin(); it != bossShockwaveRings_.end();) {
+		if (!*it || !(*it)->Update(deltaTime)) {
+			it = bossShockwaveRings_.erase(it);
+		} else {
+			++it;
+		}
+	}
+	for (auto it = bossShockwaveDamageWaves_.begin(); it != bossShockwaveDamageWaves_.end();) {
+		ActiveBossShockwaveDamage& wave = *it;
+		wave.elapsedTime += (std::max)(0.0f, deltaTime);
+		constexpr float kWaveDuration = 2.4f;
+		if (wave.elapsedTime < wave.delay) {
+			++it;
+			continue;
+		}
+		const float localTime = wave.elapsedTime - wave.delay;
+		if (localTime >= kWaveDuration || wave.hitPlayer) {
+			it = bossShockwaveDamageWaves_.erase(it);
+			continue;
+		}
+		if (player_ && playerManager_ && !player_->IsDodging() &&
+			!playerManager_->IsInvincible()) {
+			const Vector3 playerPosition = player_->GetWorldPosition();
+			const float dx = playerPosition.x - wave.center.x;
+			const float dz = playerPosition.z - wave.center.z;
+			const float distance = std::sqrt(dx * dx + dz * dz);
+			const float currentRadius =
+				wave.radius * std::clamp(localTime / kWaveDuration, 0.0f, 1.0f);
+			const float halfWidth = 4.5f + player_->GetCollisionRadius();
+			if (std::abs(distance - currentRadius) <= halfWidth) {
+				playerManager_->TakeDamage(wave.damage);
+				recentExplosionEffectPositions_.push_back(playerPosition);
+				wave.hitPlayer = true;
+			}
+		}
+		++it;
+	}
+	for (auto it = bossSummonCrystals_.begin(); it != bossSummonCrystals_.end();) {
+		if (!*it || !(*it)->Update(deltaTime)) {
+			it = bossSummonCrystals_.erase(it);
+		} else {
+			++it;
+		}
+	}
 	for (auto it = bossSlamCubes_.begin(); it != bossSlamCubes_.end();) {
 		if (!*it || !(*it)->Update(deltaTime)) {
 			it = bossSlamCubes_.erase(it);
@@ -610,53 +1003,6 @@ void EnemyManager::UpdateBossAttackVisuals(float deltaTime)
 
 void EnemyManager::DrawBossAttackTelegraph() const
 {
-	if (!bossEnemy_ || !bossEnemy_->IsActive()) {
-		return;
-	}
-	const BossAttackTelegraph& telegraph =
-		bossEnemy_->GetBossAttackTelegraph();
-	if (telegraph.type == BossAttackType::None) {
-		return;
-	}
-	Engine::LineSystem::Line line;
-	const float alpha = 0.35f + telegraph.progress * 0.65f;
-	if (telegraph.type == BossAttackType::TentacleSlam) {
-		constexpr float kLength = 30.0f;
-		constexpr float kHalfWidth = 31.0f;
-		const Vector3 origin{
-			telegraph.position.x,
-			0.15f,
-			telegraph.position.z,
-		};
-		const Vector3 end = origin + telegraph.direction * kLength;
-		const Vector3 side{
-			-telegraph.direction.z * kHalfWidth,
-			0.0f,
-			telegraph.direction.x * kHalfWidth,
-		};
-		const Vector4 color{ 1.0f, 0.0f, 0.0f, alpha };
-		line.Draw(origin, end - side, color);
-		line.Draw(origin, end + side, color);
-		line.Draw(end - side, end + side, color);
-		for (int32_t ray = -1; ray <= 1; ++ray) {
-			line.Draw(
-				origin,
-				end + side * (static_cast<float>(ray) * 0.5f),
-				color);
-		}
-		for (int32_t band = 1; band <= 4; ++band) {
-			const float progress = static_cast<float>(band) / 4.0f;
-			const Vector3 bandCenter =
-				origin + telegraph.direction * (kLength * progress);
-			const Vector3 bandSide = side * progress;
-			line.Draw(bandCenter - bandSide, bandCenter + bandSide, color);
-		}
-	} else if (telegraph.type == BossAttackType::InkBurst) {
-		line.DrawSphere(
-			{ telegraph.position.x, 0.25f, telegraph.position.z },
-			5.0f + telegraph.progress * 2.0f,
-			{ 0.46f, 0.08f, 0.7f, alpha });
-	}
 }
 
 void EnemyManager::RemoveInactiveEnemies()

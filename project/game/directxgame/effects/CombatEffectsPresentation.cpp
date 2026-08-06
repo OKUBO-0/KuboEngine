@@ -431,6 +431,18 @@ bool CombatEffectsPresentation::Update(
 	const Vector3 playerPosition = player.GetWorldPosition();
 	QueueAuraCircle(player, playerManager);
 	const GameParticleEffects::Tuning& bowTrailTuning = particleEffects.GetTuning();
+	for (const Vector3& shotPosition :
+		playerManager.GetRecentNormalBulletShotPositions()) {
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("bowMuzzle"),
+			shotPosition,
+			4u);
+		particleManager->EmitTrailSegment(
+			particleEffects.GetTrailBindingHandle("bowProjectile"),
+			playerPosition + Vector3{ 0.0f, 0.72f, 0.0f },
+			shotPosition,
+			0.16f);
+	}
 	for (const std::unique_ptr<NormalBullet>& bullet :
 		playerManager.GetNormalBullets()) {
 		if (!bullet || !bullet->IsActive()) {
@@ -455,13 +467,29 @@ bool CombatEffectsPresentation::Update(
 			particleEffects.GetTrailBindingHandle("flameProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.30f,
-			1.15f,
-			6.0f);
+			0.24f,
+			0.86f,
+			4.6f);
 		particleManager->Emit(
 			particleEffects.GetSparkBindingHandle("flameProjectileGlow"),
 			bullet->GetPosition(),
 			2u);
+	}
+	for (const Vector3& shotPosition :
+		playerManager.GetRecentExplosiveBulletShotPositions()) {
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("flameMuzzle"),
+			shotPosition,
+			8u);
+		particleManager->Emit(
+			particleEffects.GetSmokeBindingHandle("explosionSmoke"),
+			shotPosition,
+			2u);
+		particleManager->EmitTrailSegment(
+			particleEffects.GetTrailBindingHandle("flameProjectile"),
+			playerPosition + Vector3{ 0.0f, 0.62f, 0.0f },
+			shotPosition,
+			0.24f);
 	}
 	for (const std::unique_ptr<NormalBullet>& bullet :
 		playerManager.GetHandgunBullets()) {
@@ -473,9 +501,9 @@ bool CombatEffectsPresentation::Update(
 			particleEffects.GetTrailBindingHandle("handgunProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.13f,
-			1.20f,
-			8.0f);
+			0.10f,
+			0.82f,
+			5.0f);
 	}
 	for (const Vector3& shotPosition :
 		playerManager.GetRecentHandgunShotPositions()) {
@@ -495,6 +523,21 @@ bool CombatEffectsPresentation::Update(
 			reloadPosition,
 			5u);
 	}
+	for (const Vector3& shotPosition :
+		playerManager.GetRecentBoomerangShotPositions()) {
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("boomerangMuzzle"),
+			shotPosition,
+			5u);
+		EmitCircleTrail(
+			particleManager,
+			particleEffects.GetTrailBindingHandle("boomerangProjectile"),
+			shotPosition,
+			0.62f,
+			0.22f,
+			0.10f,
+			10);
+	}
 	for (const std::unique_ptr<NormalBullet>& bullet :
 		playerManager.GetBoomerangBullets()) {
 		if (!bullet || !bullet->IsActive()) {
@@ -505,9 +548,9 @@ bool CombatEffectsPresentation::Update(
 			particleEffects.GetTrailBindingHandle("boomerangProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.22f,
-			1.28f,
-			8.0f);
+			0.16f,
+			0.84f,
+			5.0f);
 	}
 	for (const std::unique_ptr<NormalBullet>& bullet :
 		playerManager.GetBoneBullets()) {
@@ -519,9 +562,21 @@ bool CombatEffectsPresentation::Update(
 			particleEffects.GetTrailBindingHandle("boneProjectile"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.20f,
-			1.45f,
-			7.0f);
+			0.14f,
+			0.82f,
+			4.8f);
+	}
+	for (const Vector3& shotPosition :
+		playerManager.GetRecentBoneShotPositions()) {
+		particleManager->Emit(
+			particleEffects.GetSparkBindingHandle("boneMuzzle"),
+			shotPosition,
+			5u);
+		particleManager->EmitTrailSegment(
+			particleEffects.GetTrailBindingHandle("boneProjectile"),
+			playerPosition + Vector3{ 0.0f, 0.66f, 0.0f },
+			shotPosition,
+			0.18f);
 	}
 	for (const std::unique_ptr<OrbitBullet>& bullet :
 		playerManager.GetOrbitBullets()) {
@@ -533,9 +588,9 @@ bool CombatEffectsPresentation::Update(
 			particleEffects.GetTrailBindingHandle("rockOrbit"),
 			bullet->GetPreviousPosition(),
 			bullet->GetPosition(),
-			0.18f,
-			1.05f,
-			5.0f);
+			0.13f,
+			0.78f,
+			3.8f);
 	}
 	const std::vector<SwordSlashEvent>& swordSlashes =
 		playerManager.GetRecentSwordSlashes();
@@ -644,6 +699,10 @@ bool CombatEffectsPresentation::Update(
 			particleEffects.GetSparkBindingHandle("playerDamage"),
 			playerPosition,
 			static_cast<uint32_t>((std::max)(0, tuning.playerDamageSparkCount)));
+		particleManager->Emit(
+			particleEffects.GetSmokeBindingHandle("playerDamageSmoke"),
+			playerPosition,
+			3u);
 		particleManager->Emit(
 			handles.ripple,
 			playerPosition,

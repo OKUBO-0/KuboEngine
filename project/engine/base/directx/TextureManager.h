@@ -3,6 +3,8 @@
 #include"externals/DirectXTex/DirectXTex.h"
 #include <d3d12.h>
 #include <wrl.h>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -60,6 +62,18 @@ public:
 	/// @return なし
 	void LoadTexture(const std::string& filePath);
 	void LoadTextures(const std::vector<std::string>& filePaths);
+	void LoadTextureFromMemory(
+		const std::string& key,
+		const void* data,
+		size_t size,
+		bool generateMipMaps = true);
+	void LoadTextureFromRGBA(
+		const std::string& key,
+		uint32_t width,
+		uint32_t height,
+		const void* rgbaData,
+		size_t rowPitch,
+		bool generateMipMaps = true);
 
 	/// @brief ファイルパスに対応するテクスチャの SRV インデックスを取得する
 	/// @param filePath 検索対象のファイルパス
@@ -78,6 +92,12 @@ public:
 private:
 	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
 	DirectX::ScratchImage LoadTextureImage(const std::string& filePath);
+	DirectX::ScratchImage LoadTextureImageFromMemory(const void* data, size_t size);
+	DirectX::ScratchImage CreateRgbaImage(
+		uint32_t width,
+		uint32_t height,
+		const void* rgbaData,
+		size_t rowPitch);
 	DirectX::ScratchImage CreateMipImages(DirectX::ScratchImage&& image);
 	void UploadTextureResource(TexturData& textureData, const DirectX::ScratchImage& mipImages);
 	Microsoft::WRL::ComPtr<ID3D12Resource> RecordTextureUpload(

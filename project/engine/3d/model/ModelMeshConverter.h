@@ -2,6 +2,7 @@
 
 #include "RenderingData.h"
 #include <cstdint>
+#include <string>
 
 struct aiMesh;
 
@@ -15,7 +16,11 @@ void AppendIndicesFromMesh(
 	uint32_t baseVertex,
 	ModelData& modelData,
 	SkippedFaceCallback skippedFaceCallback);
-void AppendSkinClusterDataFromMesh(const aiMesh& mesh, uint32_t baseVertex, ModelData& modelData);
+void AppendSkinClusterDataFromMesh(
+	const aiMesh& mesh,
+	uint32_t baseVertex,
+	ModelData& modelData,
+	const std::string& skinPrefix = {});
 void CalculateModelBounds(ModelData& modelData);
 
 }

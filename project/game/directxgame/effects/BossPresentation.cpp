@@ -14,15 +14,15 @@ namespace {
 constexpr float kEntranceDuration = 3.4f;
 constexpr float kEntranceApproachEnd = 0.32f;
 constexpr float kEntranceHoldEnd = 0.72f;
-constexpr float kEntranceCameraDistance = 32.0f;
-constexpr float kEntranceCameraHeight = 20.0f;
-constexpr float kEntranceFocusHeight = 5.0f;
-constexpr float kEntranceBossDropHeight = 14.0f;
-constexpr float kDefeatDuration = 1.45f;
-constexpr float kDefeatTransitionStartTime = 1.55f;
-constexpr float kDefeatCameraDistance = 30.0f;
-constexpr float kDefeatCameraHeight = 22.0f;
-constexpr float kDefeatCameraPitch = 0.68f;
+constexpr float kEntranceCameraDistance = 42.0f;
+constexpr float kEntranceCameraHeight = 22.0f;
+constexpr float kEntranceFocusHeight = 7.0f;
+constexpr float kEntranceBossDropHeight = 38.0f;
+constexpr float kDefeatDuration = 3.0f;
+constexpr float kDefeatTransitionStartTime = 3.35f;
+constexpr float kDefeatCameraDistance = 23.0f;
+constexpr float kDefeatCameraHeight = 10.5f;
+constexpr float kDefeatFocusHeight = 3.0f;
 
 float Clamp01(float value)
 {
@@ -82,8 +82,20 @@ void BossPresentation::StartEntrance(
 	enemyManager.GetBossPresentationPosition(entranceFocusPosition_);
 	entranceStartBossPosition_ = entranceFocusPosition_;
 	entranceStartBossPosition_.y += kEntranceBossDropHeight;
+	entranceCurrentBossPosition_ = entranceStartBossPosition_;
 	enemyManager.SetBossPresentationPosition(entranceStartBossPosition_);
-	CaptureCamera(entranceStartCameraPosition_, entranceStartCameraRotation_);
+	const Vector3 focusPosition{
+		entranceStartBossPosition_.x,
+		entranceStartBossPosition_.y + kEntranceFocusHeight,
+		entranceStartBossPosition_.z,
+	};
+	entranceStartCameraPosition_ = {
+		entranceFocusPosition_.x,
+		entranceFocusPosition_.y + kEntranceBossDropHeight + kEntranceCameraHeight + 8.0f,
+		entranceFocusPosition_.z - kEntranceCameraDistance - 18.0f,
+	};
+	entranceStartCameraRotation_ =
+		LookAtRotation(entranceStartCameraPosition_, focusPosition);
 	entranceReturnCameraPosition_ = entranceStartCameraPosition_;
 	entranceReturnCameraRotation_ = entranceStartCameraRotation_;
 	if (player) {
@@ -102,10 +114,12 @@ bool BossPresentation::UpdateEntrance(
 	entranceTimer_ += deltaTime;
 	const float entranceProgress = Clamp01(entranceTimer_ / kEntranceDuration);
 	const float bossDropProgress = SmoothStep(entranceProgress / kEntranceApproachEnd);
-	enemyManager.SetBossPresentationPosition(Lerp(
-		entranceStartBossPosition_, entranceFocusPosition_, bossDropProgress));
+	entranceCurrentBossPosition_ = Lerp(
+		entranceStartBossPosition_, entranceFocusPosition_, bossDropProgress);
+	enemyManager.SetBossPresentationPosition(entranceCurrentBossPosition_);
 
-	if (!entranceEffectEmitted_) {
+	if (!entranceEffectEmitted_ &&
+		entranceProgress >= kEntranceApproachEnd) {
 		const GameParticleEffects::Handles& handles =
 			particleEffects.GetHandles();
 		Engine::Particle::ParticleManager* particleManager =
@@ -200,13 +214,13 @@ void BossPresentation::UpdateEntranceCamera(float progress)
 	}
 	const float returnBlend = SmoothStep(returnProgress);
 	const Vector3 focusPosition{
-		entranceFocusPosition_.x,
-		entranceFocusPosition_.y + kEntranceFocusHeight,
-		entranceFocusPosition_.z,
+		entranceCurrentBossPosition_.x,
+		entranceCurrentBossPosition_.y + kEntranceFocusHeight,
+		entranceCurrentBossPosition_.z,
 	};
 	const Vector3 targetPosition{
 		entranceFocusPosition_.x,
-		entranceFocusPosition_.y + kEntranceCameraHeight,
+		entranceCurrentBossPosition_.y + kEntranceCameraHeight,
 		entranceFocusPosition_.z - kEntranceCameraDistance,
 	};
 	const Vector3 targetRotation = LookAtRotation(targetPosition, focusPosition);
@@ -247,7 +261,13 @@ void BossPresentation::UpdateDefeatCamera(float progress)
 	camera->SetTranslate(Lerp(defeatStartCameraPosition_, targetPosition, eased));
 	camera->SetRotate(Lerp(
 		defeatStartCameraRotation_,
-		Vector3{ kDefeatCameraPitch, 0.0f, 0.0f },
+		LookAtRotation(
+			targetPosition,
+			{
+				defeatFocusPosition_.x,
+				defeatFocusPosition_.y + kDefeatFocusHeight,
+				defeatFocusPosition_.z,
+			}),
 		eased));
 	camera->SetFarClip(500.0f);
 	camera->Update();

@@ -12,6 +12,7 @@
 #include "CurtainTransition.h"
 #include "UILabel.h"
 #include "UIPanel.h"
+#include "BitmapText.h"
 #include "GridPlane.h"
 #include <array>
 #include <cstdint>
@@ -66,6 +67,45 @@ private:
 		float cameraPitch = 0.48f;
 		float cameraYaw = 0.0f;
 		float cameraOrbitSpeed = 0.12f;
+		Vector2 selectBackgroundPosition{ 0.0f, 0.0f };
+		Vector2 selectBackgroundSize{ 1280.0f, 720.0f };
+		Vector2 selectTitleTextPosition{ 72.0f, 98.0f };
+		float selectTitleTextScale = 0.36f;
+		Vector2 selectIconBasePosition{ 52.0f, 142.0f };
+		Vector2 selectIconSize{ 92.0f, 92.0f };
+		Vector2 selectIconHitboxSize{ 104.0f, 104.0f };
+		float selectIconStepX = 103.0f;
+		float selectIconStepY = 104.0f;
+		Vector3 selectIconModelBasePosition{ -24.0f, 1.4f, 8.0f };
+		Vector3 selectIconModelStep{ 5.0f, 0.0f, 0.0f };
+		Vector3 selectIconModelScale{ 0.0048f, 0.0048f, 0.0048f };
+		Vector3 selectIconModelRotation{ 0.0f, 0.34f, 0.0f };
+		Vector3 selectIconWeaponOffset{ 1.0f, 2.4f, 0.2f };
+		Vector3 selectIconWeaponScale{ 0.01f, 0.01f, 0.01f };
+		Vector3 selectIconWeaponRotation{ 0.0f, 0.34f, 0.0f };
+		Vector2 selectDetailFacePosition{ 940.0f, 165.0f };
+		Vector2 selectDetailFaceSize{ 92.0f, 92.0f };
+		Vector2 selectWeaponIconPosition{ 940.0f, 292.0f };
+		Vector2 selectWeaponIconSize{ 112.0f, 112.0f };
+		Vector2 selectWeaponDescriptionPosition{ 1064.0f, 310.0f };
+		float selectWeaponDescriptionScale = 0.18f;
+		float selectWeaponDescriptionMaxWidth = 150.0f;
+		Vector2 selectActionButtonPosition{ 1014.0f, 528.0f };
+		Vector2 selectActionButtonSize{ 154.0f, 48.0f };
+		Vector2 selectActionTextOffset{ 38.0f, 8.0f };
+		float selectActionTextScale = 0.28f;
+		Vector3 selectModelPosition{ 4.0f, 2.0f, 8.0f };
+		Vector3 selectModelScale{ 0.019f, 0.019f, 0.019f };
+		Vector3 selectModelRotation{ 0.0f, -2.618f, 0.0f };
+		Vector3 selectModelWeaponOffset{ 2.8f, 2.2f, 0.3f };
+		Vector3 selectModelWeaponScale{ 0.019f, 0.019f, 0.019f };
+		Vector3 selectModelWeaponRotation{ 0.0f, 0.0f, 0.0f };
+		Vector3 selectDetailModelPosition{ 20.8f, 2.2f, 8.0f };
+		Vector3 selectDetailModelScale{ 0.007f, 0.007f, 0.007f };
+		Vector3 selectDetailModelRotation{ 0.0f, 0.34f, 0.0f };
+		Vector3 selectDetailWeaponOffset{ 1.2f, 1.0f, 0.2f };
+		Vector3 selectDetailWeaponScale{ 0.0105f, 0.0105f, 0.0105f };
+		Vector3 selectDetailWeaponRotation{ 0.0f, 0.34f, 0.0f };
 		bool debugEnabled = false;
 	};
 
@@ -74,6 +114,7 @@ private:
 		bool titleView = true;
 		bool statisticsView = true;
 		bool titleSettings = true;
+		bool titleModelSettings = false;
 		bool offscreenSettings = false;
 		bool lightSettings = false;
 		bool audio = false;
@@ -88,6 +129,7 @@ private:
 	void SaveLayout() const;
 	void UpdateCurtain();
 	void UpdateNavigation();
+	void UpdateStartCharacterSelectionInput();
 	void UpdatePermanentUpgradeInput();
 	bool TryPurchasePermanentUpgrade(int32_t index);
 	void UpdateAudio();
@@ -100,9 +142,14 @@ private:
 	void UpdateCharacterSelectionInput();
 	bool TryActivateCharacter(int32_t index);
 	void UpdateCharacterSelectionDisplay();
+	void UpdateStartCharacterSelectionDisplay();
 	void DrawCoinDisplay();
 	void DrawPermanentUpgradeDisplay();
 	void DrawCharacterSelectionDisplay();
+	void DrawStartCharacterSelectionDisplay();
+	void ApplyStartCharacterSelectionLayout();
+	void UpdateStartCharacterModel();
+	void UpdateStartCharacterPreviewModels();
 	void UpdateShopLevelDisplay();
 	void DrawShopDisplay();
 
@@ -114,6 +161,10 @@ private:
 	UILabel titleSprite_;
 	UILabel cursorSprite_;
 	UILabel shopSprite_;
+	UILabel selectSprite_;
+	BitmapText selectTitleText_;
+	BitmapText selectActionText_;
+	BitmapText selectedWeaponDescriptionText_;
 	TextureHandle coinDigitTexture_ = 0;
 	static constexpr int32_t kCoinDigitCount = 6;
 	static constexpr int32_t kPermanentUpgradeCount = 5;
@@ -130,6 +181,11 @@ private:
 	std::array<std::array<UIPanel, kShopMaxLevelSlots>, kPermanentUpgradeCount> shopLevelSquares_;
 	std::array<UIPanel, kPermanentUpgradeCount> shopHighlights_;
 	std::array<UILabel, kCharacterCount> characterIcons_;
+	std::array<UILabel, 3> startCharacterIcons_;
+	std::array<UIPanel, 3> startCharacterHighlights_;
+	UILabel selectedCharacterFaceIcon_;
+	UILabel selectedWeaponIcon_;
+	UIPanel selectActionButton_;
 	std::array<
 		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCostDigitCount>,
 		kCharacterCount> characterCostDigits_;
@@ -137,6 +193,12 @@ private:
 
 	std::unique_ptr<Engine::CameraSystem::Camera> titleCamera_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> titleObject_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> startCharacterModel_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> startCharacterWeaponModel_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> startCharacterDetailModel_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> startCharacterDetailWeaponModel_;
+	std::array<std::unique_ptr<Engine::Graphics3D::Object3D>, 3> startCharacterPreviewModels_;
+	std::array<std::unique_ptr<Engine::Graphics3D::Object3D>, 3> startCharacterPreviewWeaponModels_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> skyDomeObject_;
 	std::unique_ptr<GridPlane> gridPlane_;
 	bool titleDebugDrawEnabled_ = true;
@@ -149,10 +211,15 @@ private:
 	int32_t menuIndex_ = 0;
 	int32_t shopItemIndex_ = 0;
 	int32_t characterItemIndex_ = 0;
+	int32_t startCharacterSelectedIndex_ = 0;
+	int32_t startCharacterAppliedSelectedIndex_ = -1;
+	int32_t startCharacterInputDelayFrames_ = 0;
+	bool startCharacterActionArmed_ = false;
 	Vector2 cursorPosition_{};
 	bool curtainStarted_ = false;
 	bool curtainOpening_ = true;
 	bool showingUpgradeScreen_ = false;
+	bool awaitingCharacterSelect_ = false;
 	bool shopCharacterSelectionActive_ = false;
 	bool finished_ = false;
 	float animationTime_ = 0.0f;

@@ -256,6 +256,9 @@ public:
 		const std::string& groupName) const;
 	void SetGlobalEmissionScale(float emissionScale);
 	float GetGlobalEmissionScale() const { return globalEmissionScale_; }
+	void SetMaxTotalActiveParticleCount(size_t maxCount);
+	size_t GetMaxTotalActiveParticleCount() const { return maxTotalActiveParticleCount_; }
+	uint32_t GetGlobalDroppedLastFrame() const { return globalDroppedLastFrame_; }
 
 	/// @brief 指定グループのデバッグ表示名を設定する
 	/// @param groupName 対象グループ名
@@ -324,6 +327,9 @@ private:
 	uint32_t lastDrawCallCount_ = 0;
 	uint32_t lastDrawnInstanceCount_ = 0;
 	float globalEmissionScale_ = 1.0f;
+	size_t maxTotalActiveParticleCount_ = 2800;
+	uint32_t globalDroppedThisFrame_ = 0;
+	uint32_t globalDroppedLastFrame_ = 0;
 
 	std::mt19937 randomEngine;
 

@@ -49,6 +49,12 @@ public:
 		Vector3 position{ 0.0f, 1.02f, 1.58f };
 		Vector3 rotation{ 0.0f, -1.57079632679f, 0.0f };
 	};
+	struct HeldWeaponVisualTuning {
+		float scale = 1.0f;
+		Vector3 position{ 0.0f, 1.02f, 1.58f };
+		Vector3 rotation{ 0.0f, 0.0f, 0.0f };
+		bool rotateWithPlayer = true;
+	};
 
 	// 武器ごとの最大レベルと実体数上限。
 	// レベルアップ候補生成、デバッグ強化、ソフトキャップ表示で同じ値を参照する。
@@ -137,9 +143,21 @@ public:
 	{
 		return explosiveBullets_;
 	}
+	const std::vector<Vector3>& GetRecentNormalBulletShotPositions() const
+	{
+		return recentNormalBulletShotPositions_;
+	}
+	const std::vector<Vector3>& GetRecentExplosiveBulletShotPositions() const
+	{
+		return recentExplosiveBulletShotPositions_;
+	}
 	const auto& GetBoneBullets() const { return boneWeapon_.GetBullets(); }
 	const auto& GetHandgunBullets() const { return handgunWeapon_.GetBullets(); }
 	const auto& GetBoomerangBullets() const { return boomerangWeapon_.GetBullets(); }
+	const std::vector<Vector3>& GetRecentBoneShotPositions() const
+	{
+		return boneWeapon_.GetRecentShotPositions();
+	}
 	const std::vector<Vector3>& GetRecentHandgunShotPositions() const
 	{
 		return handgunWeapon_.GetRecentShotPositions();
@@ -147,6 +165,10 @@ public:
 	const std::vector<Vector3>& GetRecentHandgunReloadPositions() const
 	{
 		return handgunWeapon_.GetRecentReloadPositions();
+	}
+	const std::vector<Vector3>& GetRecentBoomerangShotPositions() const
+	{
+		return boomerangWeapon_.GetRecentShotPositions();
 	}
 	float GetLightningEffectTimer() const
 	{
@@ -224,19 +246,19 @@ public:
 	int32_t GetNormalBulletDamage(const PlayerStats& stats) const
 	{
 		return stats.Resolve(
-			{ 10.0f + normalBulletDamageBonus_ },
+			{ 9.0f + normalBulletDamageBonus_ },
 			GetWeaponStatApplicability(WeaponType::BowArrow)).damage;
 	}
 	int32_t GetOrbitBulletDamage(const PlayerStats& stats) const
 	{
 		return stats.Resolve(
-			{ 10.0f + orbitDamageBonus_ },
+			{ 12.0f + orbitDamageBonus_ },
 			GetWeaponStatApplicability(WeaponType::Rock)).damage;
 	}
 	int32_t GetLightningDamage(const PlayerStats& stats) const
 	{
 		return stats.Resolve(
-			{ 10.0f + lightningDamageBonus_ },
+			{ 7.0f + lightningDamageBonus_ },
 			GetWeaponStatApplicability(WeaponType::ThunderStaff)).damage;
 	}
 	int32_t GetExplosiveBulletDamage(const PlayerStats& stats) const
@@ -252,13 +274,13 @@ public:
 	int32_t GetSwordDamage(const PlayerStats& stats) const
 	{
 		return stats.Resolve(
-			{ 14.0f + swordDamageBonus_ },
+			{ 11.0f + swordDamageBonus_ },
 			GetWeaponStatApplicability(WeaponType::Sword)).damage;
 	}
 	int32_t GetAuraDamage(const PlayerStats& stats) const
 	{
 		return stats.Resolve(
-			{ 8.0f + auraDamageBonus_ },
+			{ 4.0f + auraDamageBonus_ },
 			GetWeaponStatApplicability(WeaponType::Aura)).damage;
 	}
 	float GetAuraRadius(const PlayerStats& stats) const
@@ -323,6 +345,7 @@ private:
 	void UpdateOrbitBullets(float deltaTime, Player* player, const PlayerStats& stats);
 	void UpdateLightning(
 		float deltaTime,
+		Player* player,
 		EnemyManager* enemyManager,
 		const PlayerStats& stats);
 	void UpdateExplosiveBullets(
@@ -346,8 +369,13 @@ private:
 	void UpdateBoomerang(float deltaTime, Player* player,
 		EnemyManager* enemyManager, const PlayerStats& stats);
 	bool ShouldDrawHeldWeapon(WeaponType type) const;
-	void EnsureBowModel();
-	void UpdateBowModel(const Player& player);
+	void EnsureHeldWeaponModel(
+		WeaponType type,
+		std::unique_ptr<Engine::Graphics3D::Object3D>& object);
+	void UpdateHeldWeaponModel(
+		Engine::Graphics3D::Object3D& object,
+		const HeldWeaponVisualTuning& tuning,
+		const Player& player);
 	Vector3 ResolveAimDirection(
 		const Player& player,
 		const EnemyManager* enemyManager) const;
@@ -399,12 +427,13 @@ private:
 	int32_t normalBulletAmount_ = 1;
 	int32_t normalBulletDamageBonus_ = 0;
 	int32_t normalBulletPierceCount_ = 1;
-	float normalBulletSpeed_ = 1.0f;
+	float normalBulletSpeed_ = 1.5f;
 	float normalBulletRange_ = 30.0f;
 	float normalBulletScale_ = 1.0f;
 	size_t peakNormalBulletCount_ = 0;
 	size_t normalBulletPruneCount_ = 0;
 	float normalBulletMinInterval_ = 0.18f;
+	std::vector<Vector3> recentNormalBulletShotPositions_;
 
 	// 周回弾。プレイヤー周辺に弾を再配置するため、レベル変更時に Rebuild する。
 	std::vector<std::unique_ptr<OrbitBullet>> orbitBullets_;
@@ -427,6 +456,7 @@ private:
 	int32_t lightningStrikeCount_ = 1;
 	int32_t lightningDamageBonus_ = 0;
 	float lightningRadius_ = 6.0f;
+	float lightningImpactRadius_ = 1.45f;
 	float lightningInterval_ = 2.4f;
 	float lightningTimer_ = 0.0f;
 	std::vector<Vector3> lightningEffectTargets_;
@@ -440,13 +470,14 @@ private:
 	int32_t explosiveBulletDamageBonus_ = 4;
 	float explosiveBulletInterval_ = 2.0f;
 	float explosiveBulletTimer_ = 0.0f;
-	float explosiveBulletSpeed_ = 0.82f;
+	float explosiveBulletSpeed_ = 0.5f;
 	float explosiveBulletRange_ = 28.0f;
 	float explosiveBulletRadius_ = 4.2f;
 	int32_t explosiveBulletCount_ = 1;
 	int32_t explosiveBurstShotsRemaining_ = 0;
 	float explosiveBurstTimer_ = 0.0f;
 	float explosiveBurstInterval_ = 0.14f;
+	std::vector<Vector3> recentExplosiveBulletShotPositions_;
 
 	// 剣。弾を生成せず、前方扇形の即時ダメージと斬撃イベントを発行する。
 	bool hasSword_ = false;
@@ -457,14 +488,14 @@ private:
 	float swordRadius_ = 7.0f;
 	float swordHalfAngle_ = 0.9f;
 	int32_t swordSlashCount_ = 1;
-	float swordKnockbackStrength_ = 0.8f;
+	float swordKnockbackStrength_ = 1.3f;
 	std::vector<SwordSlashEvent> recentSwordSlashes_;
 
 	// オーラ。プレイヤー中心の周期パルスとして扱い、演出は auraPulseThisFrame_ を参照する。
 	bool hasAura_ = false;
 	int32_t auraLevel_ = 0;
 	int32_t auraDamageBonus_ = 0;
-	float auraInterval_ = 0.65f;
+	float auraInterval_ = 0.32f;
 	float auraTimer_ = 0.0f;
 	float auraRadius_ = 6.0f;
 	bool auraPulseThisFrame_ = false;
@@ -500,8 +531,26 @@ private:
 	HandgunWeapon handgunWeapon_{};
 	BoomerangWeapon boomerangWeapon_{};
 	std::unique_ptr<Engine::Graphics3D::Object3D> bowObject_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> swordObject_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> handgunObject_;
 	CharacterId characterId_{};
-	HeldBowVisualTuning heldBowVisual_{};
+	HeldWeaponVisualTuning heldBowVisual_{
+		260.0f,
+		{ 0.0f, 1.02f, 1.58f },
+		{ 0.0f, -1.57079632679f, 0.0f },
+	};
+	HeldWeaponVisualTuning heldSwordVisual_{
+		145.0f,
+		{ 0.62f, 1.12f, 1.50f },
+		{ 0.0f, -2.32079632679f, 0.38f },
+		false,
+	};
+	HeldWeaponVisualTuning heldHandgunVisual_{
+		125.0f,
+		{ 0.78f, 1.08f, 1.72f },
+		{ 0.0f, 1.57079632679f, -1.57079632679f },
+		false,
+	};
 
 	std::unordered_map<std::string, float> upgradeSettings_;
 };

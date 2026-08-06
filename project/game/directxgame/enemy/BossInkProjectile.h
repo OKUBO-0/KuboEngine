@@ -16,6 +16,10 @@ public:
 	void Initialize(const Vector3& position, const Vector3& direction);
 	void Update(float deltaTime);
 	void Draw() const;
+	Engine::Graphics3D::Object3D* GetRenderObject() const
+	{
+		return active_ ? object_.get() : nullptr;
+	}
 	const Vector3& GetPosition() const { return position_; }
 	float GetCollisionRadius() const { return 1.1f; }
 	bool IsActive() const { return active_; }

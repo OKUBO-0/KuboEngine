@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BitmapText.h"
+#include "UIPanel.h"
 #include "Sprite.h"
 #include "Vector2.h"
 #include "Vector3.h"
@@ -61,6 +62,8 @@ private:
 	TextureHandle orbTexture_ = 0;
 	TextureHandle backgroundTexture_ = 0;
 	std::unique_ptr<Engine::Graphics2D::Sprite> backgroundSprite_;
+	UIPanel backgroundPanel_;
+	std::array<UIPanel, 4> backgroundBorders_;
 	std::unique_ptr<Engine::Graphics2D::Sprite> playerIconSprite_;
 	std::vector<std::unique_ptr<Engine::Graphics2D::Sprite>> enemyIconSprites_;
 	std::vector<std::unique_ptr<Engine::Graphics2D::Sprite>> orbIconSprites_;

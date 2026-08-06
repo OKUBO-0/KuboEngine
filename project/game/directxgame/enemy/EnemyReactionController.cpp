@@ -66,7 +66,10 @@ void EnemyReactionController::ApplyHit(
 
 	if (boss_) {
 		const int32_t nextPhase =
-			hpRatio <= 0.33f ? 3 : (hpRatio <= 0.66f ? 2 : 1);
+			hpRatio <= 0.20f ? 5 :
+			(hpRatio <= 0.40f ? 4 :
+			(hpRatio <= 0.60f ? 3 :
+			(hpRatio <= 0.80f ? 2 : 1)));
 		if (nextPhase != bossPhase_) {
 			bossPhase_ = nextPhase;
 			bossPhaseChanged_ = true;

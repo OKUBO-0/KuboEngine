@@ -88,7 +88,7 @@ void OrbitBullet::Update(const Vector3& center, float deltaTime)
 void OrbitBullet::Draw()
 {
 	if (active_ && object_) {
-		object_->Draw();
+		Engine::Graphics3D::Object3D::SubmitForDraw(object_.get());
 	}
 }
 
@@ -137,13 +137,13 @@ void OrbitBullet::ApplyTransform()
 		spinAngle_,
 		});
 	object_->SetScale({
-		scale_ * 135.0f * (1.06f + wobble),
-		scale_ * 135.0f * (1.02f - wobble * 0.25f),
-		scale_ * 135.0f * (1.06f + wobble * 0.55f),
+		scale_ * 150.0f * (1.06f + wobble),
+		scale_ * 150.0f * (1.02f - wobble * 0.25f),
+		scale_ * 150.0f * (1.06f + wobble * 0.55f),
 		});
 	object_->SetTranslate({
 		position_.x,
-		position_.y + (0.52f * scale_),
+		position_.y + 0.88f + (0.38f * scale_),
 		position_.z,
 		});
 }

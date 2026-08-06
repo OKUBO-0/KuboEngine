@@ -7,10 +7,10 @@
 namespace DirectXGame {
 
 enum class CharacterId : int32_t {
-	Octopus = 0,
-	Flame = 1,
-	Blade = 2,
-	Storm = 3,
+	Default = 0,
+	Bow = 1,
+	Sword = 2,
+	Handgun = 3,
 };
 
 struct CharacterDefinition {
@@ -187,7 +187,7 @@ private:
 	int32_t runCoins_ = 0;
 	int32_t ownedCoins_ = 0;
 	bool runCoinsCommitted_ = false;
-	CharacterId selectedCharacterId_ = CharacterId::Octopus;
+	CharacterId selectedCharacterId_ = CharacterId::Default;
 	int32_t unlockedCharacterMask_ = 0;
 	int32_t permanentMaxHPLevel_ = 0;
 	int32_t permanentAttackLevel_ = 0;

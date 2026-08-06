@@ -11,6 +11,7 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <limits>
 #include <sstream>
+#include <vector>
 #include <assert.h>
 #include "TextureManager.h"
 #include "SrvManager.h"
@@ -36,6 +38,57 @@ float ResolveAnimationTicksPerSecond(const aiAnimation& animation)
     return std::isfinite(ticksPerSecond) && ticksPerSecond > 0.0f
         ? ticksPerSecond
         : kDefaultAnimationTicksPerSecond;
+}
+
+std::string ToLowerAscii(std::string value)
+{
+    for (char& c : value) {
+        c = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(c)));
+    }
+    return value;
+}
+
+std::string ExtractAnimationLeafName(const std::string& animationName)
+{
+    const size_t separator = animationName.find_last_of('|');
+    if (separator == std::string::npos || separator + 1 >= animationName.size()) {
+        return animationName;
+    }
+    return animationName.substr(separator + 1);
+}
+
+std::string ResolveAnimationAlias(const std::string& animationName)
+{
+    const std::string leaf = ToLowerAscii(ExtractAnimationLeafName(animationName));
+	if (leaf == "idle") {
+		return "idle";
+	}
+	if (leaf == "idle_hold") {
+		return "idle_hold";
+	}
+	if (leaf == "walk") {
+		return "walk";
+	}
+	if (leaf == "walk_hold") {
+		return "walk_hold";
+	}
+    if (leaf == "run") {
+        return "run";
+    }
+    if (leaf == "jump") {
+        return "jump";
+    }
+    if (leaf == "attack" || leaf == "punch" || leaf == "headbutt") {
+        return "attack";
+    }
+    if (leaf == "hitreact" || leaf == "hitrecieve" || leaf == "hitreceive") {
+        return "hit";
+    }
+    if (leaf == "death") {
+        return "death";
+    }
+    return {};
 }
 
 void FailModelLoad(const std::string& operation, const std::string& path, const std::string& detail)
@@ -67,6 +120,163 @@ void LogMeshFallback(const std::string& path, uint32_t meshIndex, const char* de
         << " path=\"" << path
         << "\" meshIndex=" << meshIndex << "\n";
     OutputDebugStringA(message.str().c_str());
+}
+
+bool ShouldSkipMeshForCurrentRenderer(
+    const std::string& filename,
+    const aiMesh& mesh)
+{
+    (void)filename;
+    (void)mesh;
+    return false;
+}
+
+std::string ExtractSkinPrefix(const std::string& jointName)
+{
+    const size_t separator = jointName.find("::");
+    if (separator == std::string::npos) {
+        return {};
+    }
+    return jointName.substr(0, separator);
+}
+
+bool HasExistingSkinJointConflict(
+    const aiMesh& mesh,
+    const ModelData& modelData)
+{
+    for (uint32_t boneIndex = 0; boneIndex < mesh.mNumBones; ++boneIndex) {
+        const std::string jointName = mesh.mBones[boneIndex]->mName.C_Str();
+        if (modelData.skinClusterData.contains(jointName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string MakeSkinPrefix(const aiMesh& mesh, uint32_t meshIndex)
+{
+    std::string prefix = mesh.mName.C_Str();
+    if (prefix.empty()) {
+        prefix = "mesh" + std::to_string(meshIndex);
+    }
+    return prefix;
+}
+
+void AddSkinJointAliases(
+    Skeleton& skeleton,
+    const ModelData& modelData)
+{
+    std::vector<std::string> prefixes;
+    for (const auto& jointWeight : modelData.skinClusterData) {
+        const std::string prefix = ExtractSkinPrefix(jointWeight.first);
+        if (!prefix.empty() &&
+            std::find(prefixes.begin(), prefixes.end(), prefix) == prefixes.end()) {
+            prefixes.push_back(prefix);
+        }
+    }
+    if (prefixes.empty()) {
+        return;
+    }
+
+    const size_t originalJointCount = skeleton.joints.size();
+    for (const std::string& prefix : prefixes) {
+        std::vector<int32_t> remap(originalJointCount, -1);
+        for (size_t sourceIndex = 0; sourceIndex < originalJointCount; ++sourceIndex) {
+            Joint duplicate = skeleton.joints[sourceIndex];
+            duplicate.name = prefix + "::" + duplicate.name;
+            duplicate.index = static_cast<int32_t>(skeleton.joints.size());
+            duplicate.children.clear();
+            if (duplicate.parent.has_value()) {
+                duplicate.parent = remap[static_cast<size_t>(*duplicate.parent)];
+            }
+            remap[sourceIndex] = duplicate.index;
+            skeleton.jointMap[duplicate.name] = duplicate.index;
+            skeleton.joints.push_back(std::move(duplicate));
+        }
+        for (size_t sourceIndex = 0; sourceIndex < originalJointCount; ++sourceIndex) {
+            const int32_t duplicateIndex = remap[sourceIndex];
+            for (int32_t childIndex : skeleton.joints[sourceIndex].children) {
+                if (childIndex >= 0 &&
+                    static_cast<size_t>(childIndex) < originalJointCount) {
+                    skeleton.joints[duplicateIndex].children.push_back(
+                        remap[static_cast<size_t>(childIndex)]);
+                }
+            }
+        }
+    }
+}
+
+bool TryParseEmbeddedTextureIndex(const std::string& texturePath, uint32_t& textureIndex)
+{
+    if (texturePath.size() < 2 || texturePath.front() != '*') {
+        return false;
+    }
+
+    char* end = nullptr;
+    const unsigned long parsedIndex = std::strtoul(texturePath.c_str() + 1, &end, 10);
+    if (end == texturePath.c_str() + 1 || *end != '\0') {
+        return false;
+    }
+
+    textureIndex = static_cast<uint32_t>(parsedIndex);
+    return true;
+}
+
+std::string EmbeddedTextureKey(
+    const std::string& directoryPath,
+    const std::string& filename,
+    const std::string& texturePath)
+{
+    std::filesystem::path keyPath(directoryPath);
+    keyPath /= filename;
+    return keyPath.generic_string() + "#embedded_texture_" + texturePath.substr(1);
+}
+
+void LoadEmbeddedTexture(
+    const aiScene* scene,
+    uint32_t textureIndex,
+    const std::string& textureKey)
+{
+    if (!scene || textureIndex >= scene->mNumTextures) {
+        return;
+    }
+
+    const aiTexture* texture = scene->mTextures[textureIndex];
+    if (!texture) {
+        return;
+    }
+
+    Engine::Base::TextureManager* textureManager =
+        Engine::Base::TextureManager::GetInstance();
+    if (texture->mHeight == 0) {
+        textureManager->LoadTextureFromMemory(
+            textureKey,
+            texture->pcData,
+            static_cast<size_t>(texture->mWidth));
+        return;
+    }
+
+    std::vector<uint8_t> rgbaPixels(
+        static_cast<size_t>(texture->mWidth) *
+        static_cast<size_t>(texture->mHeight) * 4ull);
+    for (uint32_t y = 0; y < texture->mHeight; ++y) {
+        for (uint32_t x = 0; x < texture->mWidth; ++x) {
+            const aiTexel& source =
+                texture->pcData[static_cast<size_t>(y) * texture->mWidth + x];
+            uint8_t* destination =
+                &rgbaPixels[(static_cast<size_t>(y) * texture->mWidth + x) * 4ull];
+            destination[0] = source.r;
+            destination[1] = source.g;
+            destination[2] = source.b;
+            destination[3] = source.a;
+        }
+    }
+    textureManager->LoadTextureFromRGBA(
+        textureKey,
+        texture->mWidth,
+        texture->mHeight,
+        rgbaPixels.data(),
+        static_cast<size_t>(texture->mWidth) * 4ull);
 }
 
 }
@@ -111,8 +321,9 @@ void Model::LoadRuntimeAssets(const std::string& directorypath, const std::strin
 {
 	// モデルデータ・アニメーション・スケルトン・スキンクラスターを読み込み/生成
 	modelData = LoadModelFile(directorypath, filename);
-	animation = LoadAnimationFile(directorypath, filename);
+	LoadEmbeddedAnimationClips(directorypath, filename);
 	skeleton = CreateSkeleton(modelData.rootNode);
+    AddSkinJointAliases(skeleton, modelData);
 	skinCluster = CreateSkinCluster();
 }
 
@@ -177,6 +388,14 @@ void Model::Draw(
 	D3D12_GPU_VIRTUAL_ADDRESS materialAddress,
 	const Material* materialOverride)
 {
+	DrawInstanced(1, materialAddress, materialOverride);
+}
+
+void Model::DrawInstanced(
+	UINT instanceCount,
+	D3D12_GPU_VIRTUAL_ADDRESS materialAddress,
+	const Material* materialOverride)
+{
 	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
 		modelCommon_->GetDxCommon();
 	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
@@ -235,7 +454,7 @@ void Model::Draw(
 					submeshMaterial.textureFilePath));
 			commandList->DrawIndexedInstanced(
 				submesh.indexCount,
-				1,
+				instanceCount,
 				submesh.startIndex,
 				0,
 				0);
@@ -249,7 +468,7 @@ void Model::Draw(
 	// インデックス付き描画（インスタンス数 = 1）
 	commandList->DrawIndexedInstanced(
 		static_cast<UINT>(modelData.indices.size()), // インデックス数
-		1,  // インスタンス数
+		instanceCount,  // インスタンス数
 		0,  // 開始インデックス
 		0,  // 基準頂点
 		0   // 開始インスタンス
@@ -258,6 +477,11 @@ void Model::Draw(
 
 void Model::DrawGeometry()
 {
+	DrawGeometryInstanced(1);
+}
+
+void Model::DrawGeometryInstanced(UINT instanceCount)
+{
 	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
 		modelCommon_->GetDxCommon();
 	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
@@ -265,7 +489,27 @@ void Model::DrawGeometry()
 	commandList->IASetVertexBuffers(0, 1, &vertexView);
 	commandList->IASetIndexBuffer(&indexBufferView);
 	commandList->DrawIndexedInstanced(
-		static_cast<UINT>(modelData.indices.size()), 1, 0, 0, 0);
+		static_cast<UINT>(modelData.indices.size()), instanceCount, 0, 0, 0);
+}
+
+void Model::DrawSkinnedGeometry()
+{
+	DrawSkinnedGeometryInstanced(1);
+}
+
+void Model::DrawSkinnedGeometryInstanced(UINT instanceCount)
+{
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+	D3D12_VERTEX_BUFFER_VIEW vbvs[2] = {
+		vertexBufferView,
+		skinCluster.influenceBufferView,
+	};
+	commandList->IASetVertexBuffers(0, 2, vbvs);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->DrawIndexedInstanced(
+		static_cast<UINT>(modelData.indices.size()), instanceCount, 0, 0, 0);
 }
 
 Node Model::ReadNode(aiNode* node)
@@ -278,7 +522,7 @@ Node Model::ReadNode(aiNode* node)
 	node->mTransformation.Decompose(scale, rotation, translate);
 	result.transform.scale = { scale.x, scale.y, scale.z };
 	result.transform.rotate = { rotation.x, -rotation.y, -rotation.z, rotation.w };
-	result.transform.translate = { translate.x, translate.y, translate.z };
+	result.transform.translate = { -translate.x, translate.y, translate.z };
 
 	// ローカル行列生成
 	result.localMatrix = MyMath::MakeAffineMatrix(result.transform.scale, result.transform.rotate, result.transform.translate);
@@ -368,6 +612,9 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
     size_t maximumIndexCount = 0;
     for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
         const aiMesh* mesh = scene->mMeshes[meshIndex];
+        if (ShouldSkipMeshForCurrentRenderer(filename, *mesh)) {
+            continue;
+        }
         totalVertexCount += mesh->mNumVertices;
         maximumIndexCount += static_cast<size_t>(mesh->mNumFaces) * 3;
     }
@@ -383,6 +630,9 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
     // メッシュごとの処理
     for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
         aiMesh* mesh = scene->mMeshes[meshIndex];
+        if (ShouldSkipMeshForCurrentRenderer(filename, *mesh)) {
+            continue;
+        }
         if (!mesh->HasNormals()) {
             LogMeshFallback(path, meshIndex, "mesh has no normals; using fallback normal");
         }
@@ -396,7 +646,13 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
             static_cast<uint32_t>(modelData.indices.size());
         LoadVerticesFromMesh(mesh, modelData);
         LoadIndicesFromMesh(mesh, baseVertex, modelData);
-        LoadSkinClusterDataFromMesh(mesh, baseVertex, modelData);
+        const bool needsSkinPrefix =
+            mesh->HasBones() && HasExistingSkinJointConflict(*mesh, modelData);
+        LoadSkinClusterDataFromMesh(
+            mesh,
+            baseVertex,
+            modelData,
+            needsSkinPrefix ? MakeSkinPrefix(*mesh, meshIndex) : std::string{});
         const uint32_t indexCount =
             static_cast<uint32_t>(modelData.indices.size()) - startIndex;
         if (indexCount > 0) {
@@ -411,7 +667,7 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
 
     // 先頭のディフューズテクスチャをモデル側の代表マテリアルとして採用する
     // マテリアル解析
-    LoadMaterialFromScene(scene, directoryPath, modelData);
+    LoadMaterialFromScene(scene, directoryPath, filename, modelData);
 
     // ルートノード読み込み
     modelData.rootNode = ReadNode(scene->mRootNode);
@@ -436,6 +692,48 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
 
     // 現状は最初の 1 クリップだけを読み込んで再生対象にしている
     aiAnimation* animationAssimp = scene->mAnimations[0]; // 最初のアニメーションのみ採用
+    animation = BuildAnimationClip(animationAssimp);
+    return animation;
+}
+
+void Model::LoadEmbeddedAnimationClips(
+    const std::string& directoryPath,
+    const std::string& filename)
+{
+    Assimp::Importer importer;
+    const std::string filepath = ResolveModelAssetPath(directoryPath, filename);
+    const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
+    if (scene == nullptr || scene->mNumAnimations == 0) {
+        return;
+    }
+
+    for (uint32_t animationIndex = 0; animationIndex < scene->mNumAnimations; ++animationIndex) {
+        aiAnimation* animationAssimp = scene->mAnimations[animationIndex];
+        if (!animationAssimp) {
+            continue;
+        }
+        Animation clip = BuildAnimationClip(animationAssimp);
+        if (clip.nodeAnimations.empty()) {
+            continue;
+        }
+        const std::string fullName = animationAssimp->mName.C_Str();
+        const std::string alias = ResolveAnimationAlias(fullName);
+        if (!alias.empty()) {
+            animationClips_[alias] = clip;
+        }
+        if (animationIndex == 0) {
+            animation = clip;
+            animationClips_["default"] = clip;
+        }
+    }
+}
+
+Animation Model::BuildAnimationClip(const aiAnimation* animationAssimp)
+{
+    Animation animation;
+    if (!animationAssimp) {
+        return animation;
+    }
     const float ticksPerSecond =
         ResolveAnimationTicksPerSecond(*animationAssimp);
     const float duration =
@@ -447,6 +745,61 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
         : 0.0f;
     LoadAnimationChannels(animationAssimp, animation);
     return animation;
+}
+
+const Animation* Model::FindAnimationClip(const std::string& clipName) const
+{
+    const auto it = animationClips_.find(clipName);
+    if (it != animationClips_.end()) {
+        return &it->second;
+    }
+    if (clipName == "default" && !animation.nodeAnimations.empty()) {
+        return &animation;
+    }
+    return nullptr;
+}
+
+bool Model::HasAnimationClip(const std::string& clipName) const
+{
+    return FindAnimationClip(clipName) != nullptr;
+}
+
+bool Model::LoadAnimationClip(
+    const std::string& clipName,
+    const std::string& directoryPath,
+    const std::string& filename)
+{
+    Animation loadedAnimation;
+    Assimp::Importer importer;
+    const std::string filepath = ResolveModelAssetPath(directoryPath, filename);
+    const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
+    if (scene == nullptr) {
+        std::ostringstream message;
+        message << "[Model::LoadAnimationClip] optional clip load failed"
+            << " clip=\"" << clipName
+            << "\" path=\"" << filepath
+            << "\" detail=\"" << importer.GetErrorString() << "\"\n";
+        OutputDebugStringA(message.str().c_str());
+        return false;
+    }
+    if (scene->mNumAnimations == 0) {
+        std::ostringstream message;
+        message << "[Model::LoadAnimationClip] optional clip has no animations"
+            << " clip=\"" << clipName
+            << "\" path=\"" << filepath << "\"\n";
+        OutputDebugStringA(message.str().c_str());
+        return false;
+    }
+    loadedAnimation = BuildAnimationClip(scene->mAnimations[0]);
+    if (loadedAnimation.nodeAnimations.empty()) {
+        return false;
+    }
+    animationClips_[clipName] = std::move(loadedAnimation);
+    if (animation.nodeAnimations.empty()) {
+        animation = animationClips_.at(clipName);
+        animationClips_["default"] = animation;
+    }
+    return true;
 }
 
 void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
@@ -470,12 +823,17 @@ void Model::LoadIndicesFromMesh(
 void Model::LoadSkinClusterDataFromMesh(
     aiMesh* mesh,
     uint32_t baseVertex,
-    ModelData& modelData)
+    ModelData& modelData,
+    const std::string& skinPrefix)
 {
-    AppendSkinClusterDataFromMesh(*mesh, baseVertex, modelData);
+    AppendSkinClusterDataFromMesh(*mesh, baseVertex, modelData, skinPrefix);
 }
 
-void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& directoryPath, ModelData& modelData)
+void Model::LoadMaterialFromScene(
+	const aiScene* scene,
+	const std::string& directoryPath,
+	const std::string& filename,
+	ModelData& modelData)
 {
 	for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
 		aiMaterial* material = scene->mMaterials[materialIndex];
@@ -507,7 +865,15 @@ void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& direc
 			aiString texturePath;
 			material->GetTexture(textureType, 0, &texturePath);
 			const std::string texturePathString = texturePath.C_Str();
-			if (!texturePathString.empty() && texturePathString.front() != '*') {
+			uint32_t embeddedTextureIndex = 0;
+			if (TryParseEmbeddedTextureIndex(texturePathString, embeddedTextureIndex)) {
+				materialData.textureFilePath =
+					EmbeddedTextureKey(directoryPath, filename, texturePathString);
+				LoadEmbeddedTexture(
+					scene,
+					embeddedTextureIndex,
+					materialData.textureFilePath);
+			} else if (!texturePathString.empty()) {
 				materialData.textureFilePath =
 					ResolveModelResourcePath(directoryPath, texturePathString);
 			}

@@ -19,6 +19,10 @@ public:
 		int32_t damage);
 	bool Update(float deltaTime);
 	void Draw() const;
+	Engine::Graphics3D::Object3D* GetRenderObject() const
+	{
+		return !exploded_ ? object_.get() : nullptr;
+	}
 
 	const Vector3& GetPosition() const { return position_; }
 	float GetRadius() const { return radius_; }

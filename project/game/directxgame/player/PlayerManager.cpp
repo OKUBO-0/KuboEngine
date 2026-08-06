@@ -102,6 +102,7 @@ bool PlayerManager::TakeDamage(int32_t damage)
 	invincibleTimer_ = invincibilityDuration_;
 	visible_ = false;
 	if (player_) {
+		player_->NotifyHitReact();
 		player_->SetVisible(false);
 	}
 	return true;

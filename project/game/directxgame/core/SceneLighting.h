@@ -10,9 +10,9 @@ namespace DirectXGame::SceneLighting {
 struct Defaults {
 	SceneLightData light{};
 	bool shadowEnabled = true;
-	float shadowStrength = 0.72f;
-	float shadowSoftness = 1.8f;
-	float shadowBias = 0.0012f;
+	float shadowStrength = 0.86f;
+	float shadowSoftness = 0.85f;
+	float shadowBias = 0.0010f;
 	float shadowArea = 90.0f;
 };
 

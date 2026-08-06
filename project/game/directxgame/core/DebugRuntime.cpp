@@ -3,6 +3,7 @@
 #include "Enemy.h"
 #include "EnemyManager.h"
 #include "EnemyView.h"
+#include "GridPlane.h"
 #include "PlayerManager.h"
 #include "UILayoutIO.h"
 #include <algorithm>
@@ -17,7 +18,8 @@ namespace DirectXGame {
 void DebugUI::Runtime::DrawObjectManager(
 	bool* open,
 	const RuntimeObjectStatus& status,
-	EnemyManager* enemyManager)
+	EnemyManager* enemyManager,
+	const GridPlane* gridPlane)
 {
 #ifdef _DEBUG
 	if (!open || !*open) {
@@ -36,6 +38,12 @@ void DebugUI::Runtime::DrawObjectManager(
 			"EnemyManager: %s",
 			status.enemyManagerLoaded ? "loaded" : "none");
 		ImGui::BulletText("GridPlane: %s", status.gridPlaneLoaded ? "loaded" : "none");
+		if (gridPlane) {
+			ImGui::Text(
+				"  Landmarks: %zu visible / %zu shadow",
+				gridPlane->GetVisibleLandmarkCount(),
+				gridPlane->GetShadowLandmarkCount());
+		}
 		ImGui::BulletText("SkyDome: %s", status.skyDomeLoaded ? "loaded" : "none");
 		ImGui::BulletText(
 			"CurtainTransition: %s",
@@ -88,6 +96,7 @@ void DebugUI::Runtime::DrawObjectManager(
 	(void)open;
 	(void)status;
 	(void)enemyManager;
+	(void)gridPlane;
 #endif
 }
 

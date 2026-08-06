@@ -36,10 +36,9 @@ struct LevelUpChoice {
 	PassiveItemType passiveItemType = PassiveItemType::Damage;
 	std::string texturePath;
 	std::string iconPath;
+	std::string subIconPath;
 	std::string titleText;
 	std::string detailText;
-	std::string rarityText;
-	std::string statTagText;
 };
 
 class LevelUpChoiceService final {

@@ -17,6 +17,10 @@ class GameModelCache {
 public:
 	static ModelHandle Load(const std::string& modelName);
 	static void LoadBatch(const std::vector<std::string>& modelNames);
+	static bool LoadAnimationClip(
+		ModelHandle modelHandle,
+		const std::string& clipName,
+		const std::string& animationModelName);
 	static void RefreshModelPathIndex();
 	static Engine::Graphics3D::Model* Get(ModelHandle handle);
 	static const std::string& GetResolvedFileName(ModelHandle handle);

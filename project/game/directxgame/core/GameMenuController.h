@@ -22,8 +22,7 @@ public:
 		state.device = GameInputBindings::DetectNavigationInputDevice(input, currentDevice);
 		state.confirm = GameInputBindings::IsUiConfirmTriggered(input);
 		state.cancel = GameInputBindings::IsUiCancelTriggered(input);
-		state.pause = GameInputBindings::IsKeyboardPauseTriggered(input) ||
-			GameInputBindings::IsGamepadPauseTriggered(input);
+		state.pause = GameInputBindings::IsPauseTriggered(input);
 
 		const bool previous = GameInputBindings::IsMenuUpTriggered(input) ||
 			GameInputBindings::IsMenuLeftTriggered(input);

@@ -6,47 +6,12 @@
 #include "PipelineRootSignatureFactory.h"
 #include "PipelineStateBuilder.h"
 #include <array>
+#include <cassert>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
-
-enum class PipelineInputLayout {
-	Standard,
-	Skinning,
-	Line,
-	Empty,
-};
-
-enum class PipelineBlendMode {
-	Alpha,
-	Additive,
-	Disabled,
-};
-
-enum class PipelineDepthMode {
-	ReadWrite,
-	ReadOnly,
-	Disabled,
-};
-
-struct PipelineDefinition {
-	const char* key;
-	Microsoft::WRL::ComPtr<ID3D12RootSignature>* rootSignature;
-	const wchar_t* vertexShaderPath;
-	const wchar_t* pixelShaderPath;
-	PipelineInputLayout inputLayout = PipelineInputLayout::Standard;
-	PipelineBlendMode blendMode = PipelineBlendMode::Alpha;
-	PipelineDepthMode depthMode = PipelineDepthMode::ReadWrite;
-	D3D12_PRIMITIVE_TOPOLOGY_TYPE topology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_NONE;
-	UINT renderTargetCount = 1;
-	DXGI_FORMAT renderTargetFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	DXGI_FORMAT depthStencilFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	int depthBias = 0;
-	float slopeScaledDepthBias = 0.0f;
-	float depthBiasClamp = 0.0f;
-	const char* failureContext = "ID3D12Device::CreateGraphicsPipelineState";
-};
 
 D3D12_BLEND_DESC CreateAlphaBlendDesc(D3D12_BLEND destBlend)
 {
@@ -70,14 +35,14 @@ D3D12_BLEND_DESC CreateDisabledBlendDesc()
 	return blendDesc;
 }
 
-D3D12_BLEND_DESC CreateBlendDesc(PipelineBlendMode mode)
+D3D12_BLEND_DESC CreateBlendDesc(Engine::Base::GraphicsPipeline::PipelineBlendMode mode)
 {
 	switch (mode) {
-	case PipelineBlendMode::Alpha:
+	case Engine::Base::GraphicsPipeline::PipelineBlendMode::Alpha:
 		return CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	case PipelineBlendMode::Additive:
+	case Engine::Base::GraphicsPipeline::PipelineBlendMode::Additive:
 		return CreateAlphaBlendDesc(D3D12_BLEND_ONE);
-	case PipelineBlendMode::Disabled:
+	case Engine::Base::GraphicsPipeline::PipelineBlendMode::Disabled:
 	default:
 		return CreateDisabledBlendDesc();
 	}
@@ -91,7 +56,8 @@ D3D12_RASTERIZER_DESC CreateSolidRasterizerDesc(D3D12_CULL_MODE cullMode = D3D12
 	return rasterizerDesc;
 }
 
-D3D12_RASTERIZER_DESC CreateRasterizerDesc(const PipelineDefinition& definition)
+D3D12_RASTERIZER_DESC CreateRasterizerDesc(
+	const Engine::Base::GraphicsPipeline::PipelineCreateDesc& definition)
 {
 	D3D12_RASTERIZER_DESC rasterizerDesc =
 		CreateSolidRasterizerDesc(definition.cullMode);
@@ -118,14 +84,15 @@ D3D12_DEPTH_STENCIL_DESC CreateDisabledDepthStencilDesc()
 	return depthStencilDesc;
 }
 
-D3D12_DEPTH_STENCIL_DESC CreateDepthStencilDesc(PipelineDepthMode mode)
+D3D12_DEPTH_STENCIL_DESC CreateDepthStencilDesc(
+	Engine::Base::GraphicsPipeline::PipelineDepthMode mode)
 {
 	switch (mode) {
-	case PipelineDepthMode::ReadWrite:
+	case Engine::Base::GraphicsPipeline::PipelineDepthMode::ReadWrite:
 		return CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	case PipelineDepthMode::ReadOnly:
+	case Engine::Base::GraphicsPipeline::PipelineDepthMode::ReadOnly:
 		return CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
-	case PipelineDepthMode::Disabled:
+	case Engine::Base::GraphicsPipeline::PipelineDepthMode::Disabled:
 	default:
 		return CreateDisabledDepthStencilDesc();
 	}
@@ -203,25 +170,44 @@ D3D12_INPUT_LAYOUT_DESC CreateEmptyInputLayoutDesc()
 	return inputLayoutDesc;
 }
 
-std::vector<D3D12_INPUT_ELEMENT_DESC> CreateInputElements(PipelineInputLayout inputLayout)
+void SetupPositionTexcoordInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
+{
+	inputElementDescs[0].SemanticName = "POSITION";
+	inputElementDescs[0].SemanticIndex = 0;
+	inputElementDescs[0].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+
+	inputElementDescs[1].SemanticName = "TEXCOORD";
+	inputElementDescs[1].SemanticIndex = 0;
+	inputElementDescs[1].Format = DXGI_FORMAT_R32G32_FLOAT;
+	inputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+}
+
+std::vector<D3D12_INPUT_ELEMENT_DESC> CreateInputElements(
+	Engine::Base::GraphicsPipeline::PipelineInputLayout inputLayout)
 {
 	switch (inputLayout) {
-	case PipelineInputLayout::Standard: {
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Standard: {
 		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(3);
 		SetupStandardInputElements(inputElements.data());
 		return inputElements;
 	}
-	case PipelineInputLayout::Skinning: {
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::PositionTexcoord: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(2);
+		SetupPositionTexcoordInputElements(inputElements.data());
+		return inputElements;
+	}
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Skinning: {
 		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(5);
 		SetupSkinningInputElements(inputElements.data());
 		return inputElements;
 	}
-	case PipelineInputLayout::Line: {
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Line: {
 		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(1);
 		SetupLineInputElements(inputElements.data());
 		return inputElements;
 	}
-	case PipelineInputLayout::Empty:
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Empty:
 	default:
 		return {};
 	}
@@ -257,8 +243,16 @@ std::pair<Microsoft::WRL::ComPtr<IDxcBlob>, Microsoft::WRL::ComPtr<IDxcBlob>> Co
 Microsoft::WRL::ComPtr<ID3D12PipelineState> CreatePipelineFromDefinition(
 	Engine::Base::GraphicsPipeline& owner,
 	Engine::Base::DirectXCommon& dxCommon,
-	const PipelineDefinition& definition)
+	const Engine::Base::GraphicsPipeline::PipelineCreateDesc& definition)
 {
+	assert(definition.key != nullptr);
+	assert(definition.rootSignature != nullptr);
+	assert(definition.vertexShaderPath != nullptr);
+	if (definition.rootSignature == nullptr) {
+		throw std::runtime_error(
+			std::string("GraphicsPipeline root signature is not created: ") +
+			definition.key);
+	}
 	const std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements =
 		CreateInputElements(definition.inputLayout);
 	const D3D12_INPUT_LAYOUT_DESC inputLayoutDesc =
@@ -267,11 +261,15 @@ Microsoft::WRL::ComPtr<ID3D12PipelineState> CreatePipelineFromDefinition(
 		dxCommon,
 		definition.vertexShaderPath,
 		definition.pixelShaderPath);
+	const std::string failureContext =
+		std::string(definition.failureContext) +
+		" [" + definition.key + "]";
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignatureHandle = definition.rootSignature;
 	return owner.CreateAndRegisterPipelineState(
 		definition.key,
-		*definition.rootSignature,
+		rootSignatureHandle,
 		{
-			definition.rootSignature->Get(),
+			definition.rootSignature,
 			inputLayoutDesc,
 			vertexShaderBlob.Get(),
 			pixelShaderBlob.Get(),
@@ -282,7 +280,7 @@ Microsoft::WRL::ComPtr<ID3D12PipelineState> CreatePipelineFromDefinition(
 			definition.renderTargetCount,
 			definition.renderTargetFormat,
 			definition.depthStencilFormat,
-			definition.failureContext,
+			failureContext.c_str(),
 		});
 }
 
@@ -301,42 +299,92 @@ const std::array<PostEffectEntry, 6> kPostEffectEntries = { {
 
 namespace Engine::Base {
 
-void GraphicsPipeline::Create()
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::CreatePipeline(const PipelineCreateDesc& desc)
 {
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
+	return CreatePipelineFromDefinition(*this, *dxCommon, desc);
+}
 
+void GraphicsPipeline::Create()
+{
 	RootSignatureCreate();
-	graphicsPipelineState = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineState = CreatePipeline({
 		"Object3D",
-		&rootSignature,
+		rootSignature.Get(),
 		L"Resources/Shaders/object/Object3d.VS.hlsl",
 		L"Resources/Shaders/object/Object3d.PS.hlsl",
 	});
 
 }
 
+void GraphicsPipeline::CreateObjectInstancing()
+{
+	RootSignatureObjectInstancingCreate();
+	graphicsPipelineStateObjectInstancing = CreatePipeline({
+		"ObjectInstancing",
+		rootSignatureObjectInstancing.Get(),
+		L"Resources/Shaders/object/ObjectInstanced3d.VS.hlsl",
+		L"Resources/Shaders/object/Object3d.PS.hlsl",
+		PipelineInputLayout::Standard,
+	});
+}
+
+void GraphicsPipeline::CreateObjectInstancingShadowMap()
+{
+	RootSignatureObjectInstancingCreate();
+	graphicsPipelineStateObjectInstancingShadowMap = CreatePipeline({
+		"ObjectInstancingShadowMap",
+		rootSignatureObjectInstancing.Get(),
+		L"Resources/Shaders/object/ObjectInstancedShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState object instancing shadow map",
+	});
+}
+
 
 void GraphicsPipeline::RootSignatureCreate()
 {
+	if (rootSignature.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateObjectRootSignature(*dxCommon, rootSignature.GetAddressOf());
 }
 
+void GraphicsPipeline::RootSignatureObjectInstancingCreate()
+{
+	if (rootSignatureObjectInstancing.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateObjectInstancingRootSignature(*dxCommon, rootSignatureObjectInstancing.GetAddressOf());
+}
+
 
 void GraphicsPipeline::CreateParticle()
 {
-	const auto dxCommon = dxCommon_.lock();
-	assert(dxCommon);
-
 	RootSignatureParticleCreate();
-	graphicsPipelineStateParticle = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineStateParticle = CreatePipeline({
 		"Particle",
-		&rootSignatureParticle,
+		rootSignatureParticle.Get(),
 		L"Resources/Shaders/particle/Particle.VS.hlsl",
 		L"Resources/Shaders/particle/Particle.PS.hlsl",
-		PipelineInputLayout::Standard,
+		PipelineInputLayout::PositionTexcoord,
 		PipelineBlendMode::Additive,
 		PipelineDepthMode::ReadOnly,
 	});
@@ -345,6 +393,9 @@ void GraphicsPipeline::CreateParticle()
 
 void GraphicsPipeline::RootSignatureParticleCreate()
 {
+	if (rootSignatureParticle.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateParticleRootSignature(*dxCommon, rootSignatureParticle.GetAddressOf());
@@ -356,12 +407,10 @@ void GraphicsPipeline::RootSignatureParticleCreate()
 
 void GraphicsPipeline::CreateSprite()
 {
-	const auto dxCommon = dxCommon_.lock();
-	assert(dxCommon);
 	RootSignatureSpriteCreate();
-	graphicsPipelineStateSprite = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineStateSprite = CreatePipeline({
 		"Sprite",
-		&rootSignatureSprite,
+		rootSignatureSprite.Get(),
 		L"Resources/Shaders/sprite/Sprite.VS.hlsl",
 		L"Resources/Shaders/sprite/Sprite.PS.hlsl",
 	});
@@ -371,6 +420,9 @@ void GraphicsPipeline::CreateSprite()
 
 void GraphicsPipeline::RootSignatureLineCreate()
 {
+	if (rootSignatureLine.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateLineRootSignature(*dxCommon, rootSignatureLine.GetAddressOf());
@@ -378,19 +430,30 @@ void GraphicsPipeline::RootSignatureLineCreate()
 
 void GraphicsPipeline::RootSignatureSkinningCreate()
 {
+	if (rootSignatureSkinning.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateSkinningRootSignature(*dxCommon, rootSignatureSkinning.GetAddressOf());
 }
 
-void GraphicsPipeline::CreateShadowMap()
+void GraphicsPipeline::RootSignatureSkinningInstancingCreate()
 {
+	if (rootSignatureSkinningInstancing.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
+	CreateSkinningInstancingRootSignature(*dxCommon, rootSignatureSkinningInstancing.GetAddressOf());
+}
+
+void GraphicsPipeline::CreateShadowMap()
+{
 	RootSignatureShadowMapCreate();
-	graphicsPipelineStateShadowMap = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineStateShadowMap = CreatePipeline({
 		"ShadowMap",
-		&rootSignatureShadowMap,
+		rootSignatureShadowMap.Get(),
 		L"Resources/Shaders/object/ShadowMap.VS.hlsl",
 		nullptr,
 		PipelineInputLayout::Standard,
@@ -408,8 +471,57 @@ void GraphicsPipeline::CreateShadowMap()
 	});
 }
 
+void GraphicsPipeline::CreateSkinningShadowMap()
+{
+	RootSignatureSkinningCreate();
+	graphicsPipelineStateSkinningShadowMap = CreatePipeline({
+		"SkinningShadowMap",
+		rootSignatureSkinning.Get(),
+		L"Resources/Shaders/object/SkinningShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Skinning,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState skinning shadow map",
+	});
+}
+
+void GraphicsPipeline::CreateSkinningInstancingShadowMap()
+{
+	RootSignatureSkinningInstancingCreate();
+	graphicsPipelineStateSkinningInstancingShadowMap = CreatePipeline({
+		"SkinningInstancingShadowMap",
+		rootSignatureSkinningInstancing.Get(),
+		L"Resources/Shaders/object/SkinningInstancedShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Skinning,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState skinning instancing shadow map",
+	});
+}
+
 void GraphicsPipeline::RootSignatureShadowMapCreate()
 {
+	if (rootSignatureShadowMap.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateShadowMapRootSignature(*dxCommon, rootSignatureShadowMap.GetAddressOf());
@@ -417,13 +529,23 @@ void GraphicsPipeline::RootSignatureShadowMapCreate()
 
 void GraphicsPipeline::CreateSkinning()
 {
-	const auto dxCommon = dxCommon_.lock();
-	assert(dxCommon);
 	RootSignatureSkinningCreate();
-	graphicsPipelineStateSkinning = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineStateSkinning = CreatePipeline({
 		"Skinning",
-		&rootSignatureSkinning,
+		rootSignatureSkinning.Get(),
 		L"Resources/Shaders/object/SkinningObject3d.VS.hlsl",
+		L"Resources/Shaders/object/SkinningObject3d.PS.hlsl",
+		PipelineInputLayout::Skinning,
+	});
+}
+
+void GraphicsPipeline::CreateSkinningInstancing()
+{
+	RootSignatureSkinningInstancingCreate();
+	graphicsPipelineStateSkinningInstancing = CreatePipeline({
+		"SkinningInstancing",
+		rootSignatureSkinningInstancing.Get(),
+		L"Resources/Shaders/object/SkinningInstancedObject3d.VS.hlsl",
 		L"Resources/Shaders/object/SkinningObject3d.PS.hlsl",
 		PipelineInputLayout::Skinning,
 	});
@@ -431,12 +553,10 @@ void GraphicsPipeline::CreateSkinning()
 
 void GraphicsPipeline::CreateLine()
 {
-	const auto dxCommon = dxCommon_.lock();
-	assert(dxCommon);
 	RootSignatureLineCreate(); 
-	graphicsPipelineStateLine = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineStateLine = CreatePipeline({
 		"Line",
-		&rootSignatureLine,
+		rootSignatureLine.Get(),
 		L"Resources/Shaders/line/Line.VS.hlsl",
 		L"Resources/Shaders/line/Line.PS.hlsl",
 		PipelineInputLayout::Line,
@@ -451,20 +571,24 @@ void GraphicsPipeline::CreateLine()
 
 void GraphicsPipeline::RootSignatureSpriteCreate()
 {
+	if (rootSignatureSprite.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateSpriteRootSignature(*dxCommon, rootSignatureSprite.GetAddressOf());
 }
 void GraphicsPipeline::CreateCopyImage(PostEffectType type, const std::wstring& psFilename)
 {
-	const auto dxCommon = dxCommon_.lock();
-	assert(dxCommon);
 	RootSignatureCopyImageCreate();
+	if (rootSignatureCopyImage.Get() == nullptr) {
+		throw std::runtime_error("GraphicsPipeline failed to create post-effect root signature");
+	}
 	const std::string key = "PostEffect." + std::to_string(static_cast<int>(type));
 	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso =
-		CreatePipelineFromDefinition(*this, *dxCommon, {
+		CreatePipeline({
 			key.c_str(),
-			&rootSignatureCopyImage,
+			rootSignatureCopyImage.Get(),
 			L"Resources/Shaders/post/fullscreen/Fullscreen.VS.hlsl",
 			psFilename.c_str(),
 			PipelineInputLayout::Empty,
@@ -484,6 +608,9 @@ void GraphicsPipeline::CreateAllPostEffects() {
 
 void GraphicsPipeline::RootSignatureCopyImageCreate()
 {
+	if (rootSignatureCopyImage.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateCopyImageRootSignature(*dxCommon, rootSignatureCopyImage.GetAddressOf());
@@ -494,12 +621,10 @@ void GraphicsPipeline::RootSignatureCopyImageCreate()
 
 void GraphicsPipeline::CreateSkybox()
 {
-	const auto dxCommon = dxCommon_.lock();
-	assert(dxCommon);
 	RootSignatureSkyboxCreate();
-	graphicsPipelineStateSkybox = CreatePipelineFromDefinition(*this, *dxCommon, {
+	graphicsPipelineStateSkybox = CreatePipeline({
 		"Skybox",
-		&rootSignatureSkybox,
+		rootSignatureSkybox.Get(),
 		L"Resources/Shaders/skybox/Skybox.VS.hlsl",
 		L"Resources/Shaders/skybox/Skybox.PS.hlsl",
 		PipelineInputLayout::Standard,
@@ -510,6 +635,9 @@ void GraphicsPipeline::CreateSkybox()
 
 void GraphicsPipeline::RootSignatureSkyboxCreate()
 {
+	if (rootSignatureSkybox.Get() != nullptr) {
+		return;
+	}
 	const auto dxCommon = dxCommon_.lock();
 	assert(dxCommon);
 	CreateSkyboxRootSignature(*dxCommon, rootSignatureSkybox.GetAddressOf());

@@ -91,7 +91,10 @@ inline bool HasMouseNavigationInput(Engine::InputSystem::Input* input)
 	}
 
 	const auto mouseMove = input->GetMouseMove();
-	return mouseMove.lX != 0 || mouseMove.lY != 0 || input->PushMouse(0) || input->PushMouse(1);
+	return mouseMove.lX != 0 || mouseMove.lY != 0 ||
+		input->PushMouse(0) ||
+		input->PushMouse(1) ||
+		input->PushMouse(2);
 }
 
 inline bool HasKeyboardNavigationInput(Engine::InputSystem::Input* input)
@@ -194,14 +197,36 @@ inline const char* GetCancelLabel(NavigationInputDevice device)
 inline const char* GetPauseLabel(NavigationInputDevice device)
 {
 	switch (device) {
+	case NavigationInputDevice::Mouse:
+		return "Middle Click";
 	case NavigationInputDevice::Gamepad:
 		return "GamePad Start";
 	case NavigationInputDevice::Keyboard:
-	case NavigationInputDevice::Mouse:
 	case NavigationInputDevice::None:
 	default:
 		return "Esc / P";
 	}
+}
+
+inline const char* GetDodgeLabel(NavigationInputDevice device)
+{
+	switch (device) {
+	case NavigationInputDevice::Mouse:
+		return "Right Click";
+	case NavigationInputDevice::Gamepad:
+		return "GamePad B";
+	case NavigationInputDevice::Keyboard:
+	case NavigationInputDevice::None:
+	default:
+		return "Space";
+	}
+}
+
+inline bool IsMouseMoveForwardPushed(Engine::InputSystem::Input* input)
+{
+	return input && !IsGameInputSuppressedByImGui() &&
+		ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos()) &&
+		input->PushMouse(0);
 }
 
 inline bool IsMouseConfirmTriggered(Engine::InputSystem::Input* input)
@@ -247,6 +272,23 @@ inline bool IsKeyboardCancelTriggered(Engine::InputSystem::Input* input)
 inline bool IsKeyboardPauseTriggered(Engine::InputSystem::Input* input)
 {
 	return input && !IsGameInputSuppressedByImGui() && (input->TriggerKey(DIK_ESCAPE) || input->TriggerKey(DIK_P));
+}
+
+inline bool IsMousePauseTriggered(Engine::InputSystem::Input* input)
+{
+	return input && !IsGameInputSuppressedByImGui() &&
+		ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos()) &&
+		input->TriggerMouse(2);
+}
+
+inline bool IsKeyboardDodgeTriggered(Engine::InputSystem::Input* input)
+{
+	return false;
+}
+
+inline bool IsMouseDodgeTriggered(Engine::InputSystem::Input* input)
+{
+	return false;
 }
 
 inline bool IsGamepadMenuUpTriggered(Engine::InputSystem::Input* input)
@@ -298,6 +340,48 @@ inline bool IsGamepadCancelTriggered(Engine::InputSystem::Input* input)
 inline bool IsGamepadPauseTriggered(Engine::InputSystem::Input* input)
 {
 	return input && !IsGameInputSuppressedByImGui() && (input->TriggerGamePadButton(XINPUT_GAMEPAD_START) || input->TriggerGamePadButton(XINPUT_GAMEPAD_BACK));
+}
+
+inline bool IsGamepadDodgeTriggered(Engine::InputSystem::Input* input)
+{
+	return false;
+}
+
+inline bool IsDashPushed(Engine::InputSystem::Input* input)
+{
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->PushKey(DIK_LSHIFT) ||
+			input->PushKey(DIK_RSHIFT) ||
+			input->PushGamePadButton(XINPUT_GAMEPAD_B));
+}
+
+inline bool IsDashTriggered(Engine::InputSystem::Input* input)
+{
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->TriggerKey(DIK_LSHIFT) ||
+			input->TriggerKey(DIK_RSHIFT) ||
+			input->TriggerGamePadButton(XINPUT_GAMEPAD_B));
+}
+
+inline bool IsJumpTriggered(Engine::InputSystem::Input* input)
+{
+	return input && !IsGameInputSuppressedByImGui() &&
+		(input->TriggerKey(DIK_SPACE) ||
+			input->TriggerGamePadButton(XINPUT_GAMEPAD_A));
+}
+
+inline bool IsPauseTriggered(Engine::InputSystem::Input* input)
+{
+	return IsKeyboardPauseTriggered(input) ||
+		IsMousePauseTriggered(input) ||
+		IsGamepadPauseTriggered(input);
+}
+
+inline bool IsDodgeTriggered(Engine::InputSystem::Input* input)
+{
+	return IsKeyboardDodgeTriggered(input) ||
+		IsMouseDodgeTriggered(input) ||
+		IsGamepadDodgeTriggered(input);
 }
 
 inline bool IsMenuUpTriggered(Engine::InputSystem::Input* input)

@@ -20,6 +20,7 @@ struct DebugWindowVisibility {
 	bool colliderTagManager = false;
 	bool audio = false;
 	bool keyInputDebug = true;
+	bool hotReload = true;
 	bool sceneSettings = true;
 	bool sceneSpecificDebug = false;
 	bool objectSettings = false;

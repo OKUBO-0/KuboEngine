@@ -21,7 +21,8 @@ void SkyDome::Initialize()
 	skyObject_->SetEnvironmentReflectionStrength(0.0f);
 	skyObject_->SetEnvironmentRoughness(1.0f);
 	skyObject_->SetLighting(false);
-	skyObject_->SetScale({ 100.0f, 100.0f, 100.0f });
+	skyObject_->SetFrustumCullingEnabled(false);
+	skyObject_->SetScale({ 700.0f, 700.0f, 700.0f });
 	skyObject_->SetTranslate({ 0.0f, 0.0f, 0.0f });
 	skyObject_->SetColor({ 0.62f, 0.76f, 1.0f, 1.0f });
 }
@@ -40,7 +41,7 @@ void SkyDome::Update()
 void SkyDome::Draw()
 {
 	if (skyObject_) {
-		skyObject_->Draw();
+		Engine::Graphics3D::Object3D::SubmitForDraw(skyObject_.get());
 	}
 }
 

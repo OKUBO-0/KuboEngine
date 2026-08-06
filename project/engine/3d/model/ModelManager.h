@@ -52,6 +52,11 @@ public:
 	/// @return なし
 	void LoadModelFromResourceRoot(const std::string& resourceRoot, const std::string& filePath);
 	void LoadModelsFromResourceRoot(const std::string& resourceRoot, const std::vector<std::string>& filePaths);
+	bool LoadAnimationClipFromResourceRoot(
+		const std::string& resourceRoot,
+		const std::string& modelFilePath,
+		const std::string& clipName,
+		const std::string& animationFilePath);
 
 	/// @brief 登録済みモデルをファイルパスから検索する
 	/// @param filePath 検索対象のファイルパス

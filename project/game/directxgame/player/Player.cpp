@@ -1,9 +1,12 @@
 #include "Player.h"
 #include "CameraManager.h"
+#include <algorithm>
 
 namespace {
 
 constexpr char kGameCameraName[] = "directxgame_player";
+constexpr float kVisualMoveStartDistanceSq = 0.0004f;
+constexpr float kVisualMoveStopGraceSeconds = 0.12f;
 }
 
 namespace DirectXGame {
@@ -17,6 +20,13 @@ void Player::Initialize()
 	if (camera_) {
 		cameraController_.Update(camera_.get(), position_, rotationY_, false);
 	}
+	view_.Update();
+}
+
+void Player::SetCharacterId(CharacterId characterId)
+{
+	view_.SetCharacterId(characterId);
+	ApplyTransforms();
 	view_.Update();
 }
 
@@ -48,6 +58,7 @@ Engine::Math::OBB Player::GetCollisionObb() const
 void Player::Update(float deltaTime)
 {
 	presentationController_.BeginNormalFrame();
+	const Vector3 previousPosition = position_;
 	movementController_.Update(
 		deltaTime,
 		position_,
@@ -55,6 +66,19 @@ void Player::Update(float deltaTime)
 		moveSpeedPerSecond_,
 		cameraController_.GetYaw(),
 		cameraController_.UsesCameraRelativeMovement());
+	const float movedDistanceSq =
+		(position_.x - previousPosition.x) * (position_.x - previousPosition.x) +
+		(position_.z - previousPosition.z) * (position_.z - previousPosition.z);
+	if (movedDistanceSq > kVisualMoveStartDistanceSq) {
+		visualMoving_ = true;
+		visualMovingHoldTimer_ = kVisualMoveStopGraceSeconds;
+	} else {
+		visualMovingHoldTimer_ =
+			(std::max)(0.0f, visualMovingHoldTimer_ - deltaTime);
+		visualMoving_ = visualMovingHoldTimer_ > 0.0f;
+	}
+	view_.SetMotionState(visualMoving_, IsDashing(), IsJumping());
+	presentationController_.UpdateMotion(deltaTime, visualMoving_ || IsDashing(), false);
 	cameraController_.Update(camera_.get(), position_, rotationY_, true);
 	if (!cameraController_.UsesMouseLook()) {
 		aimController_.Update(deltaTime, position_, rotationY_, camera_.get());
@@ -98,15 +122,49 @@ void Player::UpdateIntroPresentation(float elapsedTime, float duration)
 		cameraController_);
 }
 
+void Player::BeginCinematicPresentation()
+{
+	visible_ = true;
+	presentationController_.BeginNormalFrame();
+	position_.y = 0.0f;
+	visualMoving_ = false;
+	visualMovingHoldTimer_ = 0.0f;
+	movementController_.ResetActionState();
+	view_.SetMotionState(false, false, false);
+	ApplyTransforms();
+	view_.Update();
+}
+
+void Player::UpdateCinematicPresentation()
+{
+	visible_ = true;
+	presentationController_.BeginNormalFrame();
+	position_.y = 0.0f;
+	visualMoving_ = false;
+	visualMovingHoldTimer_ = 0.0f;
+	view_.SetMotionState(false, false, false);
+	ApplyTransforms();
+	view_.Update();
+}
+
 void Player::StartDeathPresentation()
 {
 	visible_ = true;
+	position_.y = 0.0f;
+	movementController_.ResetActionState();
+	view_.SetMotionState(false, false, false);
+	view_.SetDeathAnimationActive(true);
 	presentationController_.StartDeath(
 		position_,
 		rotationY_,
 		view_.GetPlayerObject(),
 		camera_.get(),
 		cameraController_);
+}
+
+void Player::NotifyHitReact()
+{
+	view_.NotifyHitReact();
 }
 
 void Player::UpdateDeathPresentation(float elapsedTime, float duration)
@@ -137,7 +195,7 @@ void Player::ApplyTransforms()
 		view_.GetPlayerObject(),
 		position_,
 		rotationY_,
-		IsDodging());
+		false);
 	aimController_.ApplyIndicatorTransform(
 		view_.GetAimIndicatorObject(),
 		position_,

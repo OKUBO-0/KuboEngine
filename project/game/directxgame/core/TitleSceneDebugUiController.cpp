@@ -89,19 +89,21 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &windows.titleView },
 		{ "統計", &windows.statisticsView },
-		{ "シーン設定", &windows.titleSettings },
+		{ "タイトルUI調整", &windows.titleSettings },
+		{ "タイトル3D・カメラ", &windows.titleModelSettings },
 		{ "オフスクリーン設定", &windows.offscreenSettings },
 		{ "ライト設定", &windows.lightSettings },
 		{ "オーディオ", &windows.audio },
 		{ "キー操作デバッグ", &windows.keyInputDebug },
 	};
 	const Engine::Editor::DebugEditorMenuItem editItems[] = {
-		{ "シーン設定", &windows.titleSettings },
+		{ "タイトルUI調整", &windows.titleSettings },
+		{ "タイトル3D・カメラ", &windows.titleModelSettings },
 		{ "ライト設定", &windows.lightSettings },
 	};
 	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
 		{ "Scene", &windows.titleView },
-		{ "シーン設定", &windows.titleSettings },
+		{ "タイトル3D・カメラ", &windows.titleModelSettings },
 	};
 	Engine::Editor::DebugEditorManager::DrawMainMenu({
 		windowItems,
@@ -195,7 +197,7 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 	}
 
 	if (windows.titleSettings) {
-		ImGui::Begin("シーン設定", &windows.titleSettings);
+		ImGui::Begin("タイトルUI調整", &windows.titleSettings);
 		ImGui::Checkbox("Enable Title Debug", &layout.debugEnabled);
 		if (layout.debugEnabled) {
 			float titlePosition[2]{
@@ -345,57 +347,314 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				ImGui::DragFloat("Owned Coin Digit Spacing", &layout.shopCoinDigitStepX, 0.5f, 2.0f, 80.0f);
 			}
 
-			float modelPosition[3]{
-				layout.modelBasePosition.x,
-				layout.modelBasePosition.y,
-				layout.modelBasePosition.z,
-			};
-			if (ImGui::DragFloat3(
-					"Model Position",
-					modelPosition,
-					0.1f,
-					-40.0f,
-					40.0f)) {
-				layout.modelBasePosition = {
-					modelPosition[0],
-					modelPosition[1],
-					modelPosition[2],
+			if (ImGui::CollapsingHeader("Character Select Layout", ImGuiTreeNodeFlags_DefaultOpen)) {
+				float backgroundPosition[2]{
+					layout.selectBackgroundPosition.x,
+					layout.selectBackgroundPosition.y,
 				};
-				scene.ApplyLayout();
-			}
-
-			float modelScale[3]{
-				layout.modelScale.x,
-				layout.modelScale.y,
-				layout.modelScale.z,
-			};
-			if (ImGui::DragFloat3(
-					"Model Scale",
-					modelScale,
-					0.1f,
-					0.5f,
-					10.0f)) {
-				layout.modelScale = {
-					modelScale[0],
-					modelScale[1],
-					modelScale[2],
+				if (ImGui::DragFloat2("Select BG Position", backgroundPosition, 1.0f, -400.0f, 1280.0f)) {
+					layout.selectBackgroundPosition = { backgroundPosition[0], backgroundPosition[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float backgroundSize[2]{
+					layout.selectBackgroundSize.x,
+					layout.selectBackgroundSize.y,
 				};
-				scene.ApplyLayout();
+				if (ImGui::DragFloat2("Select BG Size", backgroundSize, 1.0f, 64.0f, 1600.0f)) {
+					layout.selectBackgroundSize = { backgroundSize[0], backgroundSize[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float titlePosition[2]{
+					layout.selectTitleTextPosition.x,
+					layout.selectTitleTextPosition.y,
+				};
+				if (ImGui::DragFloat2("Select Title Position", titlePosition, 1.0f, -200.0f, 1280.0f)) {
+					layout.selectTitleTextPosition = { titlePosition[0], titlePosition[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				if (ImGui::DragFloat("Select Title Scale", &layout.selectTitleTextScale, 0.01f, 0.05f, 1.5f)) {
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float iconBase[2]{
+					layout.selectIconBasePosition.x,
+					layout.selectIconBasePosition.y,
+				};
+				if (ImGui::DragFloat2("Select Icon Base", iconBase, 1.0f, -200.0f, 1280.0f)) {
+					layout.selectIconBasePosition = { iconBase[0], iconBase[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float iconSize[2]{
+					layout.selectIconSize.x,
+					layout.selectIconSize.y,
+				};
+				if (ImGui::DragFloat2("Select Icon Size", iconSize, 1.0f, 8.0f, 220.0f)) {
+					layout.selectIconSize = { iconSize[0], iconSize[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float iconHitbox[2]{
+					layout.selectIconHitboxSize.x,
+					layout.selectIconHitboxSize.y,
+				};
+				if (ImGui::DragFloat2("Select Icon Hitbox", iconHitbox, 1.0f, 8.0f, 260.0f)) {
+					layout.selectIconHitboxSize = { iconHitbox[0], iconHitbox[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				if (ImGui::DragFloat("Select Icon Step X", &layout.selectIconStepX, 1.0f, 16.0f, 240.0f)) {
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				if (ImGui::DragFloat("Select Icon Step Y", &layout.selectIconStepY, 1.0f, 16.0f, 240.0f)) {
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float iconModelBase[3]{
+					layout.selectIconModelBasePosition.x,
+					layout.selectIconModelBasePosition.y,
+					layout.selectIconModelBasePosition.z,
+				};
+				if (ImGui::DragFloat3("Icon Model Base Position", iconModelBase, 0.1f, -60.0f, 60.0f)) {
+					layout.selectIconModelBasePosition = { iconModelBase[0], iconModelBase[1], iconModelBase[2] };
+				}
+				float iconModelStep[3]{
+					layout.selectIconModelStep.x,
+					layout.selectIconModelStep.y,
+					layout.selectIconModelStep.z,
+				};
+				if (ImGui::DragFloat3("Icon Model Step", iconModelStep, 0.1f, -20.0f, 20.0f)) {
+					layout.selectIconModelStep = { iconModelStep[0], iconModelStep[1], iconModelStep[2] };
+				}
+				float iconModelScale[3]{
+					layout.selectIconModelScale.x,
+					layout.selectIconModelScale.y,
+					layout.selectIconModelScale.z,
+				};
+				if (ImGui::DragFloat3("Icon Model Scale", iconModelScale, 0.01f, 0.0001f, 8.0f)) {
+					layout.selectIconModelScale = { iconModelScale[0], iconModelScale[1], iconModelScale[2] };
+				}
+				float iconModelRotation[3]{
+					layout.selectIconModelRotation.x,
+					layout.selectIconModelRotation.y,
+					layout.selectIconModelRotation.z,
+				};
+				if (ImGui::DragFloat3("Icon Model Rotation", iconModelRotation, 0.01f, -6.28f, 6.28f)) {
+					layout.selectIconModelRotation = { iconModelRotation[0], iconModelRotation[1], iconModelRotation[2] };
+				}
+				float iconWeaponOffset[3]{
+					layout.selectIconWeaponOffset.x,
+					layout.selectIconWeaponOffset.y,
+					layout.selectIconWeaponOffset.z,
+				};
+				if (ImGui::DragFloat3("Icon Weapon Offset", iconWeaponOffset, 0.05f, -10.0f, 10.0f)) {
+					layout.selectIconWeaponOffset = { iconWeaponOffset[0], iconWeaponOffset[1], iconWeaponOffset[2] };
+				}
+				float iconWeaponScale[3]{
+					layout.selectIconWeaponScale.x,
+					layout.selectIconWeaponScale.y,
+					layout.selectIconWeaponScale.z,
+				};
+				if (ImGui::DragFloat3("Icon Weapon Scale", iconWeaponScale, 0.01f, 0.0001f, 8.0f)) {
+					layout.selectIconWeaponScale = { iconWeaponScale[0], iconWeaponScale[1], iconWeaponScale[2] };
+				}
+				float detailFacePosition[2]{
+					layout.selectDetailFacePosition.x,
+					layout.selectDetailFacePosition.y,
+				};
+				if (ImGui::DragFloat2("Detail Face Position", detailFacePosition, 1.0f, -200.0f, 1280.0f)) {
+					layout.selectDetailFacePosition = { detailFacePosition[0], detailFacePosition[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float detailFaceSize[2]{
+					layout.selectDetailFaceSize.x,
+					layout.selectDetailFaceSize.y,
+				};
+				if (ImGui::DragFloat2("Detail Face Size", detailFaceSize, 1.0f, 8.0f, 220.0f)) {
+					layout.selectDetailFaceSize = { detailFaceSize[0], detailFaceSize[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float weaponIconPosition[2]{
+					layout.selectWeaponIconPosition.x,
+					layout.selectWeaponIconPosition.y,
+				};
+				if (ImGui::DragFloat2("Detail Weapon Position", weaponIconPosition, 1.0f, -200.0f, 1280.0f)) {
+					layout.selectWeaponIconPosition = { weaponIconPosition[0], weaponIconPosition[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float weaponIconSize[2]{
+					layout.selectWeaponIconSize.x,
+					layout.selectWeaponIconSize.y,
+				};
+				if (ImGui::DragFloat2("Detail Weapon Size", weaponIconSize, 1.0f, 8.0f, 220.0f)) {
+					layout.selectWeaponIconSize = { weaponIconSize[0], weaponIconSize[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float weaponDescriptionPosition[2]{
+					layout.selectWeaponDescriptionPosition.x,
+					layout.selectWeaponDescriptionPosition.y,
+				};
+				if (ImGui::DragFloat2("Weapon Description Position", weaponDescriptionPosition, 1.0f, -200.0f, 1280.0f)) {
+					layout.selectWeaponDescriptionPosition = { weaponDescriptionPosition[0], weaponDescriptionPosition[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				if (ImGui::DragFloat("Weapon Description Scale", &layout.selectWeaponDescriptionScale, 0.01f, 0.05f, 1.0f)) {
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				if (ImGui::DragFloat("Weapon Description Max Width", &layout.selectWeaponDescriptionMaxWidth, 1.0f, 32.0f, 360.0f)) {
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float buttonPosition[2]{
+					layout.selectActionButtonPosition.x,
+					layout.selectActionButtonPosition.y,
+				};
+				if (ImGui::DragFloat2("Select Button Position", buttonPosition, 1.0f, -200.0f, 1280.0f)) {
+					layout.selectActionButtonPosition = { buttonPosition[0], buttonPosition[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float buttonSize[2]{
+					layout.selectActionButtonSize.x,
+					layout.selectActionButtonSize.y,
+				};
+				if (ImGui::DragFloat2("Select Button Size", buttonSize, 1.0f, 8.0f, 320.0f)) {
+					layout.selectActionButtonSize = { buttonSize[0], buttonSize[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float buttonTextOffset[2]{
+					layout.selectActionTextOffset.x,
+					layout.selectActionTextOffset.y,
+				};
+				if (ImGui::DragFloat2("Select Button Text Offset", buttonTextOffset, 0.5f, -80.0f, 160.0f)) {
+					layout.selectActionTextOffset = { buttonTextOffset[0], buttonTextOffset[1] };
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				if (ImGui::DragFloat("Select Button Text Scale", &layout.selectActionTextScale, 0.01f, 0.05f, 1.0f)) {
+					scene.ApplyStartCharacterSelectionLayout();
+				}
+				float selectModelPosition[3]{
+					layout.selectModelPosition.x,
+					layout.selectModelPosition.y,
+					layout.selectModelPosition.z,
+				};
+				if (ImGui::DragFloat3("Select Model Position", selectModelPosition, 0.1f, -60.0f, 60.0f)) {
+					layout.selectModelPosition = { selectModelPosition[0], selectModelPosition[1], selectModelPosition[2] };
+				}
+				float selectModelScale[3]{
+					layout.selectModelScale.x,
+					layout.selectModelScale.y,
+					layout.selectModelScale.z,
+				};
+				if (ImGui::DragFloat3("Select Model Scale", selectModelScale, 0.01f, 0.0001f, 20.0f)) {
+					layout.selectModelScale = { selectModelScale[0], selectModelScale[1], selectModelScale[2] };
+				}
+				float selectModelRotation[3]{
+					layout.selectModelRotation.x,
+					layout.selectModelRotation.y,
+					layout.selectModelRotation.z,
+				};
+				if (ImGui::DragFloat3("Select Model Rotation", selectModelRotation, 0.01f, -6.28f, 6.28f)) {
+					layout.selectModelRotation = { selectModelRotation[0], selectModelRotation[1], selectModelRotation[2] };
+				}
+				float selectModelWeaponOffset[3]{
+					layout.selectModelWeaponOffset.x,
+					layout.selectModelWeaponOffset.y,
+					layout.selectModelWeaponOffset.z,
+				};
+				if (ImGui::DragFloat3("Select Model Weapon Offset", selectModelWeaponOffset, 0.05f, -12.0f, 12.0f)) {
+					layout.selectModelWeaponOffset = { selectModelWeaponOffset[0], selectModelWeaponOffset[1], selectModelWeaponOffset[2] };
+				}
+				float selectModelWeaponScale[3]{
+					layout.selectModelWeaponScale.x,
+					layout.selectModelWeaponScale.y,
+					layout.selectModelWeaponScale.z,
+				};
+				if (ImGui::DragFloat3("Select Model Weapon Scale", selectModelWeaponScale, 0.01f, 0.0001f, 10.0f)) {
+					layout.selectModelWeaponScale = { selectModelWeaponScale[0], selectModelWeaponScale[1], selectModelWeaponScale[2] };
+				}
+				float detailModelPosition[3]{
+					layout.selectDetailModelPosition.x,
+					layout.selectDetailModelPosition.y,
+					layout.selectDetailModelPosition.z,
+				};
+				if (ImGui::DragFloat3("Detail Model Position", detailModelPosition, 0.1f, -60.0f, 60.0f)) {
+					layout.selectDetailModelPosition = { detailModelPosition[0], detailModelPosition[1], detailModelPosition[2] };
+				}
+				float detailModelScale[3]{
+					layout.selectDetailModelScale.x,
+					layout.selectDetailModelScale.y,
+					layout.selectDetailModelScale.z,
+				};
+				if (ImGui::DragFloat3("Detail Model Scale", detailModelScale, 0.01f, 0.0001f, 8.0f)) {
+					layout.selectDetailModelScale = { detailModelScale[0], detailModelScale[1], detailModelScale[2] };
+				}
+				float detailWeaponOffset[3]{
+					layout.selectDetailWeaponOffset.x,
+					layout.selectDetailWeaponOffset.y,
+					layout.selectDetailWeaponOffset.z,
+				};
+				if (ImGui::DragFloat3("Detail Weapon Offset", detailWeaponOffset, 0.05f, -10.0f, 10.0f)) {
+					layout.selectDetailWeaponOffset = { detailWeaponOffset[0], detailWeaponOffset[1], detailWeaponOffset[2] };
+				}
+				float detailWeaponScale[3]{
+					layout.selectDetailWeaponScale.x,
+					layout.selectDetailWeaponScale.y,
+					layout.selectDetailWeaponScale.z,
+				};
+				if (ImGui::DragFloat3("Detail Weapon Scale", detailWeaponScale, 0.01f, 0.0001f, 8.0f)) {
+					layout.selectDetailWeaponScale = { detailWeaponScale[0], detailWeaponScale[1], detailWeaponScale[2] };
+				}
 			}
 
-			if (ImGui::CollapsingHeader(
-					"Title Light",
-					ImGuiTreeNodeFlags_DefaultOpen)) {
-				SceneLighting::DrawDebugUI();
+			if (ImGui::Button("Save Title Layout")) {
+				scene.SaveLayout();
 			}
+		}
+		ImGui::End();
+	}
 
+	if (windows.titleModelSettings) {
+		ImGui::Begin("タイトル3D・カメラ", &windows.titleModelSettings);
+		float modelPosition[3]{
+			layout.modelBasePosition.x,
+			layout.modelBasePosition.y,
+			layout.modelBasePosition.z,
+		};
+		if (ImGui::DragFloat3(
+				"Title Model Position",
+				modelPosition,
+				0.1f,
+				-40.0f,
+				40.0f)) {
+			layout.modelBasePosition = {
+				modelPosition[0],
+				modelPosition[1],
+				modelPosition[2],
+			};
+			scene.ApplyLayout();
+		}
+
+		float modelScale[3]{
+			layout.modelScale.x,
+			layout.modelScale.y,
+			layout.modelScale.z,
+		};
+		if (ImGui::DragFloat3(
+				"Title Model Scale",
+				modelScale,
+				0.1f,
+				0.5f,
+				10.0f)) {
+			layout.modelScale = {
+				modelScale[0],
+				modelScale[1],
+				modelScale[2],
+			};
+			scene.ApplyLayout();
+		}
+
+		if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
 			float cameraTarget[3]{
 				layout.cameraTarget.x,
 				layout.cameraTarget.y,
 				layout.cameraTarget.z,
 			};
 			if (ImGui::DragFloat3(
-					"Camera Target Offset",
+					"Target Offset",
 					cameraTarget,
 					0.1f,
 					-60.0f,
@@ -409,7 +668,7 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 			}
 
 			if (ImGui::DragFloat(
-					"Camera Distance",
+					"Distance",
 					&layout.cameraDistance,
 					0.5f,
 					8.0f,
@@ -417,7 +676,7 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				scene.ApplyLayout();
 			}
 			if (ImGui::DragFloat(
-					"Camera Height",
+					"Height",
 					&layout.cameraHeight,
 					0.5f,
 					-20.0f,
@@ -425,7 +684,7 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				scene.ApplyLayout();
 			}
 			if (ImGui::DragFloat(
-					"Camera Pitch",
+					"Pitch",
 					&layout.cameraPitch,
 					0.01f,
 					-1.2f,
@@ -433,7 +692,7 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				scene.ApplyLayout();
 			}
 			if (ImGui::DragFloat(
-					"Camera Yaw",
+					"Yaw",
 					&layout.cameraYaw,
 					0.01f,
 					-6.28f,
@@ -441,15 +700,28 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 				scene.ApplyLayout();
 			}
 			ImGui::DragFloat(
-				"Camera Orbit Speed",
+				"Orbit Speed",
 				&layout.cameraOrbitSpeed,
 				0.01f,
 				-1.0f,
 				1.0f);
+		}
 
-			if (ImGui::Button("Save Title Layout")) {
-				scene.SaveLayout();
-			}
+		if (ImGui::Button("Save Title Layout")) {
+			scene.SaveLayout();
+		}
+		ImGui::End();
+	}
+
+	if (windows.lightSettings) {
+		ImGui::SetNextWindowPos(ImVec2(730.0f, 12.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(380.0f, 360.0f), ImGuiCond_FirstUseEver);
+		ImGui::Begin("ライト設定", &windows.lightSettings);
+		SceneLighting::DrawDebugUI();
+		if (ImGui::Button("Save Title Lighting")) {
+			std::vector<UILayoutIO::Entry> entries;
+			SceneLighting::AppendTuningEntries(entries, "title.");
+			UILayoutIO::Save(DataPaths::kDebugTuning, entries);
 		}
 		ImGui::End();
 	}
@@ -480,6 +752,7 @@ void TitleSceneDebugUIController::Draw(TitleScene& scene)
 		previousWindows.titleView != windows.titleView ||
 		previousWindows.statisticsView != windows.statisticsView ||
 		previousWindows.titleSettings != windows.titleSettings ||
+		previousWindows.titleModelSettings != windows.titleModelSettings ||
 		previousWindows.offscreenSettings != windows.offscreenSettings ||
 		previousWindows.lightSettings != windows.lightSettings ||
 		previousWindows.audio != windows.audio ||

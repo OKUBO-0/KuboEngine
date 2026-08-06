@@ -9,6 +9,7 @@ class GameSession;
 class EnemyManager;
 class GameParticleEffects;
 class DebugContext;
+class DebugHotReload;
 class GameplayFlowController;
 class GameplayHudPresentation;
 class GridPlane;
@@ -23,6 +24,9 @@ enum class DebugUIAction {
 	RequestResult,
 	ForceBoss,
 	BackToTitle,
+	ReloadTuning,
+	ReloadGameplayData,
+	ReloadAll,
 };
 
 namespace DebugUI {
@@ -41,8 +45,9 @@ DebugUIAction Update(
 		SkyDome* skyDome,
 		const GameSession* sessionContext,
 		GameInputBindings::NavigationInputDevice navigationInputDevice,
-		bool uiInitialized,
-		float deathPresentationElapsed,
+	bool uiInitialized,
+	float deathPresentationElapsed,
+	DebugHotReload* hotReload,
 	const std::function<void()>& emitLevelUpConfetti);
 
 }

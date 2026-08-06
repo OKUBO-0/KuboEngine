@@ -1,9 +1,9 @@
-pauseBuildIconSize,58,58
-pauseBuildStepX,62
-pauseBuildStepY,190
-menuHitbox0,470,255
-menuHitbox1,450,385
-menuHitbox2,540,520
+pauseBuildIconSize,42,42
+pauseBuildStepX,48
+pauseBuildStepY,160
+menuHitbox0,470,266
+menuHitbox1,450,394
+menuHitbox2,540,526
 menuHitboxSize0,350,82
 menuHitboxSize1,390,82
 menuHitboxSize2,200,82
@@ -13,5 +13,8 @@ leftCursorOffset2,75,266
 rightCursorOffset0,0,0
 rightCursorOffset1,15,128
 rightCursorOffset2,-77,266
-pauseBuildPosition,52,235
+pauseBuildPosition,58,258
 pauseBuildVisible,1
+pauseStatusPosition,928,228
+pauseStatusLineStep,21
+pauseStatusScale,0.19

@@ -6,6 +6,7 @@
 #include <Windows.h>
 #include <array>
 #include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <stdexcept>
@@ -122,6 +123,50 @@ void TextureManager::LoadTexture(const std::string& filePath)
 	textureDatas.emplace(filePath, std::move(textureData));
 }
 
+void TextureManager::LoadTextureFromMemory(
+	const std::string& key,
+	const void* data,
+	size_t size,
+	bool generateMipMaps)
+{
+	if (textureDatas.contains(key)) {
+		return;
+	}
+	if (!data || size == 0) {
+		throw std::invalid_argument("TextureManager embedded texture memory is empty: " + key);
+	}
+
+	DirectX::ScratchImage image = LoadTextureImageFromMemory(data, size);
+	DirectX::ScratchImage mipImages =
+		generateMipMaps ? CreateMipImages(std::move(image)) : std::move(image);
+	TexturData textureData{};
+	UploadTextureResource(textureData, mipImages);
+	textureDatas.emplace(key, std::move(textureData));
+}
+
+void TextureManager::LoadTextureFromRGBA(
+	const std::string& key,
+	uint32_t width,
+	uint32_t height,
+	const void* rgbaData,
+	size_t rowPitch,
+	bool generateMipMaps)
+{
+	if (textureDatas.contains(key)) {
+		return;
+	}
+	if (!rgbaData || width == 0 || height == 0 || rowPitch < width * 4ull) {
+		throw std::invalid_argument("TextureManager RGBA texture data is invalid: " + key);
+	}
+
+	DirectX::ScratchImage image = CreateRgbaImage(width, height, rgbaData, rowPitch);
+	DirectX::ScratchImage mipImages =
+		generateMipMaps ? CreateMipImages(std::move(image)) : std::move(image);
+	TexturData textureData{};
+	UploadTextureResource(textureData, mipImages);
+	textureDatas.emplace(key, std::move(textureData));
+}
+
 void TextureManager::LoadTextures(const std::vector<std::string>& filePaths)
 {
 	std::vector<std::string> pendingPaths;
@@ -200,6 +245,49 @@ DirectX::ScratchImage TextureManager::LoadTextureImage(const std::string& filePa
 		<< " requestedPath=\"" << filePath << "\""
 		<< " resolvedPath=\"" << resolvedPath << '"';
 	ThrowIfFailed(hr, operation.str().c_str());
+	return image;
+}
+
+DirectX::ScratchImage TextureManager::LoadTextureImageFromMemory(const void* data, size_t size)
+{
+	DirectX::ScratchImage image{};
+	const HRESULT hr = DirectX::LoadFromWICMemory(
+		static_cast<const uint8_t*>(data),
+		size,
+		DirectX::WIC_FLAGS_FORCE_SRGB,
+		nullptr,
+		image);
+	ThrowIfFailed(hr, "TextureManager::LoadTextureImageFromMemory");
+	return image;
+}
+
+DirectX::ScratchImage TextureManager::CreateRgbaImage(
+	uint32_t width,
+	uint32_t height,
+	const void* rgbaData,
+	size_t rowPitch)
+{
+	DirectX::ScratchImage image{};
+	HRESULT hr = image.Initialize2D(
+		DXGI_FORMAT_R8G8B8A8_UNORM,
+		width,
+		height,
+		1,
+		1);
+	ThrowIfFailed(hr, "TextureManager::CreateRgbaImage Initialize2D");
+
+	const DirectX::Image* destination = image.GetImage(0, 0, 0);
+	if (!destination || !destination->pixels) {
+		throw std::runtime_error("TextureManager::CreateRgbaImage destination image is invalid");
+	}
+
+	const uint8_t* sourcePixels = static_cast<const uint8_t*>(rgbaData);
+	for (uint32_t y = 0; y < height; ++y) {
+		std::memcpy(
+			destination->pixels + destination->rowPitch * y,
+			sourcePixels + rowPitch * y,
+			width * 4ull);
+	}
 	return image;
 }
 

@@ -85,14 +85,28 @@ private:
 	UILabel overlay_;
 	UILabel leftCursor_;
 	UILabel rightCursor_;
+	UIPanel menuPanel_;
+	std::array<UIPanel, 4> menuPanelBorders_;
+	std::array<UIPanel, 3> menuOptionBackgrounds_;
+	std::array<UIPanel, 12> menuOptionBorders_;
+	std::array<BitmapText, 3> menuOptionTexts_;
+	BitmapText pauseTitleText_;
+	std::array<UIPanel, 8> cursorPanels_;
+	UIPanel buildPanel_;
+	std::array<UIPanel, 4> buildPanelBorders_;
+	UIPanel statusPanel_;
+	std::array<UIPanel, 4> statusPanelBorders_;
 	static constexpr size_t kWeaponIconCount = 10;
 	static constexpr size_t kPassiveItemSlotCount = 6;
 	static constexpr size_t kIconCount =
 		kWeaponIconCount + kPassiveItemSlotCount;
+	static constexpr size_t kMaxLevelPipsPerIcon = 8;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kIconCount> icons_;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kIconCount> levelDigits_;
+	std::array<UIPanel, kIconCount * kMaxLevelPipsPerIcon> levelPips_;
 	static constexpr size_t kStatusLineCount = 16;
 	std::array<BitmapText, kStatusLineCount> statusTexts_;
+	std::array<BitmapText, kStatusLineCount> statusValueTexts_;
 	std::array<PassiveItemType, kPassiveItemSlotCount> displayedItemTypes_{
 		PassiveItemType::Count, PassiveItemType::Count,
 		PassiveItemType::Count, PassiveItemType::Count,

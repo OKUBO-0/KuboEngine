@@ -246,15 +246,17 @@ std::unique_ptr<Enemy> EnemySpawnController::CreateBossEnemy(
 	}
 	data.type = EnemyType::Boss;
 	data.behavior = EnemyBehaviorType::Boss;
-	constexpr int32_t kBaseBossHP = 1200;
-	constexpr int32_t kHpPerPlayerLevel = 60;
+	constexpr int32_t kBaseBossHP = 1800;
+	constexpr int32_t kHpPerPlayerLevel = 115;
 	const int32_t scaledPlayerLevel = std::clamp(playerLevel, 1, 100);
 	data.baseHP = kBaseBossHP +
 		(scaledPlayerLevel - 1) * kHpPerPlayerLevel;
-	data.baseSpeed = (std::max)(data.baseSpeed, 0.18f);
-	data.baseEXP = (std::max)(data.baseEXP, 80);
-	data.coinReward = (std::max)(data.coinReward, 50);
-	data.damage = (std::max)(data.damage, 30);
+	data.baseSpeed = (std::max)(
+		data.baseSpeed,
+		0.22f + (std::min)(0.08f, static_cast<float>(scaledPlayerLevel - 1) * 0.002f));
+	data.baseEXP = (std::max)(data.baseEXP, 140 + (scaledPlayerLevel - 1) * 8);
+	data.coinReward = (std::max)(data.coinReward, 120 + (scaledPlayerLevel - 1) * 9);
+	data.damage = (std::max)(data.damage, 42 + (scaledPlayerLevel - 1) * 2);
 
 	const Vector3 playerPosition = player->GetWorldPosition();
 	auto enemy = std::make_unique<Enemy>();

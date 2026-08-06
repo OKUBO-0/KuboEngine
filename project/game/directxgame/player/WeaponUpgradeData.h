@@ -36,12 +36,12 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kBowArrowUpgradeMetad
 	{},
 	{ WeaponUpgradeRarity::Common, "Core" },
 	{ WeaponUpgradeRarity::Common, "Pierce" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Quantity" },
 	{ WeaponUpgradeRarity::Rare, "Projectile Speed / Size" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Epic, "Quantity / Pierce" },
-	{ WeaponUpgradeRarity::Rare, "Damage / Projectile Speed" },
+	{ WeaponUpgradeRarity::Rare, "Damage / Projectile Speed / Cooldown" },
 } };
 
 inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kRockUpgradeMetadata{ {
@@ -49,10 +49,10 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kRockUpgradeMetadata{
 	{ WeaponUpgradeRarity::Common, "Core" },
 	{ WeaponUpgradeRarity::Rare, "Quantity" },
 	{ WeaponUpgradeRarity::Rare, "Projectile Speed / Size" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Hit Rate" },
 	{ WeaponUpgradeRarity::Rare, "Quantity" },
 	{ WeaponUpgradeRarity::Rare, "Projectile Speed / Size" },
-	{ WeaponUpgradeRarity::Common, "Cooldown" },
+	{ WeaponUpgradeRarity::Common, "Hit Rate" },
 	{ WeaponUpgradeRarity::Epic, "Quantity / Damage" },
 } };
 
@@ -62,7 +62,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kThunderStaffUpgradeM
 	{ WeaponUpgradeRarity::Common, "Damage" },
 	{ WeaponUpgradeRarity::Rare, "Quantity" },
 	{ WeaponUpgradeRarity::Common, "Size" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Quantity" },
 	{ WeaponUpgradeRarity::Rare, "Cooldown" },
 	{ WeaponUpgradeRarity::Epic, "Quantity / Size" },
@@ -74,16 +74,16 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kFlameStaffUpgradeMet
 	{ WeaponUpgradeRarity::Common, "Damage" },
 	{ WeaponUpgradeRarity::Common, "Size" },
 	{ WeaponUpgradeRarity::Rare, "Quantity" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Size" },
-	{ WeaponUpgradeRarity::Common, "Projectile Speed" },
-	{ WeaponUpgradeRarity::Epic, "Quantity / Damage" },
+	{ WeaponUpgradeRarity::Common, "Projectile Speed / Fire Rate" },
+	{ WeaponUpgradeRarity::Epic, "Quantity / Damage / Cooldown" },
 } };
 
 inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kSwordUpgradeMetadata{ {
 	{},
 	{ WeaponUpgradeRarity::Common, "Core" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Common, "Size" },
 	{ WeaponUpgradeRarity::Rare, "Cooldown / Quantity" },
 	{ WeaponUpgradeRarity::Common, "Damage" },
@@ -98,7 +98,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kAuraUpgradeMetadata{
 	{ WeaponUpgradeRarity::Common, "Damage" },
 	{ WeaponUpgradeRarity::Common, "Size" },
 	{ WeaponUpgradeRarity::Rare, "Cooldown" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Size" },
 	{ WeaponUpgradeRarity::Rare, "Cooldown" },
 	{ WeaponUpgradeRarity::Epic, "Damage" },
@@ -110,7 +110,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kFlameShoesUpgradeMet
 	{ WeaponUpgradeRarity::Common, "Damage" },
 	{ WeaponUpgradeRarity::Common, "Size" },
 	{ WeaponUpgradeRarity::Rare, "Duration / Quantity" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Spawn Rate" },
 	{ WeaponUpgradeRarity::Rare, "Duration / Spawn Rate" },
 	{ WeaponUpgradeRarity::Rare, "Cooldown" },
 	{ WeaponUpgradeRarity::Epic, "Damage / Size / Quantity" },
@@ -125,7 +125,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kBoneUpgradeMetadata{
 	{ WeaponUpgradeRarity::Rare, "Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Bounce" },
 	{ WeaponUpgradeRarity::Common, "Damage" },
-	{ WeaponUpgradeRarity::Epic, "Quantity / Damage" },
+	{ WeaponUpgradeRarity::Epic, "Quantity / Damage / Cooldown" },
 } };
 
 inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kHandgunUpgradeMetadata{ {
@@ -136,7 +136,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kHandgunUpgradeMetada
 	{ WeaponUpgradeRarity::Common, "Damage" },
 	{ WeaponUpgradeRarity::Common, "Projectile Speed" },
 	{ WeaponUpgradeRarity::Rare, "Ricochet" },
-	{ WeaponUpgradeRarity::Common, "Damage" },
+	{ WeaponUpgradeRarity::Common, "Damage / Cooldown" },
 	{ WeaponUpgradeRarity::Epic, "Quantity / Damage" },
 } };
 
@@ -149,7 +149,7 @@ inline constexpr std::array<WeaponUpgradeLevelMetadata, 9> kBoomerangUpgradeMeta
 	{ WeaponUpgradeRarity::Rare, "Cooldown" },
 	{ WeaponUpgradeRarity::Rare, "Hits" },
 	{ WeaponUpgradeRarity::Common, "Damage" },
-	{ WeaponUpgradeRarity::Epic, "Quantity / Damage" },
+	{ WeaponUpgradeRarity::Epic, "Quantity / Damage / Cooldown" },
 } };
 
 inline constexpr WeaponUpgradeLevelMetadata GetWeaponUpgradeMetadata(

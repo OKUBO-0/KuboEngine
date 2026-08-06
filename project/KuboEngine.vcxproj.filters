@@ -246,6 +246,9 @@
     <ClCompile Include="game\directxgame\core\DebugDraw.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\core\DebugHotReload.cpp">
+      <Filter>game\directxgame\core</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\core\DebugContext.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
@@ -633,6 +636,9 @@
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\DebugDraw.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
+    <ClInclude Include="game\directxgame\core\DebugHotReload.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
     <ClInclude Include="game\directxgame\core\DebugContext.h">

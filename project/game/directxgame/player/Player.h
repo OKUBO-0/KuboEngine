@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Camera.h"
+#include "GameSession.h"
 #include "Vector3.h"
 #include "PlayerAimController.h"
 #include "PlayerCameraController.h"
@@ -17,6 +18,7 @@ public:
 	using AimInputDevice = PlayerAimController::InputDevice;
 
 	void Initialize();
+	void SetCharacterId(CharacterId characterId);
 	void Update(float deltaTime);
 	void Draw();
 	void DrawShadow();
@@ -61,9 +63,14 @@ public:
 	void SetVisible(bool visible) { visible_ = visible; }
 	void StartIntroPresentation();
 	void UpdateIntroPresentation(float elapsedTime, float duration);
+	void BeginCinematicPresentation();
+	void UpdateCinematicPresentation();
 	void StartDeathPresentation();
 	void UpdateDeathPresentation(float elapsedTime, float duration);
+	void NotifyHitReact();
 	bool IsDodging() const { return movementController_.IsDodging(); }
+	bool IsDashing() const { return movementController_.IsDashing(); }
+	bool IsJumping() const { return movementController_.IsJumping(); }
 	float GetDodgeCooldownRatio() const;
 	void RequestCameraShake(float duration, float strength);
 	void SuppressNextDodgeTrigger()
@@ -78,6 +85,8 @@ private:
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
 	float rotationY_ = 0.0f;
 	bool visible_ = true;
+	bool visualMoving_ = false;
+	float visualMovingHoldTimer_ = 0.0f;
 	float moveSpeedPerSecond_ = 30.0f;
 	PlayerAimController aimController_{};
 	PlayerCameraController cameraController_{};

@@ -23,46 +23,83 @@ class EnemyManager;
 ///          Player の所有権は持たず、フレーム更新と描画時に必要な非所有参照として扱う。
 class PlayerManager {
 public:
-	// PlayerManager は PlayerProgression と PlayerWeaponController の窓口。
-	// シーン側は HP/EXP/武器強化の詳細を知らず、このクラスの API だけを呼ぶ。
+	/// @brief PlayerProgression と PlayerWeaponController を初期化する
+	/// @param player 管理対象の Player。所有権は受け取らない
 	void Initialize(Player* player);
+
+	/// @brief 武器更新や敵検索に使う EnemyManager を設定する
+	/// @param enemyManager PlayScene が所有する EnemyManager
 	void SetEnemyManager(EnemyManager* enemyManager)
 	{
 		enemyManager_ = enemyManager;
 	}
+
+	/// @brief プレイヤーの基本ステータス CSV を読み込む
+	/// @param filePath 読み込む CSV パス
 	void LoadStatusFromCSV(const std::string& filePath);
+
+	/// @brief キャラクター別ステータスを読み込んで現在の Player に反映する
+	/// @param filePath キャラクター定義 CSV パス
+	/// @param characterKey 読み込むキャラクター行のキー
 	void LoadCharacterStats(
 		const std::string& filePath,
 		const std::string& characterKey)
 	{
 		progression_.LoadCharacterStats(filePath, characterKey, player_);
 	}
+
+	/// @brief 現在のキャラクター ID を武器表示制御へ反映する
+	/// @param characterId 選択中キャラクター
 	void SetCharacterId(CharacterId characterId)
 	{
 		weapons_.SetCharacterId(characterId);
 	}
+
+	/// @brief 武器強化値の CSV を読み込む
+	/// @param filePath 武器強化設定 CSV パス
 	void LoadWeaponUpgradeSettings(const std::string& filePath);
+
+	/// @brief 武器本体モデルの表示調整値を読み込む
+	/// @param tuning UI レイアウト形式の調整値マップ
 	void LoadWeaponVisualTuning(const UILayoutIO::LayoutMap& tuning)
 	{
 		weapons_.LoadVisualTuning(tuning);
 	}
+
+	/// @brief 現在の武器本体モデル調整値を保存用エントリへ追加する
+	/// @param entries 追記先のレイアウトエントリ配列
 	void AppendWeaponVisualTuningEntries(
 		std::vector<UILayoutIO::Entry>& entries) const
 	{
 		weapons_.AppendVisualTuningEntries(entries);
 	}
 #ifdef _DEBUG
+	/// @brief 武器本体モデルのデバッグ調整 UI を描画する
 	void DrawWeaponVisualDebugUI()
 	{
 		weapons_.DrawWeaponVisualDebugUI();
 	}
 #endif
+
+	/// @brief プレイヤー成長、武器、無敵時間などを 1 フレーム更新する
+	/// @param deltaTime 前フレームからの経過秒
 	void Update(float deltaTime);
+
+	/// @brief プレイヤーが所有する武器・弾を描画する
 	void Draw();
 
-	// HP と被弾状態。無敵時間、死亡判定、回復量の反映を Progression と同期する。
+	/// @brief プレイヤーにダメージを与え、無敵時間と死亡状態を更新する
+	/// @param damage 適用するダメージ量
+	/// @return 実際にダメージが通った場合 true
 	bool TakeDamage(int32_t damage = 10);
+
+	/// @brief HP を回復する
+	/// @param amount 回復量
+	/// @return 実際に回復した量
 	int32_t RecoverHP(int32_t amount = 1);
+
+	/// @brief 命中時ライフスティールを適用する
+	/// @return 実際に回復した量
 	int32_t ApplyLifeStealOnHit();
 	int32_t GetHP() const { return progression_.GetHP(); }
 	int32_t GetMaxHP() const { return progression_.GetMaxHP(); }
@@ -77,15 +114,21 @@ public:
 		invincibleTimer_ = 0.0f;
 	}
 #endif
+
+	/// @brief デバッグ用に永続強化と武器を最大付近まで強化する
 	void MakeDebugStrongest();
 
-	// 経験値と成長状態。レベルアップ要求は HUD 選択が完了するまで保持する。
+	/// @brief 経験値を加算し、必要ならレベルアップ要求を立てる
+	/// @param amount 加算する経験値
+	/// @return 実際に加算された経験値
 	int32_t AddEXP(int32_t amount);
 	int32_t GetEXP() const { return progression_.GetEXP(); }
 	int32_t GetTotalEXP() const { return progression_.GetTotalEXP(); }
 	int32_t GetLevel() const { return progression_.GetLevel(); }
 	int32_t GetNextLevelEXP() const { return progression_.GetNextLevelEXP(); }
 	bool IsLevelUpRequested() const { return progression_.IsLevelUpRequested(); }
+
+	/// @brief レベルアップ HUD 処理完了後に要求フラグを解除する
 	void ClearLevelUpRequest() { progression_.ClearLevelUpRequest(); }
 
 	int32_t GetAttackPower() const { return progression_.GetAttackPower(); }
@@ -118,7 +161,15 @@ public:
 	{
 		progression_.UpgradeStat(type, amount);
 	}
+
+	/// @brief 指定パッシブアイテムを新規取得または強化できるか調べる
+	/// @param type 対象パッシブアイテム
+	/// @return 取得枠・最大レベル条件を満たす場合 true
 	bool CanAcquirePassiveItem(PassiveItemType type) const;
+
+	/// @brief 指定パッシブアイテムを取得または強化する
+	/// @param type 対象パッシブアイテム
+	/// @return 成功した場合 true
 	bool UpgradePassiveItem(PassiveItemType type);
 	int32_t GetPassiveItemLevel(PassiveItemType type) const
 	{
@@ -156,8 +207,7 @@ public:
 		return progression_.GetExpPickupRangeMultiplier();
 	}
 
-	// 武器ファサード。
-	// 各武器の生成・更新・弾数制限は PlayerWeaponController に隠し、外部には候補生成に必要な状態だけを返す。
+	/// @brief 弓矢武器を強化する
 	void UpgradeNormalBullets();
 	static constexpr size_t kMaxEquippedWeaponTypes =
 		PlayerWeaponController::kMaxEquippedWeaponTypes;
@@ -173,6 +223,9 @@ public:
 	{
 		return weapons_.CanAcquireWeapon(type);
 	}
+
+	/// @brief 通常弾のフレーム内参照を取得する
+	/// @return Controller が所有する通常弾配列
 	const std::vector<std::unique_ptr<NormalBullet>>&
 		GetNormalBullets() const
 	{
@@ -280,6 +333,14 @@ public:
 	{
 		return weapons_.GetExplosiveBullets();
 	}
+	const std::vector<Vector3>& GetRecentNormalBulletShotPositions() const
+	{
+		return weapons_.GetRecentNormalBulletShotPositions();
+	}
+	const std::vector<Vector3>& GetRecentExplosiveBulletShotPositions() const
+	{
+		return weapons_.GetRecentExplosiveBulletShotPositions();
+	}
 	int32_t GetExplosiveBulletLevel() const
 	{
 		return weapons_.GetExplosiveBulletLevel();
@@ -353,6 +414,10 @@ public:
 	const auto& GetBoneBullets() const { return weapons_.GetBoneBullets(); }
 	const auto& GetHandgunBullets() const { return weapons_.GetHandgunBullets(); }
 	const auto& GetBoomerangBullets() const { return weapons_.GetBoomerangBullets(); }
+	const std::vector<Vector3>& GetRecentBoneShotPositions() const
+	{
+		return weapons_.GetRecentBoneShotPositions();
+	}
 	const std::vector<Vector3>& GetRecentHandgunShotPositions() const
 	{
 		return weapons_.GetRecentHandgunShotPositions();
@@ -361,16 +426,32 @@ public:
 	{
 		return weapons_.GetRecentHandgunReloadPositions();
 	}
+	const std::vector<Vector3>& GetRecentBoomerangShotPositions() const
+	{
+		return weapons_.GetRecentBoomerangShotPositions();
+	}
 
 	void MaxAllWeapons();
+
+	/// @brief 指定武器の現在レベルを取得する
+	/// @param type 対象武器
+	/// @return 未所持なら 0、所持済みなら現在レベル
 	int32_t GetWeaponLevel(WeaponType type) const
 	{
 		return weapons_.GetWeaponLevel(type);
 	}
+
+	/// @brief 指定武器の最大レベルを取得する
+	/// @param type 対象武器
+	/// @return 最大レベル
 	int32_t GetWeaponMaxLevel(WeaponType type) const
 	{
 		return weapons_.GetWeaponMaxLevel(type);
 	}
+
+	/// @brief デバッグ用に指定武器レベルを直接設定する
+	/// @param type 対象武器
+	/// @param level 設定するレベル
 	void DebugSetWeaponLevel(WeaponType type, int32_t level)
 	{
 		weapons_.DebugSetWeaponLevel(type, player_, level);

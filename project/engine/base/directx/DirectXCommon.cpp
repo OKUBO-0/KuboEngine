@@ -928,6 +928,11 @@ DirectXCommon::FrameUploadAllocation DirectXCommon::AllocateFrameUpload(
 	return allocation;
 }
 
+size_t DirectXCommon::GetCurrentFrameUploadUsedBytes() const
+{
+	return frameContexts_[currentFrameIndex_].uploadOffset;
+}
+
 void DirectXCommon::DeferResourceRelease(
 	Microsoft::WRL::ComPtr<ID3D12Resource>&& resource)
 {

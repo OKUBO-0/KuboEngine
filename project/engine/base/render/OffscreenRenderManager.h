@@ -82,7 +82,7 @@ private:
 	DirectX::TexMetadata renderTargetMetadata_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> renderTargetTextureResource;//レンダーテクスチャ
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetTextureHandle;//レンダーテクスチャのハンドル
-	inline static const Vector4 kClearColor = { 0.0f,0.0f,0.0f,1.0f };
+	inline static const Vector4 kClearColor = { 0.55f,0.68f,0.92f,1.0f };
 	uint32_t srvIndex = UINT32_MAX;
 	D3D12_CPU_DESCRIPTOR_HANDLE imGuiSceneTextureCpuHandle{};
 	D3D12_GPU_DESCRIPTOR_HANDLE imGuiSceneTextureGpuHandle_{};

@@ -36,6 +36,17 @@ void DrawWeaponDebugControls(PlayerManager& playerManager)
 		return;
 	}
 	ImGui::TextUnformatted("追加 / 削除 / 攻撃 / レベル調整");
+	if (ImGui::Button("全武器を最大化")) {
+		playerManager.MaxAllWeapons();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("全武器を攻撃")) {
+		for (WeaponType type : kUpgradeableWeaponTypes) {
+			if (playerManager.HasWeapon(type)) {
+				playerManager.DebugFireWeapon(type);
+			}
+		}
+	}
 	if (ImGui::BeginTable(
 			"WeaponDebugTable",
 			6,

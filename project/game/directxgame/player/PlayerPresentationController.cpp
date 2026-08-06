@@ -10,10 +10,13 @@
 namespace {
 
 constexpr char kGameCameraName[] = "directxgame_player";
-constexpr float kPlayerModelScale = 1.0f;
-constexpr float kPresentationCameraDistance = 24.0f;
-constexpr float kPresentationCameraHeight = 24.0f;
-constexpr float kPresentationCameraPitch = 0.72f;
+constexpr float kPlayerModelScale = 2.0f;
+constexpr float kPlayerModelBasePitch = 0.0f;
+constexpr float kPresentationCameraDistance = 20.0f;
+constexpr float kPresentationCameraHeight = 10.0f;
+constexpr float kPresentationCameraPitch = 0.40f;
+constexpr float kPlayerWalkCycleSpeed = 6.5f;
+constexpr float kPlayerIdleCycleSpeed = 2.0f;
 
 float Clamp01(float value)
 {
@@ -29,6 +32,22 @@ float SmoothStep(float progress)
 {
 	progress = std::clamp(progress, 0.0f, 1.0f);
 	return progress * progress * (3.0f - 2.0f * progress);
+}
+
+Vector3 LookAtRotation(const Vector3& cameraPosition, const Vector3& focusPosition)
+{
+	const Vector3 direction{
+		focusPosition.x - cameraPosition.x,
+		focusPosition.y - cameraPosition.y,
+		focusPosition.z - cameraPosition.z,
+	};
+	const float horizontalLength =
+		std::sqrt(direction.x * direction.x + direction.z * direction.z);
+	return {
+		std::atan2(-direction.y, horizontalLength),
+		std::atan2(direction.x, direction.z),
+		0.0f,
+	};
 }
 
 }
@@ -63,7 +82,7 @@ void PlayerPresentationController::UpdateIntro(
 	const float orbitProgress = SmoothStep(Clamp01(rawProgress / 0.9f));
 	const float growProgress = SmoothStep(Clamp01(rawProgress / 0.86f));
 	if (playerObject) {
-		playerObject->SetRotate({ 0.0f, playerRotationY, 0.0f });
+		playerObject->SetRotate({ kPlayerModelBasePitch, playerRotationY, 0.0f });
 		playerObject->SetTranslate(playerPosition);
 		const float playerScale = LerpFloat(0.02f, kPlayerModelScale, growProgress);
 		playerObject->SetScale({ playerScale, playerScale, playerScale });
@@ -83,11 +102,12 @@ void PlayerPresentationController::UpdateIntro(
 		cameraController.GetDistance(),
 		returnProgress);
 	const float height = LerpFloat(
-		10.0f,
+		12.8f,
 		normalCameraPose.position.y,
 		returnProgress);
 	const float orbitAngle = LerpFloat(-1.55f, 0.0f, orbitProgress);
-	const float pitch = std::atan2(height - playerPosition.y, distance);
+	const float focusHeight = playerPosition.y + 2.7f;
+	const float pitch = std::atan2(height - focusHeight, distance);
 	const Vector3 orbitPosition{
 		playerPosition.x + std::sin(orbitAngle) * distance,
 		height,
@@ -162,17 +182,37 @@ void PlayerPresentationController::UpdateDeath(
 		deathStartCameraHeight_,
 		kPresentationCameraHeight,
 		progress);
+	const float orbitYaw = playerRotationY + 0.35f;
+	const Vector3 cameraPosition{
+		playerPosition.x + std::sin(orbitYaw) * 5.2f,
+		height,
+		playerPosition.z - std::cos(orbitYaw) * distance,
+	};
+	const Vector3 focusPosition{
+		playerPosition.x,
+		playerPosition.y + 1.55f,
+		playerPosition.z,
+	};
+	const Vector3 lookRotation = LookAtRotation(cameraPosition, focusPosition);
 	const float pitch = LerpFloat(
 		deathStartCameraPitch_,
-		kPresentationCameraPitch,
+		lookRotation.x,
 		progress);
-	camera->SetTranslate({
-		playerPosition.x,
-		height,
-		playerPosition.z - distance,
-		});
-	camera->SetRotate({ pitch, 0.0f, 0.0f });
+	camera->SetTranslate(cameraPosition);
+	camera->SetRotate({ pitch, lookRotation.y, 0.0f });
 	SyncCamera(camera);
+}
+
+void PlayerPresentationController::UpdateMotion(
+	float deltaTime,
+	bool isMoving,
+	bool isDodging)
+{
+	motionTime_ += deltaTime;
+	const float targetBlend = (isMoving || isDodging) ? 1.0f : 0.0f;
+	const float blendSpeed = isMoving ? 9.5f : 6.0f;
+	const float blendStep = std::clamp(deltaTime * blendSpeed, 0.0f, 1.0f);
+	moveBlend_ = LerpFloat(moveBlend_, targetBlend, blendStep);
 }
 
 void PlayerPresentationController::ApplyPlayerTransform(
@@ -193,19 +233,41 @@ void PlayerPresentationController::ApplyPlayerTransform(
 		return;
 	}
 
-	playerObject->SetRotate({ 0.0f, playerRotationY, 0.0f });
-	playerObject->SetTranslate(playerPosition);
-	playerObject->SetScale(isDodging
-		? Vector3{
+	const float idleCycle = std::sin(motionTime_ * kPlayerIdleCycleSpeed);
+	const float walkCycle = std::sin(motionTime_ * kPlayerWalkCycleSpeed);
+	const float walkStep = std::abs(walkCycle);
+	const float idleBob = idleCycle * 0.006f;
+	const float walkBob = walkStep * 0.010f;
+	const float bob = LerpFloat(idleBob, walkBob, moveBlend_);
+	const float walkRoll = walkCycle * 0.006f * moveBlend_;
+	const float walkLean = 0.006f * moveBlend_;
+	const float idleScaleY = 1.0f + idleCycle * 0.002f * (1.0f - moveBlend_);
+	const float walkScaleY = 1.0f - walkStep * 0.0015f * moveBlend_;
+	const float squashScale = idleScaleY * walkScaleY;
+
+	playerObject->SetRotate({
+		kPlayerModelBasePitch + walkLean,
+		playerRotationY,
+		walkRoll,
+		});
+	playerObject->SetTranslate({
+		playerPosition.x,
+		playerPosition.y + bob,
+		playerPosition.z,
+		});
+	if (isDodging) {
+		playerObject->SetScale({
 			kPlayerModelScale * 0.8f,
 			kPlayerModelScale * 0.8f,
 			kPlayerModelScale * 1.35f,
-			}
-		: Vector3{
+			});
+	} else {
+		playerObject->SetScale({
 			kPlayerModelScale,
-			kPlayerModelScale,
+			kPlayerModelScale * squashScale,
 			kPlayerModelScale,
 			});
+	}
 	playerObject->SetColor(isDodging
 		? Vector4{ 0.55f, 0.9f, 1.0f, 0.72f }
 		: Vector4{ 1.0f, 1.0f, 1.0f, 1.0f });
@@ -222,14 +284,20 @@ void PlayerPresentationController::ApplyDeathPose(
 	}
 
 	const float fall = SmoothStep(progress);
+	const bool hasDeathClip = playerObject->HasAnimationClip("death");
 	playerObject->SetRotate({
-		fall * 1.42f,
+		kPlayerModelBasePitch + (hasDeathClip ? 0.0f : fall * 1.42f),
 		playerRotationY,
-		fall * -0.28f,
+		hasDeathClip ? 0.0f : fall * -0.28f,
+		});
+	playerObject->SetScale({
+		kPlayerModelScale,
+		kPlayerModelScale,
+		kPlayerModelScale,
 		});
 	playerObject->SetTranslate({
 		playerPosition.x,
-		playerPosition.y - fall * 0.55f,
+		playerPosition.y - (hasDeathClip ? 0.0f : fall * 0.55f),
 		playerPosition.z,
 		});
 	playerObject->Update();

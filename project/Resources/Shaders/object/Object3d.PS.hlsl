@@ -100,11 +100,12 @@ PixelShaderOutput main(VertexShaderOutput input)
     }
 
     PixelShaderOutput output;
-    float3 surfaceColor = gMaterial.color.rgb *
+    float4 materialColor = gMaterial.color * input.instanceColor;
+    float3 surfaceColor = materialColor.rgb *
         lerp(float3(1.0f, 1.0f, 1.0f), textureColor.rgb, saturate(gEnvironment.textureInfluence));
     if (gMaterial.enableLighting == 0 || gSceneLight.enable == 0)
     {
-        output.color = float4(surfaceColor, gMaterial.color.a * textureColor.a);
+        output.color = float4(surfaceColor, materialColor.a * textureColor.a);
         return output;
     }
 
@@ -133,6 +134,6 @@ PixelShaderOutput main(VertexShaderOutput input)
 
     output.color = float4(
         ambient + diffuse + specular + environmentColor,
-        gMaterial.color.a * textureColor.a);
+        materialColor.a * textureColor.a);
     return output;
 }

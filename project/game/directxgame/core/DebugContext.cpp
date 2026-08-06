@@ -85,6 +85,8 @@ void DebugContext::Load(
 		loadWindowVisible("audio", windows_.audio);
 	windows_.keyInputDebug =
 		loadWindowVisible("keyInputDebug", windows_.keyInputDebug);
+	windows_.hotReload =
+		loadWindowVisible("hotReload", windows_.hotReload);
 	windows_.sceneSettings =
 		loadWindowVisible("sceneSettings", windows_.sceneSettings);
 	windows_.sceneSpecificDebug =
@@ -151,6 +153,7 @@ void DebugContext::Save(
 	saveWindowVisible("colliderTagManager", windows_.colliderTagManager);
 	saveWindowVisible("audio", windows_.audio);
 	saveWindowVisible("keyInputDebug", windows_.keyInputDebug);
+	saveWindowVisible("hotReload", windows_.hotReload);
 	saveWindowVisible("sceneSettings", windows_.sceneSettings);
 	saveWindowVisible("sceneSpecificDebug", windows_.sceneSpecificDebug);
 	saveWindowVisible("objectSettings", windows_.objectSettings);

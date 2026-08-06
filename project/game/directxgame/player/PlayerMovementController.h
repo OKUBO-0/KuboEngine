@@ -14,15 +14,18 @@ public:
 		float moveSpeedPerSecond,
 		float cameraYaw,
 		bool cameraRelativeMovement);
-	bool IsDodging() const { return dodgeTimer_ > 0.0f; }
+	bool IsDodging() const { return false; }
+	bool IsDashing() const { return dashing_; }
+	bool IsJumping() const { return jumpTimer_ > 0.0f; }
 	float GetDodgeCooldownRatio() const;
+	void ResetActionState();
 	void SuppressNextDodgeTrigger()
 	{
 		suppressNextDodgeTrigger_ = true;
 	}
 
 private:
-	void UpdateDodge(
+	void UpdateDashAndJump(
 		float deltaTime,
 		const Vector2& moveInput,
 		float& rotationY,
@@ -36,11 +39,15 @@ private:
 	Vector3 dodgeDirection_{ 0.0f, 0.0f, 1.0f };
 	float dodgeTimer_ = 0.0f;
 	float dodgeCooldownTimer_ = 0.0f;
+	float jumpTimer_ = 0.0f;
+	bool dashing_ = false;
 	bool suppressNextDodgeTrigger_ = false;
 
-	static constexpr float kDodgeDuration = 0.22f;
-	static constexpr float kDodgeCooldown = 0.8f;
-	static constexpr float kDodgeSpeed = 78.0f;
+	static constexpr float kDodgeDuration = 0.20f;
+	static constexpr float kDodgeCooldown = 0.85f;
+	static constexpr float kDodgeSpeed = 34.0f;
+	static constexpr float kJumpDuration = 0.72f;
+	static constexpr float kJumpHeight = 3.0f;
 };
 
 }

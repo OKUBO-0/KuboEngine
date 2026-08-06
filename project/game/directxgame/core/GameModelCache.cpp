@@ -214,6 +214,21 @@ void GameModelCache::LoadBatch(const std::vector<std::string>& modelNames)
 	}
 }
 
+bool GameModelCache::LoadAnimationClip(
+	ModelHandle modelHandle,
+	const std::string& clipName,
+	const std::string& animationModelName)
+{
+	const std::string resolvedAnimationFileName =
+		ResolveModelFileName(animationModelName);
+	return Engine::Graphics3D::ModelManager::GetInstance()
+		->LoadAnimationClipFromResourceRoot(
+			ResourcePaths::GetModelResourceRoot(),
+			GetResolvedFileName(modelHandle),
+			clipName,
+			resolvedAnimationFileName);
+}
+
 void GameModelCache::RefreshModelPathIndex()
 {
 	GetMutableModelPathIndex() = BuildModelPathIndex();

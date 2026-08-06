@@ -95,11 +95,18 @@ void AppendIndicesFromMesh(
 	}
 }
 
-void AppendSkinClusterDataFromMesh(const aiMesh& mesh, uint32_t baseVertex, ModelData& modelData)
+void AppendSkinClusterDataFromMesh(
+	const aiMesh& mesh,
+	uint32_t baseVertex,
+	ModelData& modelData,
+	const std::string& skinPrefix)
 {
 	for (uint32_t boneIndex = 0; boneIndex < mesh.mNumBones; ++boneIndex) {
 		const aiBone* bone = mesh.mBones[boneIndex];
 		std::string jointName = bone->mName.C_Str();
+		if (!skinPrefix.empty()) {
+			jointName = skinPrefix + "::" + jointName;
+		}
 		JointWeightData& jointWeightData = modelData.skinClusterData[jointName];
 
 		aiMatrix4x4 bindPoseMatrixAssimp = bone->mOffsetMatrix;

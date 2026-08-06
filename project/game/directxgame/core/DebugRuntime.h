@@ -3,6 +3,7 @@
 namespace DirectXGame {
 
 class EnemyManager;
+class GridPlane;
 class PlayerManager;
 
 struct RuntimeObjectStatus {
@@ -19,7 +20,8 @@ namespace DebugUI::Runtime {
 void DrawObjectManager(
 		bool* open,
 		const RuntimeObjectStatus& status,
-		EnemyManager* enemyManager);
+		EnemyManager* enemyManager,
+		const GridPlane* gridPlane);
 void DrawMotionEditor(bool* open);
 void DrawColliderManager(
 		bool* open,

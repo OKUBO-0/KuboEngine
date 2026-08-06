@@ -1,6 +1,7 @@
 #pragma once
 #include "RenderingData.h"
 #include <d3d12.h>
+#include <array>
 #include <memory>
 #include <wrl.h>
 
@@ -22,6 +23,27 @@ public:
 		uint32_t candidateCount = 0;
 		uint32_t submittedCount = 0;
 		uint32_t culledCount = 0;
+	};
+	struct DrawCullStats {
+		uint32_t candidateCount = 0;
+		uint32_t submittedCount = 0;
+		uint32_t culledCount = 0;
+	};
+	struct SkinningCacheStats {
+		uint32_t hitCount = 0;
+		uint32_t missCount = 0;
+		uint32_t gpuUploadHitCount = 0;
+		uint32_t gpuUploadMissCount = 0;
+	};
+	struct InstanceBatchStats {
+		uint32_t objectBatchCount = 0;
+		uint32_t objectInstanceCount = 0;
+		uint32_t skinningBatchCount = 0;
+		uint32_t skinningInstanceCount = 0;
+		uint32_t queuedObjectCount = 0;
+		uint32_t queuedStaticObjectCount = 0;
+		uint32_t queuedSkinningObjectCount = 0;
+		uint32_t queuedShadowObjectCount = 0;
 	};
 
 
@@ -47,19 +69,53 @@ public:
 	/// @param なし
 	/// @return なし
 	void CommonDraw();
+	void ObjectInstancingCommonDraw();
 
 	/// @brief スキニング 3D 描画の共通ステートを設定する
 	/// @param なし
 	/// @return なし
 	void SkinningCommonDraw();
+	void SkinningInstancingCommonDraw();
+	void ShadowCommonDraw();
+	void ObjectInstancingShadowCommonDraw();
+	void SkinningShadowCommonDraw();
+	void SkinningInstancingShadowCommonDraw();
+	uint32_t BindSkinningInstanceTransforms(
+		ID3D12Resource* resource,
+		UINT numElements,
+		UINT64 byteOffset,
+		UINT structureByteStride);
+	uint32_t BindObjectInstanceData(
+		ID3D12Resource* resource,
+		UINT numElements,
+		UINT64 byteOffset,
+		UINT structureByteStride);
 	bool BeginShadowPass(const Vector3& focusPosition);
 	void EndShadowPass();
 	void BindSceneLighting(bool skinning = false);
 	bool IsShadowPassActive() const { return shadowPassActive_; }
 	bool IsInsideShadowFrustum(const Vector3& worldCenter, float boundingRadius) const;
 	void RecordShadowCandidate(bool submitted);
+	void RecordDrawCandidate(bool submitted);
+	void RecordSkinningCacheHit();
+	void RecordSkinningCacheMiss();
+	void RecordSkinningGpuUploadCacheHit();
+	void RecordSkinningGpuUploadCacheMiss();
+	void RecordObjectInstanceBatch(uint32_t instanceCount);
+	void RecordSkinningInstanceBatch(uint32_t instanceCount);
+	void RecordRenderQueueFlush(
+		uint32_t queuedCount,
+		uint32_t staticCount,
+		uint32_t skinningCount);
+	void RecordShadowQueueFlush(uint32_t queuedCount);
 	const ShadowPassStats& GetShadowPassStats() const { return shadowPassStats_; }
+	const DrawCullStats& GetDrawCullStats() const { return drawCullStats_; }
+	const SkinningCacheStats& GetSkinningCacheStats() const { return skinningCacheStats_; }
+	const InstanceBatchStats& GetInstanceBatchStats() const { return instanceBatchStats_; }
 	void ResetShadowPassStatistics();
+	void ResetDrawCullStatistics();
+	void ResetSkinningCacheStatistics();
+	void ResetInstanceBatchStatistics();
 	uint64_t GetMeasuredShadowPassCount() const { return measuredShadowPassCount_; }
 	uint64_t GetTotalShadowCandidateCount() const { return totalShadowCandidateCount_; }
 	uint64_t GetTotalShadowSubmittedCount() const { return totalShadowSubmittedCount_; }
@@ -98,6 +154,12 @@ private:
 
 private:
 	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
+	uint32_t BindInstanceStructuredBuffer(
+		UINT rootParameterIndex,
+		ID3D12Resource* resource,
+		UINT numElements,
+		UINT64 byteOffset,
+		UINT structureByteStride);
 	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 
@@ -108,11 +170,22 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMapResource_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shadowDsvHeap_;
 	ShadowMapData shadowMapData_{};
+	D3D12_GPU_VIRTUAL_ADDRESS shadowMapDataGpuAddress_ = 0;
 	uint32_t shadowSrvIndex_ = UINT32_MAX;
 	bool shadowPassActive_ = false;
 	bool shadowEnabled_ = true;
 	float shadowArea_ = 72.0f;
 	ShadowPassStats shadowPassStats_{};
+	DrawCullStats drawCullStats_{};
+	SkinningCacheStats skinningCacheStats_{};
+	InstanceBatchStats instanceBatchStats_{};
+	static constexpr uint32_t kBufferedFrameCount = 2;
+	static constexpr uint32_t kSkinningInstanceSrvCountPerFrame = 192;
+	std::array<std::array<uint32_t, kSkinningInstanceSrvCountPerFrame>, kBufferedFrameCount>
+		skinningInstanceSrvIndices_{};
+	std::array<uint32_t, kBufferedFrameCount> skinningInstanceSrvCursor_{};
+	std::array<uint64_t, kBufferedFrameCount> skinningInstanceSrvFrameSerials_{};
+	bool skinningInstanceSrvInitialized_ = false;
 	uint64_t measuredShadowPassCount_ = 0;
 	uint64_t totalShadowCandidateCount_ = 0;
 	uint64_t totalShadowSubmittedCount_ = 0;

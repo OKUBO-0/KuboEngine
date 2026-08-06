@@ -7,10 +7,10 @@
 
 namespace {
 
-constexpr float kPresentationDuration = 1.35f;
-constexpr float kTransitionStartTime = 1.55f;
-constexpr float kOverlayDelay = 1.25f;
-constexpr float kOverlayFadeDuration = 0.45f;
+constexpr float kPresentationDuration = 2.75f;
+constexpr float kTransitionReadyTime = 3.05f;
+constexpr float kOverlayDelay = 2.35f;
+constexpr float kOverlayFadeDuration = 0.55f;
 constexpr float kOverlayMaxAlpha = 0.65f;
 
 float Clamp01(float value)
@@ -62,7 +62,8 @@ bool PlayerDeathPresentation::Update(
 	elapsedTime_ += deltaTime;
 	player.UpdateDeathPresentation(elapsedTime_, kPresentationDuration);
 	if (!transitionRequested_ &&
-		(elapsedTime_ >= kTransitionStartTime || skipRequested)) {
+		elapsedTime_ >= kTransitionReadyTime &&
+		skipRequested) {
 		transitionRequested_ = true;
 		return true;
 	}

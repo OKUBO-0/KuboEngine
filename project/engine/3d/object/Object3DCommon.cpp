@@ -10,6 +10,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -59,14 +60,19 @@ void Object3DCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxC
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
 	graphicsPipeline_->Initialize(dxCommon);
 	graphicsPipeline_->Create();
+	graphicsPipeline_->CreateObjectInstancing();
+	graphicsPipeline_->CreateObjectInstancingShadowMap();
 	
 	skinningGraphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
 	skinningGraphicsPipeline_->Initialize(dxCommon);
 	skinningGraphicsPipeline_->CreateSkinning();
+	skinningGraphicsPipeline_->CreateSkinningInstancing();
 
 	shadowGraphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
 	shadowGraphicsPipeline_->Initialize(dxCommon);
 	shadowGraphicsPipeline_->CreateShadowMap();
+	shadowGraphicsPipeline_->CreateSkinningShadowMap();
+	shadowGraphicsPipeline_->CreateSkinningInstancingShadowMap();
 
 	sceneLightData_.color = { 1.0f, 0.95f, 0.9f, 1.0f };
 	sceneLightData_.direction = MyMath::Normalize(Vector3{ -0.55f, -1.0f, -0.45f });
@@ -129,10 +135,32 @@ void Object3DCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxC
 		0.0012f,
 	};
 
+	static_assert(kBufferedFrameCount == Engine::Base::DirectXCommon::kFrameCount);
+	for (uint32_t frame = 0; frame < kBufferedFrameCount; ++frame) {
+		skinningInstanceSrvCursor_[frame] = 0;
+		skinningInstanceSrvFrameSerials_[frame] = 0;
+		for (uint32_t& srvIndex : skinningInstanceSrvIndices_[frame]) {
+			srvIndex = srvManager_->Allocate();
+			srvManager_->LabelUsage(srvIndex, "ObjectInstanceData");
+		}
+	}
+	skinningInstanceSrvInitialized_ = true;
+
 }
 
 void Object3DCommon::Finalize()
 {
+	if (srvManager_ && skinningInstanceSrvInitialized_) {
+		for (auto& frameIndices : skinningInstanceSrvIndices_) {
+			for (uint32_t& srvIndex : frameIndices) {
+				if (srvIndex != UINT32_MAX) {
+					srvManager_->Free(srvIndex);
+					srvIndex = UINT32_MAX;
+				}
+			}
+		}
+		skinningInstanceSrvInitialized_ = false;
+	}
 	if (srvManager_ && shadowSrvIndex_ != UINT32_MAX) {
 		srvManager_->Free(shadowSrvIndex_);
 		shadowSrvIndex_ = UINT32_MAX;
@@ -197,6 +225,7 @@ bool Object3DCommon::BeginShadowPass(const Vector3& focusPosition)
 		sizeof(shadowMapData_));
 	dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
 		1, shadowAllocation.gpuAddress);
+	shadowMapDataGpuAddress_ = shadowAllocation.gpuAddress;
 	shadowPassActive_ = true;
 	return true;
 }
@@ -234,6 +263,63 @@ void Object3DCommon::RecordShadowCandidate(bool submitted)
 	}
 }
 
+void Object3DCommon::RecordDrawCandidate(bool submitted)
+{
+	++drawCullStats_.candidateCount;
+	if (submitted) {
+		++drawCullStats_.submittedCount;
+	} else {
+		++drawCullStats_.culledCount;
+	}
+}
+
+void Object3DCommon::RecordSkinningCacheHit()
+{
+	++skinningCacheStats_.hitCount;
+}
+
+void Object3DCommon::RecordSkinningCacheMiss()
+{
+	++skinningCacheStats_.missCount;
+}
+
+void Object3DCommon::RecordSkinningGpuUploadCacheHit()
+{
+	++skinningCacheStats_.gpuUploadHitCount;
+}
+
+void Object3DCommon::RecordSkinningGpuUploadCacheMiss()
+{
+	++skinningCacheStats_.gpuUploadMissCount;
+}
+
+void Object3DCommon::RecordObjectInstanceBatch(uint32_t instanceCount)
+{
+	++instanceBatchStats_.objectBatchCount;
+	instanceBatchStats_.objectInstanceCount += instanceCount;
+}
+
+void Object3DCommon::RecordSkinningInstanceBatch(uint32_t instanceCount)
+{
+	++instanceBatchStats_.skinningBatchCount;
+	instanceBatchStats_.skinningInstanceCount += instanceCount;
+}
+
+void Object3DCommon::RecordRenderQueueFlush(
+	uint32_t queuedCount,
+	uint32_t staticCount,
+	uint32_t skinningCount)
+{
+	instanceBatchStats_.queuedObjectCount += queuedCount;
+	instanceBatchStats_.queuedStaticObjectCount += staticCount;
+	instanceBatchStats_.queuedSkinningObjectCount += skinningCount;
+}
+
+void Object3DCommon::RecordShadowQueueFlush(uint32_t queuedCount)
+{
+	instanceBatchStats_.queuedShadowObjectCount += queuedCount;
+}
+
 void Object3DCommon::EndShadowPass()
 {
 	const auto dxCommon = GetDirectXCommon();
@@ -260,6 +346,21 @@ void Object3DCommon::ResetShadowPassStatistics()
 	totalShadowCulledCount_ = 0;
 }
 
+void Object3DCommon::ResetDrawCullStatistics()
+{
+	drawCullStats_ = {};
+}
+
+void Object3DCommon::ResetSkinningCacheStatistics()
+{
+	skinningCacheStats_ = {};
+}
+
+void Object3DCommon::ResetInstanceBatchStatistics()
+{
+	instanceBatchStats_ = {};
+}
+
 void Object3DCommon::BindSceneLighting(bool skinning)
 {
 	const auto dxCommon = GetDirectXCommon();
@@ -283,6 +384,72 @@ void Object3DCommon::BindSceneLighting(bool skinning)
 	srvManager_->SetGraphicsRootDescriptorTable(shadowTextureRoot, shadowSrvIndex_);
 	dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
 		shadowDataRoot, shadowAllocation.gpuAddress);
+}
+
+uint32_t Object3DCommon::BindSkinningInstanceTransforms(
+	ID3D12Resource* resource,
+	UINT numElements,
+	UINT64 byteOffset,
+	UINT structureByteStride)
+{
+	return BindInstanceStructuredBuffer(
+		10,
+		resource,
+		numElements,
+		byteOffset,
+		structureByteStride);
+}
+
+uint32_t Object3DCommon::BindObjectInstanceData(
+	ID3D12Resource* resource,
+	UINT numElements,
+	UINT64 byteOffset,
+	UINT structureByteStride)
+{
+	return BindInstanceStructuredBuffer(
+		9,
+		resource,
+		numElements,
+		byteOffset,
+		structureByteStride);
+}
+
+uint32_t Object3DCommon::BindInstanceStructuredBuffer(
+	UINT rootParameterIndex,
+	ID3D12Resource* resource,
+	UINT numElements,
+	UINT64 byteOffset,
+	UINT structureByteStride)
+{
+	if (!resource || numElements == 0 || !skinningInstanceSrvInitialized_) {
+		return UINT32_MAX;
+	}
+	if (structureByteStride == 0 || byteOffset % structureByteStride != 0) {
+		return UINT32_MAX;
+	}
+	const auto dxCommon = GetDirectXCommon();
+	const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
+	const uint64_t frameSerial = dxCommon->GetPendingSubmissionFenceValue();
+	if (skinningInstanceSrvFrameSerials_[frameIndex] != frameSerial) {
+		skinningInstanceSrvFrameSerials_[frameIndex] = frameSerial;
+		skinningInstanceSrvCursor_[frameIndex] = 0;
+	}
+	uint32_t& cursor = skinningInstanceSrvCursor_[frameIndex];
+	if (cursor >= kSkinningInstanceSrvCountPerFrame) {
+		return UINT32_MAX;
+	}
+	const uint32_t srvIndex =
+		skinningInstanceSrvIndices_[frameIndex][cursor++];
+	srvManager_->CreateSRVforStructuredBuffer(
+		srvIndex,
+		resource,
+		numElements,
+		structureByteStride,
+		byteOffset / structureByteStride);
+	dxCommon->GetCommandList()->SetGraphicsRootDescriptorTable(
+		rootParameterIndex,
+		srvManager_->GetGPUDescriptorHandle(srvIndex));
+	return srvIndex;
 }
 
 void Object3DCommon::SetSceneLight(const SceneLightData& light)
@@ -358,6 +525,19 @@ void Object3DCommon::CommonDraw()
 
 }
 
+void Object3DCommon::ObjectInstancingCommonDraw()
+{
+	const auto dxCommon = GetDirectXCommon();
+	const auto rootSignature =
+		graphicsPipeline_->GetRootSignatureObjectInstancingHandle();
+	const auto pipelineState =
+		graphicsPipeline_->GetGraphicsPipelineStateObjectInstancingHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(
+		D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
 void Object3DCommon::SkinningCommonDraw()
 {
 	const auto dxCommon = GetDirectXCommon();
@@ -369,6 +549,90 @@ void Object3DCommon::SkinningCommonDraw()
 	dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
+}
+
+void Object3DCommon::SkinningInstancingCommonDraw()
+{
+	const auto dxCommon = GetDirectXCommon();
+	const auto rootSignature =
+		skinningGraphicsPipeline_->GetRootSignatureSkinningInstancingHandle();
+	const auto pipelineState =
+		skinningGraphicsPipeline_->GetGraphicsPipelineStateSkinningInstancingHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+}
+
+void Object3DCommon::ShadowCommonDraw()
+{
+	const auto dxCommon = GetDirectXCommon();
+	const auto rootSignature =
+		shadowGraphicsPipeline_->GetRootSignatureShadowMapHandle();
+	const auto pipelineState =
+		shadowGraphicsPipeline_->GetGraphicsPipelineStateShadowMapHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(
+		D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	if (shadowMapDataGpuAddress_ != 0) {
+		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
+			1,
+			shadowMapDataGpuAddress_);
+	}
+}
+
+void Object3DCommon::ObjectInstancingShadowCommonDraw()
+{
+	const auto dxCommon = GetDirectXCommon();
+	const auto rootSignature =
+		graphicsPipeline_->GetRootSignatureObjectInstancingHandle();
+	const auto pipelineState =
+		graphicsPipeline_->GetGraphicsPipelineStateObjectInstancingShadowMapHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(
+		D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	if (shadowMapDataGpuAddress_ != 0) {
+		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
+			8,
+			shadowMapDataGpuAddress_);
+	}
+}
+
+void Object3DCommon::SkinningShadowCommonDraw()
+{
+	const auto dxCommon = GetDirectXCommon();
+	const auto rootSignature =
+		skinningGraphicsPipeline_->GetRootSignatureSkinningHandle();
+	const auto pipelineState =
+		shadowGraphicsPipeline_->GetGraphicsPipelineStateSkinningShadowMapHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(
+		D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	if (shadowMapDataGpuAddress_ != 0) {
+		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
+			9,
+			shadowMapDataGpuAddress_);
+	}
+}
+
+void Object3DCommon::SkinningInstancingShadowCommonDraw()
+{
+	const auto dxCommon = GetDirectXCommon();
+	const auto rootSignature =
+		skinningGraphicsPipeline_->GetRootSignatureSkinningInstancingHandle();
+	const auto pipelineState =
+		shadowGraphicsPipeline_->GetGraphicsPipelineStateSkinningInstancingShadowMapHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(
+		D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	if (shadowMapDataGpuAddress_ != 0) {
+		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
+			9,
+			shadowMapDataGpuAddress_);
+	}
 }
 
 }

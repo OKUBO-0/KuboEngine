@@ -36,6 +36,10 @@ public:
 	void Draw();
 
 	bool IsActive() const { return active_; }
+	Engine::Graphics3D::Object3D* GetRenderObject() const
+	{
+		return active_ ? object_.get() : nullptr;
+	}
 	void Deactivate()
 	{
 		active_ = false;

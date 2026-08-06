@@ -6,6 +6,7 @@
 #include "GameSpriteFactory.h"
 #include "Player.h"
 #include "PlayerManager.h"
+#include "PassiveItemData.h"
 #include "DigitSpriteUtil.h"
 #include "DataPaths.h"
 #include "UILayoutIO.h"
@@ -20,6 +21,8 @@ namespace {
 
 constexpr float kIntroBarHeight = 56.0f;
 constexpr float kBossHpFrameBorder = 3.0f;
+constexpr Vector4 kHudPanelColor{ 0.0f, 0.0f, 0.0f, 0.74f };
+constexpr Vector4 kHudFrameColor{ 1.0f, 0.96f, 0.0f, 1.0f };
 
 float Clamp01(float value)
 {
@@ -30,7 +33,6 @@ void PreloadGameplayHudTextures()
 {
 	DirectXGame::GameTextureCache::LoadBatch({
 		"white1x1.png",
-		"ui/game/death.png",
 		"ui/game/pause.png",
 		"ui/game/left_cursor.png",
 		"ui/game/right_corsor.png",
@@ -44,9 +46,76 @@ void PreloadGameplayHudTextures()
 		"ui/controls/key_d.png",
 		"ui/controls/key_esc.png",
 		"ui/game/lvup/icon_common_unknown.png",
+		"ui/game/lvup/icon_passive_scroll.png",
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"ui/game/lvup/icon_weapon_rock.png",
+		"ui/game/lvup/icon_weapon_thunder_staff.png",
+		"ui/game/lvup/icon_weapon_flame_staff.png",
+		"ui/game/lvup/icon_weapon_sword.png",
+		"ui/game/lvup/icon_weapon_aura.png",
+		"ui/game/lvup/icon_stat_fire.png",
+		"ui/game/lvup/icon_weapon_bone.png",
+		"ui/game/lvup/icon_weapon_handgun.png",
+		"ui/game/lvup/icon_weapon_boomerang.png",
+		"ui/game/lvup/icon_stat_coin_gain.png",
+		"ui/game/lvup/icon_stat_crit_damage.png",
 		"ui/game/lvup/lightning_icon.png",
 		"ui/game/lvup/attack_icon.png",
 		});
+}
+
+void SetPanelLayout(DirectXGame::UIPanel& panel, const Vector2& position, const Vector2& size, const Vector4& color)
+{
+	panel.SetPosition(position);
+	panel.SetSize(size);
+	panel.SetColor(color);
+}
+
+template <size_t N>
+void SetBorderLayout(
+	std::array<DirectXGame::UIPanel, N>& borders,
+	size_t offset,
+	const Vector2& position,
+	const Vector2& size,
+	float thickness,
+	const Vector4& color)
+{
+	SetPanelLayout(borders[offset + 0], position, { size.x, thickness }, color);
+	SetPanelLayout(borders[offset + 1], { position.x, position.y + size.y - thickness }, { size.x, thickness }, color);
+	SetPanelLayout(borders[offset + 2], position, { thickness, size.y }, color);
+	SetPanelLayout(borders[offset + 3], { position.x + size.x - thickness, position.y }, { thickness, size.y }, color);
+}
+
+const char* HudWeaponIconPath(size_t index)
+{
+	const std::array<const char*, 10> paths{
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"ui/game/lvup/icon_weapon_rock.png",
+		"ui/game/lvup/icon_weapon_thunder_staff.png",
+		"ui/game/lvup/icon_weapon_flame_staff.png",
+		"ui/game/lvup/icon_weapon_sword.png",
+		"ui/game/lvup/icon_weapon_aura.png",
+		"ui/game/lvup/icon_stat_fire.png",
+		"ui/game/lvup/icon_weapon_bone.png",
+		"ui/game/lvup/icon_weapon_handgun.png",
+		"ui/game/lvup/icon_weapon_boomerang.png",
+	};
+	return paths[(std::min)(index, paths.size() - 1)];
+}
+
+const char* DeathPromptText(DirectXGame::GameInputBindings::NavigationInputDevice device)
+{
+	return device == DirectXGame::GameInputBindings::NavigationInputDevice::Gamepad
+		? "--Press Any Button--"
+		: "--Press Any Click--";
+}
+
+void SetCenteredText(DirectXGame::BitmapText& text, const char* value, float y, float scale, float maxWidth, const Vector4& color)
+{
+	text.SetText(value);
+	text.SetScaleToFit(scale, maxWidth);
+	text.SetPosition({ (1280.0f - text.MeasureWidth()) * 0.5f, y });
+	text.SetColor(color);
 }
 
 }
@@ -91,10 +160,12 @@ void GameplayHudPresentation::Initialize(
 	hitFlashOverlay_.SetColor({ 1.0f, 0.12f, 0.08f, 1.0f });
 	hitFlashOverlay_.SetAlpha(0.0f);
 	hitFlashOverlay_.SetVisible(false);
-	deathOverlay_.Initialize("ui/game/death.png", { 0.0f, 0.0f });
-	deathOverlay_.SetSize({ 1280.0f, 720.0f });
-	deathOverlay_.SetAlpha(0.0f);
-	deathOverlay_.SetVisible(false);
+	deathGameOverText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
+	deathPromptText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
 	bossHpFrame_.Initialize("white1x1.png", bossHpPosition_);
 	bossHpFrame_.SetColor({ 0.92f, 0.90f, 0.86f, 0.96f });
 	bossHpFrame_.SetVisible(false);
@@ -110,6 +181,26 @@ void GameplayHudPresentation::Initialize(
 	bossHpText_.SetScale(0.28f);
 	bossHpText_.SetAdvanceMultiplier(1.0f);
 	bossHpText_.SetColor({ 1.0f, 1.0f, 1.0f, 0.98f });
+	escPanel_.Initialize();
+	for (UIPanel& border : escPanelBorders_) {
+		border.Initialize();
+	}
+	coinPanel_.Initialize();
+	killPanel_.Initialize();
+	for (UIPanel& border : counterPanelBorders_) {
+		border.Initialize();
+	}
+	coinIcon_.Initialize("ui/game/lvup/icon_stat_coin_gain.png", { 0.0f, 0.0f });
+	coinIcon_.SetSize({ 26.0f, 26.0f });
+	killIcon_.Initialize("ui/game/lvup/icon_stat_crit_damage.png", { 0.0f, 0.0f });
+	killIcon_.SetSize({ 26.0f, 26.0f });
+	escText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
+	escText_.SetText("ESC");
+	escText_.SetScale(0.22f);
+	escText_.SetAdvanceMultiplier(0.92f);
+	escText_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 	ApplyBossHpBarLayout();
 	for (int32_t index = 0; index < kCoinDigitCount; ++index) {
 		coinDigits_[index] = GameSpriteFactory::Create(
@@ -126,6 +217,20 @@ void GameplayHudPresentation::Initialize(
 		killDigits_[index]->SetTextureSize({ 24.0f, 32.0f });
 	}
 	ApplyCounterLayout();
+	for (size_t index = 0; index < buildIcons_.size(); ++index) {
+		const char* iconPath = index < kHudWeaponIconCount
+			? HudWeaponIconPath(index)
+			: "ui/game/lvup/icon_passive_scroll.png";
+		buildIcons_[index] = GameSpriteFactory::Create(iconPath, {});
+		buildIcons_[index]->SetTextureLeftTop({ 0.0f, 0.0f });
+		buildIcons_[index]->SetTextureSize({ 512.0f, 512.0f });
+		buildIcons_[index]->SetSize({ 26.0f, 26.0f });
+		buildIcons_[index]->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+	}
+	for (UIPanel& pip : buildLevelPips_) {
+		pip.Initialize();
+		pip.SetColor({ 0.0f, 0.0f, 0.0f, 0.0f });
+	}
 
 	hpGauge_.SetHP(
 		playerManager ? playerManager->GetHP() : 1,
@@ -151,6 +256,7 @@ void GameplayHudPresentation::Update(
 	animationTime_ += deltaTime;
 	UpdateCoinDisplay(runCoins);
 	UpdateKillDisplay(enemyManager ? enemyManager->GetTotalKillCount() : 0);
+	UpdateBuildStrip(playerManager);
 
 	if (playerManager) {
 		const int32_t currentHp = playerManager->GetHP();
@@ -186,20 +292,40 @@ void GameplayHudPresentation::Update(
 	} else {
 		hitFlashOverlay_.SetVisible(false);
 	}
+	if (input) {
+		deathPromptDevice_ =
+			GameInputBindings::DetectNavigationInputDevice(input, deathPromptDevice_);
+	}
 	if (flow.Is(GameplayState::Dead)) {
-		deathOverlay_.SetVisible(true);
-		deathOverlay_.SetAlpha(deathOverlayAlpha);
+		const float wipeProgress = Clamp01(deathOverlayAlpha / 0.65f);
+		const float textAlpha = Clamp01((wipeProgress - 0.72f) / 0.18f);
+		SetCenteredText(
+			deathGameOverText_,
+			"GAME OVER",
+			72.0f,
+			0.74f,
+			1120.0f,
+			{ 1.0f, 0.96f, 0.0f, textAlpha });
+		SetCenteredText(
+			deathPromptText_,
+			DeathPromptText(deathPromptDevice_),
+			620.0f,
+			0.34f,
+			1040.0f,
+			{ 1.0f, 1.0f, 1.0f, textAlpha });
 	} else {
-		deathOverlay_.SetVisible(false);
+		deathGameOverText_.SetText("");
+		deathPromptText_.SetText("");
 	}
 
 	hpGauge_.Update();
 	expGauge_.Update();
 	UpdateBossHpBar(deltaTime, flow, enemyManager);
-	if (flow.IsCursorHidden()) {
+	if (flow.IsCursorHidden() || flow.Is(GameplayState::LevelUp)) {
 		keyUi_.Update(input);
 	}
-	if (flow.IsCursorHidden() && player && enemyManager) {
+	if ((flow.IsCursorHidden() || flow.Is(GameplayState::LevelUp)) &&
+		player && enemyManager) {
 		gameplayMiniMap_.Update(player, *enemyManager);
 	}
 	if (flow.Is(GameplayState::Playing) && !gameplayFrozen) {
@@ -225,25 +351,49 @@ void GameplayHudPresentation::Draw(
 		introBottomBar_.Draw();
 		return;
 	}
-	hpGauge_.Draw();
-	expGauge_.Draw();
-	timer_.Draw();
-	DrawBossHpBar();
+	if (!flow.Is(GameplayState::Paused)) {
+		hpGauge_.Draw();
+		expGauge_.Draw();
+		timer_.Draw();
+		DrawBossHpBar();
+	}
 	const bool showRunCounters =
 		flow.IsWorldHudVisible() ||
-		flow.Is(GameplayState::Paused);
+		flow.Is(GameplayState::LevelUp);
 	if (showRunCounters) {
-		DrawCoinDisplay();
-		DrawKillDisplay();
+		DrawTopHud();
 	}
 	if (flow.IsWorldHudVisible()) {
 		if (!flow.Is(GameplayState::Paused)) {
 			gameplayMiniMap_.Draw();
 		}
 		keyUi_.Draw();
+		DrawBuildStrip();
+	} else if (flow.Is(GameplayState::LevelUp)) {
+		gameplayMiniMap_.Draw();
+		keyUi_.Draw();
+		DrawBuildStrip();
 	}
 	hitFlashOverlay_.Draw();
-	deathOverlay_.Draw();
+	if (flow.Is(GameplayState::Dead)) {
+		DrawDeathForeground(flow);
+	}
+	if (flow.Is(GameplayState::BossIntro)) {
+		introTopBar_.SetPosition({ 0.0f, 0.0f });
+		introBottomBar_.SetPosition({ 0.0f, 720.0f - kIntroBarHeight });
+		introTopBar_.Draw();
+		introBottomBar_.Draw();
+	}
+}
+
+void GameplayHudPresentation::DrawDeathForeground(
+	const GameplayFlowController& flow)
+{
+	if (!flow.Is(GameplayState::Dead)) {
+		return;
+	}
+	deathGameOverText_.Draw();
+	deathPromptText_.Draw();
 }
 
 void GameplayHudPresentation::TriggerHitFlash(float duration)
@@ -319,6 +469,160 @@ void GameplayHudPresentation::UpdateKillDisplay(int32_t killCount)
 			0.28f,
 			nonZeroSeen ? 1.0f : 0.0f });
 		divisor /= 10;
+	}
+}
+
+void GameplayHudPresentation::UpdateBuildStrip(const PlayerManager* playerManager)
+{
+	for (UIPanel& pip : buildLevelPips_) {
+		pip.SetColor({ 0.0f, 0.0f, 0.0f, 0.0f });
+	}
+	if (!playerManager) {
+		for (auto& icon : buildIcons_) {
+			if (icon) {
+				icon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+			}
+		}
+		return;
+	}
+	const std::array<bool, kHudWeaponIconCount> acquired{
+		true,
+		playerManager->HasOrbitBullets(),
+		playerManager->HasLightning(),
+		playerManager->HasExplosiveBullets(),
+		playerManager->HasSword(),
+		playerManager->HasAura(),
+		playerManager->HasFlameShoes(),
+		playerManager->HasBone(),
+		playerManager->HasHandgun(),
+		playerManager->HasBoomerang(),
+	};
+	for (size_t index = 1; index < acquired.size(); ++index) {
+		if (acquired[index] && !weaponAcquisitionRecorded_[index]) {
+			weaponAcquisitionRecorded_[index] = true;
+			weaponAcquisitionOrder_.push_back(static_cast<int32_t>(index));
+		}
+	}
+	for (auto& icon : buildIcons_) {
+		if (icon) {
+			icon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		}
+	}
+	auto setPips = [this](
+		size_t slot,
+		int32_t level,
+		int32_t maxLevel,
+		const Vector2& position,
+		const Vector2& size) {
+		const size_t base = slot * kHudMaxLevelPipsPerIcon;
+		const int32_t clampedMax = std::clamp(maxLevel, 1, static_cast<int32_t>(kHudMaxLevelPipsPerIcon));
+		const int32_t clampedLevel = std::clamp(level, 0, clampedMax);
+		constexpr int32_t kPipsPerRow = 4;
+		const float pipSize = (std::min)(5.0f, (size.x - 3.0f) / 4.0f);
+		const float gap = 1.0f;
+		for (int32_t index = 0; index < clampedMax; ++index) {
+			UIPanel& pip = buildLevelPips_[base + static_cast<size_t>(index)];
+			const int32_t column = index % kPipsPerRow;
+			const int32_t row = index / kPipsPerRow;
+			pip.SetPosition({
+				position.x + (pipSize + gap) * static_cast<float>(column),
+				position.y + size.y + 3.0f + (pipSize + gap) * static_cast<float>(row),
+				});
+			pip.SetSize({ pipSize, pipSize });
+			pip.SetColor(index < clampedLevel
+				? Vector4{ 1.0f, 0.92f, 0.06f, 1.0f }
+				: Vector4{ 0.08f, 0.08f, 0.02f, 0.72f });
+		}
+	};
+	const std::array<int32_t, kHudWeaponIconCount> weaponLevels{
+		playerManager->GetNormalBulletLevel(),
+		playerManager->GetOrbitBulletLevel(),
+		playerManager->GetLightningLevel(),
+		playerManager->GetExplosiveBulletLevel(),
+		playerManager->GetSwordLevel(),
+		playerManager->GetAuraLevel(),
+		playerManager->GetFlameShoesLevel(),
+		playerManager->GetBoneLevel(),
+		playerManager->GetHandgunLevel(),
+		playerManager->GetBoomerangLevel(),
+	};
+	const Vector2 iconSize{ 26.0f, 26.0f };
+	for (size_t orderIndex = 0; orderIndex < weaponAcquisitionOrder_.size(); ++orderIndex) {
+		const size_t iconIndex = static_cast<size_t>(weaponAcquisitionOrder_[orderIndex]);
+		if (iconIndex >= kHudWeaponIconCount || !buildIcons_[iconIndex]) {
+			continue;
+		}
+		const Vector2 position{
+			12.0f + 33.0f * static_cast<float>(orderIndex),
+			112.0f,
+		};
+		buildIcons_[iconIndex]->SetPosition(position);
+		buildIcons_[iconIndex]->SetSize(iconSize);
+		buildIcons_[iconIndex]->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		setPips(iconIndex, weaponLevels[iconIndex], 8, position, iconSize);
+	}
+
+	const std::vector<PassiveItemType>& items =
+		playerManager->GetPassiveItemAcquisitionOrder();
+	for (size_t slot = 0; slot < kHudPassiveItemSlotCount; ++slot) {
+		const size_t iconIndex = kHudWeaponIconCount + slot;
+		if (slot >= items.size() || !buildIcons_[iconIndex]) {
+			continue;
+		}
+		const PassiveItemType type = items[slot];
+		if (displayedBuildItemTypes_[slot] != type) {
+			const TextureHandle texture =
+				GameTextureCache::Load("ui/game/lvup/icon_passive_scroll.png");
+			buildIcons_[iconIndex]->SetTexture(GameTextureCache::GetPath(texture));
+			buildIcons_[iconIndex]->SetTextureLeftTop({ 0.0f, 0.0f });
+			buildIcons_[iconIndex]->SetTextureSize({ 512.0f, 512.0f });
+			displayedBuildItemTypes_[slot] = type;
+		}
+		const Vector2 position{
+			12.0f + 33.0f * static_cast<float>(slot),
+			158.0f,
+		};
+		buildIcons_[iconIndex]->SetPosition(position);
+		buildIcons_[iconIndex]->SetSize(iconSize);
+		buildIcons_[iconIndex]->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		setPips(
+			iconIndex,
+			playerManager->GetPassiveItemLevel(type),
+			playerManager->GetPassiveItemMaxLevel(type),
+			position,
+			iconSize);
+	}
+}
+
+void GameplayHudPresentation::DrawTopHud()
+{
+	escPanel_.Draw();
+	for (UIPanel& border : escPanelBorders_) {
+		border.Draw();
+	}
+	escText_.Draw();
+	coinPanel_.Draw();
+	killPanel_.Draw();
+	for (UIPanel& border : counterPanelBorders_) {
+		border.Draw();
+	}
+	coinIcon_.Draw();
+	killIcon_.Draw();
+	DrawCoinDisplay();
+	DrawKillDisplay();
+}
+
+void GameplayHudPresentation::DrawBuildStrip()
+{
+	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& icon : buildIcons_) {
+		if (!icon) {
+			continue;
+		}
+		icon->Update();
+		icon->Draw();
+	}
+	for (UIPanel& pip : buildLevelPips_) {
+		pip.Draw();
 	}
 }
 
@@ -417,6 +721,29 @@ void GameplayHudPresentation::DrawBossHpBar()
 
 void GameplayHudPresentation::ApplyCounterLayout()
 {
+	const Vector2 escPosition{ 10.0f, 46.0f };
+	const Vector2 escSize{ 72.0f, 38.0f };
+	SetPanelLayout(escPanel_, escPosition, escSize, kHudPanelColor);
+	SetBorderLayout(escPanelBorders_, 0, escPosition, escSize, 3.0f, kHudFrameColor);
+	escText_.SetScaleToFit(0.22f, escSize.x - 16.0f);
+	escText_.SetPosition({
+		escPosition.x + (escSize.x - escText_.MeasureWidth()) * 0.5f,
+		escPosition.y + 8.0f,
+		});
+	const Vector2 coinPanelPosition{ 90.0f, 46.0f };
+	const Vector2 counterPanelSize{ 108.0f, 38.0f };
+	const Vector2 killPanelPosition{ 206.0f, 46.0f };
+	SetPanelLayout(coinPanel_, coinPanelPosition, counterPanelSize, kHudPanelColor);
+	SetPanelLayout(killPanel_, killPanelPosition, counterPanelSize, kHudPanelColor);
+	SetBorderLayout(counterPanelBorders_, 0, coinPanelPosition, counterPanelSize, 3.0f, kHudFrameColor);
+	SetBorderLayout(counterPanelBorders_, 4, killPanelPosition, counterPanelSize, 3.0f, kHudFrameColor);
+	coinIcon_.SetPosition({ coinPanelPosition.x + 8.0f, coinPanelPosition.y + 6.0f });
+	coinIcon_.SetSize({ 26.0f, 26.0f });
+	killIcon_.SetPosition({ killPanelPosition.x + 8.0f, killPanelPosition.y + 6.0f });
+	killIcon_.SetSize({ 26.0f, 26.0f });
+	coinDigitPosition_ = { coinPanelPosition.x + 40.0f, coinPanelPosition.y + 9.0f };
+	killDigitPosition_ = { killPanelPosition.x + 40.0f, killPanelPosition.y + 9.0f };
+	coinDigitSize_ = { 10.0f, 15.0f };
 	for (int32_t index = 0; index < kCoinDigitCount; ++index) {
 		const float offsetX = coinDigitSize_.x * static_cast<float>(index);
 		if (coinDigits_[index]) {

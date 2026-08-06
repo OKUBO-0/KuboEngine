@@ -172,6 +172,7 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\core\LevelUpChoiceService.cpp" />
     <ClCompile Include="game\directxgame\core\DebugEditorShell.cpp" />
     <ClCompile Include="game\directxgame\core\DebugDraw.cpp" />
+    <ClCompile Include="game\directxgame\core\DebugHotReload.cpp" />
     <ClCompile Include="game\directxgame\core\DebugContext.cpp" />
     <ClCompile Include="game\directxgame\core\DebugUI.cpp" />
     <ClCompile Include="game\directxgame\core\TitleSceneDebugUIController.cpp" />
@@ -417,6 +418,7 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\core\LevelUpChoiceService.h" />
     <ClInclude Include="game\directxgame\core\DebugEditorShell.h" />
     <ClInclude Include="game\directxgame\core\DebugDraw.h" />
+    <ClInclude Include="game\directxgame\core\DebugHotReload.h" />
     <ClInclude Include="game\directxgame\core\DebugContext.h" />
     <ClInclude Include="game\directxgame\core\DebugUI.h" />
     <ClInclude Include="game\directxgame\core\TitleSceneDebugUIController.h" />

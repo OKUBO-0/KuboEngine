@@ -7,6 +7,7 @@
 #include "UILabel.h"
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace DirectXGame {
@@ -17,6 +18,8 @@ class PlayerManager;
 
 class LevelUpSelectionHud final {
 public:
+	LevelUpSelectionHud();
+	~LevelUpSelectionHud();
 	void Initialize();
 	void Start(PlayerManager& playerManager);
 	bool Update(
@@ -32,6 +35,8 @@ public:
 		const GameParticleEffects& particleEffects) const;
 
 private:
+	class RoundedPanel;
+
 	enum class AnimationState {
 		Hidden,
 		Entering,
@@ -45,15 +50,20 @@ private:
 	int32_t GetHoveredChoiceIndex() const;
 
 	static constexpr size_t kChoiceCount = 3;
-	UILabel overlay_;
-	std::array<UILabel, kChoiceCount> choiceSprites_;
+	std::unique_ptr<RoundedPanel> overlayPanel_;
+	std::unique_ptr<RoundedPanel> overlayFrame_;
+	BitmapText levelUpText_;
+	std::array<std::unique_ptr<RoundedPanel>, kChoiceCount> choiceBackgrounds_;
+	std::array<std::unique_ptr<RoundedPanel>, kChoiceCount> choiceFrames_;
+	std::array<std::unique_ptr<RoundedPanel>, kChoiceCount> choiceIconFrames_;
 	std::array<UILabel, kChoiceCount> choiceIcons_;
+	std::array<UILabel, kChoiceCount> choiceSubIcons_;
 	std::array<BitmapText, kChoiceCount> choiceTitleTexts_;
 	std::array<BitmapText, kChoiceCount> choiceDetailTexts_;
 	std::vector<LevelUpChoice> choices_;
 	Vector2 choiceSize_{ 1280.0f, 720.0f };
-	Vector2 choiceHitboxOffset_{ 465.0f, 214.0f };
-	Vector2 choiceHitboxSize_{ 435.0f, 68.0f };
+	Vector2 choiceHitboxOffset_{ 436.0f, 194.0f };
+	Vector2 choiceHitboxSize_{ 406.0f, 65.0f };
 	float choiceStepY_ = 140.0f;
 	float slideOffsetX_ = 1280.0f;
 	int32_t selection_ = 0;

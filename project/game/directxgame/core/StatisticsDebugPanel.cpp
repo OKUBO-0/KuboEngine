@@ -158,6 +158,19 @@ void StatisticsDebugPanel::Draw(
 			"Particles: %zu active across %zu groups",
 			particleManager->GetTotalActiveParticleCount(),
 			particleManager->GetParticleGroupCount());
+		int maxTotalParticles =
+			static_cast<int>(particleManager->GetMaxTotalActiveParticleCount());
+		if (ImGui::SliderInt(
+				"Max Total Particles",
+				&maxTotalParticles,
+				400,
+				6000)) {
+			particleManager->SetMaxTotalActiveParticleCount(
+				static_cast<size_t>(maxTotalParticles));
+		}
+		ImGui::Text(
+			"Particle Global Drops Last Frame: %u",
+			particleManager->GetGlobalDroppedLastFrame());
 		bool useFixedParticleDelta = particleManager->IsUsingFixedDeltaTime();
 		if (ImGui::Checkbox("Use Fixed Particle Delta", &useFixedParticleDelta)) {
 			particleManager->SetUseFixedDeltaTime(useFixedParticleDelta);
@@ -169,6 +182,12 @@ void StatisticsDebugPanel::Draw(
 		if (ImGui::CollapsingHeader("Render Debug")) {
 			const Engine::Graphics3D::Object3DCommon::ShadowPassStats& shadowStats =
 				Engine::Graphics3D::Object3DCommon::GetInstance()->GetShadowPassStats();
+			const Engine::Graphics3D::Object3DCommon::DrawCullStats& drawStats =
+				Engine::Graphics3D::Object3DCommon::GetInstance()->GetDrawCullStats();
+			const Engine::Graphics3D::Object3DCommon::SkinningCacheStats& skinningCacheStats =
+				Engine::Graphics3D::Object3DCommon::GetInstance()->GetSkinningCacheStats();
+			const Engine::Graphics3D::Object3DCommon::InstanceBatchStats& instanceBatchStats =
+				Engine::Graphics3D::Object3DCommon::GetInstance()->GetInstanceBatchStats();
 			const std::string& activeCameraName =
 				Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCameraName();
 			ImGui::Text(
@@ -180,11 +199,76 @@ void StatisticsDebugPanel::Draw(
 			ImGui::Text(
 				"Particle Drawn Instances: %u",
 				particleManager->GetLastDrawnInstanceCount());
+			const Engine::Graphics2D::SpriteCommon::DrawStats& spriteStats =
+				Engine::Graphics2D::SpriteCommon::GetInstance()->GetLastDrawStats();
+			ImGui::Text(
+				"Sprite Draw Calls: %u",
+				spriteStats.drawCallCount);
+			ImGui::Text(
+				"Sprite Upload: %.1f KB",
+				static_cast<float>(spriteStats.uploadedBytes) / 1024.0f);
+			if (dxCommon) {
+				const float frameUploadUsedKb =
+					static_cast<float>(dxCommon->GetCurrentFrameUploadUsedBytes()) /
+					1024.0f;
+				const float frameUploadCapacityKb =
+					static_cast<float>(dxCommon->GetFrameUploadArenaSizeBytes()) /
+					1024.0f;
+				ImGui::Text(
+					"Frame Upload Arena: %.1f / %.1f KB",
+					frameUploadUsedKb,
+					frameUploadCapacityKb);
+			}
 			ImGui::Text(
 				"Shadow Casters: %u submitted / %u candidates (%u culled)",
 				shadowStats.submittedCount,
 				shadowStats.candidateCount,
 				shadowStats.culledCount);
+			ImGui::Text(
+				"3D Draw: %u submitted / %u candidates (%u culled)",
+				drawStats.submittedCount,
+				drawStats.candidateCount,
+				drawStats.culledCount);
+			ImGui::Text(
+				"Render Queue: %u queued (%u static / %u skinning)",
+				instanceBatchStats.queuedObjectCount,
+				instanceBatchStats.queuedStaticObjectCount,
+				instanceBatchStats.queuedSkinningObjectCount);
+			ImGui::Text(
+				"Shadow Queue: %u queued",
+				instanceBatchStats.queuedShadowObjectCount);
+			ImGui::Text(
+				"Object Instancing: %u batches / %u instances",
+				instanceBatchStats.objectBatchCount,
+				instanceBatchStats.objectInstanceCount);
+			ImGui::Text(
+				"Skinning Instancing: %u batches / %u instances",
+				instanceBatchStats.skinningBatchCount,
+				instanceBatchStats.skinningInstanceCount);
+			ImGui::Text(
+				"Skin Palette Cache: %u hits / %u misses",
+				skinningCacheStats.hitCount,
+				skinningCacheStats.missCount);
+			ImGui::Text(
+				"Skin Palette GPU Upload: %u shared / %u uploaded",
+				skinningCacheStats.gpuUploadHitCount,
+				skinningCacheStats.gpuUploadMissCount);
+			if (enemyManager) {
+				const EnemyManager::AnimationLodStats& animationLodStats =
+					enemyManager->GetAnimationLodStats();
+				const EnemyManager::RenderLodStats& renderLodStats =
+					enemyManager->GetRenderLodStats();
+				ImGui::Text(
+					"Enemy Animation LOD: x1 %u / x2 %u / x3 %u / x4 %u",
+					animationLodStats.stride1Count,
+					animationLodStats.stride2Count,
+					animationLodStats.stride3Count,
+					animationLodStats.stride4Count);
+				ImGui::Text(
+					"Enemy Render LOD: full %u / simplified %u",
+					renderLodStats.fullModelCount,
+					renderLodStats.simplifiedModelCount);
+			}
 		}
 
 		if (ImGui::TreeNode("Particle Groups")) {

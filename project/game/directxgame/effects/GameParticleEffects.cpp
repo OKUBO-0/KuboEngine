@@ -177,7 +177,7 @@ constexpr std::array<TrailBindingSpec, 10> kTrailBindingSpecs{
 	TrailBindingSpec{ "lightningStrike", "lightningTrail" },
 };
 
-constexpr std::array<SparkBindingSpec, 9> kSparkBindingSpecs{
+constexpr std::array<SparkBindingSpec, 13> kSparkBindingSpecs{
 	SparkBindingSpec{ "playerDamage", "spark" },
 	SparkBindingSpec{ "enemyHit", "enemyHitSpark" },
 	SparkBindingSpec{ "enemyDeath", "enemyHitSpark" },
@@ -187,6 +187,10 @@ constexpr std::array<SparkBindingSpec, 9> kSparkBindingSpecs{
 	SparkBindingSpec{ "auraGlow", "auraGlow" },
 	SparkBindingSpec{ "flameShoeGlow", "flameShoeGlow" },
 	SparkBindingSpec{ "handgunMuzzleFlash", "handgunMuzzleFlash" },
+	SparkBindingSpec{ "bowMuzzle", "customSpark0" },
+	SparkBindingSpec{ "flameMuzzle", "customSpark1" },
+	SparkBindingSpec{ "boneMuzzle", "enemyHitSpark" },
+	SparkBindingSpec{ "boomerangMuzzle", "customSpark0" },
 };
 
 constexpr std::array<SmokeBehaviorSpec, 5> kSmokeBehaviorSpecs{
@@ -207,13 +211,14 @@ constexpr std::array<SmokeBehaviorSpec, 5> kSmokeBehaviorSpecs{
 		{ 0.44f, 0.34f, 0.026f, 0.030f, 0.095f, 0.28f, 0.58f, 0.018f, 0.25f, 0.88f, 0.44f, 0.18f, 0.66f } },
 };
 
-constexpr std::array<SmokeBindingSpec, 6> kSmokeBindingSpecs{
+constexpr std::array<SmokeBindingSpec, 7> kSmokeBindingSpecs{
 	SmokeBindingSpec{ "enemyDeathSmoke", "deathSmoke" },
 	SmokeBindingSpec{ "playerDeathSmoke", "deathSmoke" },
 	SmokeBindingSpec{ "bossDeathSmoke", "deathSmoke" },
 	SmokeBindingSpec{ "explosionSmoke", "explosionSmoke" },
 	SmokeBindingSpec{ "handgunReloadSmoke", "handgunReloadSmoke" },
 	SmokeBindingSpec{ "bossEntranceSmoke", "deathSmoke" },
+	SmokeBindingSpec{ "playerDamageSmoke", "customSmoke0" },
 };
 
 std::string MakeEmissionLimitKey(const char* key)
@@ -527,7 +532,7 @@ void GameParticleEffects::Initialize()
 		std::make_unique<TrailParticleBehavior>(
 			Vector4{ 0.82f, 0.78f, 0.76f, 0.62f }, suicideTrailSettings), 384);
 	TrailParticleBehavior::Settings bowTrailSettings{};
-	bowTrailSettings.lifetime = 0.24f;
+	bowTrailSettings.lifetime = 0.18f;
 	bowTrailSettings.shrinkRate = 0.88f;
 	bowTrailSettings.fadeInRatio = 0.03f;
 	bowTrailSettings.fadeOutPower = 2.1f;
@@ -581,7 +586,7 @@ void GameParticleEffects::Initialize()
 		std::make_unique<TrailParticleBehavior>(
 			Vector4{ 0.42f, 1.0f, 0.64f, 0.66f }, boomerangTrailSettings), 384);
 	TrailParticleBehavior::Settings rockTrailSettings{};
-	rockTrailSettings.lifetime = 0.22f;
+	rockTrailSettings.lifetime = 0.16f;
 	rockTrailSettings.shrinkRate = 0.88f;
 	rockTrailSettings.fadeInRatio = 0.04f;
 	rockTrailSettings.fadeOutPower = 2.3f;
@@ -591,7 +596,7 @@ void GameParticleEffects::Initialize()
 		std::make_unique<TrailParticleBehavior>(
 			Vector4{ 0.50f, 0.40f, 0.30f, 0.46f }, rockTrailSettings), 384);
 	TrailParticleBehavior::Settings boneTrailSettings{};
-	boneTrailSettings.lifetime = 0.26f;
+	boneTrailSettings.lifetime = 0.18f;
 	boneTrailSettings.shrinkRate = 0.90f;
 	boneTrailSettings.fadeInRatio = 0.02f;
 	boneTrailSettings.fadeOutPower = 2.1f;

@@ -29,10 +29,10 @@ constexpr char kEnvironmentTexturePath[] =
 	"Resources/textures/skybox/test.dds";
 const DirectXGame::NormalBullet::VisualStyle kBowArrowVisual{
 	"quaternius_weapons/arrow.glb",
-	{ 0.66f, 0.94f, 1.0f, 1.0f },
-	{ 60.0f, 60.0f, 86.0f },
+	{ 1.0f, 0.96f, 0.72f, 1.0f },
+	{ 150.0f, 150.0f, 144.0f },
 	{ 0.0f, 0.0f, 0.0f },
-	0.42f,
+	0.58f,
 };
 const DirectXGame::NormalBullet::VisualStyle kFlameStaffVisual{
 	"fireball.obj",
@@ -67,6 +67,23 @@ void PlayWeaponSound(
 		fallbackVolume,
 		minimumIntervalSeconds);
 }
+
+#ifdef _DEBUG
+const char* CharacterIdDebugName(DirectXGame::CharacterId characterId)
+{
+	switch (characterId) {
+	case DirectXGame::CharacterId::Default:
+		return "0 Default";
+	case DirectXGame::CharacterId::Bow:
+		return "1 Bow";
+	case DirectXGame::CharacterId::Sword:
+		return "2 Sword";
+	case DirectXGame::CharacterId::Handgun:
+		return "3 Handgun";
+	}
+	return "Unknown";
+}
+#endif
 
 }
 
@@ -158,6 +175,22 @@ void PlayerWeaponController::LoadVisualTuning(
 		tuning, "weaponVisual.bowPosition", heldBowVisual_.position);
 	heldBowVisual_.rotation = UILayoutIO::GetVector3(
 		tuning, "weaponVisual.bowRotation", heldBowVisual_.rotation);
+	heldSwordVisual_.scale = UILayoutIO::GetFloat(
+		tuning, "weaponVisual.swordScale", heldSwordVisual_.scale);
+	heldSwordVisual_.position = UILayoutIO::GetVector3(
+		tuning, "weaponVisual.swordPosition", heldSwordVisual_.position);
+	heldSwordVisual_.rotation = UILayoutIO::GetVector3(
+		tuning, "weaponVisual.swordRotation", heldSwordVisual_.rotation);
+	heldSwordVisual_.rotateWithPlayer = UILayoutIO::GetFloat(
+		tuning, "weaponVisual.swordRotateWithPlayer", heldSwordVisual_.rotateWithPlayer ? 1.0f : 0.0f) != 0.0f;
+	heldHandgunVisual_.scale = UILayoutIO::GetFloat(
+		tuning, "weaponVisual.handgunScale", heldHandgunVisual_.scale);
+	heldHandgunVisual_.position = UILayoutIO::GetVector3(
+		tuning, "weaponVisual.handgunPosition", heldHandgunVisual_.position);
+	heldHandgunVisual_.rotation = UILayoutIO::GetVector3(
+		tuning, "weaponVisual.handgunRotation", heldHandgunVisual_.rotation);
+	heldHandgunVisual_.rotateWithPlayer = UILayoutIO::GetFloat(
+		tuning, "weaponVisual.handgunRotateWithPlayer", heldHandgunVisual_.rotateWithPlayer ? 1.0f : 0.0f) != 0.0f;
 }
 
 void PlayerWeaponController::AppendVisualTuningEntries(
@@ -167,6 +200,14 @@ void PlayerWeaponController::AppendVisualTuningEntries(
 		{ "weaponVisual.bowScale", { heldBowVisual_.scale } },
 		{ "weaponVisual.bowPosition", { heldBowVisual_.position.x, heldBowVisual_.position.y, heldBowVisual_.position.z } },
 		{ "weaponVisual.bowRotation", { heldBowVisual_.rotation.x, heldBowVisual_.rotation.y, heldBowVisual_.rotation.z } },
+		{ "weaponVisual.swordScale", { heldSwordVisual_.scale } },
+		{ "weaponVisual.swordPosition", { heldSwordVisual_.position.x, heldSwordVisual_.position.y, heldSwordVisual_.position.z } },
+		{ "weaponVisual.swordRotation", { heldSwordVisual_.rotation.x, heldSwordVisual_.rotation.y, heldSwordVisual_.rotation.z } },
+		{ "weaponVisual.swordRotateWithPlayer", { heldSwordVisual_.rotateWithPlayer ? 1.0f : 0.0f } },
+		{ "weaponVisual.handgunScale", { heldHandgunVisual_.scale } },
+		{ "weaponVisual.handgunPosition", { heldHandgunVisual_.position.x, heldHandgunVisual_.position.y, heldHandgunVisual_.position.z } },
+		{ "weaponVisual.handgunRotation", { heldHandgunVisual_.rotation.x, heldHandgunVisual_.rotation.y, heldHandgunVisual_.rotation.z } },
+		{ "weaponVisual.handgunRotateWithPlayer", { heldHandgunVisual_.rotateWithPlayer ? 1.0f : 0.0f } },
 	});
 }
 
@@ -176,12 +217,44 @@ void PlayerWeaponController::DrawWeaponVisualDebugUI()
 	if (!ImGui::CollapsingHeader("武器モデルSRT調整")) {
 		return;
 	}
-	ImGui::TextUnformatted("現在の基本プレイヤーは弓本体のみ表示します。");
+	ImGui::Text("CharacterId: %s", CharacterIdDebugName(characterId_));
+	const auto drawCharacterButton = [this](CharacterId id, const char* label) {
+		const bool selectedBeforeClick = characterId_ == id;
+		if (selectedBeforeClick) {
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.56f, 0.92f, 1.0f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.30f, 0.64f, 1.0f, 1.0f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.16f, 0.44f, 0.78f, 1.0f));
+		}
+		if (ImGui::Button(label)) {
+			characterId_ = id;
+		}
+		if (selectedBeforeClick) {
+			ImGui::PopStyleColor(3);
+		}
+	};
+	drawCharacterButton(CharacterId::Default, "0 Default");
+	ImGui::SameLine();
+	drawCharacterButton(CharacterId::Bow, "1 Bow");
+	ImGui::SameLine();
+	drawCharacterButton(CharacterId::Sword, "2 Sword");
+	ImGui::SameLine();
+	drawCharacterButton(CharacterId::Handgun, "3 Handgun");
+	ImGui::TextUnformatted("表示ルール: 1=Bow  2=Sword  3=Handgun");
 	ImGui::DragFloat("Bow Scale", &heldBowVisual_.scale, 1.0f, 10.0f, 600.0f);
 	ImGui::DragFloat3("Bow Position", &heldBowVisual_.position.x, 0.02f, -4.0f, 4.0f);
 	ImGui::DragFloat3("Bow Rotation", &heldBowVisual_.rotation.x, 0.02f, -6.28f, 6.28f);
-	ImGui::TextUnformatted("Position はプレイヤー正面基準です。x は未使用、z が正面距離です。");
-	if (ImGui::Button("Save Bow SRT")) {
+	ImGui::Separator();
+	ImGui::DragFloat("Sword Scale", &heldSwordVisual_.scale, 1.0f, 10.0f, 600.0f);
+	ImGui::DragFloat3("Sword Position", &heldSwordVisual_.position.x, 0.02f, -4.0f, 4.0f);
+	ImGui::DragFloat3("Sword Rotation", &heldSwordVisual_.rotation.x, 0.02f, -6.28f, 6.28f);
+	ImGui::Checkbox("Sword Rotate With Player", &heldSwordVisual_.rotateWithPlayer);
+	ImGui::Separator();
+	ImGui::DragFloat("Handgun Scale", &heldHandgunVisual_.scale, 1.0f, 10.0f, 600.0f);
+	ImGui::DragFloat3("Handgun Position", &heldHandgunVisual_.position.x, 0.02f, -4.0f, 4.0f);
+	ImGui::DragFloat3("Handgun Rotation", &heldHandgunVisual_.rotation.x, 0.02f, -6.28f, 6.28f);
+	ImGui::Checkbox("Handgun Rotate With Player", &heldHandgunVisual_.rotateWithPlayer);
+	ImGui::TextUnformatted("Position はプレイヤー基準です。x が右手方向、z が正面距離です。");
+	if (ImGui::Button("Save Weapon SRT")) {
 		std::vector<UILayoutIO::Entry> entries;
 		AppendVisualTuningEntries(entries);
 		UILayoutIO::Save(DataPaths::kDebugTuning, entries);
@@ -198,7 +271,7 @@ void PlayerWeaponController::Update(
 	// 武器更新は固定順にする。弾生成、範囲ダメージ、演出イベントの発生順がフレーム間でぶれないようにする。
 	UpdateNormalBullets(deltaTime, player, enemyManager, playerStats);
 	UpdateOrbitBullets(deltaTime, player, playerStats);
-	UpdateLightning(deltaTime, enemyManager, playerStats);
+	UpdateLightning(deltaTime, player, enemyManager, playerStats);
 	UpdateExplosiveBullets(deltaTime, player, enemyManager, playerStats);
 	UpdateSword(deltaTime, player, enemyManager, playerStats);
 	UpdateAura(deltaTime, player, enemyManager, playerStats);
@@ -206,89 +279,149 @@ void PlayerWeaponController::Update(
 	UpdateBone(deltaTime, player, enemyManager, playerStats);
 	UpdateHandgun(deltaTime, player, enemyManager, playerStats);
 	UpdateBoomerang(deltaTime, player, enemyManager, playerStats);
-	if (player &&
-		HasWeapon(WeaponType::BowArrow) &&
-		ShouldDrawHeldWeapon(WeaponType::BowArrow)) {
-		EnsureBowModel();
-		UpdateBowModel(*player);
+	if (!player) {
+		return;
+	}
+	if (HasWeapon(WeaponType::BowArrow) && ShouldDrawHeldWeapon(WeaponType::BowArrow)) {
+		EnsureHeldWeaponModel(WeaponType::BowArrow, bowObject_);
+		UpdateHeldWeaponModel(*bowObject_, heldBowVisual_, *player);
+	}
+	if (HasWeapon(WeaponType::Sword) && ShouldDrawHeldWeapon(WeaponType::Sword)) {
+		EnsureHeldWeaponModel(WeaponType::Sword, swordObject_);
+		UpdateHeldWeaponModel(*swordObject_, heldSwordVisual_, *player);
+	}
+	if (HasWeapon(WeaponType::Handgun) && ShouldDrawHeldWeapon(WeaponType::Handgun)) {
+		EnsureHeldWeaponModel(WeaponType::Handgun, handgunObject_);
+		UpdateHeldWeaponModel(*handgunObject_, heldHandgunVisual_, *player);
 	}
 }
 
 void PlayerWeaponController::Draw()
 {
 	// Draw は所有中の弾・投射物だけを描画する。範囲攻撃系の見た目は Presentation 側がイベントから描く。
+	std::vector<Engine::Graphics3D::Object3D*> renderObjects;
+	renderObjects.reserve(
+		normalBullets_.size() +
+		orbitBullets_.size() +
+		explosiveBullets_.size() +
+		boneWeapon_.GetBullets().size() +
+		handgunWeapon_.GetBullets().size() +
+		boomerangWeapon_.GetBullets().size() +
+		3);
 	if (HasWeapon(WeaponType::BowArrow) &&
 		ShouldDrawHeldWeapon(WeaponType::BowArrow) &&
 		bowObject_) {
-		bowObject_->Draw();
+		renderObjects.push_back(bowObject_.get());
 	}
-	for (std::unique_ptr<NormalBullet>& bullet : normalBullets_) {
-		bullet->Draw();
+	if (HasWeapon(WeaponType::Sword) &&
+		ShouldDrawHeldWeapon(WeaponType::Sword) &&
+		swordObject_) {
+		renderObjects.push_back(swordObject_.get());
 	}
-	for (std::unique_ptr<OrbitBullet>& bullet : orbitBullets_) {
-		bullet->Draw();
+	if (HasWeapon(WeaponType::Handgun) &&
+		ShouldDrawHeldWeapon(WeaponType::Handgun) &&
+		handgunObject_) {
+		renderObjects.push_back(handgunObject_.get());
 	}
-	for (std::unique_ptr<NormalBullet>& bullet : explosiveBullets_) {
-		bullet->Draw();
+	for (const std::unique_ptr<NormalBullet>& bullet : normalBullets_) {
+		if (!bullet) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = bullet->GetRenderObject()) {
+			renderObjects.push_back(object);
+		}
 	}
-	boneWeapon_.Draw();
-	handgunWeapon_.Draw();
-	boomerangWeapon_.Draw();
+	for (const std::unique_ptr<OrbitBullet>& bullet : orbitBullets_) {
+		if (!bullet) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = bullet->GetRenderObject()) {
+			renderObjects.push_back(object);
+		}
+	}
+	for (const std::unique_ptr<NormalBullet>& bullet : explosiveBullets_) {
+		if (!bullet) {
+			continue;
+		}
+		if (Engine::Graphics3D::Object3D* object = bullet->GetRenderObject()) {
+			renderObjects.push_back(object);
+		}
+	}
+	boneWeapon_.AppendRenderObjects(renderObjects);
+	handgunWeapon_.AppendRenderObjects(renderObjects);
+	boomerangWeapon_.AppendRenderObjects(renderObjects);
+	for (Engine::Graphics3D::Object3D* object : renderObjects) {
+		Engine::Graphics3D::Object3D::SubmitForDraw(object);
+	}
 }
 
 bool PlayerWeaponController::ShouldDrawHeldWeapon(WeaponType type) const
 {
+	(void)type;
+	return false;
+
 	switch (characterId_) {
-	case CharacterId::Flame:
+	case CharacterId::Bow:
 		return type == WeaponType::BowArrow;
-	case CharacterId::Octopus:
-	case CharacterId::Blade:
-	case CharacterId::Storm:
+	case CharacterId::Sword:
+		return type == WeaponType::Sword;
+	case CharacterId::Handgun:
+		return type == WeaponType::Handgun;
+	case CharacterId::Default:
 	default:
 		return false;
 	}
 }
 
-void PlayerWeaponController::EnsureBowModel()
+void PlayerWeaponController::EnsureHeldWeaponModel(
+	WeaponType type,
+	std::unique_ptr<Engine::Graphics3D::Object3D>& object)
 {
-	if (bowObject_) {
+	if (object) {
 		return;
 	}
-	const ModelHandle bowHandle = GameModelCache::Load("quaternius_weapons/bow.glb");
-	bowObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
-	bowObject_->Initialize(
+	const char* modelPath = "quaternius_weapons/bow.glb";
+	if (type == WeaponType::Sword) {
+		modelPath = "quaternius_weapons/sword.glb";
+	} else if (type == WeaponType::Handgun) {
+		modelPath = "quaternius_weapons/pistol.glb";
+	}
+	const ModelHandle modelHandle = GameModelCache::Load(modelPath);
+	object = std::make_unique<Engine::Graphics3D::Object3D>();
+	object->Initialize(
 		Engine::Graphics3D::Object3DCommon::GetInstance());
-	GameModelCache::ApplyToObject(*bowObject_, bowHandle);
-	bowObject_->SetSkyboxFilePath(kEnvironmentTexturePath);
-	bowObject_->SetEnvironmentReflectionStrength(0.0f);
-	bowObject_->SetEnvironmentRoughness(1.0f);
-	bowObject_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	GameModelCache::ApplyToObject(*object, modelHandle);
+	object->SetSkyboxFilePath(kEnvironmentTexturePath);
+	object->SetEnvironmentReflectionStrength(0.0f);
+	object->SetEnvironmentRoughness(1.0f);
+	object->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 }
 
-void PlayerWeaponController::UpdateBowModel(const Player& player)
+void PlayerWeaponController::UpdateHeldWeaponModel(
+	Engine::Graphics3D::Object3D& object,
+	const HeldWeaponVisualTuning& tuning,
+	const Player& player)
 {
-	if (!bowObject_) {
-		return;
-	}
 	const Vector3 playerPosition = player.GetWorldPosition();
 	const float yaw = player.GetWorldRotationY();
 	const Vector3 forward{ std::sin(yaw), 0.0f, std::cos(yaw) };
-	bowObject_->SetScale({
-		heldBowVisual_.scale,
-		heldBowVisual_.scale,
-		heldBowVisual_.scale,
+	const Vector3 right{ std::cos(yaw), 0.0f, -std::sin(yaw) };
+	object.SetScale({
+		tuning.scale,
+		tuning.scale,
+		tuning.scale,
 		});
-	bowObject_->SetRotate({
-		heldBowVisual_.rotation.x,
-		yaw + heldBowVisual_.rotation.y,
-		heldBowVisual_.rotation.z,
+	object.SetRotate({
+		tuning.rotation.x,
+		(tuning.rotateWithPlayer ? yaw : 0.0f) + tuning.rotation.y,
+		tuning.rotation.z,
 		});
-	bowObject_->SetTranslate({
-		playerPosition.x + forward.x * heldBowVisual_.position.z,
-		playerPosition.y + heldBowVisual_.position.y,
-		playerPosition.z + forward.z * heldBowVisual_.position.z,
+	object.SetTranslate({
+		playerPosition.x + right.x * tuning.position.x + forward.x * tuning.position.z,
+		playerPosition.y + tuning.position.y,
+		playerPosition.z + right.z * tuning.position.x + forward.z * tuning.position.z,
 		});
-	bowObject_->Update();
+	object.Update();
 }
 
 void PlayerWeaponController::UpgradeNormalBullets(Player*)
@@ -707,7 +840,7 @@ void PlayerWeaponController::DebugFireWeapon(
 		break;
 	case WeaponType::ThunderStaff:
 		lightningTimer_ = 999.0f;
-		UpdateLightning(0.0f, enemyManager, playerStats);
+		UpdateLightning(0.0f, player, enemyManager, playerStats);
 		break;
 	case WeaponType::FlameStaff:
 		explosiveBulletTimer_ = 999.0f;
@@ -775,8 +908,9 @@ void PlayerWeaponController::UpdateNormalBullets(
 	EnemyManager* enemyManager,
 	const PlayerStats& stats)
 {
+	recentNormalBulletShotPositions_.clear();
 	const WeaponRuntimeStats runtime = stats.Resolve({
-		10.0f + normalBulletDamageBonus_,
+		9.0f + normalBulletDamageBonus_,
 		normalBulletInterval_,
 		normalBulletSpeed_,
 		normalBulletRange_,
@@ -810,9 +944,12 @@ void PlayerWeaponController::UpdateNormalBullets(
 					0.0f,
 					forward.z * cosine + right.z * sine,
 				};
+				const Vector3 spawnPosition = MakePlayerProjectileSpawnPosition(
+					player->GetWorldPosition(),
+					shotDirection);
 				NormalBullet& bullet = AcquireNormalBullet();
 				bullet.InitializeForward(
-					player->GetWorldPosition(),
+					spawnPosition,
 					shotDirection,
 					runtime.projectileSpeed,
 					runtime.duration,
@@ -828,6 +965,8 @@ void PlayerWeaponController::UpdateNormalBullets(
 					RecycleNormalBullet(0);
 					++normalBulletPruneCount_;
 				}
+				recentNormalBulletShotPositions_.push_back(
+					spawnPosition + shotDirection * 0.42f);
 			}
 			normalBulletTimer_ -= runtime.interval;
 			++catchUpAttackCount;
@@ -892,6 +1031,7 @@ void PlayerWeaponController::UpdateExplosiveBullets(
 	EnemyManager* enemyManager,
 	const PlayerStats& stats)
 {
+	recentExplosiveBulletShotPositions_.clear();
 	const WeaponRuntimeStats runtime = stats.Resolve({
 		10.0f + explosiveBulletDamageBonus_,
 		explosiveBulletInterval_,
@@ -925,9 +1065,12 @@ void PlayerWeaponController::UpdateExplosiveBullets(
 			explosiveBurstTimer_ >= effectiveBurstInterval) {
 			const Vector3 direction = ResolveAimDirection(
 				*player, enemyManager);
+			const Vector3 spawnPosition = MakePlayerProjectileSpawnPosition(
+				player->GetWorldPosition(),
+				direction);
 			NormalBullet& bullet = AcquireExplosiveBullet();
 			bullet.InitializeForward(
-				player->GetWorldPosition(),
+				spawnPosition,
 				direction,
 				runtime.projectileSpeed,
 				runtime.duration,
@@ -935,6 +1078,8 @@ void PlayerWeaponController::UpdateExplosiveBullets(
 				runtime.areaSize,
 				NormalBullet::MovementMode::Straight,
 				kFlameStaffVisual);
+			recentExplosiveBulletShotPositions_.push_back(
+				spawnPosition + direction * 0.38f);
 			--explosiveBurstShotsRemaining_;
 			explosiveBurstTimer_ -= effectiveBurstInterval;
 		}
@@ -960,7 +1105,7 @@ void PlayerWeaponController::UpdateSword(
 	}
 	swordTimer_ += deltaTime;
 	const WeaponRuntimeStats runtime = stats.Resolve({
-		14.0f + swordDamageBonus_,
+		11.0f + swordDamageBonus_,
 		swordInterval_,
 		1.0f,
 		1.0f,
@@ -1026,7 +1171,7 @@ void PlayerWeaponController::UpdateAura(
 	}
 	auraTimer_ += deltaTime;
 	const WeaponRuntimeStats runtime = stats.Resolve({
-		8.0f + auraDamageBonus_,
+		4.0f + auraDamageBonus_,
 		auraInterval_,
 		1.0f,
 		1.0f,
@@ -1265,6 +1410,7 @@ void PlayerWeaponController::UpdateOrbitBullets(
 
 void PlayerWeaponController::UpdateLightning(
 	float deltaTime,
+	Player* player,
 	EnemyManager* enemyManager,
 	const PlayerStats& stats)
 {
@@ -1276,7 +1422,7 @@ void PlayerWeaponController::UpdateLightning(
 			lightningEffectTargets_.clear();
 		}
 	}
-	if (!hasLightning_ || !enemyManager) {
+	if (!hasLightning_ || !player || !enemyManager) {
 		return;
 	}
 
@@ -1297,8 +1443,10 @@ void PlayerWeaponController::UpdateLightning(
 	while (lightningTimer_ >= effectiveInterval &&
 		catchUpAttackCount < kMaxCatchUpAttacksPerFrame) {
 		const std::vector<Vector3> targets =
-			enemyManager->PickLightningTargets(
-				lightningStrikeCount_ + projectileCountBonus);
+			enemyManager->PickLightningChainTargets(
+				player->GetWorldPosition(),
+				lightningStrikeCount_ + projectileCountBonus,
+				lightningRadius_ * areaSizeMultiplier);
 		if (!targets.empty()) {
 			lightningEffectTargets_ = targets;
 			lightningEffectTimer_ =
@@ -1312,7 +1460,7 @@ void PlayerWeaponController::UpdateLightning(
 		for (const Vector3& target : targets) {
 			enemyManager->ApplyLightningDamage(
 				target,
-				lightningRadius_ * areaSizeMultiplier,
+				lightningImpactRadius_ * areaSizeMultiplier,
 				GetLightningDamage(stats));
 		}
 		lightningTimer_ -= effectiveInterval;
@@ -1430,6 +1578,16 @@ void PlayerWeaponController::ApplyLightningUpgradeLevel(int32_t level)
 		"thunderStaff",
 		level,
 		"radiusAdd",
+		0.0f);
+	lightningImpactRadius_ = GetLevelUpgradeSetting(
+		"thunderStaff",
+		level,
+		"impactRadius",
+		lightningImpactRadius_);
+	lightningImpactRadius_ += GetLevelUpgradeSetting(
+		"thunderStaff",
+		level,
+		"impactRadiusAdd",
 		0.0f);
 	lightningInterval_ = GetLevelUpgradeSetting(
 		"thunderStaff",
@@ -1557,7 +1715,7 @@ void PlayerWeaponController::ResetNormalBulletWeapon()
 	normalBulletAmount_ = 1;
 	normalBulletDamageBonus_ = 0;
 	normalBulletPierceCount_ = 1;
-	normalBulletSpeed_ = 1.0f;
+	normalBulletSpeed_ = 1.5f;
 	normalBulletRange_ = 30.0f;
 	normalBulletScale_ = 1.0f;
 	peakNormalBulletCount_ = 0;
@@ -1589,6 +1747,7 @@ void PlayerWeaponController::ResetLightningWeapon()
 	lightningStrikeCount_ = 1;
 	lightningDamageBonus_ = 0;
 	lightningRadius_ = 6.0f;
+	lightningImpactRadius_ = 1.45f;
 	lightningInterval_ = 2.4f;
 	lightningTimer_ = 0.0f;
 	lightningEffectTargets_.clear();
@@ -1604,7 +1763,7 @@ void PlayerWeaponController::ResetExplosiveWeapon()
 	explosiveBulletDamageBonus_ = 4;
 	explosiveBulletInterval_ = 2.0f;
 	explosiveBulletTimer_ = 0.0f;
-	explosiveBulletSpeed_ = 0.82f;
+	explosiveBulletSpeed_ = 0.5f;
 	explosiveBulletRange_ = 28.0f;
 	explosiveBulletRadius_ = 4.2f;
 	explosiveBulletCount_ = 1;
@@ -1625,7 +1784,7 @@ void PlayerWeaponController::ResetSwordWeapon()
 	swordRadius_ = 7.0f;
 	swordHalfAngle_ = 0.9f;
 	swordSlashCount_ = 1;
-	swordKnockbackStrength_ = 0.8f;
+	swordKnockbackStrength_ = 1.3f;
 	recentSwordSlashes_.clear();
 }
 
@@ -1634,7 +1793,7 @@ void PlayerWeaponController::ResetAuraWeapon()
 	hasAura_ = false;
 	auraLevel_ = 0;
 	auraDamageBonus_ = 0;
-	auraInterval_ = 0.65f;
+	auraInterval_ = 0.32f;
 	auraTimer_ = 0.0f;
 	auraRadius_ = 6.0f;
 	auraPulseThisFrame_ = false;

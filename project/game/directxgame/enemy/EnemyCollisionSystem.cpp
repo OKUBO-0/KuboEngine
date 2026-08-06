@@ -589,6 +589,7 @@ void CheckPlayerCollisions(
 			if (!player.IsDodging() &&
 				!playerManager.IsInvincible()) {
 				if (playerManager.TakeDamage(enemy->GetAttackPower())) {
+					enemy->NotifyAttack();
 					PlayPlayerDamageSound();
 				}
 			}
@@ -615,6 +616,7 @@ void CheckPlayerCollisions(
 		if (!player.IsDodging() &&
 			!playerManager.IsInvincible()) {
 			if (playerManager.TakeDamage(enemy->GetAttackPower())) {
+				enemy->NotifyAttack();
 				PlayPlayerDamageSound();
 			}
 		}

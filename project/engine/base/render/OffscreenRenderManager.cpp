@@ -78,7 +78,6 @@ void OffscreenRenderManager::Initialize(std::shared_ptr<Engine::Base::DirectXCom
 	graphicsPipeline_ = std::make_unique<GraphicsPipeline>();
 	graphicsPipeline_->Initialize(dxCommon);
 
-	graphicsPipeline_->RootSignatureCopyImageCreate();
 	graphicsPipeline_->CreateAllPostEffects(); // ←これだけ！
 }
 

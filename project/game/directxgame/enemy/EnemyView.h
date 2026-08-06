@@ -19,11 +19,24 @@ public:
 		bool hitFlash,
 		bool phaseFlash);
 	void Draw(bool visible);
+	void DrawFloatingShadow(bool visible);
+	void DrawModel(bool visible);
 	void DrawShadow(bool visible);
+	Engine::Graphics3D::Object3D* GetObject() const
+	{
+		return simplifiedRenderEnabled_ && simplifiedObject_
+			? simplifiedObject_.get()
+			: object_.get();
+	}
+	void SetSimplifiedRenderEnabled(bool enabled);
+	bool IsSimplifiedRenderEnabled() const { return simplifiedRenderEnabled_; }
 	void ApplyDeathPose(
 		const Vector3& position,
 		float rotationY,
 		float progress);
+	void NotifyAttack();
+	void NotifyJump();
+	void SetAnimationUpdateStride(uint32_t stride);
 
 	void SetModelByType(int32_t type);
 	void SetFloatingEnabled(bool enabled);
@@ -51,7 +64,11 @@ public:
 
 private:
 	void InitializeFloatingShadow();
+	void InitializeSimplifiedObject();
 	void ApplyTransform(
+		const Vector3& position,
+		float rotationY);
+	void ApplySimplifiedTransform(
 		const Vector3& position,
 		float rotationY);
 	float GetEffectiveModelVerticalOffsetY() const;
@@ -60,11 +77,19 @@ private:
 		float rotationY);
 
 	std::unique_ptr<Engine::Graphics3D::Object3D> object_;
+	std::unique_ptr<Engine::Graphics3D::Object3D> simplifiedObject_;
 	std::unique_ptr<Engine::Graphics3D::Object3D> floatingShadowObject_;
 	Vector4 behaviorColor_{ 1.0f, 1.0f, 1.0f, 1.0f };
 	float behaviorScaleMultiplier_ = 1.0f;
 	float spawnScaleMultiplier_ = 1.0f;
+	float modelVisualScaleMultiplier_ = 1.0f;
 	float modelVerticalOffsetY_ = 0.0f;
+	float animationTime_ = 0.0f;
+	float impactMotionTimer_ = 0.0f;
+	float attackMotionTimer_ = 0.0f;
+	float jumpMotionTimer_ = 0.0f;
+	int32_t enemyType_ = 0;
+	bool simplifiedRenderEnabled_ = false;
 	bool usesOctopusGroundOffset_ = false;
 	bool floatingEnabled_ = false;
 };

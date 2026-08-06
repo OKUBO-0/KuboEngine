@@ -29,12 +29,12 @@ constexpr int32_t kPermanentAttackBaseCost = 180;
 constexpr int32_t kPermanentMoveSpeedBaseCost = 200;
 constexpr int32_t kPermanentExpPickupRangeBaseCost = 220;
 constexpr int32_t kPermanentCoinGainBaseCost = 300;
-constexpr int32_t kDefaultUnlockedCharacterMask = 1 << static_cast<int32_t>(DirectXGame::CharacterId::Octopus);
+constexpr int32_t kDefaultUnlockedCharacterMask = 1 << static_cast<int32_t>(DirectXGame::CharacterId::Default);
 constexpr std::array<DirectXGame::CharacterDefinition, 4> kCharacterDefinitions{ {
-	{ DirectXGame::CharacterId::Octopus, 0, true },
-	{ DirectXGame::CharacterId::Flame, 440, false },
-	{ DirectXGame::CharacterId::Blade, 520, false },
-	{ DirectXGame::CharacterId::Storm, 480, false },
+	{ DirectXGame::CharacterId::Default, 0, true },
+	{ DirectXGame::CharacterId::Bow, 0, true },
+	{ DirectXGame::CharacterId::Sword, 520, false },
+	{ DirectXGame::CharacterId::Handgun, 480, false },
 } };
 
 bool StartsWith(std::string_view text, std::string_view prefix)
@@ -98,7 +98,7 @@ DirectXGame::CharacterId ClampCharacterId(int32_t rawId)
 {
 	if (rawId < 0 ||
 		rawId >= static_cast<int32_t>(kCharacterDefinitions.size())) {
-		return DirectXGame::CharacterId::Octopus;
+		return DirectXGame::CharacterId::Default;
 	}
 	return static_cast<DirectXGame::CharacterId>(rawId);
 }
@@ -767,7 +767,7 @@ void GameSession::LoadProfile()
 	}
 	unlockedCharacterMask_ |= kDefaultUnlockedCharacterMask;
 	if (!IsCharacterUnlocked(selectedCharacterId_)) {
-		selectedCharacterId_ = CharacterId::Octopus;
+		selectedCharacterId_ = CharacterId::Default;
 	}
 }
 

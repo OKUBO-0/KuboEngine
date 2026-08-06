@@ -15,8 +15,13 @@ public:
 		float deltaTime,
 		float pickupRangeMultiplier = 1.0f);
 	void Draw();
+	void DrawShadow();
 
 	bool IsActive() const { return active_; }
+	Engine::Graphics3D::Object3D* GetRenderObject() const
+	{
+		return active_ ? object_.get() : nullptr;
+	}
 	int32_t GetEXP() const { return expValue_; }
 	const Vector3& GetPosition() const { return position_; }
 

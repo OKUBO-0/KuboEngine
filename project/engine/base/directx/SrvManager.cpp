@@ -8,7 +8,7 @@
 
 namespace Engine::Base {
 
-const uint32_t SrvManager::kMaxSRVCount = 512;
+const uint32_t SrvManager::kMaxSRVCount = 2048;
 void SrvManager::Initialize(std::shared_ptr<DirectXCommon> dxCommon)
 {
 	assert(dxCommon);
@@ -202,7 +202,8 @@ SrvManager::UsageSummary SrvManager::GetUsageSummary() const
 		} else if (record.usage.starts_with("StructuredBuffer") ||
 			record.usage == "LineInstanceBuffer" ||
 			record.usage == "ParticleInstanceBuffer" ||
-			record.usage == "SkinPalette") {
+			record.usage == "SkinPalette" ||
+			record.usage == "ObjectInstanceData") {
 			++summary.structuredBuffer;
 		} else if (record.usage == "ShadowMap") {
 			++summary.shadowMap;

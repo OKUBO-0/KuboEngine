@@ -213,6 +213,8 @@ public:
 	FrameUploadAllocation AllocateFrameUpload(
 		size_t sizeInBytes,
 		size_t alignment = 16);
+	size_t GetCurrentFrameUploadUsedBytes() const;
+	size_t GetFrameUploadArenaSizeBytes() const { return kFrameUploadArenaSize; }
 
 	/// @brief 現在のframeが完了するまで一時リソースを保持する
 	/// @param resource GPU参照完了後に解放するリソース

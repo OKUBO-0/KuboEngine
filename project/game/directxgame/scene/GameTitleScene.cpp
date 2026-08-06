@@ -38,7 +38,10 @@ constexpr float kFixedDeltaTime = 1.0f / 60.0f;
 constexpr char kTitleTexturePath[] = "ui/title/title.png";
 constexpr char kCursorTexturePath[] = "ui/title/cursor.png";
 constexpr char kShopTexturePath[] = "ui/title/shop.png";
+constexpr char kSelectTexturePath[] = "ui/title/select.png";
 constexpr char kNumberTexturePath[] = "ui/number/numbers.png";
+constexpr char kTextFontTexture[] = "ui/font/noto_sans_jp_black.png";
+constexpr char kTextFontMetadata[] = "ui/font/noto_sans_jp_black.json";
 constexpr char kPermanentMaxHPIconPath[] = "ui/game/lvup/maxhp_icon.png";
 constexpr char kPermanentAttackIconPath[] = "ui/game/lvup/attack_icon.png";
 constexpr char kPermanentMoveSpeedIconPath[] = "ui/game/lvup/speed_icon.png";
@@ -54,6 +57,11 @@ constexpr char kAudioUiDecide[] = "ui.decide";
 constexpr char kAudioUiBack[] = "ui.back";
 constexpr char kEnvironmentTexturePath[] = "Resources/textures/skybox/test.dds";
 constexpr char kTitleCameraName[] = "directxgame_title";
+constexpr char kTitlePlayerModelPath[] = "cube_world/cube_guy.glb";
+constexpr float kTitlePlayerModelScaleMultiplier = 0.68f;
+constexpr float kTitlePlayerModelBasePitch = 0.0f;
+constexpr float kTitleIdleAnimationSpeed = 0.45f;
+constexpr int kOpenCharacterSelectKey = DIK_C;
 constexpr Vector2 kPermanentUpgradeIconBasePosition{ 48.0f, 86.0f };
 constexpr Vector2 kPermanentUpgradeIconSize{ 44.0f, 44.0f };
 constexpr Vector2 kPermanentUpgradeRowHitboxSize{ 150.0f, 44.0f };
@@ -69,6 +77,10 @@ constexpr Vector2 kCharacterIconSize{ 48.0f, 48.0f };
 constexpr Vector2 kCharacterRowHitboxSize{ 160.0f, 52.0f };
 constexpr float kCharacterIconStepY = 58.0f;
 constexpr Vector2 kCharacterCostOffset{ 58.0f, 15.0f };
+constexpr Vector2 kStartCharacterIconBasePosition{ 430.0f, 300.0f };
+constexpr Vector2 kStartCharacterIconSize{ 96.0f, 96.0f };
+constexpr Vector2 kStartCharacterHighlightPadding{ 10.0f, 10.0f };
+constexpr float kStartCharacterIconStepX = 160.0f;
 
 enum class PermanentUpgradeType {
 	MaxHP,
@@ -102,14 +114,112 @@ constexpr std::array<PermanentUpgradeDefinition, 5> kPermanentUpgradeDefinitions
 struct CharacterUiDefinition {
 	DirectXGame::CharacterId id;
 	const char* iconPath;
+	const char* weaponIconPath;
+	const char* modelPath;
+	const char* weaponModelPath;
+	const char* weaponDescription;
+	Vector4 modelColor;
 };
 
 constexpr std::array<CharacterUiDefinition, 4> kCharacterUiDefinitions{ {
-	{ DirectXGame::CharacterId::Octopus, "ui/game/lvup/icon_common_unknown.png" },
-	{ DirectXGame::CharacterId::Flame, "ui/game/lvup/icon_common_unknown.png" },
-	{ DirectXGame::CharacterId::Blade, "ui/game/lvup/icon_common_unknown.png" },
-	{ DirectXGame::CharacterId::Storm, "ui/game/lvup/lightning_icon.png" },
+	{
+		DirectXGame::CharacterId::Default,
+		"ui/game/lvup/icon_common_unknown.png",
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"quaternius_characters/adventurer.glb",
+		"quaternius_weapons/bow.glb",
+		"標準的な初期装備",
+		{ 1.0f, 1.0f, 1.0f, 1.0f },
+	},
+	{
+		DirectXGame::CharacterId::Bow,
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"ui/game/lvup/icon_weapon_bow_arrow.png",
+		"quaternius_characters/adventurer.glb",
+		"quaternius_weapons/bow.glb",
+		"遠距離から矢を放つ",
+		{ 1.0f, 1.0f, 1.0f, 1.0f },
+	},
+	{
+		DirectXGame::CharacterId::Sword,
+		"ui/game/lvup/icon_weapon_sword.png",
+		"ui/game/lvup/icon_weapon_sword.png",
+		"quaternius_characters/king.glb",
+		"quaternius_weapons/sword.glb",
+		"近距離で前方を斬る",
+		{ 1.0f, 1.0f, 1.0f, 1.0f },
+	},
+	{
+		DirectXGame::CharacterId::Handgun,
+		"ui/game/lvup/icon_weapon_handgun.png",
+		"ui/game/lvup/icon_weapon_handgun.png",
+		"quaternius_characters/swat.glb",
+		"quaternius_weapons/pistol.glb",
+		"素早く弾を撃つ",
+		{ 1.0f, 1.0f, 1.0f, 1.0f },
+	},
 } };
+
+const CharacterUiDefinition& CharacterUiForId(DirectXGame::CharacterId id)
+{
+	for (const CharacterUiDefinition& definition : kCharacterUiDefinitions) {
+		if (definition.id == id) {
+			return definition;
+		}
+	}
+	return kCharacterUiDefinitions[0];
+}
+
+Vector3 TitlePlayerModelScale(const Vector3& layoutScale)
+{
+	return {
+		layoutScale.x * kTitlePlayerModelScaleMultiplier,
+		layoutScale.y * kTitlePlayerModelScaleMultiplier,
+		layoutScale.z * kTitlePlayerModelScaleMultiplier,
+	};
+}
+
+std::unique_ptr<Engine::Graphics3D::Object3D> CreateTitlePreviewObject(
+	const char* modelPath,
+	const Vector4& color)
+{
+	std::unique_ptr<Engine::Graphics3D::Object3D> object =
+		std::make_unique<Engine::Graphics3D::Object3D>();
+	object->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
+	DirectXGame::GameModelCache::ApplyToObject(
+		*object,
+		DirectXGame::GameModelCache::Load(modelPath));
+	object->SetSkyboxFilePath(kEnvironmentTexturePath);
+	object->SetEnvironmentReflectionStrength(0.0f);
+	object->SetEnvironmentRoughness(1.0f);
+	object->SetCastsShadow(true);
+	object->SetColor(color);
+	return object;
+}
+
+void ApplyPreviewTransform(
+	Engine::Graphics3D::Object3D& object,
+	const Vector3& position,
+	const Vector3& scale,
+	const Vector3& rotation,
+	const Vector4& color)
+{
+	object.SetTranslate(position);
+	object.SetScale(scale);
+	object.SetRotate(rotation);
+	object.SetColor(color);
+	object.Update();
+}
+
+void ApplyIdleAnimation(Engine::Graphics3D::Object3D& object)
+{
+	const char* idleClip = object.HasAnimationClip("idle")
+		? "idle"
+		: "idle_hold";
+	object.SetAnimationClip(idleClip);
+	object.SetAnimationSpeed(kTitleIdleAnimationSpeed);
+	object.SetAnimationLoop(true);
+}
 
 bool IsPointInRect(const Vector2& point, const Vector2& rectPosition, const Vector2& rectSize)
 {
@@ -133,6 +243,36 @@ Vector2 CharacterIconPosition(int32_t index)
 		kCharacterIconBasePosition.y +
 			kCharacterIconStepY * static_cast<float>(index),
 	};
+}
+
+Vector2 StartCharacterIconPosition(int32_t index)
+{
+	return {
+		kStartCharacterIconBasePosition.x +
+			kStartCharacterIconStepX * static_cast<float>(index),
+		kStartCharacterIconBasePosition.y,
+	};
+}
+
+DirectXGame::CharacterId StartCharacterIdFromIndex(int32_t index)
+{
+	switch (index) {
+	case 0: return DirectXGame::CharacterId::Bow;
+	case 1: return DirectXGame::CharacterId::Sword;
+	case 2: return DirectXGame::CharacterId::Handgun;
+	default: return DirectXGame::CharacterId::Bow;
+	}
+}
+
+int32_t StartCharacterIndexFromId(DirectXGame::CharacterId id)
+{
+	switch (id) {
+	case DirectXGame::CharacterId::Sword: return 1;
+	case DirectXGame::CharacterId::Handgun: return 2;
+	case DirectXGame::CharacterId::Bow:
+	default:
+		return 0;
+	}
 }
 
 Vector4 PermanentUpgradeCategoryColor(PermanentUpgradeCategory category, float alpha)
@@ -188,6 +328,7 @@ void TitleScene::Initialize()
 
 	if (sessionContext_) {
 		sessionContext_->OnEnterTitleScene();
+		sessionContext_->TrySelectCharacter(CharacterId::Bow);
 	}
 
 	InitializeLighting();
@@ -263,6 +404,9 @@ void TitleScene::Update()
 
 	UpdateAudio();
 	UpdateNavigation();
+	if (awaitingCharacterSelect_) {
+		UpdateStartCharacterSelectionInput();
+	}
 	if (showingUpgradeScreen_) {
 		UpdatePermanentUpgradeInput();
 	}
@@ -270,10 +414,15 @@ void TitleScene::Update()
 	UpdateCameraAnimation();
 	UpdateCoinDisplay();
 	UpdateCharacterSelectionDisplay();
+	UpdateStartCharacterSelectionDisplay();
 	UpdateShopLevelDisplay();
 
 	if (titleObject_) {
 		titleObject_->Update();
+	}
+	if (startCharacterModel_) {
+		UpdateStartCharacterModel();
+		UpdateStartCharacterPreviewModels();
 	}
 	if (gridPlane_) {
 		gridPlane_->Update(layoutSettings_.modelBasePosition);
@@ -292,37 +441,95 @@ void TitleScene::Draw()
 {
 	Engine::Graphics3D::Object3DCommon* objectCommon =
 		Engine::Graphics3D::Object3DCommon::GetInstance();
-	if (objectCommon->BeginShadowPass(layoutSettings_.modelBasePosition)) {
-		if (titleObject_) {
-			titleObject_->DrawShadow();
+	Engine::Graphics3D::Object3D::ClearSubmittedDraws();
+	Engine::Graphics3D::Object3D::ClearSubmittedShadows();
+	const bool overlayScreenActive = showingUpgradeScreen_ || awaitingCharacterSelect_;
+	const bool drawSelectModel = false;
+	const Vector3 shadowOrigin = drawSelectModel
+		? layoutSettings_.selectModelPosition
+		: layoutSettings_.modelBasePosition;
+	if (objectCommon->BeginShadowPass(shadowOrigin)) {
+		if (!overlayScreenActive && titleObject_) {
+			Engine::Graphics3D::Object3D::SubmitForShadow(titleObject_.get());
+		}
+		if (drawSelectModel) {
+			Engine::Graphics3D::Object3D::SubmitForShadow(startCharacterModel_.get());
+			if (startCharacterWeaponModel_) {
+				Engine::Graphics3D::Object3D::SubmitForShadow(startCharacterWeaponModel_.get());
+			}
+			if (startCharacterDetailModel_) {
+				Engine::Graphics3D::Object3D::SubmitForShadow(startCharacterDetailModel_.get());
+			}
+			if (startCharacterDetailWeaponModel_) {
+				Engine::Graphics3D::Object3D::SubmitForShadow(startCharacterDetailWeaponModel_.get());
+			}
+			for (const auto& model : startCharacterPreviewModels_) {
+				if (model) {
+					Engine::Graphics3D::Object3D::SubmitForShadow(model.get());
+				}
+			}
+			for (const auto& model : startCharacterPreviewWeaponModels_) {
+				if (model) {
+					Engine::Graphics3D::Object3D::SubmitForShadow(model.get());
+				}
+			}
 		}
 		if (gridPlane_) {
 			gridPlane_->DrawShadow();
 		}
+		Engine::Graphics3D::Object3D::FlushSubmittedShadows();
 		objectCommon->EndShadowPass();
 	}
 
 	objectCommon->CommonDraw();
-	if (skyDomeObject_) {
-		skyDomeObject_->Draw();
+	if (!overlayScreenActive && skyDomeObject_) {
+		Engine::Graphics3D::Object3D::SubmitForDraw(skyDomeObject_.get());
 	}
 	if (gridPlane_) {
 		gridPlane_->Draw();
 	}
-	if (titleObject_) {
-		titleObject_->Draw();
+	if (!overlayScreenActive && titleObject_) {
+		Engine::Graphics3D::Object3D::SubmitForDraw(titleObject_.get());
 	}
+	if (drawSelectModel) {
+		for (const auto& model : startCharacterPreviewModels_) {
+			if (model) {
+				Engine::Graphics3D::Object3D::SubmitForDraw(model.get());
+			}
+		}
+		for (const auto& model : startCharacterPreviewWeaponModels_) {
+			if (model) {
+				Engine::Graphics3D::Object3D::SubmitForDraw(model.get());
+			}
+		}
+		Engine::Graphics3D::Object3D::SubmitForDraw(startCharacterModel_.get());
+		if (startCharacterWeaponModel_) {
+			Engine::Graphics3D::Object3D::SubmitForDraw(startCharacterWeaponModel_.get());
+		}
+		if (startCharacterDetailModel_) {
+			Engine::Graphics3D::Object3D::SubmitForDraw(startCharacterDetailModel_.get());
+		}
+		if (startCharacterDetailWeaponModel_) {
+			Engine::Graphics3D::Object3D::SubmitForDraw(startCharacterDetailWeaponModel_.get());
+		}
+	}
+	Engine::Graphics3D::Object3D::FlushSubmittedDraws();
 
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
-	titleSprite_.Draw();
+	if (!overlayScreenActive) {
+		titleSprite_.Draw();
+	}
+	if (awaitingCharacterSelect_) {
+		DrawStartCharacterSelectionDisplay();
+	}
 	if (showingUpgradeScreen_) {
 		shopSprite_.Draw();
 	}
-	cursorSprite_.Draw();
+	if (!awaitingCharacterSelect_) {
+		cursorSprite_.Draw();
+	}
 	if (showingUpgradeScreen_) {
-		DrawCoinDisplay();
 		DrawShopDisplay();
-		DrawPermanentUpgradeDisplay();
 		DrawCharacterSelectionDisplay();
 	}
 	if (curtain_) {
@@ -366,6 +573,45 @@ void TitleScene::InitializeResources()
 	layoutSettings_.cameraPitch = UILayoutIO::GetFloat(titleLayout, "cameraPitch", layoutSettings_.cameraPitch);
 	layoutSettings_.cameraYaw = UILayoutIO::GetFloat(titleLayout, "cameraYaw", layoutSettings_.cameraYaw);
 	layoutSettings_.cameraOrbitSpeed = UILayoutIO::GetFloat(titleLayout, "cameraOrbitSpeed", layoutSettings_.cameraOrbitSpeed);
+	layoutSettings_.selectBackgroundPosition = UILayoutIO::GetVector2(titleLayout, "select.backgroundPosition", layoutSettings_.selectBackgroundPosition);
+	layoutSettings_.selectBackgroundSize = UILayoutIO::GetVector2(titleLayout, "select.backgroundSize", layoutSettings_.selectBackgroundSize);
+	layoutSettings_.selectTitleTextPosition = UILayoutIO::GetVector2(titleLayout, "select.titleTextPosition", layoutSettings_.selectTitleTextPosition);
+	layoutSettings_.selectTitleTextScale = UILayoutIO::GetFloat(titleLayout, "select.titleTextScale", layoutSettings_.selectTitleTextScale);
+	layoutSettings_.selectIconBasePosition = UILayoutIO::GetVector2(titleLayout, "select.iconBasePosition", layoutSettings_.selectIconBasePosition);
+	layoutSettings_.selectIconSize = UILayoutIO::GetVector2(titleLayout, "select.iconSize", layoutSettings_.selectIconSize);
+	layoutSettings_.selectIconHitboxSize = UILayoutIO::GetVector2(titleLayout, "select.iconHitboxSize", layoutSettings_.selectIconHitboxSize);
+	layoutSettings_.selectIconStepX = UILayoutIO::GetFloat(titleLayout, "select.iconStepX", layoutSettings_.selectIconStepX);
+	layoutSettings_.selectIconStepY = UILayoutIO::GetFloat(titleLayout, "select.iconStepY", layoutSettings_.selectIconStepY);
+	layoutSettings_.selectIconModelBasePosition = UILayoutIO::GetVector3(titleLayout, "select.iconModelBasePosition", layoutSettings_.selectIconModelBasePosition);
+	layoutSettings_.selectIconModelStep = UILayoutIO::GetVector3(titleLayout, "select.iconModelStep", layoutSettings_.selectIconModelStep);
+	layoutSettings_.selectIconModelScale = UILayoutIO::GetVector3(titleLayout, "select.iconModelScale", layoutSettings_.selectIconModelScale);
+	layoutSettings_.selectIconModelRotation = UILayoutIO::GetVector3(titleLayout, "select.iconModelRotation", layoutSettings_.selectIconModelRotation);
+	layoutSettings_.selectIconWeaponOffset = UILayoutIO::GetVector3(titleLayout, "select.iconWeaponOffset", layoutSettings_.selectIconWeaponOffset);
+	layoutSettings_.selectIconWeaponScale = UILayoutIO::GetVector3(titleLayout, "select.iconWeaponScale", layoutSettings_.selectIconWeaponScale);
+	layoutSettings_.selectIconWeaponRotation = UILayoutIO::GetVector3(titleLayout, "select.iconWeaponRotation", layoutSettings_.selectIconWeaponRotation);
+	layoutSettings_.selectDetailFacePosition = UILayoutIO::GetVector2(titleLayout, "select.detailFacePosition", layoutSettings_.selectDetailFacePosition);
+	layoutSettings_.selectDetailFaceSize = UILayoutIO::GetVector2(titleLayout, "select.detailFaceSize", layoutSettings_.selectDetailFaceSize);
+	layoutSettings_.selectWeaponIconPosition = UILayoutIO::GetVector2(titleLayout, "select.weaponIconPosition", layoutSettings_.selectWeaponIconPosition);
+	layoutSettings_.selectWeaponIconSize = UILayoutIO::GetVector2(titleLayout, "select.weaponIconSize", layoutSettings_.selectWeaponIconSize);
+	layoutSettings_.selectWeaponDescriptionPosition = UILayoutIO::GetVector2(titleLayout, "select.weaponDescriptionPosition", layoutSettings_.selectWeaponDescriptionPosition);
+	layoutSettings_.selectWeaponDescriptionScale = UILayoutIO::GetFloat(titleLayout, "select.weaponDescriptionScale", layoutSettings_.selectWeaponDescriptionScale);
+	layoutSettings_.selectWeaponDescriptionMaxWidth = UILayoutIO::GetFloat(titleLayout, "select.weaponDescriptionMaxWidth", layoutSettings_.selectWeaponDescriptionMaxWidth);
+	layoutSettings_.selectActionButtonPosition = UILayoutIO::GetVector2(titleLayout, "select.actionButtonPosition", layoutSettings_.selectActionButtonPosition);
+	layoutSettings_.selectActionButtonSize = UILayoutIO::GetVector2(titleLayout, "select.actionButtonSize", layoutSettings_.selectActionButtonSize);
+	layoutSettings_.selectActionTextOffset = UILayoutIO::GetVector2(titleLayout, "select.actionTextOffset", layoutSettings_.selectActionTextOffset);
+	layoutSettings_.selectActionTextScale = UILayoutIO::GetFloat(titleLayout, "select.actionTextScale", layoutSettings_.selectActionTextScale);
+	layoutSettings_.selectModelPosition = UILayoutIO::GetVector3(titleLayout, "select.modelPosition", layoutSettings_.selectModelPosition);
+	layoutSettings_.selectModelScale = UILayoutIO::GetVector3(titleLayout, "select.modelScale", layoutSettings_.selectModelScale);
+	layoutSettings_.selectModelRotation = UILayoutIO::GetVector3(titleLayout, "select.modelRotation", layoutSettings_.selectModelRotation);
+	layoutSettings_.selectModelWeaponOffset = UILayoutIO::GetVector3(titleLayout, "select.modelWeaponOffset", layoutSettings_.selectModelWeaponOffset);
+	layoutSettings_.selectModelWeaponScale = UILayoutIO::GetVector3(titleLayout, "select.modelWeaponScale", layoutSettings_.selectModelWeaponScale);
+	layoutSettings_.selectModelWeaponRotation = UILayoutIO::GetVector3(titleLayout, "select.modelWeaponRotation", layoutSettings_.selectModelWeaponRotation);
+	layoutSettings_.selectDetailModelPosition = UILayoutIO::GetVector3(titleLayout, "select.detailModelPosition", layoutSettings_.selectDetailModelPosition);
+	layoutSettings_.selectDetailModelScale = UILayoutIO::GetVector3(titleLayout, "select.detailModelScale", layoutSettings_.selectDetailModelScale);
+	layoutSettings_.selectDetailModelRotation = UILayoutIO::GetVector3(titleLayout, "select.detailModelRotation", layoutSettings_.selectDetailModelRotation);
+	layoutSettings_.selectDetailWeaponOffset = UILayoutIO::GetVector3(titleLayout, "select.detailWeaponOffset", layoutSettings_.selectDetailWeaponOffset);
+	layoutSettings_.selectDetailWeaponScale = UILayoutIO::GetVector3(titleLayout, "select.detailWeaponScale", layoutSettings_.selectDetailWeaponScale);
+	layoutSettings_.selectDetailWeaponRotation = UILayoutIO::GetVector3(titleLayout, "select.detailWeaponRotation", layoutSettings_.selectDetailWeaponRotation);
 #ifdef _DEBUG
 	auto loadWindowVisible = [&titleLayout](std::string_view key, bool fallback) {
 		return UILayoutIO::GetFloat(titleLayout, key, fallback ? 1.0f : 0.0f) != 0.0f;
@@ -374,6 +620,7 @@ void TitleScene::InitializeResources()
 	debugWindows_.titleView = loadWindowVisible("debug.titleView", debugWindows_.titleView);
 	debugWindows_.statisticsView = loadWindowVisible("debug.statisticsView", debugWindows_.statisticsView);
 	debugWindows_.titleSettings = loadWindowVisible("debug.titleSettings", debugWindows_.titleSettings);
+	debugWindows_.titleModelSettings = loadWindowVisible("debug.titleModelSettings", debugWindows_.titleModelSettings);
 	debugWindows_.offscreenSettings = loadWindowVisible("debug.offscreenSettings", debugWindows_.offscreenSettings);
 	debugWindows_.lightSettings = loadWindowVisible("debug.lightSettings", debugWindows_.lightSettings);
 	debugWindows_.audio = loadWindowVisible("debug.audio", debugWindows_.audio);
@@ -390,7 +637,9 @@ void TitleScene::InitializeResources()
 		titleTexturePath,
 		cursorTexturePath,
 		shopTexturePath,
+		ResourcePaths::MakeTexturePath(kSelectTexturePath),
 		ResourcePaths::MakeTexturePath(kNumberTexturePath),
+		ResourcePaths::MakeTexturePath(kTextFontTexture),
 		ResourcePaths::MakeTexturePath(kPermanentMaxHPIconPath),
 		ResourcePaths::MakeTexturePath(kPermanentAttackIconPath),
 		ResourcePaths::MakeTexturePath(kPermanentMoveSpeedIconPath),
@@ -406,6 +655,16 @@ void TitleScene::InitializeResources()
 	cursorSprite_.Initialize(cursorTexturePath, layoutSettings_.cursorBasePosition);
 	shopSprite_.Initialize(shopTexturePath, { 0.0f, 0.0f });
 	shopSprite_.SetSize({ 1280.0f, 720.0f });
+	selectSprite_.Initialize(kSelectTexturePath, layoutSettings_.selectBackgroundPosition);
+	selectSprite_.SetSize(layoutSettings_.selectBackgroundSize);
+	selectTitleText_.Initialize(kTextFontTexture, kTextFontMetadata);
+	selectTitleText_.SetText("キャラ選択");
+	selectActionText_.Initialize(kTextFontTexture, kTextFontMetadata);
+	selectedWeaponDescriptionText_.Initialize(kTextFontTexture, kTextFontMetadata);
+	selectedWeaponDescriptionText_.SetColor({ 0.86f, 0.93f, 1.0f, 0.95f });
+	selectActionButton_.Initialize();
+	selectedCharacterFaceIcon_.Initialize(kCharacterUiDefinitions[1].iconPath, layoutSettings_.selectDetailFacePosition);
+	selectedWeaponIcon_.Initialize(kCharacterUiDefinitions[1].weaponIconPath, layoutSettings_.selectWeaponIconPosition);
 	for (int32_t itemIndex = 0; itemIndex < kPermanentUpgradeCount; ++itemIndex) {
 		const int32_t cap = kShopLevelCaps[static_cast<size_t>(itemIndex)];
 		const float rowWidth = layoutSettings_.shopLevelSquareSize.x +
@@ -476,6 +735,25 @@ void TitleScene::InitializeResources()
 			characterCostDigits_[index][digitIndex]->SetTextureSize({ 24.0f, 32.0f });
 		}
 	}
+	for (int32_t index = 0; index < 3; ++index) {
+		const CharacterId id = StartCharacterIdFromIndex(index);
+		const size_t sourceIndex = static_cast<size_t>(static_cast<int32_t>(id));
+		const Vector2 iconPosition = StartCharacterIconPosition(index);
+		startCharacterHighlights_[index].Initialize();
+		startCharacterHighlights_[index].SetPosition({
+			iconPosition.x - kStartCharacterHighlightPadding.x,
+			iconPosition.y - kStartCharacterHighlightPadding.y,
+		});
+		startCharacterHighlights_[index].SetSize({
+			kStartCharacterIconSize.x + kStartCharacterHighlightPadding.x * 2.0f,
+			kStartCharacterIconSize.y + kStartCharacterHighlightPadding.y * 2.0f,
+		});
+		startCharacterIcons_[index].Initialize(
+			kCharacterUiDefinitions[sourceIndex].iconPath,
+			iconPosition);
+		startCharacterIcons_[index].SetSize(kStartCharacterIconSize);
+	}
+	ApplyStartCharacterSelectionLayout();
 
 	curtain_ = std::make_unique<CurtainTransition>();
 	curtain_->Initialize();
@@ -496,21 +774,68 @@ void TitleScene::InitializeCameraAndObjects()
 
 	GameModelCache::LoadBatch({
 		"cube.obj",
+		kTitlePlayerModelPath,
 		"skydome.obj",
 		"plane.obj",
-		"octopus.obj",
+		"cube_world/tree.glb",
+		"cube_world/dead_tree.glb",
+		"cube_world/rock.glb",
+		"cube_world/grass.glb",
+		"cube_world/grass_small.glb",
+		"cube_world/bush.glb",
+		"cube_world/flowers.glb",
+		"cube_world/mushroom.glb",
+		"cube_world/plant.glb",
+		"quaternius_characters/adventurer.glb",
+		"quaternius_characters/king.glb",
+		"quaternius_characters/swat.glb",
+		"quaternius_weapons/bow.glb",
+		"quaternius_weapons/sword.glb",
+		"quaternius_weapons/pistol.glb",
 		});
 
-	const ModelHandle titleModelHandle = GameModelCache::Load("cube.obj");
+	const ModelHandle titleModelHandle = GameModelCache::Load(kTitlePlayerModelPath);
 	titleObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
 	titleObject_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
 	GameModelCache::ApplyToObject(*titleObject_, titleModelHandle);
 	titleObject_->SetSkyboxFilePath(kEnvironmentTexturePath);
 	titleObject_->SetEnvironmentReflectionStrength(0.0f);
 	titleObject_->SetEnvironmentRoughness(1.0f);
-	titleObject_->SetRotate({ 0.0f, -2.618f, 0.0f });
-	titleObject_->SetScale(layoutSettings_.modelScale);
+	titleObject_->SetCastsShadow(true);
+	ApplyIdleAnimation(*titleObject_);
+	titleObject_->SetRotate({ kTitlePlayerModelBasePitch, -2.618f, 0.0f });
+	titleObject_->SetScale(TitlePlayerModelScale(layoutSettings_.modelScale));
 	titleObject_->SetTranslate(layoutSettings_.modelBasePosition);
+
+	startCharacterModel_ = std::make_unique<Engine::Graphics3D::Object3D>();
+	startCharacterModel_->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
+	GameModelCache::ApplyToObject(
+		*startCharacterModel_,
+		GameModelCache::Load(kCharacterUiDefinitions[1].modelPath));
+	startCharacterModel_->SetSkyboxFilePath(kEnvironmentTexturePath);
+	startCharacterModel_->SetEnvironmentReflectionStrength(0.0f);
+	startCharacterModel_->SetEnvironmentRoughness(1.0f);
+	startCharacterModel_->SetCastsShadow(true);
+	ApplyIdleAnimation(*startCharacterModel_);
+	startCharacterWeaponModel_ = CreateTitlePreviewObject(
+		kCharacterUiDefinitions[1].weaponModelPath,
+		{ 1.0f, 1.0f, 1.0f, 1.0f });
+	startCharacterDetailModel_ = CreateTitlePreviewObject(
+		kCharacterUiDefinitions[1].modelPath,
+		kCharacterUiDefinitions[1].modelColor);
+	startCharacterDetailWeaponModel_ = CreateTitlePreviewObject(
+		kCharacterUiDefinitions[1].weaponModelPath,
+		{ 1.0f, 1.0f, 1.0f, 1.0f });
+	for (int32_t index = 0; index < 3; ++index) {
+		const CharacterUiDefinition& definition =
+			CharacterUiForId(StartCharacterIdFromIndex(index));
+		startCharacterPreviewModels_[static_cast<size_t>(index)] =
+			CreateTitlePreviewObject(definition.modelPath, definition.modelColor);
+		startCharacterPreviewWeaponModels_[static_cast<size_t>(index)] =
+			CreateTitlePreviewObject(definition.weaponModelPath, { 1.0f, 1.0f, 1.0f, 1.0f });
+	}
+	UpdateStartCharacterModel();
+	UpdateStartCharacterPreviewModels();
 
 	const ModelHandle skydomeHandle = GameModelCache::Load("skydome.obj");
 	skyDomeObject_ = std::make_unique<Engine::Graphics3D::Object3D>();
@@ -554,7 +879,8 @@ void TitleScene::ApplyLayout()
 	cursorSprite_.SetSize(layoutSettings_.cursorSize);
 
 	if (titleObject_) {
-		titleObject_->SetScale(layoutSettings_.modelScale);
+		ApplyIdleAnimation(*titleObject_);
+		titleObject_->SetScale(TitlePlayerModelScale(layoutSettings_.modelScale));
 		titleObject_->SetTranslate(layoutSettings_.modelBasePosition);
 		titleObject_->Update();
 	}
@@ -580,8 +906,16 @@ void TitleScene::UpdateCurtain()
 void TitleScene::UpdateNavigation()
 {
 	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	if (!input) {
+		return;
+	}
 	const GameMenuInputState menuInput = GameMenuController::Update(input, navigationInputDevice_);
 	navigationInputDevice_ = menuInput.device;
+
+	if (awaitingCharacterSelect_) {
+		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		return;
+	}
 
 	if (showingUpgradeScreen_) {
 		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
@@ -595,11 +929,28 @@ void TitleScene::UpdateNavigation()
 		return;
 	}
 
-	const bool mouseInsideScene = ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos());
+	if (input->TriggerKey(kOpenCharacterSelectKey)) {
+		awaitingCharacterSelect_ = true;
+		showingUpgradeScreen_ = false;
+		shopCharacterSelectionActive_ = false;
+		characterItemIndex_ = StartCharacterIndexFromId(CharacterId::Bow);
+		startCharacterSelectedIndex_ = characterItemIndex_;
+		startCharacterInputDelayFrames_ = 1;
+		startCharacterActionArmed_ = true;
+		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		if (selectSeHandle_) {
+			GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
+		}
+		return;
+	}
+
+	const bool mouseInputActive =
+		!GameInputBindings::IsGameInputSuppressedByImGui() &&
+		ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos());
 	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 
 	int32_t hoveredMenuIndex = -1;
-	if (mouseInsideScene) {
+	if (mouseInputActive) {
 		for (int32_t index = 0; index < 3; ++index) {
 			const Vector2 offset = index == 1
 				? layoutSettings_.cursorShopOffset
@@ -665,7 +1016,13 @@ void TitleScene::UpdateNavigation()
 
 	switch (menuIndex_) {
 	case 0:
-		StartGameTransition();
+		if (sessionContext_) {
+			sessionContext_->TrySelectCharacter(CharacterId::Bow);
+		}
+		if (curtain_ && curtain_->GetState() == CurtainTransition::State::None) {
+			curtain_->StartClose();
+			curtainStarted_ = true;
+		}
 		break;
 	case 1:
 		showingUpgradeScreen_ = true;
@@ -692,7 +1049,10 @@ void TitleScene::UpdatePermanentUpgradeInput()
 
 	bool selectionChanged = false;
 	bool handledMouseConfirm = false;
-	if (input && ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+	const bool mouseConfirm =
+		GameInputBindings::IsMouseConfirmTriggered(input);
+	if (!GameInputBindings::IsGameInputSuppressedByImGui() &&
+		ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
 		const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
 		for (int32_t index = 0; index < kPermanentUpgradeCount; ++index) {
 			if (IsPointInRect(
@@ -703,7 +1063,7 @@ void TitleScene::UpdatePermanentUpgradeInput()
 					shopCharacterSelectionActive_ || shopItemIndex_ != index;
 				shopCharacterSelectionActive_ = false;
 				shopItemIndex_ = index;
-				if (input->TriggerMouse(0)) {
+				if (mouseConfirm) {
 					handledMouseConfirm = true;
 					TryPurchasePermanentUpgrade(shopItemIndex_);
 				}
@@ -719,7 +1079,7 @@ void TitleScene::UpdatePermanentUpgradeInput()
 					!shopCharacterSelectionActive_ || characterItemIndex_ != index;
 				shopCharacterSelectionActive_ = true;
 				characterItemIndex_ = index;
-				if (input->TriggerMouse(0)) {
+				if (mouseConfirm) {
 					handledMouseConfirm = true;
 					TryActivateCharacter(characterItemIndex_);
 				}
@@ -779,6 +1139,150 @@ void TitleScene::UpdatePermanentUpgradeInput()
 	(void)handledMouseConfirm;
 }
 
+void TitleScene::UpdateStartCharacterSelectionInput()
+{
+	if (!sessionContext_ || curtainStarted_) {
+		return;
+	}
+
+	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
+	if (!input) {
+		return;
+	}
+	const GameMenuInputState menuInput =
+		GameMenuController::Update(input, navigationInputDevice_);
+	navigationInputDevice_ = menuInput.device;
+	if (startCharacterInputDelayFrames_ > 0) {
+		--startCharacterInputDelayFrames_;
+		return;
+	}
+
+	auto selectStartCharacter = [this](int32_t index) {
+		const int32_t clampedIndex = std::clamp(index, 0, 2);
+		if (characterItemIndex_ == clampedIndex) {
+			return;
+		}
+		characterItemIndex_ = clampedIndex;
+		startCharacterActionArmed_ = startCharacterSelectedIndex_ == characterItemIndex_;
+		if (selectSeHandle_) {
+			GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
+		}
+	};
+	auto armFocusedCharacter = [this]() {
+		if ((startCharacterSelectedIndex_ != characterItemIndex_ || !startCharacterActionArmed_) &&
+			selectSeHandle_) {
+			GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
+		}
+		startCharacterSelectedIndex_ = characterItemIndex_;
+		startCharacterActionArmed_ = true;
+	};
+	auto activateSelectedCharacter = [this]() {
+		startCharacterSelectedIndex_ = std::clamp(startCharacterSelectedIndex_, 0, 2);
+		const CharacterId id = StartCharacterIdFromIndex(startCharacterSelectedIndex_);
+		if (!sessionContext_) {
+			return;
+		}
+		const bool wasUnlocked = sessionContext_->IsCharacterUnlocked(id);
+		const bool activated = wasUnlocked
+			? sessionContext_->TrySelectCharacter(id)
+			: sessionContext_->TryUnlockCharacter(id);
+		if (!activated) {
+			return;
+		}
+		if (decideSeHandle_) {
+			GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
+		}
+		if (wasUnlocked && sessionContext_->GetSelectedCharacterId() == id) {
+			StartGameTransition();
+		}
+	};
+
+	const bool gameInputActive =
+		!GameInputBindings::IsGameInputSuppressedByImGui();
+	if (gameInputActive && input->TriggerKey(DIK_1)) {
+		selectStartCharacter(0);
+		armFocusedCharacter();
+	}
+	if (gameInputActive && input->TriggerKey(DIK_2)) {
+		selectStartCharacter(1);
+		armFocusedCharacter();
+	}
+	if (gameInputActive && input->TriggerKey(DIK_3)) {
+		selectStartCharacter(2);
+		armFocusedCharacter();
+	}
+	if (GameInputBindings::IsMenuLeftTriggered(input)) {
+		selectStartCharacter((characterItemIndex_ + 2) % 3);
+	}
+	if (GameInputBindings::IsMenuRightTriggered(input)) {
+		selectStartCharacter((characterItemIndex_ + 1) % 3);
+	}
+	if (GameInputBindings::IsMenuUpTriggered(input)) {
+		selectStartCharacter((characterItemIndex_ + 2) % 3);
+	}
+	if (GameInputBindings::IsMenuDownTriggered(input)) {
+		selectStartCharacter((characterItemIndex_ + 1) % 3);
+	}
+
+	if (!GameInputBindings::IsGameInputSuppressedByImGui() &&
+		ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
+		const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
+		const bool mouseConfirm =
+			GameInputBindings::IsMouseConfirmTriggered(input);
+		for (int32_t index = 0; index < 3; ++index) {
+			const int32_t row = index / 4;
+			const int32_t column = index % 4;
+			const Vector2 iconPosition{
+				layoutSettings_.selectIconBasePosition.x +
+					layoutSettings_.selectIconStepX * static_cast<float>(column),
+				layoutSettings_.selectIconBasePosition.y +
+					layoutSettings_.selectIconStepY * static_cast<float>(row),
+			};
+			if (IsPointInRect(mousePosition, iconPosition, layoutSettings_.selectIconHitboxSize)) {
+				const bool sameFocusedCharacter = characterItemIndex_ == index;
+				selectStartCharacter(index);
+				if (mouseConfirm) {
+					if (sameFocusedCharacter &&
+						startCharacterActionArmed_ &&
+						startCharacterSelectedIndex_ == characterItemIndex_) {
+						activateSelectedCharacter();
+					} else {
+						armFocusedCharacter();
+					}
+				}
+				break;
+			}
+		}
+		if (IsPointInRect(
+				mousePosition,
+				layoutSettings_.selectActionButtonPosition,
+				layoutSettings_.selectActionButtonSize) &&
+			mouseConfirm) {
+			activateSelectedCharacter();
+		}
+	}
+
+	if (menuInput.cancel) {
+		awaitingCharacterSelect_ = false;
+		startCharacterActionArmed_ = false;
+		cursorSprite_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		if (backSeHandle_) {
+			GameAudioCache::PlayTuned(backSeHandle_, kAudioUiBack, 0.52f);
+		}
+		return;
+	}
+
+	if (menuInput.device != GameInputBindings::NavigationInputDevice::Mouse &&
+		menuInput.confirm) {
+		if (startCharacterActionArmed_ &&
+			startCharacterSelectedIndex_ == characterItemIndex_) {
+			activateSelectedCharacter();
+		} else {
+			armFocusedCharacter();
+		}
+	}
+}
+
 bool TitleScene::TryPurchasePermanentUpgrade(int32_t index)
 {
 	if (!sessionContext_ || index < 0 || index >= kPermanentUpgradeCount) {
@@ -830,6 +1334,8 @@ void TitleScene::UpdateCharacterSelectionInput()
 	}
 
 	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
+	const bool mouseConfirm =
+		GameInputBindings::IsMouseConfirmTriggered(input);
 	for (int32_t index = 0; index < kCharacterCount; ++index) {
 		if (IsPointInRect(
 			mousePosition,
@@ -842,7 +1348,7 @@ void TitleScene::UpdateCharacterSelectionInput()
 					GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
 				}
 			}
-			if (input->TriggerMouse(0)) {
+			if (mouseConfirm) {
 				TryActivateCharacter(characterItemIndex_);
 			}
 			break;
@@ -888,8 +1394,9 @@ void TitleScene::UpdateModelAnimation()
 		return;
 	}
 
-	titleObject_->SetRotate({ 0.0f, -2.618f, 0.0f });
+	titleObject_->SetRotate({ kTitlePlayerModelBasePitch, -2.618f, 0.0f });
 	titleObject_->SetTranslate(layoutSettings_.modelBasePosition);
+	ApplyIdleAnimation(*titleObject_);
 }
 
 void TitleScene::UpdateCameraAnimation()
@@ -1050,13 +1557,13 @@ void TitleScene::UpdateCharacterSelectionDisplay()
 {
 	const CharacterId selectedId = sessionContext_
 		? sessionContext_->GetSelectedCharacterId()
-		: CharacterId::Octopus;
+		: CharacterId::Default;
 	const int32_t ownedCoins = sessionContext_ ? sessionContext_->GetOwnedCoins() : 0;
 
 	for (int32_t index = 0; index < kCharacterCount; ++index) {
 		const CharacterId id =
 			kCharacterUiDefinitions[static_cast<size_t>(index)].id;
-		const bool unlocked = sessionContext_ ? sessionContext_->IsCharacterUnlocked(id) : id == CharacterId::Octopus;
+		const bool unlocked = sessionContext_ ? sessionContext_->IsCharacterUnlocked(id) : id == CharacterId::Default;
 		const bool selected = unlocked && id == selectedId;
 		const bool focused =
 			shopCharacterSelectionActive_ && index == characterItemIndex_;
@@ -1110,6 +1617,53 @@ void TitleScene::UpdateCharacterSelectionDisplay()
 	}
 }
 
+void TitleScene::UpdateStartCharacterSelectionDisplay()
+{
+	if (awaitingCharacterSelect_) {
+		characterItemIndex_ = std::clamp(characterItemIndex_, 0, 2);
+		startCharacterSelectedIndex_ = std::clamp(startCharacterSelectedIndex_, 0, 2);
+	}
+	for (int32_t index = 0; index < 3; ++index) {
+		const CharacterId id = StartCharacterIdFromIndex(index);
+		const bool unlocked = sessionContext_ ? sessionContext_->IsCharacterUnlocked(id) : true;
+		const bool selected = index == startCharacterSelectedIndex_;
+		const bool focused = awaitingCharacterSelect_ && index == characterItemIndex_;
+		const bool armed = focused && selected && startCharacterActionArmed_;
+		startCharacterHighlights_[index].SetColor(selected
+			? Vector4{ 0.08f, 0.38f, 0.95f, 0.46f }
+			: (focused
+				? Vector4{ 1.0f, 0.88f, 0.12f, 0.32f }
+				: Vector4{ 0.0f, 0.0f, 0.0f, 0.0f }));
+		Vector4 iconColor = unlocked
+			? (selected
+				? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
+				: Vector4{ 0.52f, 0.72f, 0.86f, 0.88f })
+			: Vector4{ 0.02f, 0.02f, 0.02f, 0.82f };
+		if (focused && unlocked && !armed) {
+			iconColor = { 1.0f, 0.92f, 0.42f, 1.0f };
+		}
+		startCharacterIcons_[index].SetColor(iconColor);
+	}
+
+	const CharacterId selectedId = StartCharacterIdFromIndex(startCharacterSelectedIndex_);
+	const CharacterUiDefinition& selectedCharacter = CharacterUiForId(selectedId);
+	const bool selectedUnlocked = sessionContext_
+		? sessionContext_->IsCharacterUnlocked(selectedId)
+		: true;
+	selectedCharacterFaceIcon_.SetTexture(selectedCharacter.iconPath);
+	selectedCharacterFaceIcon_.SetColor(selectedUnlocked
+		? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
+		: Vector4{ 0.02f, 0.02f, 0.02f, 0.82f });
+	selectedWeaponIcon_.SetTexture(selectedCharacter.weaponIconPath);
+	selectedWeaponIcon_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	selectedWeaponDescriptionText_.SetText(selectedCharacter.weaponDescription);
+	selectActionButton_.SetColor(selectedUnlocked
+		? Vector4{ 0.08f, 0.38f, 0.95f, 0.88f }
+		: Vector4{ 0.86f, 0.08f, 0.08f, 0.88f });
+	selectActionText_.SetText(selectedUnlocked ? "選択" : "購入");
+	ApplyStartCharacterSelectionLayout();
+}
+
 void TitleScene::DrawCoinDisplay()
 {
 	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : coinDigits_) {
@@ -1156,6 +1710,177 @@ void TitleScene::DrawCharacterSelectionDisplay()
 			}
 			digit->Update();
 			digit->Draw();
+		}
+	}
+}
+
+void TitleScene::DrawStartCharacterSelectionDisplay()
+{
+	selectSprite_.Draw();
+	selectTitleText_.Draw();
+	for (UIPanel& highlight : startCharacterHighlights_) {
+		highlight.Draw();
+	}
+	selectedWeaponIcon_.Draw();
+	selectedWeaponDescriptionText_.Draw();
+	selectActionButton_.Draw();
+	selectActionText_.Draw();
+}
+
+void TitleScene::ApplyStartCharacterSelectionLayout()
+{
+	selectSprite_.SetPosition(layoutSettings_.selectBackgroundPosition);
+	selectSprite_.SetSize(layoutSettings_.selectBackgroundSize);
+	selectTitleText_.SetPosition(layoutSettings_.selectTitleTextPosition);
+	selectTitleText_.SetScale(layoutSettings_.selectTitleTextScale);
+	for (int32_t index = 0; index < 3; ++index) {
+		const int32_t row = index / 4;
+		const int32_t column = index % 4;
+		const Vector2 iconPosition{
+			layoutSettings_.selectIconBasePosition.x +
+				layoutSettings_.selectIconStepX * static_cast<float>(column),
+			layoutSettings_.selectIconBasePosition.y +
+				layoutSettings_.selectIconStepY * static_cast<float>(row),
+		};
+		startCharacterHighlights_[index].SetPosition(iconPosition);
+		startCharacterHighlights_[index].SetSize(layoutSettings_.selectIconHitboxSize);
+		startCharacterIcons_[index].SetPosition(iconPosition);
+		startCharacterIcons_[index].SetSize(layoutSettings_.selectIconSize);
+	}
+	selectedCharacterFaceIcon_.SetPosition(layoutSettings_.selectDetailFacePosition);
+	selectedCharacterFaceIcon_.SetSize(layoutSettings_.selectDetailFaceSize);
+	selectedWeaponIcon_.SetPosition(layoutSettings_.selectWeaponIconPosition);
+	selectedWeaponIcon_.SetSize(layoutSettings_.selectWeaponIconSize);
+	selectedWeaponDescriptionText_.SetPosition(layoutSettings_.selectWeaponDescriptionPosition);
+	selectedWeaponDescriptionText_.SetScaleToFit(
+		layoutSettings_.selectWeaponDescriptionScale,
+		layoutSettings_.selectWeaponDescriptionMaxWidth);
+	selectActionButton_.SetPosition(layoutSettings_.selectActionButtonPosition);
+	selectActionButton_.SetSize(layoutSettings_.selectActionButtonSize);
+	selectActionText_.SetPosition({
+		layoutSettings_.selectActionButtonPosition.x + layoutSettings_.selectActionTextOffset.x,
+		layoutSettings_.selectActionButtonPosition.y + layoutSettings_.selectActionTextOffset.y,
+	});
+	selectActionText_.SetScale(layoutSettings_.selectActionTextScale);
+}
+
+void TitleScene::UpdateStartCharacterModel()
+{
+	if (!startCharacterModel_) {
+		return;
+	}
+	startCharacterSelectedIndex_ = std::clamp(startCharacterSelectedIndex_, 0, 2);
+	const CharacterId selectedId = StartCharacterIdFromIndex(startCharacterSelectedIndex_);
+	const CharacterUiDefinition& selectedCharacter = CharacterUiForId(selectedId);
+	if (startCharacterAppliedSelectedIndex_ != startCharacterSelectedIndex_) {
+		GameModelCache::ApplyToObject(
+			*startCharacterModel_,
+			GameModelCache::Load(selectedCharacter.modelPath));
+		startCharacterModel_->SetCastsShadow(true);
+		ApplyIdleAnimation(*startCharacterModel_);
+		if (startCharacterWeaponModel_) {
+			GameModelCache::ApplyToObject(
+				*startCharacterWeaponModel_,
+				GameModelCache::Load(selectedCharacter.weaponModelPath));
+			startCharacterWeaponModel_->SetCastsShadow(true);
+		}
+		if (startCharacterDetailModel_) {
+			GameModelCache::ApplyToObject(
+				*startCharacterDetailModel_,
+				GameModelCache::Load(selectedCharacter.modelPath));
+			startCharacterDetailModel_->SetCastsShadow(true);
+			ApplyIdleAnimation(*startCharacterDetailModel_);
+		}
+		if (startCharacterDetailWeaponModel_) {
+			GameModelCache::ApplyToObject(
+				*startCharacterDetailWeaponModel_,
+				GameModelCache::Load(selectedCharacter.weaponModelPath));
+			startCharacterDetailWeaponModel_->SetCastsShadow(true);
+		}
+		startCharacterAppliedSelectedIndex_ = startCharacterSelectedIndex_;
+	}
+	ApplyIdleAnimation(*startCharacterModel_);
+	ApplyPreviewTransform(
+		*startCharacterModel_,
+		layoutSettings_.selectModelPosition,
+		layoutSettings_.selectModelScale,
+		layoutSettings_.selectModelRotation,
+		selectedCharacter.modelColor);
+	if (startCharacterWeaponModel_) {
+		ApplyPreviewTransform(
+			*startCharacterWeaponModel_,
+			{
+				layoutSettings_.selectModelPosition.x + layoutSettings_.selectModelWeaponOffset.x,
+				layoutSettings_.selectModelPosition.y + layoutSettings_.selectModelWeaponOffset.y,
+				layoutSettings_.selectModelPosition.z + layoutSettings_.selectModelWeaponOffset.z,
+			},
+			layoutSettings_.selectModelWeaponScale,
+			layoutSettings_.selectModelWeaponRotation,
+			{ 1.0f, 1.0f, 1.0f, 1.0f });
+	}
+	if (startCharacterDetailModel_) {
+		ApplyIdleAnimation(*startCharacterDetailModel_);
+		ApplyPreviewTransform(
+			*startCharacterDetailModel_,
+			layoutSettings_.selectDetailModelPosition,
+			layoutSettings_.selectDetailModelScale,
+			layoutSettings_.selectDetailModelRotation,
+			selectedCharacter.modelColor);
+	}
+	if (startCharacterDetailWeaponModel_) {
+		ApplyPreviewTransform(
+			*startCharacterDetailWeaponModel_,
+			{
+				layoutSettings_.selectDetailModelPosition.x + layoutSettings_.selectDetailWeaponOffset.x,
+				layoutSettings_.selectDetailModelPosition.y + layoutSettings_.selectDetailWeaponOffset.y,
+				layoutSettings_.selectDetailModelPosition.z + layoutSettings_.selectDetailWeaponOffset.z,
+			},
+			layoutSettings_.selectDetailWeaponScale,
+			layoutSettings_.selectDetailWeaponRotation,
+			{ 1.0f, 1.0f, 1.0f, 1.0f });
+	}
+}
+
+void TitleScene::UpdateStartCharacterPreviewModels()
+{
+	for (int32_t index = 0; index < 3; ++index) {
+		const CharacterId id = StartCharacterIdFromIndex(index);
+		const CharacterUiDefinition& definition = CharacterUiForId(id);
+		const Vector3 basePosition{
+			layoutSettings_.selectIconModelBasePosition.x +
+				layoutSettings_.selectIconModelStep.x * static_cast<float>(index),
+			layoutSettings_.selectIconModelBasePosition.y +
+				layoutSettings_.selectIconModelStep.y * static_cast<float>(index),
+			layoutSettings_.selectIconModelBasePosition.z +
+				layoutSettings_.selectIconModelStep.z * static_cast<float>(index),
+		};
+		const bool unlocked = sessionContext_ ? sessionContext_->IsCharacterUnlocked(id) : true;
+		const Vector4 modelColor = unlocked
+			? definition.modelColor
+			: Vector4{ 0.02f, 0.02f, 0.02f, 0.82f };
+		if (startCharacterPreviewModels_[static_cast<size_t>(index)]) {
+			ApplyIdleAnimation(
+				*startCharacterPreviewModels_[static_cast<size_t>(index)]);
+			ApplyPreviewTransform(
+				*startCharacterPreviewModels_[static_cast<size_t>(index)],
+				basePosition,
+				layoutSettings_.selectIconModelScale,
+				layoutSettings_.selectIconModelRotation,
+				modelColor);
+		}
+		if (startCharacterPreviewWeaponModels_[static_cast<size_t>(index)]) {
+			ApplyPreviewTransform(
+				*startCharacterPreviewWeaponModels_[static_cast<size_t>(index)],
+				{
+					basePosition.x + layoutSettings_.selectIconWeaponOffset.x,
+					basePosition.y + layoutSettings_.selectIconWeaponOffset.y,
+					basePosition.z + layoutSettings_.selectIconWeaponOffset.z,
+				},
+				layoutSettings_.selectIconWeaponScale,
+				layoutSettings_.selectIconWeaponRotation,
+				unlocked
+					? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
+					: Vector4{ 0.02f, 0.02f, 0.02f, 0.82f });
 		}
 	}
 }
@@ -1289,11 +2014,51 @@ void TitleScene::SaveLayout() const
 			{ "cameraPitch", { layoutSettings_.cameraPitch } },
 			{ "cameraYaw", { layoutSettings_.cameraYaw } },
 			{ "cameraOrbitSpeed", { layoutSettings_.cameraOrbitSpeed } },
+			{ "select.backgroundPosition", { layoutSettings_.selectBackgroundPosition.x, layoutSettings_.selectBackgroundPosition.y } },
+			{ "select.backgroundSize", { layoutSettings_.selectBackgroundSize.x, layoutSettings_.selectBackgroundSize.y } },
+			{ "select.titleTextPosition", { layoutSettings_.selectTitleTextPosition.x, layoutSettings_.selectTitleTextPosition.y } },
+			{ "select.titleTextScale", { layoutSettings_.selectTitleTextScale } },
+			{ "select.iconBasePosition", { layoutSettings_.selectIconBasePosition.x, layoutSettings_.selectIconBasePosition.y } },
+			{ "select.iconSize", { layoutSettings_.selectIconSize.x, layoutSettings_.selectIconSize.y } },
+			{ "select.iconHitboxSize", { layoutSettings_.selectIconHitboxSize.x, layoutSettings_.selectIconHitboxSize.y } },
+			{ "select.iconStepX", { layoutSettings_.selectIconStepX } },
+			{ "select.iconStepY", { layoutSettings_.selectIconStepY } },
+			{ "select.iconModelBasePosition", { layoutSettings_.selectIconModelBasePosition.x, layoutSettings_.selectIconModelBasePosition.y, layoutSettings_.selectIconModelBasePosition.z } },
+			{ "select.iconModelStep", { layoutSettings_.selectIconModelStep.x, layoutSettings_.selectIconModelStep.y, layoutSettings_.selectIconModelStep.z } },
+			{ "select.iconModelScale", { layoutSettings_.selectIconModelScale.x, layoutSettings_.selectIconModelScale.y, layoutSettings_.selectIconModelScale.z } },
+			{ "select.iconModelRotation", { layoutSettings_.selectIconModelRotation.x, layoutSettings_.selectIconModelRotation.y, layoutSettings_.selectIconModelRotation.z } },
+			{ "select.iconWeaponOffset", { layoutSettings_.selectIconWeaponOffset.x, layoutSettings_.selectIconWeaponOffset.y, layoutSettings_.selectIconWeaponOffset.z } },
+			{ "select.iconWeaponScale", { layoutSettings_.selectIconWeaponScale.x, layoutSettings_.selectIconWeaponScale.y, layoutSettings_.selectIconWeaponScale.z } },
+			{ "select.iconWeaponRotation", { layoutSettings_.selectIconWeaponRotation.x, layoutSettings_.selectIconWeaponRotation.y, layoutSettings_.selectIconWeaponRotation.z } },
+			{ "select.detailFacePosition", { layoutSettings_.selectDetailFacePosition.x, layoutSettings_.selectDetailFacePosition.y } },
+			{ "select.detailFaceSize", { layoutSettings_.selectDetailFaceSize.x, layoutSettings_.selectDetailFaceSize.y } },
+			{ "select.weaponIconPosition", { layoutSettings_.selectWeaponIconPosition.x, layoutSettings_.selectWeaponIconPosition.y } },
+			{ "select.weaponIconSize", { layoutSettings_.selectWeaponIconSize.x, layoutSettings_.selectWeaponIconSize.y } },
+			{ "select.weaponDescriptionPosition", { layoutSettings_.selectWeaponDescriptionPosition.x, layoutSettings_.selectWeaponDescriptionPosition.y } },
+			{ "select.weaponDescriptionScale", { layoutSettings_.selectWeaponDescriptionScale } },
+			{ "select.weaponDescriptionMaxWidth", { layoutSettings_.selectWeaponDescriptionMaxWidth } },
+			{ "select.actionButtonPosition", { layoutSettings_.selectActionButtonPosition.x, layoutSettings_.selectActionButtonPosition.y } },
+			{ "select.actionButtonSize", { layoutSettings_.selectActionButtonSize.x, layoutSettings_.selectActionButtonSize.y } },
+			{ "select.actionTextOffset", { layoutSettings_.selectActionTextOffset.x, layoutSettings_.selectActionTextOffset.y } },
+			{ "select.actionTextScale", { layoutSettings_.selectActionTextScale } },
+			{ "select.modelPosition", { layoutSettings_.selectModelPosition.x, layoutSettings_.selectModelPosition.y, layoutSettings_.selectModelPosition.z } },
+			{ "select.modelScale", { layoutSettings_.selectModelScale.x, layoutSettings_.selectModelScale.y, layoutSettings_.selectModelScale.z } },
+			{ "select.modelRotation", { layoutSettings_.selectModelRotation.x, layoutSettings_.selectModelRotation.y, layoutSettings_.selectModelRotation.z } },
+			{ "select.modelWeaponOffset", { layoutSettings_.selectModelWeaponOffset.x, layoutSettings_.selectModelWeaponOffset.y, layoutSettings_.selectModelWeaponOffset.z } },
+			{ "select.modelWeaponScale", { layoutSettings_.selectModelWeaponScale.x, layoutSettings_.selectModelWeaponScale.y, layoutSettings_.selectModelWeaponScale.z } },
+			{ "select.modelWeaponRotation", { layoutSettings_.selectModelWeaponRotation.x, layoutSettings_.selectModelWeaponRotation.y, layoutSettings_.selectModelWeaponRotation.z } },
+			{ "select.detailModelPosition", { layoutSettings_.selectDetailModelPosition.x, layoutSettings_.selectDetailModelPosition.y, layoutSettings_.selectDetailModelPosition.z } },
+			{ "select.detailModelScale", { layoutSettings_.selectDetailModelScale.x, layoutSettings_.selectDetailModelScale.y, layoutSettings_.selectDetailModelScale.z } },
+			{ "select.detailModelRotation", { layoutSettings_.selectDetailModelRotation.x, layoutSettings_.selectDetailModelRotation.y, layoutSettings_.selectDetailModelRotation.z } },
+			{ "select.detailWeaponOffset", { layoutSettings_.selectDetailWeaponOffset.x, layoutSettings_.selectDetailWeaponOffset.y, layoutSettings_.selectDetailWeaponOffset.z } },
+			{ "select.detailWeaponScale", { layoutSettings_.selectDetailWeaponScale.x, layoutSettings_.selectDetailWeaponScale.y, layoutSettings_.selectDetailWeaponScale.z } },
+			{ "select.detailWeaponRotation", { layoutSettings_.selectDetailWeaponRotation.x, layoutSettings_.selectDetailWeaponRotation.y, layoutSettings_.selectDetailWeaponRotation.z } },
 #ifdef _DEBUG
 			{ "debug.windowSwitcher", { debugWindows_.windowSwitcher ? 1.0f : 0.0f } },
 			{ "debug.titleView", { debugWindows_.titleView ? 1.0f : 0.0f } },
 			{ "debug.statisticsView", { debugWindows_.statisticsView ? 1.0f : 0.0f } },
 			{ "debug.titleSettings", { debugWindows_.titleSettings ? 1.0f : 0.0f } },
+			{ "debug.titleModelSettings", { debugWindows_.titleModelSettings ? 1.0f : 0.0f } },
 			{ "debug.offscreenSettings", { debugWindows_.offscreenSettings ? 1.0f : 0.0f } },
 			{ "debug.lightSettings", { debugWindows_.lightSettings ? 1.0f : 0.0f } },
 			{ "debug.audio", { debugWindows_.audio ? 1.0f : 0.0f } },
@@ -1338,6 +2103,45 @@ void TitleScene::ReloadDebugData()
 	layoutSettings_.cameraPitch = UILayoutIO::GetFloat(titleLayout, "cameraPitch", layoutSettings_.cameraPitch);
 	layoutSettings_.cameraYaw = UILayoutIO::GetFloat(titleLayout, "cameraYaw", layoutSettings_.cameraYaw);
 	layoutSettings_.cameraOrbitSpeed = UILayoutIO::GetFloat(titleLayout, "cameraOrbitSpeed", layoutSettings_.cameraOrbitSpeed);
+	layoutSettings_.selectBackgroundPosition = UILayoutIO::GetVector2(titleLayout, "select.backgroundPosition", layoutSettings_.selectBackgroundPosition);
+	layoutSettings_.selectBackgroundSize = UILayoutIO::GetVector2(titleLayout, "select.backgroundSize", layoutSettings_.selectBackgroundSize);
+	layoutSettings_.selectTitleTextPosition = UILayoutIO::GetVector2(titleLayout, "select.titleTextPosition", layoutSettings_.selectTitleTextPosition);
+	layoutSettings_.selectTitleTextScale = UILayoutIO::GetFloat(titleLayout, "select.titleTextScale", layoutSettings_.selectTitleTextScale);
+	layoutSettings_.selectIconBasePosition = UILayoutIO::GetVector2(titleLayout, "select.iconBasePosition", layoutSettings_.selectIconBasePosition);
+	layoutSettings_.selectIconSize = UILayoutIO::GetVector2(titleLayout, "select.iconSize", layoutSettings_.selectIconSize);
+	layoutSettings_.selectIconHitboxSize = UILayoutIO::GetVector2(titleLayout, "select.iconHitboxSize", layoutSettings_.selectIconHitboxSize);
+	layoutSettings_.selectIconStepX = UILayoutIO::GetFloat(titleLayout, "select.iconStepX", layoutSettings_.selectIconStepX);
+	layoutSettings_.selectIconStepY = UILayoutIO::GetFloat(titleLayout, "select.iconStepY", layoutSettings_.selectIconStepY);
+	layoutSettings_.selectIconModelBasePosition = UILayoutIO::GetVector3(titleLayout, "select.iconModelBasePosition", layoutSettings_.selectIconModelBasePosition);
+	layoutSettings_.selectIconModelStep = UILayoutIO::GetVector3(titleLayout, "select.iconModelStep", layoutSettings_.selectIconModelStep);
+	layoutSettings_.selectIconModelScale = UILayoutIO::GetVector3(titleLayout, "select.iconModelScale", layoutSettings_.selectIconModelScale);
+	layoutSettings_.selectIconModelRotation = UILayoutIO::GetVector3(titleLayout, "select.iconModelRotation", layoutSettings_.selectIconModelRotation);
+	layoutSettings_.selectIconWeaponOffset = UILayoutIO::GetVector3(titleLayout, "select.iconWeaponOffset", layoutSettings_.selectIconWeaponOffset);
+	layoutSettings_.selectIconWeaponScale = UILayoutIO::GetVector3(titleLayout, "select.iconWeaponScale", layoutSettings_.selectIconWeaponScale);
+	layoutSettings_.selectIconWeaponRotation = UILayoutIO::GetVector3(titleLayout, "select.iconWeaponRotation", layoutSettings_.selectIconWeaponRotation);
+	layoutSettings_.selectDetailFacePosition = UILayoutIO::GetVector2(titleLayout, "select.detailFacePosition", layoutSettings_.selectDetailFacePosition);
+	layoutSettings_.selectDetailFaceSize = UILayoutIO::GetVector2(titleLayout, "select.detailFaceSize", layoutSettings_.selectDetailFaceSize);
+	layoutSettings_.selectWeaponIconPosition = UILayoutIO::GetVector2(titleLayout, "select.weaponIconPosition", layoutSettings_.selectWeaponIconPosition);
+	layoutSettings_.selectWeaponIconSize = UILayoutIO::GetVector2(titleLayout, "select.weaponIconSize", layoutSettings_.selectWeaponIconSize);
+	layoutSettings_.selectWeaponDescriptionPosition = UILayoutIO::GetVector2(titleLayout, "select.weaponDescriptionPosition", layoutSettings_.selectWeaponDescriptionPosition);
+	layoutSettings_.selectWeaponDescriptionScale = UILayoutIO::GetFloat(titleLayout, "select.weaponDescriptionScale", layoutSettings_.selectWeaponDescriptionScale);
+	layoutSettings_.selectWeaponDescriptionMaxWidth = UILayoutIO::GetFloat(titleLayout, "select.weaponDescriptionMaxWidth", layoutSettings_.selectWeaponDescriptionMaxWidth);
+	layoutSettings_.selectActionButtonPosition = UILayoutIO::GetVector2(titleLayout, "select.actionButtonPosition", layoutSettings_.selectActionButtonPosition);
+	layoutSettings_.selectActionButtonSize = UILayoutIO::GetVector2(titleLayout, "select.actionButtonSize", layoutSettings_.selectActionButtonSize);
+	layoutSettings_.selectActionTextOffset = UILayoutIO::GetVector2(titleLayout, "select.actionTextOffset", layoutSettings_.selectActionTextOffset);
+	layoutSettings_.selectActionTextScale = UILayoutIO::GetFloat(titleLayout, "select.actionTextScale", layoutSettings_.selectActionTextScale);
+	layoutSettings_.selectModelPosition = UILayoutIO::GetVector3(titleLayout, "select.modelPosition", layoutSettings_.selectModelPosition);
+	layoutSettings_.selectModelScale = UILayoutIO::GetVector3(titleLayout, "select.modelScale", layoutSettings_.selectModelScale);
+	layoutSettings_.selectModelRotation = UILayoutIO::GetVector3(titleLayout, "select.modelRotation", layoutSettings_.selectModelRotation);
+	layoutSettings_.selectModelWeaponOffset = UILayoutIO::GetVector3(titleLayout, "select.modelWeaponOffset", layoutSettings_.selectModelWeaponOffset);
+	layoutSettings_.selectModelWeaponScale = UILayoutIO::GetVector3(titleLayout, "select.modelWeaponScale", layoutSettings_.selectModelWeaponScale);
+	layoutSettings_.selectModelWeaponRotation = UILayoutIO::GetVector3(titleLayout, "select.modelWeaponRotation", layoutSettings_.selectModelWeaponRotation);
+	layoutSettings_.selectDetailModelPosition = UILayoutIO::GetVector3(titleLayout, "select.detailModelPosition", layoutSettings_.selectDetailModelPosition);
+	layoutSettings_.selectDetailModelScale = UILayoutIO::GetVector3(titleLayout, "select.detailModelScale", layoutSettings_.selectDetailModelScale);
+	layoutSettings_.selectDetailModelRotation = UILayoutIO::GetVector3(titleLayout, "select.detailModelRotation", layoutSettings_.selectDetailModelRotation);
+	layoutSettings_.selectDetailWeaponOffset = UILayoutIO::GetVector3(titleLayout, "select.detailWeaponOffset", layoutSettings_.selectDetailWeaponOffset);
+	layoutSettings_.selectDetailWeaponScale = UILayoutIO::GetVector3(titleLayout, "select.detailWeaponScale", layoutSettings_.selectDetailWeaponScale);
+	layoutSettings_.selectDetailWeaponRotation = UILayoutIO::GetVector3(titleLayout, "select.detailWeaponRotation", layoutSettings_.selectDetailWeaponRotation);
 #ifdef _DEBUG
 	auto loadWindowVisible = [&titleLayout](std::string_view key, bool fallback) {
 		return UILayoutIO::GetFloat(titleLayout, key, fallback ? 1.0f : 0.0f) != 0.0f;
@@ -1346,6 +2150,7 @@ void TitleScene::ReloadDebugData()
 	debugWindows_.titleView = loadWindowVisible("debug.titleView", debugWindows_.titleView);
 	debugWindows_.statisticsView = loadWindowVisible("debug.statisticsView", debugWindows_.statisticsView);
 	debugWindows_.titleSettings = loadWindowVisible("debug.titleSettings", debugWindows_.titleSettings);
+	debugWindows_.titleModelSettings = loadWindowVisible("debug.titleModelSettings", debugWindows_.titleModelSettings);
 	debugWindows_.offscreenSettings = loadWindowVisible("debug.offscreenSettings", debugWindows_.offscreenSettings);
 	debugWindows_.lightSettings = loadWindowVisible("debug.lightSettings", debugWindows_.lightSettings);
 	debugWindows_.audio = loadWindowVisible("debug.audio", debugWindows_.audio);
@@ -1353,6 +2158,7 @@ void TitleScene::ReloadDebugData()
 #endif
 	InitializeLighting();
 	ApplyLayout();
+	ApplyStartCharacterSelectionLayout();
 }
 
 bool TitleScene::IsMouseMenuConfirm(int32_t hoveredMenuIndex) const

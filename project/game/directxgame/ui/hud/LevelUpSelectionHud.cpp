@@ -11,11 +11,21 @@
 #include "GameParticleEffects.h"
 #include "Player.h"
 #include "PlayerManager.h"
+#include "DirectXCommon.h"
+#include "Matrix4x4.h"
+#include "MyMath.h"
+#include "RenderingData.h"
+#include "SpriteCommon.h"
+#include "TextureManager.h"
+#include "WinApp.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
+#include <d3d12.h>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -23,12 +33,28 @@ constexpr float kSlideSpeed = 4200.0f;
 constexpr float kScreenWidth = 1280.0f;
 constexpr Vector2 kDefaultChoiceSize{ 1280.0f, 720.0f };
 constexpr float kDefaultChoiceStepY = 140.0f;
-constexpr Vector2 kDefaultHitboxOffset{ 465.0f, 214.0f };
-constexpr Vector2 kDefaultHitboxSize{ 435.0f, 68.0f };
-constexpr float kChoiceTextOffsetX = 48.0f;
-constexpr float kChoiceTextRightPadding = 20.0f;
-constexpr float kChoiceTitleBaseScale = 0.40f;
-constexpr float kChoiceDetailBaseScale = 0.32f;
+constexpr Vector2 kDefaultHitboxOffset{ 436.0f, 194.0f };
+constexpr Vector2 kDefaultHitboxSize{ 406.0f, 65.0f };
+constexpr Vector2 kOverlayPosition{ 427.0f, 88.0f };
+constexpr Vector2 kOverlaySize{ 426.0f, 532.0f };
+constexpr float kOverlayBorder = 4.0f;
+constexpr float kOverlayCornerRadius = 7.0f;
+constexpr float kChoiceBorder = 3.0f;
+constexpr float kChoiceCornerRadius = 4.0f;
+constexpr float kIconFrameSize = 54.0f;
+constexpr float kIconInset = 6.0f;
+constexpr float kSubIconSize = 20.0f;
+constexpr float kChoiceTextOffsetX = 72.0f;
+constexpr float kChoiceTextRightPadding = 12.0f;
+constexpr float kChoiceTitleBaseScale = 0.34f;
+constexpr float kChoiceDetailBaseScale = 0.24f;
+constexpr float kLevelUpTextY = 132.0f;
+constexpr float kLevelUpTextScale = 0.50f;
+constexpr Vector4 kPanelBackgroundColor{ 0.0f, 0.0f, 0.0f, 0.78f };
+constexpr Vector4 kFrameColor{ 1.0f, 0.96f, 0.0f, 1.0f };
+constexpr Vector4 kSelectedFrameColor{ 1.0f, 1.0f, 0.36f, 1.0f };
+constexpr int32_t kRoundedPanelCornerSegments = 8;
+constexpr char kWhiteTexturePath[] = "Resources/DirectXGame/white1x1.png";
 constexpr char kSelectSePath[] = "se/ui_select.wav";
 constexpr char kDecideSePath[] = "se/ui_decide.wav";
 constexpr char kAudioUiSelect[] = "ui.select";
@@ -36,10 +62,9 @@ constexpr char kAudioUiDecide[] = "ui.decide";
 
 void PreloadTextures()
 {
-	const std::array<const char*, 17> staticTextures{
+	const std::vector<const char*> staticTextures{
+		"white1x1.png",
 		"ui/font/noto_sans_jp_black.png",
-		"ui/game/lvup/levelup.png",
-		"ui/game/lvup/levelup_frame.png",
 		"ui/game/lvup/attack_icon.png",
 		"ui/game/lvup/maxhp_icon.png",
 		"ui/game/lvup/speed_icon.png",
@@ -54,6 +79,28 @@ void PreloadTextures()
 		"ui/game/lvup/icon_weapon_handgun.png",
 		"ui/game/lvup/icon_weapon_boomerang.png",
 		"ui/game/lvup/scroll.png",
+		"ui/game/lvup/icon_weapon_aura.png",
+		"ui/game/lvup/icon_passive_scroll.png",
+		"ui/game/lvup/icon_stat_damage.png",
+		"ui/game/lvup/icon_stat_maxhp.png",
+		"ui/game/lvup/icon_stat_movespeed.png",
+		"ui/game/lvup/icon_stat_attackspeed.png",
+		"ui/game/lvup/icon_stat_duration.png",
+		"ui/game/lvup/icon_stat_area.png",
+		"ui/game/lvup/icon_stat_projectile_speed.png",
+		"ui/game/lvup/icon_stat_projectile_count.png",
+		"ui/game/lvup/icon_stat_pickup_range.png",
+		"ui/game/lvup/icon_stat_exp_gain.png",
+		"ui/game/lvup/icon_stat_coin_gain.png",
+		"ui/game/lvup/icon_stat_crit_chance.png",
+		"ui/game/lvup/icon_stat_crit_damage.png",
+		"ui/game/lvup/icon_stat_armor.png",
+		"ui/game/lvup/icon_stat_evasion.png",
+		"ui/game/lvup/icon_stat_hp_regen.png",
+		"ui/game/lvup/icon_stat_lifesteal.png",
+		"ui/game/lvup/icon_stat_knockback.png",
+		"ui/game/lvup/icon_stat_shoe.png",
+		"ui/game/lvup/icon_stat_fire.png",
 	};
 
 	std::vector<std::string> texturePaths;
@@ -150,11 +197,266 @@ ConfettiSpawnArea CalculateConfettiSpawnArea(
 
 namespace DirectXGame {
 
+class LevelUpSelectionHud::RoundedPanel {
+public:
+	void Initialize(const Vector4& color)
+	{
+		spriteCommon_ = Engine::Graphics2D::SpriteCommon::GetInstance();
+		materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
+		transformationMatrixData_.World =
+			transformationMatrixData_.World.MakeIdentity4x4();
+		SetColor(color);
+	}
+
+	void SetColor(const Vector4& color)
+	{
+		color_ = color;
+		materialData_.color = color_;
+	}
+
+	void SetLayout(const Vector2& position, const Vector2& size, float radius)
+	{
+		position_ = position;
+		size_ = size;
+		radius_ = radius;
+		borderThickness_ = 0.0f;
+		geometryDirty_ = true;
+	}
+
+	void SetBorderLayout(
+		const Vector2& position,
+		const Vector2& size,
+		float radius,
+		float thickness)
+	{
+		position_ = position;
+		size_ = size;
+		radius_ = radius;
+		borderThickness_ = (std::max)(0.0f, thickness);
+		geometryDirty_ = true;
+	}
+
+	void Draw()
+	{
+		if (!spriteCommon_ || size_.x <= 0.0f || size_.y <= 0.0f || color_.w <= 0.0f) {
+			return;
+		}
+
+		UpdateGeometry();
+		UpdateMatrices();
+		const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+			spriteCommon_->GetDxCommon();
+		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
+			dxCommon->AllocateFrameUpload(sizeof(MaterialSprite), 256);
+		std::memcpy(materialAllocation.cpuAddress, &materialData_, sizeof(materialData_));
+		const Engine::Base::DirectXCommon::FrameUploadAllocation transformAllocation =
+			dxCommon->AllocateFrameUpload(sizeof(TransformationMatrixsprite), 256);
+		std::memcpy(
+			transformAllocation.cpuAddress,
+			&transformationMatrixData_,
+			sizeof(transformationMatrixData_));
+		const Engine::Base::DirectXCommon::FrameUploadAllocation vertexAllocation =
+			dxCommon->AllocateFrameUpload(
+				sizeof(VertexData) * vertexData_.size(),
+				alignof(VertexData));
+		std::memcpy(
+			vertexAllocation.cpuAddress,
+			vertexData_.data(),
+			sizeof(VertexData) * vertexData_.size());
+		const Engine::Base::DirectXCommon::FrameUploadAllocation indexAllocation =
+			dxCommon->AllocateFrameUpload(
+				sizeof(uint32_t) * indexCount_,
+				alignof(uint32_t));
+		std::memcpy(
+			indexAllocation.cpuAddress,
+			indexData_.data(),
+			sizeof(uint32_t) * indexCount_);
+
+		const D3D12_VERTEX_BUFFER_VIEW vertexBufferView{
+			.BufferLocation = vertexAllocation.gpuAddress,
+			.SizeInBytes = static_cast<UINT>(sizeof(VertexData) * vertexData_.size()),
+			.StrideInBytes = sizeof(VertexData),
+		};
+		const D3D12_INDEX_BUFFER_VIEW indexBufferView{
+			.BufferLocation = indexAllocation.gpuAddress,
+			.SizeInBytes = static_cast<UINT>(sizeof(uint32_t) * indexCount_),
+			.Format = DXGI_FORMAT_R32_UINT,
+		};
+
+		ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		commandList->IASetIndexBuffer(&indexBufferView);
+		commandList->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
+		commandList->SetGraphicsRootDescriptorTable(
+			1,
+			Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(kWhiteTexturePath));
+		commandList->SetGraphicsRootConstantBufferView(2, transformAllocation.gpuAddress);
+		commandList->DrawIndexedInstanced(indexCount_, 1, 0, 0, 0);
+		spriteCommon_->RecordSpriteDraw(
+			static_cast<uint32_t>(
+				sizeof(MaterialSprite) +
+				sizeof(TransformationMatrixsprite) +
+				sizeof(VertexData) * vertexData_.size() +
+				sizeof(uint32_t) * indexCount_));
+	}
+
+private:
+	void UpdateGeometry()
+	{
+		if (!geometryDirty_) {
+			return;
+		}
+
+		const float width = (std::max)(1.0f, size_.x);
+		const float height = (std::max)(1.0f, size_.y);
+		const float radius = std::clamp(radius_, 0.0f, (std::min)(width, height) * 0.5f);
+		const float borderThickness = std::clamp(
+			borderThickness_,
+			0.0f,
+			(std::min)(width, height) * 0.5f);
+		constexpr float pi = 3.14159265358979323846f;
+
+		auto buildRoundedPoints = [](float widthValue, float heightValue, float radiusValue) {
+			std::vector<Vector2> points;
+			points.reserve(4 * (kRoundedPanelCornerSegments + 1));
+			constexpr float piValue = 3.14159265358979323846f;
+			auto appendCorner = [&points, radiusValue](const Vector2& center, float startAngle, float endAngle) {
+			for (int32_t i = 0; i <= kRoundedPanelCornerSegments; ++i) {
+				const float t = static_cast<float>(i) / static_cast<float>(kRoundedPanelCornerSegments);
+				const float angle = startAngle + (endAngle - startAngle) * t;
+				points.push_back({
+					center.x + std::cos(angle) * radiusValue,
+					center.y + std::sin(angle) * radiusValue,
+					});
+			}
+		};
+			appendCorner({ widthValue - radiusValue, radiusValue }, -piValue * 0.5f, 0.0f);
+			appendCorner({ widthValue - radiusValue, heightValue - radiusValue }, 0.0f, piValue * 0.5f);
+			appendCorner({ radiusValue, heightValue - radiusValue }, piValue * 0.5f, piValue);
+			appendCorner({ radiusValue, radiusValue }, piValue, piValue * 1.5f);
+			return points;
+		};
+
+		std::vector<Vector2> points = buildRoundedPoints(width, height, radius);
+
+		vertexData_.clear();
+		indexData_.clear();
+		if (borderThickness > 0.0f) {
+			const float innerWidth = (std::max)(1.0f, width - borderThickness * 2.0f);
+			const float innerHeight = (std::max)(1.0f, height - borderThickness * 2.0f);
+			const float innerRadius = std::clamp(
+				radius - borderThickness,
+				0.0f,
+				(std::min)(innerWidth, innerHeight) * 0.5f);
+			std::vector<Vector2> innerPoints =
+				buildRoundedPoints(innerWidth, innerHeight, innerRadius);
+			for (Vector2& point : innerPoints) {
+				point.x += borderThickness;
+				point.y += borderThickness;
+			}
+			const size_t pointCount = (std::min)(points.size(), innerPoints.size());
+			vertexData_.reserve(pointCount * 2);
+			for (size_t index = 0; index < pointCount; ++index) {
+				vertexData_.push_back(MakeVertex(points[index]));
+				vertexData_.push_back(MakeVertex(innerPoints[index]));
+			}
+			for (uint32_t index = 0; index < static_cast<uint32_t>(pointCount); ++index) {
+				const uint32_t next = (index + 1u) % static_cast<uint32_t>(pointCount);
+				const uint32_t outer0 = index * 2u;
+				const uint32_t inner0 = outer0 + 1u;
+				const uint32_t outer1 = next * 2u;
+				const uint32_t inner1 = outer1 + 1u;
+				indexData_.push_back(outer0);
+				indexData_.push_back(outer1);
+				indexData_.push_back(inner0);
+				indexData_.push_back(inner0);
+				indexData_.push_back(outer1);
+				indexData_.push_back(inner1);
+			}
+			indexCount_ = static_cast<UINT>(indexData_.size());
+			geometryDirty_ = false;
+			return;
+		}
+
+		vertexData_.reserve(points.size() + 1);
+		vertexData_.push_back(MakeVertex({ width * 0.5f, height * 0.5f }));
+		for (const Vector2& point : points) {
+			vertexData_.push_back(MakeVertex(point));
+		}
+		for (uint32_t i = 1; i + 1 < vertexData_.size(); ++i) {
+			indexData_.push_back(0);
+			indexData_.push_back(i);
+			indexData_.push_back(i + 1);
+		}
+		indexData_.push_back(0);
+		indexData_.push_back(static_cast<uint32_t>(vertexData_.size() - 1));
+		indexData_.push_back(1);
+		indexCount_ = static_cast<UINT>(indexData_.size());
+		geometryDirty_ = false;
+	}
+
+	VertexData MakeVertex(const Vector2& position) const
+	{
+		VertexData vertex{};
+		vertex.position = { position.x, position.y, 0.0f, 1.0f };
+		vertex.texcoord = { 0.0f, 0.0f };
+		vertex.normal = { 0.0f, 0.0f, -1.0f };
+		return vertex;
+	}
+
+	void UpdateMatrices()
+	{
+		const EulerTransform transform{
+			{ 1.0f, 1.0f, 1.0f },
+			{ 0.0f, 0.0f, 0.0f },
+			{ position_.x, position_.y, 0.0f },
+		};
+		const Matrix4x4 world =
+			MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+		const Matrix4x4 projection = MyMath::MakeOrthographicMatrix(
+			0.0f,
+			0.0f,
+			float(Engine::Base::WinApp::kClientWidth),
+			float(Engine::Base::WinApp::kClientHeight),
+			0.0f,
+			100.0f);
+		transformationMatrixData_.World = world;
+		transformationMatrixData_.WVP =
+			world * Matrix4x4{}.MakeIdentity4x4() * projection;
+	}
+
+	Engine::Graphics2D::SpriteCommon* spriteCommon_ = nullptr;
+	std::vector<VertexData> vertexData_;
+	std::vector<uint32_t> indexData_;
+	MaterialSprite materialData_{};
+	TransformationMatrixsprite transformationMatrixData_{};
+	Vector2 position_{};
+	Vector2 size_{};
+	Vector4 color_{ 1.0f, 1.0f, 1.0f, 1.0f };
+	float radius_ = 0.0f;
+	float borderThickness_ = 0.0f;
+	UINT indexCount_ = 0;
+	bool geometryDirty_ = true;
+};
+
+LevelUpSelectionHud::LevelUpSelectionHud() = default;
+
+LevelUpSelectionHud::~LevelUpSelectionHud() = default;
+
 void LevelUpSelectionHud::Initialize()
 {
 	PreloadTextures();
-	overlay_.Initialize("ui/game/lvup/levelup.png", { 0.0f, 0.0f });
-	overlay_.SetSize({ kScreenWidth, 720.0f });
+	overlayFrame_ = std::make_unique<RoundedPanel>();
+	overlayFrame_->Initialize(kFrameColor);
+	overlayPanel_ = std::make_unique<RoundedPanel>();
+	overlayPanel_->Initialize(kPanelBackgroundColor);
+	levelUpText_.Initialize(
+		"ui/font/noto_sans_jp_black.png",
+		"ui/font/noto_sans_jp_black.json");
+	levelUpText_.SetText("LEVEL UP");
+	levelUpText_.SetScale(kLevelUpTextScale);
+	levelUpText_.SetAdvanceMultiplier(0.92f);
+	levelUpText_.SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
 
 	const UILayoutIO::LayoutMap layout =
 		UILayoutIO::LoadOrDefault(DataPaths::kLevelupLayout, {});
@@ -171,11 +473,13 @@ void LevelUpSelectionHud::Initialize()
 		"choiceHitboxSize",
 		kDefaultHitboxSize);
 
-	for (UILabel& choiceSprite : choiceSprites_) {
-		choiceSprite.Initialize(
-			"ui/game/lvup/levelup_frame.png",
-			{ 0.0f, 0.0f });
-		choiceSprite.SetSize(choiceSize_);
+	for (size_t index = 0; index < kChoiceCount; ++index) {
+		choiceBackgrounds_[index] = std::make_unique<RoundedPanel>();
+		choiceBackgrounds_[index]->Initialize(kPanelBackgroundColor);
+		choiceFrames_[index] = std::make_unique<RoundedPanel>();
+		choiceFrames_[index]->Initialize(kFrameColor);
+		choiceIconFrames_[index] = std::make_unique<RoundedPanel>();
+		choiceIconFrames_[index]->Initialize(kFrameColor);
 	}
 	for (UILabel& choiceIcon : choiceIcons_) {
 		choiceIcon.Initialize(
@@ -183,6 +487,13 @@ void LevelUpSelectionHud::Initialize()
 			{ 0.0f, 0.0f });
 		choiceIcon.SetSize(choiceSize_);
 		choiceIcon.SetVisible(false);
+	}
+	for (UILabel& choiceSubIcon : choiceSubIcons_) {
+		choiceSubIcon.Initialize(
+			"ui/game/lvup/icon_stat_damage.png",
+			{ 0.0f, 0.0f });
+		choiceSubIcon.SetSize({ kSubIconSize, kSubIconSize });
+		choiceSubIcon.SetVisible(false);
 	}
 	for (BitmapText& text : choiceTitleTexts_) {
 		text.Initialize(
@@ -198,7 +509,7 @@ void LevelUpSelectionHud::Initialize()
 			"ui/font/noto_sans_jp_black.json");
 		text.SetScale(kChoiceDetailBaseScale);
 		text.SetAdvanceMultiplier(1.0f);
-		text.SetColor({ 0.82f, 0.9f, 1.0f, 0.95f });
+		text.SetColor({ 1.0f, 1.0f, 1.0f, 0.95f });
 	}
 	selectSeHandle_ = GameAudioCache::LoadWave(kSelectSePath);
 	decideSeHandle_ = GameAudioCache::LoadWave(kDecideSePath);
@@ -282,24 +593,28 @@ bool LevelUpSelectionHud::Update(
 
 	const float selectedPulse =
 		0.5f + 0.5f * std::sin(animationTime * 7.2f);
-	for (size_t index = 0; index < choiceSprites_.size(); ++index) {
+	for (size_t index = 0; index < choiceFrames_.size(); ++index) {
 		const bool selected = index == static_cast<size_t>(selection_);
-		const Vector4 choiceColor =
+		const Vector4 frameColor =
 			selected
 			? Vector4{
-				1.08f + selectedPulse * 0.10f,
-				1.08f + selectedPulse * 0.10f,
-				0.74f + selectedPulse * 0.16f,
+				1.0f,
+				1.0f,
+				0.20f + selectedPulse * 0.16f,
 				1.0f,
 			}
-			: Vector4{ 0.86f, 0.86f, 0.86f, 1.0f };
-		choiceSprites_[index].SetColor(choiceColor);
-		choiceIcons_[index].SetColor(choiceColor);
-		choiceSprites_[index].SetAlpha(selected ? 1.0f : 0.78f);
-		choiceIcons_[index].SetAlpha(selected ? 1.0f : 0.78f);
+			: kFrameColor;
+		if (choiceFrames_[index]) {
+			choiceFrames_[index]->SetColor(frameColor);
+		}
+		if (choiceIconFrames_[index]) {
+			choiceIconFrames_[index]->SetColor(frameColor);
+		}
+		choiceIcons_[index].SetColor({ 1.0f, 1.0f, 1.0f, selected ? 1.0f : 0.88f });
+		choiceSubIcons_[index].SetColor({ 1.0f, 1.0f, 1.0f, selected ? 1.0f : 0.92f });
 		const Vector4 titleColor = selected
-			? Vector4{ 1.0f, 1.0f, 0.72f, 1.0f }
-			: Vector4{ 0.86f, 0.9f, 1.0f, 0.9f };
+			? Vector4{ 1.0f, 1.0f, 0.86f, 1.0f }
+			: Vector4{ 1.0f, 1.0f, 1.0f, 0.92f };
 		choiceTitleTexts_[index].SetColor(titleColor);
 	}
 
@@ -323,12 +638,33 @@ bool LevelUpSelectionHud::Update(
 
 void LevelUpSelectionHud::Draw()
 {
-	overlay_.Draw();
-	for (UILabel& choiceSprite : choiceSprites_) {
-		choiceSprite.Draw();
+	if (overlayPanel_) {
+		overlayPanel_->Draw();
+	}
+	if (overlayFrame_) {
+		overlayFrame_->Draw();
+	}
+	levelUpText_.Draw();
+	for (const std::unique_ptr<RoundedPanel>& choiceBackground : choiceBackgrounds_) {
+		if (choiceBackground) {
+			choiceBackground->Draw();
+		}
+	}
+	for (const std::unique_ptr<RoundedPanel>& choiceFrame : choiceFrames_) {
+		if (choiceFrame) {
+			choiceFrame->Draw();
+		}
+	}
+	for (const std::unique_ptr<RoundedPanel>& iconFrame : choiceIconFrames_) {
+		if (iconFrame) {
+			iconFrame->Draw();
+		}
 	}
 	for (UILabel& choiceIcon : choiceIcons_) {
 		choiceIcon.Draw();
+	}
+	for (UILabel& choiceSubIcon : choiceSubIcons_) {
+		choiceSubIcon.Draw();
 	}
 	for (BitmapText& text : choiceTitleTexts_) {
 		text.Draw();
@@ -385,18 +721,21 @@ void LevelUpSelectionHud::BuildChoices(
 {
 	choices_ = LevelUpChoiceService::Build(
 		playerManager,
-		choiceSprites_.size());
-	for (size_t index = 0; index < choiceSprites_.size(); ++index) {
+		choiceFrames_.size());
+	for (size_t index = 0; index < choiceFrames_.size(); ++index) {
 		const bool hasChoice = index < choices_.size();
-		choiceSprites_[index].SetTexture(
-			"ui/game/lvup/levelup_frame.png");
-		choiceSprites_[index].SetSize(choiceSize_);
 		choiceIcons_[index].SetTexture(
 			hasChoice
 			? choices_[index].iconPath
 			: "ui/game/lvup/attack_icon.png");
-		choiceIcons_[index].SetSize(choiceSize_);
 		choiceIcons_[index].SetVisible(hasChoice);
+		const bool hasSubIcon =
+			hasChoice && !choices_[index].subIconPath.empty();
+		choiceSubIcons_[index].SetTexture(
+			hasSubIcon
+			? choices_[index].subIconPath
+			: "ui/game/lvup/icon_stat_damage.png");
+		choiceSubIcons_[index].SetVisible(hasSubIcon);
 		choiceTitleTexts_[index].SetText(
 			hasChoice ? choices_[index].titleText : "");
 		choiceDetailTexts_[index].SetText(
@@ -407,19 +746,82 @@ void LevelUpSelectionHud::BuildChoices(
 
 void LevelUpSelectionHud::ApplyLayout()
 {
-	overlay_.SetPosition({ slideOffsetX_, 0.0f });
+	const Vector2 overlayFramePosition{
+		slideOffsetX_ + kOverlayPosition.x,
+		kOverlayPosition.y,
+	};
+	if (overlayFrame_) {
+		overlayFrame_->SetBorderLayout(
+			overlayFramePosition,
+			kOverlaySize,
+			kOverlayCornerRadius,
+			kOverlayBorder);
+	}
+	if (overlayPanel_) {
+		overlayPanel_->SetLayout(
+			overlayFramePosition,
+			kOverlaySize,
+			kOverlayCornerRadius);
+	}
+	levelUpText_.SetScaleToFit(kLevelUpTextScale, kOverlaySize.x - 80.0f);
+	const float levelUpTextWidth = levelUpText_.MeasureWidth();
+	levelUpText_.SetPosition({
+		overlayFramePosition.x + (kOverlaySize.x - levelUpTextWidth) * 0.5f,
+		kLevelUpTextY,
+		});
 	const float textMaxWidth = (std::max)(
 		1.0f,
 		choiceHitboxSize_.x - kChoiceTextOffsetX - kChoiceTextRightPadding);
-	for (size_t index = 0; index < choiceSprites_.size(); ++index) {
+	for (size_t index = 0; index < choiceFrames_.size(); ++index) {
 		const Vector2 position{
-			slideOffsetX_,
-			choiceStepY_ * static_cast<float>(index),
+			slideOffsetX_ + choiceHitboxOffset_.x,
+			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index),
 		};
-		choiceSprites_[index].SetPosition(position);
-		choiceSprites_[index].SetSize(choiceSize_);
-		choiceIcons_[index].SetPosition(position);
-		choiceIcons_[index].SetSize(choiceSize_);
+		if (choiceFrames_[index]) {
+			choiceFrames_[index]->SetBorderLayout(
+				position,
+				choiceHitboxSize_,
+				kChoiceCornerRadius,
+				kChoiceBorder);
+		}
+		if (choiceBackgrounds_[index]) {
+			choiceBackgrounds_[index]->SetLayout(
+				position,
+				choiceHitboxSize_,
+				kChoiceCornerRadius);
+		}
+		const Vector2 iconFramePosition{
+			position.x + 5.0f,
+			position.y + 5.0f,
+		};
+		if (choiceIconFrames_[index]) {
+			choiceIconFrames_[index]->SetBorderLayout(
+				iconFramePosition,
+				{ kIconFrameSize, kIconFrameSize },
+				3.0f,
+				kChoiceBorder);
+		}
+		const bool hasSubIcon = choiceSubIcons_[index].IsVisible();
+		const float mainIconSize = hasSubIcon
+			? kIconFrameSize - 18.0f
+			: kIconFrameSize - kIconInset * 2.0f;
+		const float mainIconInset = hasSubIcon ? 4.0f : kIconInset;
+		choiceIcons_[index].SetPosition({
+			iconFramePosition.x + mainIconInset,
+			iconFramePosition.y + mainIconInset,
+			});
+		choiceIcons_[index].SetSize({
+			mainIconSize,
+			mainIconSize,
+			});
+		choiceSubIcons_[index].SetPosition({
+			iconFramePosition.x + kIconFrameSize - kSubIconSize - 4.0f,
+			iconFramePosition.y + kIconFrameSize - kSubIconSize - 4.0f,
+			});
+		choiceSubIcons_[index].SetSize({
+			kSubIconSize,
+			kSubIconSize,
+			});
 		choiceTitleTexts_[index].SetScaleToFit(
 			kChoiceTitleBaseScale,
 			textMaxWidth);
@@ -427,12 +829,12 @@ void LevelUpSelectionHud::ApplyLayout()
 			kChoiceDetailBaseScale,
 			textMaxWidth);
 		choiceTitleTexts_[index].SetPosition({
-			slideOffsetX_ + choiceHitboxOffset_.x + kChoiceTextOffsetX,
-			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index) - 10.0f,
+			position.x + kChoiceTextOffsetX,
+			position.y + 7.0f,
 			});
 		choiceDetailTexts_[index].SetPosition({
-			slideOffsetX_ + choiceHitboxOffset_.x + kChoiceTextOffsetX + 1.0f,
-			choiceHitboxOffset_.y + choiceStepY_ * static_cast<float>(index) + 21.0f,
+			position.x + kChoiceTextOffsetX + 1.0f,
+			position.y + 38.0f,
 			});
 	}
 }
@@ -454,6 +856,9 @@ int32_t LevelUpSelectionHud::GetHoveredChoiceIndex() const
 	Engine::InputSystem::Input* input =
 		Engine::InputSystem::Input::GetInstance();
 	if (!input || choices_.empty()) {
+		return -1;
+	}
+	if (GameInputBindings::IsGameInputSuppressedByImGui()) {
 		return -1;
 	}
 	if (!ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {

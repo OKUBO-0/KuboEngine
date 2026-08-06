@@ -59,16 +59,16 @@ void ResultSceneDebugUIController::Draw(ResultScene& scene)
 	const Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &windows.sceneView },
 		{ "統計", &windows.statisticsView },
-		{ "シーン設定", &windows.sceneSettings },
+		{ "リザルトUI調整", &windows.sceneSettings },
 		{ "オーディオ", &windows.audio },
 		{ "キー操作デバッグ", &windows.keyInputDebug },
 	};
 	const Engine::Editor::DebugEditorMenuItem editItems[] = {
-		{ "シーン設定", &windows.sceneSettings },
+		{ "リザルトUI調整", &windows.sceneSettings },
 	};
 	const Engine::Editor::DebugEditorMenuItem objectItems[] = {
 		{ "Scene", &windows.sceneView },
-		{ "シーン設定", &windows.sceneSettings },
+		{ "リザルトUI調整", &windows.sceneSettings },
 	};
 	Engine::Editor::DebugEditorManager::DrawMainMenu({
 		windowItems,
@@ -129,7 +129,7 @@ void ResultSceneDebugUIController::Draw(ResultScene& scene)
 	}
 
 	if (windows.sceneSettings) {
-		ImGui::Begin("シーン設定", &windows.sceneSettings);
+		ImGui::Begin("リザルトUI調整", &windows.sceneSettings);
 		ImGui::Checkbox(
 			"Enable Result Layout Debug",
 			&scene.layoutDebugEnabled_);

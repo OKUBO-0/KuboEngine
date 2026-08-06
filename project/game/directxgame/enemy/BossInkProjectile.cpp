@@ -10,8 +10,8 @@ namespace {
 
 constexpr char kEnvironmentTexturePath[] =
 	"Resources/textures/skybox/test.dds";
-constexpr float kSpeed = 14.0f;
-constexpr float kLifetime = 5.0f;
+constexpr float kSpeed = 14.5f;
+constexpr float kLifetime = 6.0f;
 
 }
 
@@ -44,8 +44,8 @@ void BossInkProjectile::Initialize(
 	object_->SetLighting(false);
 	object_->SetEnvironmentReflectionStrength(0.0f);
 	object_->SetEnvironmentRoughness(1.0f);
-	object_->SetScale({ 0.72f, 0.72f, 0.72f });
-	object_->SetColor({ 0.16f, 0.03f, 0.24f, 0.95f });
+	object_->SetScale({ 1.15f, 1.15f, 1.15f });
+	object_->SetColor({ 1.0f, 0.82f, 0.18f, 0.98f });
 	object_->SetTranslate(position_);
 	object_->Update();
 }
@@ -69,7 +69,7 @@ void BossInkProjectile::Update(float deltaTime)
 void BossInkProjectile::Draw() const
 {
 	if (active_ && object_) {
-		object_->Draw();
+		Engine::Graphics3D::Object3D::SubmitForDraw(object_.get());
 	}
 }
 

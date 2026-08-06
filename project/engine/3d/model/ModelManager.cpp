@@ -87,7 +87,14 @@ void ModelManager::LoadModelsFromResourceRoot(
 
 		std::unique_ptr<Model> model = std::make_unique<Model>();
 		model->Initialize(modelCommon.get(), resourceRoot, filePath, false);
-		texturePaths.push_back(model->GetModelData().material.textureFilePath);
+		const ModelData& modelData = model->GetModelData();
+		if (!modelData.materials.empty()) {
+			for (const MaterialData& material : modelData.materials) {
+				texturePaths.push_back(material.textureFilePath);
+			}
+		} else {
+			texturePaths.push_back(modelData.material.textureFilePath);
+		}
 		pendingModels.emplace_back(modelKey, std::move(model));
 	}
 
@@ -100,6 +107,20 @@ void ModelManager::LoadModelsFromResourceRoot(
 		model->LoadMaterialTexture();
 		models.insert(std::make_pair(modelKey, std::move(model)));
 	}
+}
+
+bool ModelManager::LoadAnimationClipFromResourceRoot(
+	const std::string& resourceRoot,
+	const std::string& modelFilePath,
+	const std::string& clipName,
+	const std::string& animationFilePath)
+{
+	LoadModelFromResourceRoot(resourceRoot, modelFilePath);
+	Model* model = FindModelFromResourceRoot(resourceRoot, modelFilePath);
+	if (!model) {
+		return false;
+	}
+	return model->LoadAnimationClip(clipName, resourceRoot, animationFilePath);
 }
 
 Model* ModelManager::FindModel(const std::string& filePath)

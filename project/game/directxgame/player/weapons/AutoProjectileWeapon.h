@@ -31,6 +31,19 @@ struct AutoProjectileWeaponConfig {
 	NormalBullet::VisualStyle visualStyle{};
 };
 
+inline Vector3 MakePlayerProjectileSpawnPosition(
+	const Vector3& playerPosition,
+	const Vector3& direction,
+	float forwardOffset = 0.86f,
+	float heightOffset = 1.28f)
+{
+	return {
+		playerPosition.x + direction.x * forwardOffset,
+		playerPosition.y + heightOffset,
+		playerPosition.z + direction.z * forwardOffset,
+	};
+}
+
 class AutoProjectileWeapon {
 public:
 	explicit AutoProjectileWeapon(AutoProjectileWeaponConfig config)
@@ -57,6 +70,7 @@ public:
 		timer_ = 0.0f;
 		burstShotsRemaining_ = 0;
 		burstTimer_ = 0.0f;
+		burstInterval_ = config_.burstInterval;
 		interval_ = config_.interval;
 		speed_ = config_.speed;
 		range_ = config_.range;
@@ -108,12 +122,12 @@ public:
 		if (config_.sequentialBurst) {
 			if (timer_ >= runtime.interval && burstShotsRemaining_ <= 0) {
 				burstShotsRemaining_ = runtime.projectileCount;
-				burstTimer_ = config_.burstInterval;
+				burstTimer_ = burstInterval_;
 				timer_ = std::fmod(timer_, runtime.interval);
 			}
 			const WeaponStatApplicability applicability =
 				GetWeaponStatApplicability(config_.weaponType);
-			const float burstInterval = config_.burstInterval /
+			const float burstInterval = burstInterval_ /
 				(std::max)(0.1f, applicability.attackSpeed
 					? stats.GetAttackSpeedMultiplier()
 					: 1.0f);
@@ -124,7 +138,7 @@ public:
 				--burstShotsRemaining_;
 				if (burstShotsRemaining_ <= 0) {
 					recentReloadPositions_.push_back(
-						playerPosition + Vector3{ 0.0f, 0.58f, 0.0f });
+						playerPosition + Vector3{ 0.0f, 1.18f, 0.0f });
 				}
 				burstTimer_ = std::fmod(burstTimer_, burstInterval);
 			}
@@ -147,6 +161,20 @@ public:
 	void Draw()
 	{
 		for (auto& bullet : bullets_) bullet->Draw();
+	}
+
+	void AppendRenderObjects(
+		std::vector<Engine::Graphics3D::Object3D*>& objects) const
+	{
+		for (const std::unique_ptr<NormalBullet>& bullet : bullets_) {
+			if (!bullet) {
+				continue;
+			}
+			if (Engine::Graphics3D::Object3D* object =
+					bullet->GetRenderObject()) {
+				objects.push_back(object);
+			}
+		}
 	}
 
 	bool IsActive() const { return active_; }
@@ -192,6 +220,7 @@ private:
 		speed_ *= Setting(settings, "speedMultiplier", 1.0f);
 		scale_ *= Setting(settings, "scaleMultiplier", 1.0f);
 		interval_ *= Setting(settings, "intervalMultiplier", 1.0f);
+		burstInterval_ *= Setting(settings, "burstIntervalMultiplier", 1.0f);
 	}
 
 	void SpawnFan(const Vector3& position, const Vector3& forward,
@@ -206,13 +235,15 @@ private:
 			const Vector3 direction{
 				forward.x * cosine + right.x * sine, 0.0f,
 				forward.z * cosine + right.z * sine };
+			const Vector3 spawnPosition =
+				MakePlayerProjectileSpawnPosition(position, direction);
 			auto bullet = std::make_unique<NormalBullet>();
-			bullet->InitializeForward(position, direction, runtime.projectileSpeed,
+			bullet->InitializeForward(spawnPosition, direction, runtime.projectileSpeed,
 				runtime.duration, hitCount_ + config_.hitCountOffset, runtime.areaSize,
 				config_.movementMode, config_.visualStyle);
 			bullets_.push_back(std::move(bullet));
 			recentShotPositions_.push_back(
-				position + direction * 1.05f + Vector3{ 0.0f, 0.42f, 0.0f });
+				spawnPosition + direction * 0.35f);
 		}
 	}
 
@@ -228,6 +259,7 @@ private:
 	float timer_ = 0.0f;
 	int32_t burstShotsRemaining_ = 0;
 	float burstTimer_ = 0.0f;
+	float burstInterval_ = config_.burstInterval;
 	float interval_ = config_.interval;
 	float speed_ = config_.speed;
 	float range_ = config_.range;
@@ -236,26 +268,26 @@ private:
 
 class BoneWeapon final : public AutoProjectileWeapon {
 public:
-	BoneWeapon() : AutoProjectileWeapon({ WeaponType::Bone, "bone", 9.0f, 1.3f, 0.82f,
-		36.0f, 1.0f, 2, "bounceCount", 1,
+	BoneWeapon() : AutoProjectileWeapon({ WeaponType::Bone, "bone", 11.0f, 1.25f, 0.55f,
+		36.0f, 1.0f, 1, "bounceCount", 1,
 		NormalBullet::MovementMode::Straight, false, 0.075f,
-		{ "quaternius_weapons/bone.glb", { 0.96f, 0.92f, 0.78f, 1.0f }, { 1.28f, 1.28f, 1.82f }, { 0.0f, 0.0f, 1.57079633f }, 0.50f } }) {}
+		{ "quaternius_weapons/bone.glb", { 1.0f, 0.96f, 0.82f, 1.0f }, { 210.0f, 210.0f, 210.0f }, { 0.0f, 1.57079633f, 0.0f }, 0.68f } }) {}
 };
 
 class HandgunWeapon final : public AutoProjectileWeapon {
 public:
-	HandgunWeapon() : AutoProjectileWeapon({ WeaponType::Handgun, "handgun", 11.0f, 0.48f,
-		1.65f, 48.0f, 0.72f, 0, "ricochetCount", 1,
-		NormalBullet::MovementMode::Straight, true, 0.075f,
+	HandgunWeapon() : AutoProjectileWeapon({ WeaponType::Handgun, "handgun", 5.0f, 1.85f,
+		2.0f, 48.0f, 0.72f, 0, "ricochetCount", 1,
+		NormalBullet::MovementMode::Straight, true, 0.20f,
 		{ "pistol_bullet.glb", { 1.0f, 0.88f, 0.25f, 1.0f }, { 760.0f, 760.0f, 1180.0f }, { 0.0f, 1.57079633f, 0.0f }, 0.56f } }) {}
 };
 
 class BoomerangWeapon final : public AutoProjectileWeapon {
 public:
-	BoomerangWeapon() : AutoProjectileWeapon({ WeaponType::Boomerang, "boomerang", 8.0f, 1.55f,
-		0.78f, 38.0f, 1.15f, 8, "maxHits", 0,
+	BoomerangWeapon() : AutoProjectileWeapon({ WeaponType::Boomerang, "boomerang", 9.0f, 1.45f,
+		0.95f, 38.0f, 1.0f, 8, "maxHits", 0,
 		NormalBullet::MovementMode::ReturnToPlayer, false, 0.075f,
-		{ "quaternius_weapons/axe_small.glb", { 0.55f, 1.0f, 0.76f, 1.0f }, { 220.0f, 220.0f, 220.0f }, { 1.57079633f, 0.0f, 0.0f }, 0.54f, true } }) {}
+		{ "quaternius_weapons/axe_small.glb", { 0.86f, 1.0f, 0.76f, 1.0f }, { 210.0f, 210.0f, 210.0f }, { 0.0f, 0.0f, 1.57079633f }, 0.72f, true } }) {}
 };
 
 } // namespace DirectXGame

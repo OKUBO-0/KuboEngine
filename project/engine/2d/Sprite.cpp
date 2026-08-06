@@ -35,7 +35,6 @@ void Sprite::SetTexture(const std::string& textureFilePath)
 void Sprite::Update()
 {
     UpdateVertexData();
-    UpdateIndexData();
     UpdateMatrices();
 }
 
@@ -56,28 +55,16 @@ void Sprite::Draw()
         vertexAllocation.cpuAddress,
         vertexData_.data(),
         sizeof(vertexData_));
-    const Engine::Base::DirectXCommon::FrameUploadAllocation indexAllocation =
-        dxCommon->AllocateFrameUpload(
-            sizeof(indexData_),
-            alignof(uint32_t));
-    std::memcpy(
-        indexAllocation.cpuAddress,
-        indexData_.data(),
-        sizeof(indexData_));
     const D3D12_VERTEX_BUFFER_VIEW vertexBufferView{
         .BufferLocation = vertexAllocation.gpuAddress,
         .SizeInBytes = static_cast<UINT>(sizeof(vertexData_)),
         .StrideInBytes = sizeof(VertexData),
     };
-    const D3D12_INDEX_BUFFER_VIEW indexBufferView{
-        .BufferLocation = indexAllocation.gpuAddress,
-        .SizeInBytes = static_cast<UINT>(sizeof(indexData_)),
-        .Format = DXGI_FORMAT_R32_UINT,
-    };
 
     // 頂点バッファ設定
     commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
-    commandList->IASetIndexBuffer(&indexBufferView);
+    commandList->IASetIndexBuffer(
+        &spriteCommon_->GetSharedIndexBufferView());
 
     // マテリアルCBV設定 (RootParameter[0])
     commandList->SetGraphicsRootConstantBufferView(0, materialAddress);
@@ -90,6 +77,11 @@ void Sprite::Draw()
 
     // インデックス付き描画
     commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+    spriteCommon_->RecordSpriteDraw(
+        static_cast<uint32_t>(
+            sizeof(materialData_) +
+            sizeof(transformationMatrixData_) +
+            sizeof(vertexData_)));
 }
 
 void Sprite::AdjustTextureSize()
@@ -161,11 +153,6 @@ void Sprite::UpdateVertexData()
     vertexData_[1].normal = { 0.0f,0.0f,-1.0f };
     vertexData_[2].normal = { 0.0f,0.0f,-1.0f };
     vertexData_[3].normal = { 0.0f,0.0f,-1.0f };
-}
-
-void Sprite::UpdateIndexData()
-{
-    indexData_ = { 0, 1, 2, 1, 3, 2 };
 }
 
 void Sprite::UpdateMatrices()

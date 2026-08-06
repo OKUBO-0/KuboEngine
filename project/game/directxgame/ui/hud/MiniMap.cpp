@@ -21,6 +21,9 @@ constexpr char kOrbPath[] = "ui/game/minimap_orb.png";
 constexpr char kBackgroundPath[] = "ui/game/minimap_bg.png";
 constexpr char kDirectionFontTexture[] = "ui/font/hud_ascii.png";
 constexpr float kIconEdgePadding = 2.0f;
+constexpr Vector4 kMiniMapPanelColor{ 0.0f, 0.0f, 0.0f, 0.58f };
+constexpr Vector4 kMiniMapFrameColor{ 1.0f, 0.96f, 0.0f, 1.0f };
+constexpr float kMiniMapFrameThickness = 3.0f;
 
 }
 
@@ -44,6 +47,10 @@ void MiniMap::Initialize()
 	orbTexture_ = GameTextureCache::Load(kOrbPath);
 	backgroundTexture_ = GameTextureCache::Load(kBackgroundPath);
 	backgroundSprite_ = GameSpriteFactory::Create(backgroundTexture_, layoutSettings_.backgroundPosition);
+	backgroundPanel_.Initialize();
+	for (UIPanel& border : backgroundBorders_) {
+		border.Initialize();
+	}
 	playerIconSprite_ = GameSpriteFactory::Create(playerTexture_, layoutSettings_.center);
 	playerIconSprite_->SetAnchorPoint({ 0.5f, 0.5f });
 	constexpr std::array<const char*, 4> kLabels{ "N", "E", "S", "W" };
@@ -260,6 +267,26 @@ void MiniMap::ApplyLayout()
 	if (backgroundSprite_) {
 		backgroundSprite_->SetPosition(layoutSettings_.backgroundPosition);
 		backgroundSprite_->SetSize(layoutSettings_.backgroundSize);
+	}
+	backgroundPanel_.SetPosition(layoutSettings_.backgroundPosition);
+	backgroundPanel_.SetSize(layoutSettings_.backgroundSize);
+	backgroundPanel_.SetColor(kMiniMapPanelColor);
+	backgroundBorders_[0].SetPosition(layoutSettings_.backgroundPosition);
+	backgroundBorders_[0].SetSize({ layoutSettings_.backgroundSize.x, kMiniMapFrameThickness });
+	backgroundBorders_[1].SetPosition({
+		layoutSettings_.backgroundPosition.x,
+		layoutSettings_.backgroundPosition.y + layoutSettings_.backgroundSize.y - kMiniMapFrameThickness,
+		});
+	backgroundBorders_[1].SetSize({ layoutSettings_.backgroundSize.x, kMiniMapFrameThickness });
+	backgroundBorders_[2].SetPosition(layoutSettings_.backgroundPosition);
+	backgroundBorders_[2].SetSize({ kMiniMapFrameThickness, layoutSettings_.backgroundSize.y });
+	backgroundBorders_[3].SetPosition({
+		layoutSettings_.backgroundPosition.x + layoutSettings_.backgroundSize.x - kMiniMapFrameThickness,
+		layoutSettings_.backgroundPosition.y,
+		});
+	backgroundBorders_[3].SetSize({ kMiniMapFrameThickness, layoutSettings_.backgroundSize.y });
+	for (UIPanel& border : backgroundBorders_) {
+		border.SetColor(kMiniMapFrameColor);
 	}
 }
 

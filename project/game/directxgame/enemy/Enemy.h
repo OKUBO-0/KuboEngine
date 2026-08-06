@@ -14,21 +14,27 @@ class Player;
 
 enum class BossAttackType : uint8_t {
 	None,
-	Rush,
-	TentacleSlam,
-	InkBurst,
+	Beam,
+	TripleBeam,
+	LeapShockwave,
+	SummonLeapShockwave,
+	BulletHell,
+	ConvergingShockwave,
+	DomeBurst,
 };
 
 struct BossAttackEvent {
 	BossAttackType type = BossAttackType::None;
 	Vector3 position{};
 	Vector3 direction{ 0.0f, 0.0f, 1.0f };
+	Vector3 targetPosition{};
 };
 
 struct BossAttackTelegraph {
 	BossAttackType type = BossAttackType::None;
 	Vector3 position{};
 	Vector3 direction{ 0.0f, 0.0f, 1.0f };
+	Vector3 targetPosition{};
 	float progress = 0.0f;
 	float range = 0.0f;
 };
@@ -37,10 +43,19 @@ class Enemy {
 public:
 	void Initialize();
 	void Update(float deltaTime);
+	void SetAnimationUpdateStride(uint32_t stride);
+	void SetSimplifiedRenderEnabled(bool enabled);
 	void Draw();
+	void DrawFloatingShadow();
+	void DrawModel();
 	void DrawShadow();
+	Engine::Graphics3D::Object3D* GetRenderObject() const;
 	void StartDeathPresentation();
 	void UpdateDeathPresentation(float elapsedTime, float duration);
+	bool UpdateDeathPresentationFrame(float deltaTime, float duration);
+	void FinishDeathPresentation();
+	void NotifyAttack();
+	void NotifyJump();
 
 	void SetPosition(const Vector3& position);
 	void SetRotationY(float rotationY);
@@ -106,13 +121,17 @@ public:
 	{
 		return reactionController_.ConsumeBossPhaseChanged();
 	}
-	void QueueBossAttack(BossAttackType type, const Vector3& direction);
+	void QueueBossAttack(
+		BossAttackType type,
+		const Vector3& direction,
+		const Vector3& targetPosition = {});
 	bool ConsumeBossAttack(BossAttackEvent& outEvent);
 	void SetBossAttackTelegraph(
 		BossAttackType type,
 		const Vector3& direction,
 		float progress,
-		float range);
+		float range,
+		const Vector3& targetPosition = {});
 	const BossAttackTelegraph& GetBossAttackTelegraph() const
 	{
 		return bossAttackTelegraph_;
@@ -135,6 +154,7 @@ private:
 	bool active_ = true;
 	bool justDied_ = false;
 	bool deathPresentationActive_ = false;
+	float deathPresentationElapsed_ = 0.0f;
 	float spawnPresentationTimer_ = 0.0f;
 	float spawnPresentationDuration_ = 0.0f;
 
