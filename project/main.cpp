@@ -45,22 +45,22 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		return Application{}.Run();
 	} catch (const std::exception& error) {
 		const std::string message =
-			std::string("KuboEngine failed:\n") + error.what();
+			std::string("Octopus failed:\n") + error.what();
 		OutputDebugStringA((message + '\n').c_str());
 		MessageBoxA(
 			nullptr,
 			message.c_str(),
-			"KuboEngine Error",
+			"Octopus Error",
 			MB_OK | MB_ICONERROR);
 		return EXIT_FAILURE;
 	} catch (...) {
 		constexpr char message[] =
-			"KuboEngine failed with an unknown exception.";
+			"Octopus failed with an unknown exception.";
 		OutputDebugStringA(message);
 		MessageBoxA(
 			nullptr,
 			message,
-			"KuboEngine Error",
+			"Octopus Error",
 			MB_OK | MB_ICONERROR);
 		return EXIT_FAILURE;
 	}

@@ -141,7 +141,7 @@ void WinApp::CreateMainWindow()
 	AdjustWindowRect(&wrc, windowedStyle_, false);
 	hwnd = CreateWindow(
 		wc.lpszClassName,
-		L"KuboEngine",
+		L"Octopus",
 		windowedStyle_,
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
