@@ -330,7 +330,18 @@ project/cpu_regression_checks.obj
 project/imgui.ini
 project/.debug_editor_windows.ini
 project/NodeEditor.json
+project/Resources/DirectXGame/data/collision_telemetry.csv
 project/Resources/DirectXGame/data/soft_cap_telemetry.csv
+project/台本_実装照合レビュー.md
+
+# Submission/document-generation helper scripts
+project/tools/analyze_collision_telemetry.py
+project/tools/bitmap_font/
+project/tools/build_*.py
+project/tools/run_collision_benchmark.ps1
+project/tools/run_pix_capture_preflight.ps1
+project/tools/run_scene_transition_stress.ps1
+project/tools/run_spatial_collision_benchmark.ps1
 
 # Local environment and transient media/editor files
 .env
