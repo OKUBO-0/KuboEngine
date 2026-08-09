@@ -1,8 +1,9 @@
 # Octopus
 
-[![DebugBuild](https://github.com/OKUBO-0/KUBOEngine/actions/workflows/DebugBuild.yml/badge.svg)](https://github.com/OKUBO-0/KUBOEngine/actions/workflows/DebugBuild.yml)
-[![ReleaseBuild](https://github.com/OKUBO-0/KUBOEngine/actions/workflows/ReleaseBuild.yml/badge.svg)](https://github.com/OKUBO-0/KUBOEngine/actions/workflows/ReleaseBuild.yml)
+`Octopus` は、敵を倒して経験値を集め、レベルアップで武器や能力を強化しながら、最後に出現するボスの撃破を目指す 3D サバイバルシューティングゲームです。
 
-`Octopus` is a Windows / DirectX 12 3D survival shooting game built with a custom C++20 engine.
+プレイヤーは移動と回避で敵との距離を取りつつ、自動攻撃で敵を倒していきます。レベルアップ時には複数の強化候補から 1 つを選び、武器構成や能力を成長させながら生き残ります。
 
-The main Visual Studio solution is in [`project/`](project/). For build steps, controls, architecture notes, and submission packaging details, see [`project/README.md`](project/README.md).
+ゲーム本体は C++20 と DirectX 12 で制作しており、描画、入力、音声、モデル、リソース管理などの基盤部分も自作エンジンとして実装しています。
+
+詳しい説明は [`project/README.md`](project/README.md) を参照してください。
