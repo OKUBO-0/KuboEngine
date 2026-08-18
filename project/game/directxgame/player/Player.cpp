@@ -125,13 +125,17 @@ void Player::UpdateIntroPresentation(float elapsedTime, float duration)
 void Player::BeginCinematicPresentation()
 {
 	visible_ = true;
+	cinematicPosition_ = { position_.x, 0.0f, position_.z };
 	presentationController_.BeginNormalFrame();
-	position_.y = 0.0f;
 	visualMoving_ = false;
 	visualMovingHoldTimer_ = 0.0f;
 	movementController_.ResetActionState();
 	view_.SetMotionState(false, false, false);
-	ApplyTransforms();
+	presentationController_.ApplyPlayerTransform(
+		view_.GetPlayerObject(),
+		cinematicPosition_,
+		rotationY_,
+		false);
 	view_.Update();
 }
 
@@ -139,11 +143,14 @@ void Player::UpdateCinematicPresentation()
 {
 	visible_ = true;
 	presentationController_.BeginNormalFrame();
-	position_.y = 0.0f;
 	visualMoving_ = false;
 	visualMovingHoldTimer_ = 0.0f;
 	view_.SetMotionState(false, false, false);
-	ApplyTransforms();
+	presentationController_.ApplyPlayerTransform(
+		view_.GetPlayerObject(),
+		cinematicPosition_,
+		rotationY_,
+		false);
 	view_.Update();
 }
 

@@ -249,6 +249,9 @@
     <ClCompile Include="game\directxgame\core\DebugHotReload.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
+    <ClCompile Include="game\directxgame\core\ProductionTuning.cpp">
+      <Filter>game\directxgame\core</Filter>
+    </ClCompile>
     <ClCompile Include="game\directxgame\core\DebugContext.cpp">
       <Filter>game\directxgame\core</Filter>
     </ClCompile>
@@ -641,6 +644,9 @@
     <ClInclude Include="game\directxgame\core\DebugHotReload.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
+    <ClInclude Include="game\directxgame\core\ProductionTuning.h">
+      <Filter>game\directxgame\core</Filter>
+    </ClInclude>
     <ClInclude Include="game\directxgame\core\DebugContext.h">
       <Filter>game\directxgame\core</Filter>
     </ClInclude>
@@ -923,6 +929,9 @@
       <Filter>Resources\DirectXGame\audio</Filter>
     </None>
     <None Include="Resources\DirectXGame\data\*.csv">
+      <Filter>Resources\DirectXGame\data</Filter>
+    </None>
+    <None Include="Resources\DirectXGame\data\*.json">
       <Filter>Resources\DirectXGame\data</Filter>
     </None>
     <None Include="Resources\DirectXGame\axis\**\*.*">

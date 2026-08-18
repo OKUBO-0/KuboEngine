@@ -175,6 +175,7 @@ exit /B 0</Command>
     <ClCompile Include="game\directxgame\core\DebugEditorShell.cpp" />
     <ClCompile Include="game\directxgame\core\DebugDraw.cpp" />
     <ClCompile Include="game\directxgame\core\DebugHotReload.cpp" />
+    <ClCompile Include="game\directxgame\core\ProductionTuning.cpp" />
     <ClCompile Include="game\directxgame\core\DebugContext.cpp" />
     <ClCompile Include="game\directxgame\core\DebugUI.cpp" />
     <ClCompile Include="game\directxgame\core\TitleSceneDebugUIController.cpp" />
@@ -421,6 +422,7 @@ exit /B 0</Command>
     <ClInclude Include="game\directxgame\core\DebugEditorShell.h" />
     <ClInclude Include="game\directxgame\core\DebugDraw.h" />
     <ClInclude Include="game\directxgame\core\DebugHotReload.h" />
+    <ClInclude Include="game\directxgame\core\ProductionTuning.h" />
     <ClInclude Include="game\directxgame\core\DebugContext.h" />
     <ClInclude Include="game\directxgame\core\DebugUI.h" />
     <ClInclude Include="game\directxgame\core\TitleSceneDebugUIController.h" />
@@ -565,6 +567,7 @@ exit /B 0</Command>
     </None>
     <None Include="Resources\DirectXGame\audio\**\*.*" />
     <None Include="Resources\DirectXGame\data\*.csv" />
+    <None Include="Resources\DirectXGame\data\*.json" />
     <None Include="Resources\DirectXGame\axis\**\*.*" />
     <None Include="Resources\DirectXGame\bullet\**\*.*" />
     <None Include="Resources\DirectXGame\cube\**\*.*" />

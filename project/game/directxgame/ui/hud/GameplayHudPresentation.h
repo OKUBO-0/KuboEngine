@@ -104,6 +104,7 @@ private:
 		kHudWeaponIconCount + kHudPassiveItemSlotCount;
 	static constexpr size_t kHudMaxLevelPipsPerIcon = 8;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kHudBuildIconCount> buildIcons_;
+	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kHudPassiveItemSlotCount> buildItemSubIcons_;
 	std::array<UIPanel, kHudBuildIconCount * kHudMaxLevelPipsPerIcon> buildLevelPips_;
 	std::vector<int32_t> weaponAcquisitionOrder_{ 0 };
 	std::array<bool, kHudWeaponIconCount> weaponAcquisitionRecorded_{

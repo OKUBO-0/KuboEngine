@@ -12,12 +12,13 @@
 namespace {
 
 constexpr float kEntranceDuration = 3.4f;
-constexpr float kEntranceApproachEnd = 0.32f;
-constexpr float kEntranceHoldEnd = 0.72f;
+constexpr float kEntranceDropStart = 0.28f;
+constexpr float kEntranceDropEnd = 0.68f;
+constexpr float kEntranceHoldEnd = 0.82f;
 constexpr float kEntranceCameraDistance = 42.0f;
 constexpr float kEntranceCameraHeight = 22.0f;
 constexpr float kEntranceFocusHeight = 7.0f;
-constexpr float kEntranceBossDropHeight = 38.0f;
+constexpr float kEntranceBossDropHeight = 64.0f;
 constexpr float kDefeatDuration = 3.0f;
 constexpr float kDefeatTransitionStartTime = 3.35f;
 constexpr float kDefeatCameraDistance = 23.0f;
@@ -60,6 +61,20 @@ Vector3 LookAtRotation(const Vector3& cameraPosition, const Vector3& focusPositi
 	};
 }
 
+float LengthXZ(const Vector3& value)
+{
+	return std::sqrt(value.x * value.x + value.z * value.z);
+}
+
+Vector3 NormalizeXZOrDefault(const Vector3& value, const Vector3& fallback)
+{
+	const float length = LengthXZ(value);
+	if (length <= 0.001f) {
+		return fallback;
+	}
+	return { value.x / length, 0.0f, value.z / length };
+}
+
 }
 
 namespace DirectXGame {
@@ -80,6 +95,13 @@ void BossPresentation::StartEntrance(
 	Reset();
 	enemyManager.StartBossPhase();
 	enemyManager.GetBossPresentationPosition(entranceFocusPosition_);
+	entrancePlayerPosition_ = player
+		? player->GetWorldPosition()
+		: Vector3{
+			entranceFocusPosition_.x,
+			0.0f,
+			entranceFocusPosition_.z - 26.0f,
+		};
 	entranceStartBossPosition_ = entranceFocusPosition_;
 	entranceStartBossPosition_.y += kEntranceBossDropHeight;
 	entranceCurrentBossPosition_ = entranceStartBossPosition_;
@@ -104,6 +126,7 @@ void BossPresentation::StartEntrance(
 		entranceReturnCameraPosition_ = returnPose.position;
 		entranceReturnCameraRotation_ = returnPose.rotation;
 	}
+	UpdateEntranceCamera(0.0f);
 }
 
 bool BossPresentation::UpdateEntrance(
@@ -113,13 +136,15 @@ bool BossPresentation::UpdateEntrance(
 {
 	entranceTimer_ += deltaTime;
 	const float entranceProgress = Clamp01(entranceTimer_ / kEntranceDuration);
-	const float bossDropProgress = SmoothStep(entranceProgress / kEntranceApproachEnd);
+	const float bossDropProgress = SmoothStep(
+		(entranceProgress - kEntranceDropStart) /
+		(kEntranceDropEnd - kEntranceDropStart));
 	entranceCurrentBossPosition_ = Lerp(
 		entranceStartBossPosition_, entranceFocusPosition_, bossDropProgress);
 	enemyManager.SetBossPresentationPosition(entranceCurrentBossPosition_);
 
 	if (!entranceEffectEmitted_ &&
-		entranceProgress >= kEntranceApproachEnd) {
+		entranceProgress >= kEntranceDropEnd) {
 		const GameParticleEffects::Handles& handles =
 			particleEffects.GetHandles();
 		Engine::Particle::ParticleManager* particleManager =
@@ -137,7 +162,11 @@ bool BossPresentation::UpdateEntrance(
 	}
 
 	UpdateEntranceCamera(entranceProgress);
-	return entranceTimer_ >= kEntranceDuration;
+	if (entranceTimer_ >= kEntranceDuration) {
+		enemyManager.ClearBossPresentationPositionOverride();
+		return true;
+	}
+	return false;
 }
 
 void BossPresentation::StartDefeat(EnemyManager& enemyManager)
@@ -145,9 +174,21 @@ void BossPresentation::StartDefeat(EnemyManager& enemyManager)
 	defeatTimer_ = 0.0f;
 	defeatEffectEmitted_ = false;
 	resultTransitionRequested_ = false;
+	enemyManager.ClearBossPresentationPositionOverride();
 	enemyManager.GetBossPresentationPosition(defeatFocusPosition_);
 	enemyManager.UpdateBossDeathPresentation(0.0f, kDefeatDuration);
-	CaptureCamera(defeatStartCameraPosition_, defeatStartCameraRotation_);
+	defeatStartCameraPosition_ = {
+		defeatFocusPosition_.x - 10.0f,
+		defeatFocusPosition_.y + kDefeatCameraHeight + 7.0f,
+		defeatFocusPosition_.z - kDefeatCameraDistance - 12.0f,
+	};
+	defeatStartCameraRotation_ = LookAtRotation(
+		defeatStartCameraPosition_,
+		{
+			defeatFocusPosition_.x,
+			defeatFocusPosition_.y + kDefeatFocusHeight,
+			defeatFocusPosition_.z,
+		});
 }
 
 bool BossPresentation::UpdateDefeat(
@@ -204,40 +245,102 @@ void BossPresentation::UpdateEntranceCamera(float progress)
 		return;
 	}
 
-	float approachBlend = 1.0f;
 	float returnProgress = 0.0f;
-	if (progress < kEntranceApproachEnd) {
-		approachBlend = SmoothStep(progress / kEntranceApproachEnd);
-	} else if (progress > kEntranceHoldEnd) {
+	if (progress > kEntranceHoldEnd) {
 		returnProgress = Clamp01(
 			(progress - kEntranceHoldEnd) / (1.0f - kEntranceHoldEnd));
 	}
-	const float returnBlend = SmoothStep(returnProgress);
-	const Vector3 focusPosition{
+	const Vector3 toBoss = NormalizeXZOrDefault(
+		{
+			entranceFocusPosition_.x - entrancePlayerPosition_.x,
+			0.0f,
+			entranceFocusPosition_.z - entrancePlayerPosition_.z,
+		},
+		{ 0.0f, 0.0f, 1.0f });
+	const Vector3 side{ toBoss.z, 0.0f, -toBoss.x };
+
+	const Vector3 playerRevealPosition{
+		entrancePlayerPosition_.x - toBoss.x * 7.0f + side.x * 3.2f,
+		entrancePlayerPosition_.y + 5.4f,
+		entrancePlayerPosition_.z - toBoss.z * 7.0f + side.z * 3.2f,
+	};
+	const Vector3 playerRevealFocus{
+		entrancePlayerPosition_.x + toBoss.x * 10.0f,
+		entrancePlayerPosition_.y + 4.4f,
+		entrancePlayerPosition_.z + toBoss.z * 10.0f,
+	};
+	const Vector3 lookUpPosition{
+		entranceFocusPosition_.x - toBoss.x * 25.0f + side.x * 6.5f,
+		entranceFocusPosition_.y + 7.0f,
+		entranceFocusPosition_.z - toBoss.z * 25.0f + side.z * 6.5f,
+	};
+	const Vector3 lookUpFocus{
+		entranceStartBossPosition_.x,
+		entranceStartBossPosition_.y + 8.0f,
+		entranceStartBossPosition_.z,
+	};
+	const Vector3 fallTrackPosition{
+		entranceFocusPosition_.x - toBoss.x * 30.0f + side.x * 8.0f,
+		entranceFocusPosition_.y + 13.5f,
+		entranceFocusPosition_.z - toBoss.z * 30.0f + side.z * 8.0f,
+	};
+	const Vector3 fallTrackFocus{
 		entranceCurrentBossPosition_.x,
 		entranceCurrentBossPosition_.y + kEntranceFocusHeight,
 		entranceCurrentBossPosition_.z,
 	};
-	const Vector3 targetPosition{
-		entranceFocusPosition_.x,
-		entranceCurrentBossPosition_.y + kEntranceCameraHeight,
-		entranceFocusPosition_.z - kEntranceCameraDistance,
+	const Vector3 impactPosition{
+		entranceFocusPosition_.x - toBoss.x * 19.0f + side.x * 5.2f,
+		entranceFocusPosition_.y + 7.4f,
+		entranceFocusPosition_.z - toBoss.z * 19.0f + side.z * 5.2f,
 	};
-	const Vector3 targetRotation = LookAtRotation(targetPosition, focusPosition);
-	const Vector3 holdPosition = Lerp(
-		entranceStartCameraPosition_,
-		targetPosition,
-		approachBlend);
-	const Vector3 holdRotation = Lerp(
-		entranceStartCameraRotation_,
-		targetRotation,
-		approachBlend);
+	const Vector3 impactFocus{
+		entranceCurrentBossPosition_.x,
+		entranceCurrentBossPosition_.y + kEntranceFocusHeight,
+		entranceCurrentBossPosition_.z,
+	};
+	const Vector3 holdPosition{
+		entranceFocusPosition_.x - toBoss.x * 23.0f + side.x * 5.8f,
+		entranceFocusPosition_.y + 8.8f,
+		entranceFocusPosition_.z - toBoss.z * 23.0f + side.z * 5.8f,
+	};
+	const Vector3 holdFocus{
+		entranceFocusPosition_.x,
+		entranceFocusPosition_.y + kEntranceFocusHeight,
+		entranceFocusPosition_.z,
+	};
+
+	Vector3 cinematicPosition = playerRevealPosition;
+	Vector3 cinematicFocus = playerRevealFocus;
+	if (progress < kEntranceDropStart) {
+		const float t = SmoothStep(progress / kEntranceDropStart);
+		cinematicPosition = Lerp(playerRevealPosition, lookUpPosition, t);
+		cinematicFocus = Lerp(playerRevealFocus, lookUpFocus, t);
+	} else if (progress < kEntranceDropEnd) {
+		const float t = SmoothStep(
+			(progress - kEntranceDropStart) /
+			(kEntranceDropEnd - kEntranceDropStart));
+		cinematicPosition = Lerp(lookUpPosition, fallTrackPosition, t);
+		cinematicFocus = Lerp(lookUpFocus, fallTrackFocus, t);
+	} else if (progress < kEntranceHoldEnd) {
+		const float t = SmoothStep(
+			(progress - kEntranceDropEnd) /
+			(kEntranceHoldEnd - kEntranceDropEnd));
+		cinematicPosition = Lerp(impactPosition, holdPosition, t);
+		cinematicFocus = Lerp(impactFocus, holdFocus, t);
+	} else {
+		cinematicPosition = holdPosition;
+		cinematicFocus = holdFocus;
+	}
+	const Vector3 cinematicRotation =
+		LookAtRotation(cinematicPosition, cinematicFocus);
+	const float returnBlend = SmoothStep(returnProgress);
 	camera->SetTranslate(Lerp(
-		holdPosition,
+		cinematicPosition,
 		entranceReturnCameraPosition_,
 		returnBlend));
 	camera->SetRotate(Lerp(
-		holdRotation,
+		cinematicRotation,
 		entranceReturnCameraRotation_,
 		returnBlend));
 	camera->SetFarClip(500.0f);

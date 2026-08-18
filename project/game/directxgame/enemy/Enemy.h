@@ -56,8 +56,12 @@ public:
 	void FinishDeathPresentation();
 	void NotifyAttack();
 	void NotifyJump();
+	void NotifyLand();
 
 	void SetPosition(const Vector3& position);
+	void ApplyPresentationPose(
+		const Vector3& position,
+		bool idleMotion = true);
 	void SetRotationY(float rotationY);
 	void SetPlayer(Player* player) { player_ = player; }
 	void SetModelByType(int32_t type);
@@ -112,6 +116,8 @@ public:
 	void ClearBehaviorVisual();
 	void SetBoss(bool boss);
 	void StartSpawnPresentation(float duration = 0.58f);
+	void FinishSpawnPresentation();
+	void SetPresentationCullingEnabled(bool enabled);
 	bool IsBoss() const { return reactionController_.IsBoss(); }
 	int32_t GetBossPhase() const
 	{
@@ -132,6 +138,7 @@ public:
 		float progress,
 		float range,
 		const Vector3& targetPosition = {});
+	void ClearBossAttackTelegraph();
 	const BossAttackTelegraph& GetBossAttackTelegraph() const
 	{
 		return bossAttackTelegraph_;

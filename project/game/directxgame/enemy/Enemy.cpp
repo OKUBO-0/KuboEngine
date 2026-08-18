@@ -109,6 +109,7 @@ void Enemy::StartDeathPresentation()
 	deathPresentationActive_ = true;
 	deathPresentationElapsed_ = 0.0f;
 	view_.SetSimplifiedRenderEnabled(false);
+	view_.SetFrustumCullingEnabled(false);
 	view_.ApplyDeathPose(position_, rotationY_, 0.0f);
 }
 
@@ -139,6 +140,7 @@ bool Enemy::UpdateDeathPresentationFrame(float deltaTime, float duration)
 void Enemy::FinishDeathPresentation()
 {
 	deathPresentationActive_ = false;
+	view_.SetFrustumCullingEnabled(true);
 }
 
 void Enemy::NotifyAttack()
@@ -151,6 +153,11 @@ void Enemy::NotifyJump()
 	view_.NotifyJump();
 }
 
+void Enemy::NotifyLand()
+{
+	view_.NotifyLand();
+}
+
 void Enemy::SetPosition(const Vector3& position)
 {
 	if (!active_) {
@@ -158,6 +165,16 @@ void Enemy::SetPosition(const Vector3& position)
 	}
 	position_ = position;
 	view_.Update(position_, rotationY_, false, false);
+}
+
+void Enemy::ApplyPresentationPose(
+	const Vector3& position,
+	bool idleMotion)
+{
+	view_.ClearBehaviorVisual();
+	view_.SetSimplifiedRenderEnabled(false);
+	view_.SetFrustumCullingEnabled(false);
+	view_.ApplyPresentationPose(position, rotationY_, idleMotion);
 }
 
 bool Enemy::ConsumeGroundImpact()
@@ -211,6 +228,19 @@ void Enemy::StartSpawnPresentation(float duration)
 	spawnPresentationTimer_ = spawnPresentationDuration_;
 	view_.SetSpawnScaleMultiplier(0.03f);
 	view_.Update(position_, rotationY_, false, false);
+}
+
+void Enemy::FinishSpawnPresentation()
+{
+	spawnPresentationDuration_ = 0.0f;
+	spawnPresentationTimer_ = 0.0f;
+	view_.SetSpawnScaleMultiplier(1.0f);
+	view_.SetFrustumCullingEnabled(true);
+}
+
+void Enemy::SetPresentationCullingEnabled(bool enabled)
+{
+	view_.SetFrustumCullingEnabled(enabled);
 }
 
 float Enemy::GetHpRatio() const
@@ -281,6 +311,11 @@ void Enemy::SetBossAttackTelegraph(
 		std::clamp(progress, 0.0f, 1.0f),
 		(std::max)(0.0f, range),
 	};
+}
+
+void Enemy::ClearBossAttackTelegraph()
+{
+	bossAttackTelegraph_ = {};
 }
 
 } // namespace DirectXGame

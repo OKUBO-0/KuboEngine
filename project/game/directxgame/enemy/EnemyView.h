@@ -34,9 +34,15 @@ public:
 		const Vector3& position,
 		float rotationY,
 		float progress);
+	void ApplyPresentationPose(
+		const Vector3& position,
+		float rotationY,
+		bool idleMotion);
 	void NotifyAttack();
 	void NotifyJump();
+	void NotifyLand();
 	void SetAnimationUpdateStride(uint32_t stride);
+	void SetFrustumCullingEnabled(bool enabled);
 
 	void SetModelByType(int32_t type);
 	void SetFloatingEnabled(bool enabled);
@@ -88,6 +94,7 @@ private:
 	float impactMotionTimer_ = 0.0f;
 	float attackMotionTimer_ = 0.0f;
 	float jumpMotionTimer_ = 0.0f;
+	float landMotionTimer_ = 0.0f;
 	int32_t enemyType_ = 0;
 	bool simplifiedRenderEnabled_ = false;
 	bool usesOctopusGroundOffset_ = false;

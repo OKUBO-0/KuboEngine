@@ -32,6 +32,7 @@ SceneAction DebugUI::Scene::Draw(
 		if (ImGui::Button("Debug Damage All Enemies")) {
 			enemyManager->DamageAllEnemies(999);
 		}
+		enemyManager->DrawBossAttackTuningDebugUI();
 	}
 
 	SceneAction action = SceneAction::None;

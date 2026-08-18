@@ -173,6 +173,7 @@ const ResourceProbeStatus& ResourceProbe::Verify()
 		"pistol_bullet.glb",
 		"quaternius_weapons/sword.glb",
 		"quaternius_weapons/axe_small.glb",
+		"boss_laser_torus/boss_laser_torus.obj",
 		"quaternius_characters/adventurer.glb",
 		"quaternius_characters/king.glb",
 		"quaternius_characters/swat.glb",

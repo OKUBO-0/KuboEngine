@@ -666,6 +666,7 @@ void PlayScene::StartBossPhase()
 
 void PlayScene::UpdateBossEntrance(float deltaTime)
 {
+	gameplayFlow_.UpdateBossIntro(deltaTime);
 	if (player_) {
 		player_->UpdateCinematicPresentation();
 	}
@@ -823,6 +824,9 @@ void PlayScene::ReloadLiveTuning()
 		UILayoutIO::LoadOrDefault(DataPaths::kDebugTuning, {});
 	if (playerManager_) {
 		playerManager_->LoadWeaponVisualTuning(tuning);
+	}
+	if (enemyManager_) {
+		enemyManager_->ReloadBossAttackTuning();
 	}
 	debugHotReload_.ClearChangedFlags();
 #endif

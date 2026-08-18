@@ -8,6 +8,7 @@ void GameplayFlowController::Reset()
 	state_ = GameplayState::Start;
 	resumeState_ = GameplayState::Playing;
 	introElapsed_ = 0.0f;
+	bossIntroElapsed_ = 0.0f;
 }
 
 void GameplayFlowController::UpdateIntro(float deltaTime)
@@ -18,6 +19,16 @@ void GameplayFlowController::UpdateIntro(float deltaTime)
 	introElapsed_ = (std::min)(
 		introElapsed_ + deltaTime,
 		kIntroDuration);
+}
+
+void GameplayFlowController::UpdateBossIntro(float deltaTime)
+{
+	if (state_ != GameplayState::BossIntro) {
+		return;
+	}
+	bossIntroElapsed_ = (std::min)(
+		bossIntroElapsed_ + deltaTime,
+		kBossIntroDuration);
 }
 
 bool GameplayFlowController::EnterPlaying()
@@ -52,6 +63,7 @@ bool GameplayFlowController::BeginBossIntro()
 	if (state_ != GameplayState::Playing) {
 		return false;
 	}
+	bossIntroElapsed_ = 0.0f;
 	state_ = GameplayState::BossIntro;
 	return true;
 }
@@ -61,6 +73,7 @@ bool GameplayFlowController::EnterBoss()
 	if (state_ != GameplayState::BossIntro) {
 		return false;
 	}
+	bossIntroElapsed_ = kBossIntroDuration;
 	state_ = GameplayState::Boss;
 	return true;
 }

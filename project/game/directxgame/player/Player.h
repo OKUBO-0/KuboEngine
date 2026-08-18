@@ -83,6 +83,7 @@ private:
 	void ApplyTransforms();
 
 	Vector3 position_{ 0.0f, 0.0f, 0.0f };
+	Vector3 cinematicPosition_{ 0.0f, 0.0f, 0.0f };
 	float rotationY_ = 0.0f;
 	bool visible_ = true;
 	bool visualMoving_ = false;

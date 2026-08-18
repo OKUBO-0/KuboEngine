@@ -307,6 +307,7 @@ public:
 	{
 		Player* player = enemy.GetPlayer();
 		if (!player) {
+			enemy.ClearBossAttackTelegraph();
 			return;
 		}
 
@@ -316,6 +317,7 @@ public:
 			state_ = State::Stalk;
 			stateTimer_ = GetStalkDuration(phase);
 			currentAction_ = Action::Beam;
+			enemy.ClearBossAttackTelegraph();
 		}
 
 		phaseTime_ += deltaTime;
@@ -330,7 +332,7 @@ public:
 		}
 
 		if (state_ == State::Telegraph) {
-			if (!IsLeapAction(currentAction_)) {
+			if (!IsLeapAction(currentAction_) && currentAction_ != Action::Beam) {
 				lockedTargetPosition_ = playerPosition;
 			}
 			attackDirection_ = NormalizeXZ({
@@ -344,15 +346,59 @@ public:
 			enemy.SetRotationY(std::atan2(attackDirection_.x, attackDirection_.z));
 			const float pulse = 0.5f + 0.5f * std::sin(phaseTime_ * 22.0f);
 			const BossAttackType telegraphType = ToAttackType(currentAction_, phase);
+			const float telegraphDistance = currentAction_ == Action::Beam
+				? std::sqrt(
+					(lockedTargetPosition_.x - position.x) *
+						(lockedTargetPosition_.x - position.x) +
+					(lockedTargetPosition_.z - position.z) *
+						(lockedTargetPosition_.z - position.z))
+				: distance;
 			enemy.SetBossAttackTelegraph(
 				telegraphType,
 				attackDirection_,
 				1.0f - stateTimer_ / telegraphDuration_,
-				GetTelegraphRange(currentAction_, phase, distance),
+				GetTelegraphRange(currentAction_, phase, telegraphDistance),
 				lockedTargetPosition_);
 			enemy.SetBehaviorVisual(GetActionColor(currentAction_), 1.08f + pulse * 0.1f);
 			if (stateTimer_ <= 0.0f) {
 				ExecuteTelegraphedAction(enemy, phase);
+			}
+			return;
+		}
+
+		if (state_ == State::BeamReposition) {
+			enemy.ClearBossAttackTelegraph();
+			const float desiredDistance = GetBeamPreferredDistance(phase);
+			const float distanceError = distance - desiredDistance;
+			const Vector3 away{ -toPlayer.x, 0.0f, -toPlayer.z };
+			const float strafeSign =
+				std::sin(phaseTime_ * 5.1f) >= 0.0f ? 1.0f : -1.0f;
+			const Vector3 side{ -toPlayer.z * strafeSign, 0.0f, toPlayer.x * strafeSign };
+			const float distanceWeight = std::clamp(std::abs(distanceError) / 12.0f, 0.4f, 2.3f);
+			const float directionSign = distanceError < 0.0f ? 1.0f : -1.0f;
+			Vector3 movement = NormalizeXZ({
+				away.x * directionSign * distanceWeight + side.x * 0.42f,
+				0.0f,
+				away.z * directionSign * distanceWeight + side.z * 0.42f,
+				});
+			enemy.SetRotationY(std::atan2(toPlayer.x, toPlayer.z));
+			enemy.SetBehaviorVisual({ 1.0f, 1.0f, 1.0f, 1.0f }, 1.04f);
+			MoveEnemy(enemy, movement, ToFrameScaledSpeed(enemy.GetSpeed() * 2.35f, deltaTime));
+			if (stateTimer_ <= 0.0f ||
+				std::abs(distanceError) <= GetBeamDistanceTolerance(phase)) {
+				state_ = State::Telegraph;
+				telegraphDuration_ = GetTelegraphDuration(currentAction_, phase);
+				stateTimer_ = telegraphDuration_;
+				const Vector3 newPosition = enemy.GetPosition();
+				lockedTargetPosition_ = playerPosition;
+				attackDirection_ = NormalizeXZ({
+					lockedTargetPosition_.x - newPosition.x,
+					0.0f,
+					lockedTargetPosition_.z - newPosition.z,
+					});
+				if (attackDirection_.x == 0.0f && attackDirection_.z == 0.0f) {
+					attackDirection_ = toPlayer;
+				}
 			}
 			return;
 		}
@@ -371,6 +417,7 @@ public:
 			enemy.SetBehaviorVisual(GetActionColor(currentAction_), 1.18f);
 			if (stateTimer_ <= 0.0f) {
 				enemy.SetPosition({ lockedTargetPosition_.x, 0.0f, lockedTargetPosition_.z });
+				enemy.NotifyLand();
 				PlayBossAttackSound(BossAttackType::LeapShockwave);
 				enemy.QueueBossAttack(ToAttackType(currentAction_, phase), attackDirection_, lockedTargetPosition_);
 				BeginRecovery(phase);
@@ -379,8 +426,9 @@ public:
 		}
 
 		if (state_ == State::Recovery) {
+			enemy.ClearBossAttackTelegraph();
 			enemy.SetBehaviorVisual(
-				{ 0.38f, 0.38f, 0.46f, 1.0f },
+				{ 1.0f, 1.0f, 1.0f, 1.0f },
 				phase == 3 ? 1.08f : 1.0f);
 			if (stateTimer_ <= 0.0f) {
 				state_ = State::Stalk;
@@ -391,15 +439,22 @@ public:
 
 		if (stateTimer_ <= 0.0f) {
 			currentAction_ = SelectNextAction(phase);
-			state_ = State::Telegraph;
-			telegraphDuration_ = GetTelegraphDuration(currentAction_, phase);
-			stateTimer_ = telegraphDuration_;
 			attackDirection_ = toPlayer;
 			lockedTargetPosition_ = playerPosition;
+			if (currentAction_ == Action::Beam &&
+				ShouldRepositionForBeam(distance, phase)) {
+				state_ = State::BeamReposition;
+				stateTimer_ = GetBeamRepositionDuration(phase);
+			} else {
+				state_ = State::Telegraph;
+				telegraphDuration_ = GetTelegraphDuration(currentAction_, phase);
+				stateTimer_ = telegraphDuration_;
+			}
 			return;
 		}
 
 		const float strafeSign = std::sin(phaseTime_ * (phase >= 4 ? 3.2f : 1.7f)) >= 0.0f ? 1.0f : -1.0f;
+		enemy.ClearBossAttackTelegraph();
 		const Vector3 side{ -toPlayer.z * strafeSign, 0.0f, toPlayer.x * strafeSign };
 		float approach = distance > 14.0f ? 2.2f
 			: (distance > 9.0f ? 0.8f : (distance < 6.0f ? -0.55f : 0.25f));
@@ -410,12 +465,11 @@ public:
 			toPlayer.x * approach + side.x,
 			0.0f,
 			toPlayer.z * approach + side.z,
-			});
+		});
 		const float moveMultiplier = phase >= 5 ? 2.05f : (phase >= 4 ? 1.8f : (phase >= 2 ? 1.45f : 1.1f));
-		const Vector4 color = phase >= 4
-			? Vector4{ 1.0f, 0.18f, 0.22f, 1.0f }
-			: (phase >= 2 ? Vector4{ 1.0f, 0.55f, 0.16f, 1.0f } : Vector4{ 0.58f, 0.3f, 1.0f, 1.0f });
-		enemy.SetBehaviorVisual(color, phase >= 4 ? 1.12f : (phase >= 2 ? 1.07f : 1.0f));
+		enemy.SetBehaviorVisual(
+			{ 1.0f, 1.0f, 1.0f, 1.0f },
+			phase >= 4 ? 1.12f : (phase >= 2 ? 1.07f : 1.0f));
 		MoveEnemy(enemy, movement, ToFrameScaledSpeed(enemy.GetSpeed() * moveMultiplier, deltaTime));
 	}
 
@@ -430,6 +484,7 @@ private:
 
 	enum class State {
 		Stalk,
+		BeamReposition,
 		Telegraph,
 		Leap,
 		Recovery,
@@ -466,7 +521,7 @@ private:
 		case Action::LeapShockwave: return 0.88f;
 		case Action::BulletHell: return 0.82f;
 		case Action::ConvergingShockwave: return 1.05f;
-		case Action::DomeBurst: return 0.95f;
+		case Action::DomeBurst: return 1.9f;
 		default: return 0.85f;
 		}
 	}
@@ -474,12 +529,15 @@ private:
 	static float GetTelegraphRange(Action action, int32_t phase, float distance)
 	{
 		switch (action) {
-		case Action::Beam: return (std::max)(phase >= 3 ? 46.0f : 40.0f, distance + 32.0f);
+		case Action::Beam:
+			return (std::max)(
+				phase >= 3 ? 70.0f : 62.0f,
+				distance + 28.0f);
 		case Action::LeapShockwave:
 			return phase >= 4 ? 155.0f : 135.0f;
 		case Action::BulletHell: return 22.0f;
-		case Action::ConvergingShockwave: return 24.0f;
-		case Action::DomeBurst: return 38.0f;
+		case Action::ConvergingShockwave: return 58.0f;
+		case Action::DomeBurst: return 58.0f;
 		default: return 12.0f;
 		}
 	}
@@ -500,15 +558,8 @@ private:
 
 	static Vector4 GetActionColor(Action action)
 	{
-		switch (action) {
-		case Action::LeapShockwave:
-			return { 1.0f, 0.42f, 0.08f, 1.0f };
-		case Action::BulletHell: return { 1.0f, 0.32f, 0.04f, 1.0f };
-		case Action::ConvergingShockwave: return { 0.86f, 0.12f, 1.0f, 1.0f };
-		case Action::DomeBurst: return { 1.0f, 0.08f, 0.16f, 1.0f };
-		case Action::Beam:
-		default: return { 0.82f, 0.06f, 0.04f, 1.0f };
-		}
+		(void)action;
+		return { 1.0f, 0.18f, 0.08f, 1.0f };
 	}
 
 	static bool IsLeapAction(Action action)
@@ -521,10 +572,34 @@ private:
 		return phase >= 4 ? 12.0f : 8.5f;
 	}
 
+	static float GetBeamPreferredDistance(int32_t phase)
+	{
+		return phase >= 3 ? 34.0f : 30.0f;
+	}
+
+	static float GetBeamDistanceTolerance(int32_t phase)
+	{
+		return phase >= 3 ? 6.0f : 5.0f;
+	}
+
+	static bool ShouldRepositionForBeam(float distance, int32_t phase)
+	{
+		const float preferred = GetBeamPreferredDistance(phase);
+		const float tolerance = GetBeamDistanceTolerance(phase);
+		return distance < preferred - tolerance ||
+			distance > preferred + tolerance;
+	}
+
+	static float GetBeamRepositionDuration(int32_t phase)
+	{
+		return phase >= 4 ? 0.82f : 0.70f;
+	}
+
 	void ExecuteTelegraphedAction(Enemy& enemy, int32_t phase)
 	{
 		const BossAttackType attackType = ToAttackType(currentAction_, phase);
 		if (IsLeapAction(currentAction_)) {
+			enemy.ClearBossAttackTelegraph();
 			state_ = State::Leap;
 			leapTimer_ = 0.0f;
 			leapDuration_ = phase >= 4 ? 0.62f : 0.54f;
@@ -533,6 +608,7 @@ private:
 			enemy.NotifyJump();
 			return;
 		}
+		enemy.ClearBossAttackTelegraph();
 		PlayBossAttackSound(attackType);
 		enemy.QueueBossAttack(attackType, attackDirection_, lockedTargetPosition_);
 		BeginRecovery(phase);
@@ -541,6 +617,10 @@ private:
 	void BeginRecovery(int32_t phase)
 	{
 		state_ = State::Recovery;
+		if (currentAction_ == Action::BulletHell) {
+			stateTimer_ = 4.05f;
+			return;
+		}
 		stateTimer_ = phase >= 5 ? 0.34f : (phase >= 3 ? 0.48f : 0.62f);
 	}
 

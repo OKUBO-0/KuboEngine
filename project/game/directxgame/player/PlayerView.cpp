@@ -143,9 +143,7 @@ void PlayerView::Update()
 
 void PlayerView::Draw(bool playerVisible, bool aimIndicatorVisible)
 {
-	if (aimIndicatorVisible && aimIndicatorObject_) {
-		Engine::Graphics3D::Object3D::SubmitForDraw(aimIndicatorObject_.get());
-	}
+	(void)aimIndicatorVisible;
 	if (playerVisible && playerObject_) {
 		Engine::Graphics3D::Object3D::SubmitForDraw(playerObject_.get());
 	}

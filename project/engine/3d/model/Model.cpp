@@ -79,6 +79,12 @@ std::string ResolveAnimationAlias(const std::string& animationName)
     if (leaf == "jump") {
         return "jump";
     }
+    if (leaf == "fall" || leaf == "falling") {
+        return "fall";
+    }
+    if (leaf == "land" || leaf == "landing") {
+        return "land";
+    }
     if (leaf == "attack" || leaf == "punch" || leaf == "headbutt") {
         return "attack";
     }

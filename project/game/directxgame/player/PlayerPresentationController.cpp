@@ -138,17 +138,19 @@ void PlayerPresentationController::StartDeath(
 	deathStartCameraHeight_ = cameraController.GetHeight();
 	deathStartCameraDistance_ = cameraController.GetDistance();
 	deathStartCameraPitch_ = cameraController.GetPitch();
-	cameraController.ResetFocus(playerPosition);
+	deathFocusPosition_ = { playerPosition.x, 0.0f, playerPosition.z };
+	deathFacingYaw_ = 0.0f;
+	cameraController.ResetFocus(deathFocusPosition_);
 	ApplyDeathPose(
 		playerObject,
-		playerPosition,
-		playerRotationY,
+		deathFocusPosition_,
+		deathFacingYaw_,
 		0.0f);
 	UpdateDeath(
 		0.0f,
 		1.0f,
-		playerPosition,
-		playerRotationY,
+		deathFocusPosition_,
+		deathFacingYaw_,
 		playerObject,
 		camera);
 }
@@ -164,10 +166,11 @@ void PlayerPresentationController::UpdateDeath(
 	state_ = State::Death;
 	const float progress =
 		SmoothStep(duration > 0.0f ? elapsedTime / duration : 1.0f);
+	const Vector3 focus = deathFocusPosition_;
 	ApplyDeathPose(
 		playerObject,
-		playerPosition,
-		playerRotationY,
+		focus,
+		deathFacingYaw_,
 		progress);
 
 	if (!camera) {
@@ -182,16 +185,16 @@ void PlayerPresentationController::UpdateDeath(
 		deathStartCameraHeight_,
 		kPresentationCameraHeight,
 		progress);
-	const float orbitYaw = playerRotationY + 0.35f;
+	const float orbitYaw = 0.35f;
 	const Vector3 cameraPosition{
-		playerPosition.x + std::sin(orbitYaw) * 5.2f,
+		focus.x + std::sin(orbitYaw) * 5.2f,
 		height,
-		playerPosition.z - std::cos(orbitYaw) * distance,
+		focus.z - std::cos(orbitYaw) * distance,
 	};
 	const Vector3 focusPosition{
-		playerPosition.x,
-		playerPosition.y + 1.55f,
-		playerPosition.z,
+		focus.x,
+		focus.y + 1.9f,
+		focus.z,
 	};
 	const Vector3 lookRotation = LookAtRotation(cameraPosition, focusPosition);
 	const float pitch = LerpFloat(

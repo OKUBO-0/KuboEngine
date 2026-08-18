@@ -18,6 +18,7 @@ inline constexpr char kLevelupLayout[] = "ui_layout_levelup.csv";
 inline constexpr char kResultLayout[] = "ui_layout_result.csv";
 inline constexpr char kHudLayout[] = "ui_layout_hud.csv";
 inline constexpr char kDebugTuning[] = "debug_tuning.csv";
+inline constexpr char kProductionTuning[] = "production_tuning.json";
 inline constexpr char kSoftCapTelemetry[] = "soft_cap_telemetry.csv";
 inline constexpr char kCollisionTelemetry[] = "collision_telemetry.csv";
 inline constexpr char kResourceManifest[] = "resource_manifest.csv";

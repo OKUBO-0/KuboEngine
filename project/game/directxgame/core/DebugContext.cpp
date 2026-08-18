@@ -7,6 +7,7 @@
 #include "EnemyView.h"
 #include "GameParticleEffects.h"
 #include "Player.h"
+#include "ProductionTuning.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -121,6 +122,11 @@ void DebugContext::Load(
 			"light.debugDrawEnabled",
 			lightDrawEnabled_ ? 1.0f : 0.0f) > 0.5f;
 	SceneLighting::Load(tuning);
+
+	const ProductionTuning::NumberMap productionTuning =
+		ProductionTuning::LoadOrCreate(DataPaths::kProductionTuning);
+	ProductionTuning::ApplyToPlayer(productionTuning, player);
+	ProductionTuning::ApplyToParticles(productionTuning, particleEffects);
 }
 
 void DebugContext::Save(
@@ -201,6 +207,12 @@ void DebugContext::Save(
 	});
 	SceneLighting::AppendTuningEntries(entries);
 	UILayoutIO::Save(DataPaths::kDebugTuning, entries);
+
+	ProductionTuning::NumberMap productionTuning =
+		ProductionTuning::LoadOrCreate(DataPaths::kProductionTuning);
+	ProductionTuning::CaptureFromPlayer(productionTuning, player);
+	ProductionTuning::CaptureFromParticles(productionTuning, particleEffects);
+	ProductionTuning::Save(DataPaths::kProductionTuning, productionTuning);
 #else
 	(void)player;
 	(void)particleEffects;

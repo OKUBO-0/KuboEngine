@@ -20,6 +20,7 @@ constexpr float kEnemyFixedAnimationDeltaTime = 1.0f / 60.0f;
 constexpr float kEnemyImpactMotionDuration = 0.18f;
 constexpr float kEnemyAttackMotionDuration = 0.82f;
 constexpr float kEnemyJumpMotionDuration = 0.72f;
+constexpr float kEnemyLandMotionDuration = 0.42f;
 constexpr float kSimplifiedModelBaseScale = 1.0f;
 
 float gOctopusModelGroundOffsetY = kDefaultOctopusModelGroundOffsetY;
@@ -103,12 +104,13 @@ float GetEnemyAnimationSpeed(int32_t type, bool impact)
 	switch (type) {
 	case static_cast<int32_t>(DirectXGame::EnemyType::Tackler):
 	case static_cast<int32_t>(DirectXGame::EnemyType::Fast):
-		return 0.72f;
+		return 0.60f;
 	case static_cast<int32_t>(DirectXGame::EnemyType::Standard):
 	case static_cast<int32_t>(DirectXGame::EnemyType::Bomb):
-		return 0.50f;
+		return 0.42f;
 	case static_cast<int32_t>(DirectXGame::EnemyType::Heavy):
 	case static_cast<int32_t>(DirectXGame::EnemyType::Gold):
+		return 0.48f;
 	case static_cast<int32_t>(DirectXGame::EnemyType::Boss):
 	default:
 		return 0.58f;
@@ -167,28 +169,47 @@ void EnemyView::Update(
 		(std::max)(0.0f, attackMotionTimer_ - kEnemyFixedAnimationDeltaTime);
 	jumpMotionTimer_ =
 		(std::max)(0.0f, jumpMotionTimer_ - kEnemyFixedAnimationDeltaTime);
+	landMotionTimer_ =
+		(std::max)(0.0f, landMotionTimer_ - kEnemyFixedAnimationDeltaTime);
 
 	if (object_ && !simplifiedRenderEnabled_) {
 		const bool impact = impactMotionTimer_ > 0.0f;
+		const bool landing =
+			landMotionTimer_ > 0.0f &&
+			(object_->HasAnimationClip("land") ||
+				object_->HasAnimationClip("attack"));
 		const bool jumping =
-			jumpMotionTimer_ > 0.0f && object_->HasAnimationClip("jump");
+			!landing && jumpMotionTimer_ > 0.0f &&
+			(object_->HasAnimationClip("jump") ||
+				object_->HasAnimationClip("fall"));
 		const bool attacking =
-			!jumping && attackMotionTimer_ > 0.0f && object_->HasAnimationClip("attack");
+			!landing && !jumping &&
+			attackMotionTimer_ > 0.0f && object_->HasAnimationClip("attack");
 		const char* moveClip = GetEnemyMoveClipName(enemyType_);
+		const char* jumpClip = object_->HasAnimationClip("jump")
+			? "jump"
+			: "fall";
+		const char* landClip = object_->HasAnimationClip("land")
+			? "land"
+			: "attack";
 		object_->SetAnimationClip(
-			jumping
-				? "jump"
+			landing
+				? landClip
+				: (jumping
+				? jumpClip
 				: (attacking
 				? "attack"
 				: (impact && object_->HasAnimationClip("hit")
 				? "hit"
-				: moveClip)));
-		object_->SetAnimationSpeed(jumping
+				: moveClip))));
+		object_->SetAnimationSpeed(landing
+			? 0.92f
+			: (jumping
 			? 0.82f
 			: (attacking
 			? 0.68f
-			: GetEnemyAnimationSpeed(enemyType_, impact)));
-		object_->SetAnimationLoop(!impact && !attacking && !jumping);
+			: GetEnemyAnimationSpeed(enemyType_, impact))));
+		object_->SetAnimationLoop(!impact && !attacking && !jumping && !landing);
 		object_->SetColor(hitFlash || phaseFlash
 			? Vector4{ 8.0f, 8.0f, 8.0f, 1.0f }
 			: behaviorColor_);
@@ -266,6 +287,7 @@ void EnemyView::ApplyDeathPose(
 		behaviorScaleMultiplier_ * spawnScaleMultiplier_ *
 		modelVisualScaleMultiplier_ * (1.0f + pulse * 0.18f) * shrink;
 	const float verticalOffsetY = GetEffectiveModelVerticalOffsetY();
+	object_->SetFrustumCullingEnabled(false);
 	object_->SetAnimationClip("death");
 	object_->SetAnimationLoop(false);
 	object_->SetAnimationSpeed(0.48f);
@@ -292,6 +314,37 @@ void EnemyView::ApplyDeathPose(
 	object_->Update();
 }
 
+void EnemyView::ApplyPresentationPose(
+	const Vector3& position,
+	float rotationY,
+	bool idleMotion)
+{
+	if (!object_) {
+		return;
+	}
+
+	object_->SetFrustumCullingEnabled(false);
+	if (idleMotion) {
+		const char* idleClip = object_->HasAnimationClip("idle")
+			? "idle"
+			: "idle_hold";
+		object_->SetAnimationClip(idleClip);
+		object_->SetAnimationSpeed(0.42f);
+		object_->SetAnimationLoop(true);
+	}
+	const float visualScale = modelVisualScaleMultiplier_;
+	object_->SetScale({ visualScale, visualScale, visualScale });
+	object_->SetRotate({ kEnemyModelBasePitch, rotationY, 0.0f });
+	object_->SetTranslate({
+		position.x,
+		position.y + GetEffectiveModelVerticalOffsetY(),
+		position.z,
+		});
+	object_->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+	object_->Update();
+	UpdateFloatingShadow(position, rotationY);
+}
+
 void EnemyView::NotifyAttack()
 {
 	attackMotionTimer_ = kEnemyAttackMotionDuration;
@@ -302,10 +355,26 @@ void EnemyView::NotifyJump()
 	jumpMotionTimer_ = kEnemyJumpMotionDuration;
 }
 
+void EnemyView::NotifyLand()
+{
+	landMotionTimer_ = kEnemyLandMotionDuration;
+	jumpMotionTimer_ = 0.0f;
+}
+
 void EnemyView::SetAnimationUpdateStride(uint32_t stride)
 {
 	if (object_) {
 		object_->SetAnimationUpdateStride(stride);
+	}
+}
+
+void EnemyView::SetFrustumCullingEnabled(bool enabled)
+{
+	if (object_) {
+		object_->SetFrustumCullingEnabled(enabled);
+	}
+	if (simplifiedObject_) {
+		simplifiedObject_->SetFrustumCullingEnabled(enabled);
 	}
 }
 
@@ -350,7 +419,7 @@ void EnemyView::SetModelByType(int32_t type)
 		break;
 	case static_cast<int32_t>(EnemyType::Boss):
 		modelName = "cube_world/demon.glb";
-		modelVisualScaleMultiplier_ = 3.25f;
+		modelVisualScaleMultiplier_ = 4.15f;
 		break;
 	default: break;
 	}

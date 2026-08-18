@@ -3,6 +3,7 @@
 #include "ScreenUtil.h"
 #include "UILayoutIO.h"
 #include "PlayerManager.h"
+#include "PassiveItemData.h"
 #include "Input.h"
 #include "GameSpriteFactory.h"
 #include "GameTextureCache.h"
@@ -90,6 +91,50 @@ const char* WeaponIconPath(size_t index)
 		"ui/game/lvup/icon_weapon_boomerang.png",
 	};
 	return paths[(std::min)(index, paths.size() - 1)];
+}
+
+const char* PassiveSubIconPath(DirectXGame::PassiveItemType type)
+{
+	switch (type) {
+	case DirectXGame::PassiveItemType::Damage:
+		return "ui/game/lvup/icon_stat_damage.png";
+	case DirectXGame::PassiveItemType::MaxHp:
+		return "ui/game/lvup/icon_stat_maxhp.png";
+	case DirectXGame::PassiveItemType::MoveSpeed:
+		return "ui/game/lvup/icon_stat_movespeed.png";
+	case DirectXGame::PassiveItemType::AttackSpeed:
+		return "ui/game/lvup/icon_stat_attackspeed.png";
+	case DirectXGame::PassiveItemType::Duration:
+		return "ui/game/lvup/icon_stat_duration.png";
+	case DirectXGame::PassiveItemType::AreaSize:
+		return "ui/game/lvup/icon_stat_area.png";
+	case DirectXGame::PassiveItemType::ProjectileSpeed:
+		return "ui/game/lvup/icon_stat_projectile_speed.png";
+	case DirectXGame::PassiveItemType::ProjectileCount:
+		return "ui/game/lvup/icon_stat_projectile_count.png";
+	case DirectXGame::PassiveItemType::PickupRange:
+		return "ui/game/lvup/icon_stat_pickup_range.png";
+	case DirectXGame::PassiveItemType::ExpGain:
+		return "ui/game/lvup/icon_stat_exp_gain.png";
+	case DirectXGame::PassiveItemType::CoinGain:
+		return "ui/game/lvup/icon_stat_coin_gain.png";
+	case DirectXGame::PassiveItemType::CritChance:
+		return "ui/game/lvup/icon_stat_crit_chance.png";
+	case DirectXGame::PassiveItemType::CritDamage:
+		return "ui/game/lvup/icon_stat_crit_damage.png";
+	case DirectXGame::PassiveItemType::Armor:
+		return "ui/game/lvup/icon_stat_armor.png";
+	case DirectXGame::PassiveItemType::Evasion:
+		return "ui/game/lvup/icon_stat_evasion.png";
+	case DirectXGame::PassiveItemType::HpRegen:
+		return "ui/game/lvup/icon_stat_hp_regen.png";
+	case DirectXGame::PassiveItemType::LifeSteal:
+		return "ui/game/lvup/icon_stat_lifesteal.png";
+	case DirectXGame::PassiveItemType::Knockback:
+		return "ui/game/lvup/icon_stat_knockback.png";
+	default:
+		return "ui/game/lvup/icon_stat_damage.png";
+	}
 }
 
 }
@@ -181,6 +226,13 @@ void PauseBuildHud::Initialize()
 		levelDigits_[index]->SetSize({ 18.0f, 24.0f });
 		levelDigits_[index]->SetTextureSize({ 24.0f, 32.0f });
 		levelDigits_[index]->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+	}
+	for (auto& subIcon : itemSubIcons_) {
+		subIcon = GameSpriteFactory::Create("ui/game/lvup/icon_stat_damage.png", {});
+		subIcon->SetTextureLeftTop({ 0.0f, 0.0f });
+		subIcon->SetTextureSize({ 512.0f, 512.0f });
+		subIcon->SetSize({ 18.0f, 18.0f });
+		subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 	}
 	for (size_t index = 0; index < statusTexts_.size(); ++index) {
 		statusTexts_[index].Initialize(
@@ -383,6 +435,11 @@ void PauseBuildHud::UpdateBuildIcons(
 			icon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 		}
 	}
+	for (auto& subIcon : itemSubIcons_) {
+		if (subIcon) {
+			subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		}
+	}
 	for (auto& digit : levelDigits_) {
 		if (digit) {
 			digit->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
@@ -405,12 +462,17 @@ void PauseBuildHud::UpdateBuildIcons(
 		const float pipSide = (std::min)(6.0f, (iconSize.x - 6.0f) / 4.0f);
 		const float pipGap = 2.0f;
 		const Vector2 pipSize{ pipSide, pipSide };
+		const int32_t visibleColumns = (std::min)(kPipsPerRow, clampedMax);
+		const float rowWidth =
+			pipSide * static_cast<float>(visibleColumns) +
+			pipGap * static_cast<float>((std::max)(0, visibleColumns - 1));
+		const float startX = iconPosition.x + (iconSize.x - rowWidth) * 0.5f;
 		for (int32_t pipIndex = 0; pipIndex < clampedMax; ++pipIndex) {
 			UIPanel& pip = levelPips_[base + static_cast<size_t>(pipIndex)];
 			const int32_t column = pipIndex % kPipsPerRow;
 			const int32_t row = pipIndex / kPipsPerRow;
 			pip.SetPosition({
-				iconPosition.x + (pipSide + pipGap) * static_cast<float>(column),
+				startX + (pipSide + pipGap) * static_cast<float>(column),
 				iconPosition.y + iconSize.y + 5.0f + (pipSide + pipGap) * static_cast<float>(row),
 				});
 			pip.SetSize(pipSize);
@@ -473,26 +535,44 @@ void PauseBuildHud::UpdateBuildIcons(
 		const PassiveItemType type = items[slot];
 		const int32_t level = playerManager.GetPassiveItemLevel(type);
 		auto& icon = icons_[iconIndex];
+		auto& subIcon = itemSubIcons_[slot];
 		if (displayedItemTypes_[slot] != type) {
 			const TextureHandle itemTexture =
 				GameTextureCache::Load("ui/game/lvup/icon_passive_scroll.png");
 			icon->SetTexture(GameTextureCache::GetPath(itemTexture));
 			ApplyIconTextureRegion(*icon, "ui/game/lvup/icon_passive_scroll.png");
+			if (subIcon) {
+				const TextureHandle subTexture =
+					GameTextureCache::Load(PassiveSubIconPath(type));
+				subIcon->SetTexture(GameTextureCache::GetPath(subTexture));
+				subIcon->SetTextureLeftTop({ 0.0f, 0.0f });
+				subIcon->SetTextureSize({ 512.0f, 512.0f });
+			}
 			displayedItemTypes_[slot] = type;
 		}
 		const Vector2 position{
 			layout_.position.x + static_cast<float>(slot) * 48.0f,
 			layout_.position.y + layout_.stepY,
 		};
+		const Vector2 iconSize{ 42.0f, 42.0f };
 		icon->SetPosition(position);
-		icon->SetSize({ 42.0f, 42.0f });
+		icon->SetSize(iconSize);
 		icon->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		if (subIcon) {
+			const Vector2 subSize{ 18.0f, 18.0f };
+			subIcon->SetPosition({
+				position.x + iconSize.x - subSize.x - 2.0f,
+				position.y + iconSize.y - subSize.y - 2.0f,
+				});
+			subIcon->SetSize(subSize);
+			subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
 		setLevelPips(
 			iconIndex,
 			level,
 			playerManager.GetPassiveItemMaxLevel(type),
 			position,
-			{ 42.0f, 42.0f },
+			iconSize,
 			1.0f);
 	}
 	(void)animationTime;
@@ -592,6 +672,12 @@ void PauseBuildHud::Draw()
 		if (icon) {
 			icon->Update();
 			icon->Draw();
+		}
+	}
+	for (auto& subIcon : itemSubIcons_) {
+		if (subIcon) {
+			subIcon->Update();
+			subIcon->Draw();
 		}
 	}
 	for (UIPanel& pip : levelPips_) {

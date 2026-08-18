@@ -28,6 +28,7 @@ void DebugHotReload::InitializeDefaultFiles()
 	}
 	initialized_ = true;
 	AddWatch("Debug tuning", DataPaths::kDebugTuning, DebugHotReloadCategory::Tuning);
+	AddWatch("Production tuning", DataPaths::kProductionTuning, DebugHotReloadCategory::Tuning);
 	AddWatch("Player status", DataPaths::kPlayerStatus, DebugHotReloadCategory::GameplayData);
 	AddWatch("Character stats", DataPaths::kCharacterStats, DebugHotReloadCategory::GameplayData);
 	AddWatch("Weapon upgrades", DataPaths::kWeaponUpgradeSettings, DebugHotReloadCategory::GameplayData);
@@ -119,7 +120,7 @@ DebugHotReloadRequest DebugHotReload::DrawPanel(bool* open)
 	ImGui::SetNextWindowPos(ImVec2(760.0f, 12.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(520.0f, 440.0f), ImGuiCond_FirstUseEver);
 	ImGui::Begin("調整・ホットリロード", open);
-	ImGui::Checkbox("Auto reload changed CSV", &autoReloadEnabled_);
+	ImGui::Checkbox("Auto reload changed tuning files", &autoReloadEnabled_);
 	ImGui::SameLine();
 	if (ImGui::Button("Check now")) {
 		Poll();

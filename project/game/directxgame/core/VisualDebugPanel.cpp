@@ -1,4 +1,5 @@
 #include "VisualDebugPanel.h"
+#include "DataPaths.h"
 #include "GameParticleEffects.h"
 #include "GameplayHudPresentation.h"
 #include "Player.h"
@@ -7,6 +8,7 @@
 #include "KeyUI.h"
 #include "MiniMap.h"
 #include "PauseBuildHud.h"
+#include "ProductionTuning.h"
 #include "Timer.h"
 #ifdef _DEBUG
 #include <imgui.h>
@@ -58,6 +60,12 @@ void DebugUI::Visual::Draw(
 				}
 			}
 		}
+		static ProductionTuning::NumberMap productionTuning =
+			ProductionTuning::LoadOrCreate(DataPaths::kProductionTuning);
+		ProductionTuning::DrawDebugUI(
+			productionTuning,
+			player,
+			particleEffects);
 		}
 		ImGui::End();
 	}

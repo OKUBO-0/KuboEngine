@@ -14,7 +14,7 @@ public:
 		float moveSpeedPerSecond,
 		float cameraYaw,
 		bool cameraRelativeMovement);
-	bool IsDodging() const { return false; }
+	bool IsDodging() const { return dodgeTimer_ > 0.0f; }
 	bool IsDashing() const { return dashing_; }
 	bool IsJumping() const { return jumpTimer_ > 0.0f; }
 	float GetDodgeCooldownRatio() const;

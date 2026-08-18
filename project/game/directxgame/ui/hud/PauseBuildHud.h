@@ -102,6 +102,7 @@ private:
 		kWeaponIconCount + kPassiveItemSlotCount;
 	static constexpr size_t kMaxLevelPipsPerIcon = 8;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kIconCount> icons_;
+	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPassiveItemSlotCount> itemSubIcons_;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kIconCount> levelDigits_;
 	std::array<UIPanel, kIconCount * kMaxLevelPipsPerIcon> levelPips_;
 	static constexpr size_t kStatusLineCount = 16;

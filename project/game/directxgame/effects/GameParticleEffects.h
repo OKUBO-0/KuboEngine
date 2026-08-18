@@ -142,6 +142,7 @@ public:
 	void ApplyTuning() const;
 
 	const Tuning& GetTuning() const { return tuning_; }
+	void SetTuning(const Tuning& tuning) { tuning_ = tuning; }
 	const Handles& GetHandles() const { return handles_; }
 	Engine::Particle::ParticleGroupHandle GetTrailBindingHandle(
 		const std::string& usageKey) const;

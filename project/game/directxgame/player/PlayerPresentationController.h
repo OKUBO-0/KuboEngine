@@ -69,6 +69,8 @@ private:
 	float deathStartCameraHeight_ = 80.0f;
 	float deathStartCameraDistance_ = 45.0f;
 	float deathStartCameraPitch_ = 1.0f;
+	Vector3 deathFocusPosition_{};
+	float deathFacingYaw_ = 0.0f;
 	float motionTime_ = 0.0f;
 	float moveBlend_ = 0.0f;
 };

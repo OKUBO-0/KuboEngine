@@ -32,6 +32,7 @@ private:
 
 	float entranceTimer_ = 0.0f;
 	float defeatTimer_ = 0.0f;
+	Vector3 entrancePlayerPosition_{};
 	Vector3 entranceFocusPosition_{};
 	Vector3 entranceStartBossPosition_{};
 	Vector3 entranceCurrentBossPosition_{};

@@ -16,9 +16,11 @@ enum class GameplayState {
 class GameplayFlowController final {
 public:
 	static constexpr float kIntroDuration = 4.8f;
+	static constexpr float kBossIntroDuration = 3.4f;
 
 	void Reset();
 	void UpdateIntro(float deltaTime);
+	void UpdateBossIntro(float deltaTime);
 	bool EnterPlaying();
 	bool BeginPause();
 	bool BeginBossIntro();
@@ -34,12 +36,14 @@ public:
 	bool IsCursorHidden() const;
 	bool IsIntroFinished() const { return introElapsed_ >= kIntroDuration; }
 	float GetIntroElapsed() const { return introElapsed_; }
+	float GetBossIntroElapsed() const { return bossIntroElapsed_; }
 	const char* GetStateName() const;
 
 private:
 	GameplayState state_ = GameplayState::Start;
 	GameplayState resumeState_ = GameplayState::Playing;
 	float introElapsed_ = 0.0f;
+	float bossIntroElapsed_ = 0.0f;
 };
 
 }

@@ -103,6 +103,50 @@ const char* HudWeaponIconPath(size_t index)
 	return paths[(std::min)(index, paths.size() - 1)];
 }
 
+const char* HudPassiveSubIconPath(DirectXGame::PassiveItemType type)
+{
+	switch (type) {
+	case DirectXGame::PassiveItemType::Damage:
+		return "ui/game/lvup/icon_stat_damage.png";
+	case DirectXGame::PassiveItemType::MaxHp:
+		return "ui/game/lvup/icon_stat_maxhp.png";
+	case DirectXGame::PassiveItemType::MoveSpeed:
+		return "ui/game/lvup/icon_stat_movespeed.png";
+	case DirectXGame::PassiveItemType::AttackSpeed:
+		return "ui/game/lvup/icon_stat_attackspeed.png";
+	case DirectXGame::PassiveItemType::Duration:
+		return "ui/game/lvup/icon_stat_duration.png";
+	case DirectXGame::PassiveItemType::AreaSize:
+		return "ui/game/lvup/icon_stat_area.png";
+	case DirectXGame::PassiveItemType::ProjectileSpeed:
+		return "ui/game/lvup/icon_stat_projectile_speed.png";
+	case DirectXGame::PassiveItemType::ProjectileCount:
+		return "ui/game/lvup/icon_stat_projectile_count.png";
+	case DirectXGame::PassiveItemType::PickupRange:
+		return "ui/game/lvup/icon_stat_pickup_range.png";
+	case DirectXGame::PassiveItemType::ExpGain:
+		return "ui/game/lvup/icon_stat_exp_gain.png";
+	case DirectXGame::PassiveItemType::CoinGain:
+		return "ui/game/lvup/icon_stat_coin_gain.png";
+	case DirectXGame::PassiveItemType::CritChance:
+		return "ui/game/lvup/icon_stat_crit_chance.png";
+	case DirectXGame::PassiveItemType::CritDamage:
+		return "ui/game/lvup/icon_stat_crit_damage.png";
+	case DirectXGame::PassiveItemType::Armor:
+		return "ui/game/lvup/icon_stat_armor.png";
+	case DirectXGame::PassiveItemType::Evasion:
+		return "ui/game/lvup/icon_stat_evasion.png";
+	case DirectXGame::PassiveItemType::HpRegen:
+		return "ui/game/lvup/icon_stat_hp_regen.png";
+	case DirectXGame::PassiveItemType::LifeSteal:
+		return "ui/game/lvup/icon_stat_lifesteal.png";
+	case DirectXGame::PassiveItemType::Knockback:
+		return "ui/game/lvup/icon_stat_knockback.png";
+	default:
+		return "ui/game/lvup/icon_stat_damage.png";
+	}
+}
+
 const char* DeathPromptText(DirectXGame::GameInputBindings::NavigationInputDevice device)
 {
 	return device == DirectXGame::GameInputBindings::NavigationInputDevice::Gamepad
@@ -226,6 +270,13 @@ void GameplayHudPresentation::Initialize(
 		buildIcons_[index]->SetTextureSize({ 512.0f, 512.0f });
 		buildIcons_[index]->SetSize({ 26.0f, 26.0f });
 		buildIcons_[index]->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+	}
+	for (auto& subIcon : buildItemSubIcons_) {
+		subIcon = GameSpriteFactory::Create("ui/game/lvup/icon_stat_damage.png", {});
+		subIcon->SetTextureLeftTop({ 0.0f, 0.0f });
+		subIcon->SetTextureSize({ 512.0f, 512.0f });
+		subIcon->SetSize({ 12.0f, 12.0f });
+		subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 	}
 	for (UIPanel& pip : buildLevelPips_) {
 		pip.Initialize();
@@ -379,8 +430,25 @@ void GameplayHudPresentation::Draw(
 		DrawDeathForeground(flow);
 	}
 	if (flow.Is(GameplayState::BossIntro)) {
-		introTopBar_.SetPosition({ 0.0f, 0.0f });
-		introBottomBar_.SetPosition({ 0.0f, 720.0f - kIntroBarHeight });
+		const float progress = Clamp01(
+			flow.GetBossIntroElapsed() /
+			GameplayFlowController::kBossIntroDuration);
+		const float enterProgress = Clamp01(progress / 0.16f);
+		const float exitProgress = Clamp01((progress - 0.78f) / 0.22f);
+		const float easedEnter = enterProgress * enterProgress *
+			(3.0f - 2.0f * enterProgress);
+		const float easedExit = exitProgress * exitProgress *
+			(3.0f - 2.0f * exitProgress);
+		introTopBar_.SetPosition({
+			0.0f,
+			-kIntroBarHeight + kIntroBarHeight * easedEnter -
+				kIntroBarHeight * easedExit,
+			});
+		introBottomBar_.SetPosition({
+			0.0f,
+			720.0f - kIntroBarHeight * easedEnter +
+				kIntroBarHeight * easedExit,
+			});
 		introTopBar_.Draw();
 		introBottomBar_.Draw();
 	}
@@ -483,6 +551,11 @@ void GameplayHudPresentation::UpdateBuildStrip(const PlayerManager* playerManage
 				icon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 			}
 		}
+		for (auto& subIcon : buildItemSubIcons_) {
+			if (subIcon) {
+				subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+			}
+		}
 		return;
 	}
 	const std::array<bool, kHudWeaponIconCount> acquired{
@@ -508,6 +581,11 @@ void GameplayHudPresentation::UpdateBuildStrip(const PlayerManager* playerManage
 			icon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
 		}
 	}
+	for (auto& subIcon : buildItemSubIcons_) {
+		if (subIcon) {
+			subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 0.0f });
+		}
+	}
 	auto setPips = [this](
 		size_t slot,
 		int32_t level,
@@ -520,12 +598,17 @@ void GameplayHudPresentation::UpdateBuildStrip(const PlayerManager* playerManage
 		constexpr int32_t kPipsPerRow = 4;
 		const float pipSize = (std::min)(5.0f, (size.x - 3.0f) / 4.0f);
 		const float gap = 1.0f;
+		const int32_t visibleColumns = (std::min)(kPipsPerRow, clampedMax);
+		const float rowWidth =
+			pipSize * static_cast<float>(visibleColumns) +
+			gap * static_cast<float>((std::max)(0, visibleColumns - 1));
+		const float startX = position.x + (size.x - rowWidth) * 0.5f;
 		for (int32_t index = 0; index < clampedMax; ++index) {
 			UIPanel& pip = buildLevelPips_[base + static_cast<size_t>(index)];
 			const int32_t column = index % kPipsPerRow;
 			const int32_t row = index / kPipsPerRow;
 			pip.SetPosition({
-				position.x + (pipSize + gap) * static_cast<float>(column),
+				startX + (pipSize + gap) * static_cast<float>(column),
 				position.y + size.y + 3.0f + (pipSize + gap) * static_cast<float>(row),
 				});
 			pip.SetSize({ pipSize, pipSize });
@@ -570,12 +653,20 @@ void GameplayHudPresentation::UpdateBuildStrip(const PlayerManager* playerManage
 			continue;
 		}
 		const PassiveItemType type = items[slot];
+		auto& subIcon = buildItemSubIcons_[slot];
 		if (displayedBuildItemTypes_[slot] != type) {
 			const TextureHandle texture =
 				GameTextureCache::Load("ui/game/lvup/icon_passive_scroll.png");
 			buildIcons_[iconIndex]->SetTexture(GameTextureCache::GetPath(texture));
 			buildIcons_[iconIndex]->SetTextureLeftTop({ 0.0f, 0.0f });
 			buildIcons_[iconIndex]->SetTextureSize({ 512.0f, 512.0f });
+			if (subIcon) {
+				const TextureHandle subTexture =
+					GameTextureCache::Load(HudPassiveSubIconPath(type));
+				subIcon->SetTexture(GameTextureCache::GetPath(subTexture));
+				subIcon->SetTextureLeftTop({ 0.0f, 0.0f });
+				subIcon->SetTextureSize({ 512.0f, 512.0f });
+			}
 			displayedBuildItemTypes_[slot] = type;
 		}
 		const Vector2 position{
@@ -585,6 +676,15 @@ void GameplayHudPresentation::UpdateBuildStrip(const PlayerManager* playerManage
 		buildIcons_[iconIndex]->SetPosition(position);
 		buildIcons_[iconIndex]->SetSize(iconSize);
 		buildIcons_[iconIndex]->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		if (subIcon) {
+			const Vector2 subSize{ 12.0f, 12.0f };
+			subIcon->SetPosition({
+				position.x + iconSize.x - subSize.x - 1.0f,
+				position.y + iconSize.y - subSize.y - 1.0f,
+				});
+			subIcon->SetSize(subSize);
+			subIcon->SetColor({ 1.0f, 1.0f, 1.0f, 1.0f });
+		}
 		setPips(
 			iconIndex,
 			playerManager->GetPassiveItemLevel(type),
@@ -620,6 +720,13 @@ void GameplayHudPresentation::DrawBuildStrip()
 		}
 		icon->Update();
 		icon->Draw();
+	}
+	for (const std::unique_ptr<Engine::Graphics2D::Sprite>& subIcon : buildItemSubIcons_) {
+		if (!subIcon) {
+			continue;
+		}
+		subIcon->Update();
+		subIcon->Draw();
 	}
 	for (UIPanel& pip : buildLevelPips_) {
 		pip.Draw();

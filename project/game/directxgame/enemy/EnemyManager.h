@@ -208,6 +208,7 @@ public:
 	/// @brief ボス演出用の表示位置を上書きする
 	/// @param position 設定する表示位置
 	void SetBossPresentationPosition(const Vector3& position);
+	void ClearBossPresentationPositionOverride();
 
 	/// @brief ボス死亡演出中の状態を更新する
 	/// @param elapsedTime 演出開始からの経過秒
@@ -220,6 +221,13 @@ public:
 	/// @return 未消費イベントがあった場合 true
 	bool ConsumeBossPhaseChanged(Vector3& outPosition, int32_t& outPhase);
 
+	void ReloadBossAttackTuning();
+#ifdef _DEBUG
+	void SaveBossAttackTuning() const;
+	void QueueDebugBossAttack(BossAttackType type);
+	void DrawBossAttackTuningDebugUI();
+#endif
+
 private:
 	// 通常敵・EXP・死亡爆発の更新順序を固定する内部ステップ。
 	void UpdateEnemies(float deltaTime);
@@ -231,6 +239,8 @@ private:
 	void ProcessBossAttackEvents();
 	void UpdateBossInkProjectiles(float deltaTime);
 	void SpawnBossInkWave(const Vector3& position, int32_t waveIndex);
+	void SpawnBossSummonProjectileBurst(const Vector3& position, int32_t burstIndex);
+	void EnsureBossSummonCrystals(const Vector3& targetPosition);
 	void DrawBossAttackTelegraph() const;
 	void UpdateBossAttackVisuals(float deltaTime);
 
@@ -238,9 +248,59 @@ private:
 		Vector3 center{};
 		float radius = 0.0f;
 		float delay = 0.0f;
+		float duration = 0.0f;
 		float elapsedTime = 0.0f;
 		int32_t damage = 0;
+		bool inward = false;
 		bool hitPlayer = false;
+	};
+
+	struct ActiveBossBeamExplosionDamage {
+		Vector3 center{};
+		float radius = 0.0f;
+		float delay = 0.0f;
+		float elapsedTime = 0.0f;
+		int32_t damage = 0;
+		bool resolved = false;
+	};
+
+	struct PendingBossSummonProjectileBurst {
+		Vector3 center{};
+		float delay = 0.0f;
+		float elapsedTime = 0.0f;
+		int32_t burstIndex = 0;
+	};
+
+	struct BossAttackTuning {
+		float beamExtraLength = 28.0f;
+		float beamMinLength = 62.0f;
+		float beamWidth = 3.1f;
+		float tripleBeamAngleOffset = 0.52f;
+		float beamExplosionSpacing = 7.0f;
+		float beamExplosionInterval = 0.08f;
+		float beamExplosionRadius = 3.2f;
+		float beamExplosionStartDelay = 0.22f;
+		float beamJumpSafeHeight = 1.15f;
+		float shockwaveJumpSafeHeight = 0.65f;
+		float shockwaveRadius = 135.0f;
+		float shockwaveDuration = 3.8f;
+		float summonShockwaveRadius = 155.0f;
+		float summonSubRadius = 120.0f;
+		float summonSubDelay = 0.45f;
+		float summonSubDamageScale = 0.66f;
+		float bulletHellProjectileSpeed = 12.8f;
+		float bulletHellProjectileLifetime = 6.8f;
+		float bulletHellProjectileRadius = 0.88f;
+		int32_t bulletHellProjectileCount = 32;
+		int32_t bulletHellExtraWaveCount = 4;
+		float bulletHellFirstDelay = 0.96f;
+		float bulletHellWaveInterval = 0.96f;
+		float bulletHellAngleStepDivisor = 64.0f;
+		int32_t convergingProjectileCount = 24;
+		float convergingSpawnRadius = 23.5f;
+		float convergingRingRadius = 58.0f;
+		float domeBurstRadius = 58.0f;
+		float domeBurstDamageScale = 1.5f;
 	};
 
 	// 敵とドロップの所有権。erase/remove 時に関連演出や統計もここで同期する。
@@ -257,9 +317,13 @@ private:
 	BossRushTelegraph bossRushTelegraph_{};
 	BossAreaTelegraph bossAreaTelegraph_{};
 	std::vector<std::unique_ptr<BossBeamBurst>> bossBeamBursts_;
+	std::vector<std::unique_ptr<BossBeamExplosionChain>> bossBeamExplosionChains_;
 	std::vector<std::unique_ptr<BossShockwaveRing>> bossShockwaveRings_;
+	std::vector<std::unique_ptr<BossDomeBurstVisual>> bossDomeBurstVisuals_;
 	std::vector<std::unique_ptr<BossSummonCrystal>> bossSummonCrystals_;
 	std::vector<std::unique_ptr<BossSlamCube>> bossSlamCubes_;
+	std::vector<PendingBossSummonProjectileBurst> pendingBossSummonProjectileBursts_;
+	std::vector<ActiveBossBeamExplosionDamage> bossBeamExplosionDamages_;
 	std::vector<ActiveBossShockwaveDamage> bossShockwaveDamageWaves_;
 	EnemySpawnController spawnController_{};
 
@@ -279,11 +343,14 @@ private:
 	AnimationLodStats animationLodStats_{};
 	RenderLodStats renderLodStats_{};
 	EnemyCollisionContext collisionContext_;
+	BossAttackTuning bossAttackTuning_{};
 
 	// ボス状態と乱数。bossEnemy_ は enemies_ 内要素への非所有参照。
 	Enemy* bossEnemy_ = nullptr;
 	bool bossPhase_ = false;
 	bool bossDefeated_ = false;
+	bool bossPresentationPositionOverrideActive_ = false;
+	Vector3 bossPresentationPositionOverride_{};
 	bool collisionTelemetryEnabled_ = false;
 	mutable std::mt19937 randomEngine_{ std::random_device{}() };
 };
