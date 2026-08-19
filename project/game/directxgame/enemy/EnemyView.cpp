@@ -370,8 +370,9 @@ void EnemyView::SetAnimationUpdateStride(uint32_t stride)
 
 void EnemyView::SetFrustumCullingEnabled(bool enabled)
 {
+	const bool objectCullingEnabled = enabled && !forceDisableFrustumCulling_;
 	if (object_) {
-		object_->SetFrustumCullingEnabled(enabled);
+		object_->SetFrustumCullingEnabled(objectCullingEnabled);
 	}
 	if (simplifiedObject_) {
 		simplifiedObject_->SetFrustumCullingEnabled(enabled);
@@ -392,6 +393,7 @@ void EnemyView::SetModelByType(int32_t type)
 	const char* modelName = "cube_world/zombie.glb";
 	modelVisualScaleMultiplier_ = 1.0f;
 	modelVerticalOffsetY_ = 0.0f;
+	forceDisableFrustumCulling_ = false;
 	switch (type) {
 	case static_cast<int32_t>(EnemyType::Standard):
 		modelName = "cube_world/zombie.glb";
@@ -412,14 +414,17 @@ void EnemyView::SetModelByType(int32_t type)
 	case static_cast<int32_t>(EnemyType::Heavy):
 		modelName = "cube_world/yeti.glb";
 		modelVisualScaleMultiplier_ = 2.35f;
+		forceDisableFrustumCulling_ = true;
 		break;
 	case static_cast<int32_t>(EnemyType::Gold):
 		modelName = "cube_world/giant.glb";
 		modelVisualScaleMultiplier_ = 2.6f;
+		forceDisableFrustumCulling_ = true;
 		break;
 	case static_cast<int32_t>(EnemyType::Boss):
 		modelName = "cube_world/demon.glb";
 		modelVisualScaleMultiplier_ = 4.15f;
+		forceDisableFrustumCulling_ = true;
 		break;
 	default: break;
 	}
@@ -435,6 +440,7 @@ void EnemyView::SetModelByType(int32_t type)
 		object_->SetEnvironmentReflectionStrength(0.0f);
 		object_->SetEnvironmentRoughness(1.0f);
 		object_->SetCastsShadow(true);
+		object_->SetFrustumCullingEnabled(!forceDisableFrustumCulling_);
 	}
 	if (simplifiedObject_) {
 		simplifiedObject_->SetColor(GetSimplifiedEnemyColor(enemyType_));

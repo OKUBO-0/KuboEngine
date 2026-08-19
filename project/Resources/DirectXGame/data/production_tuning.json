@@ -1,9 +1,9 @@
 {
-  "boss.beam.extraLength": 42.0000,
   "boss.beam.explosionInterval": 0.0700,
   "boss.beam.explosionRadius": 3.2000,
   "boss.beam.explosionSpacing": 9.5000,
   "boss.beam.explosionStartDelay": 0.3000,
+  "boss.beam.extraLength": 42.0000,
   "boss.beam.jumpSafeHeight": 1.1500,
   "boss.beam.minLength": 78.0000,
   "boss.beam.tripleAngleOffset": 0.5200,

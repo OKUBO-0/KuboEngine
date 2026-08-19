@@ -99,6 +99,7 @@ private:
 	bool simplifiedRenderEnabled_ = false;
 	bool usesOctopusGroundOffset_ = false;
 	bool floatingEnabled_ = false;
+	bool forceDisableFrustumCulling_ = false;
 };
 
 } // namespace DirectXGame

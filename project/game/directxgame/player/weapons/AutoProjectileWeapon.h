@@ -271,7 +271,7 @@ public:
 	BoneWeapon() : AutoProjectileWeapon({ WeaponType::Bone, "bone", 11.0f, 1.25f, 0.55f,
 		36.0f, 1.0f, 1, "bounceCount", 1,
 		NormalBullet::MovementMode::Straight, false, 0.075f,
-		{ "quaternius_weapons/bone.glb", { 1.0f, 0.96f, 0.82f, 1.0f }, { 210.0f, 210.0f, 210.0f }, { 0.0f, 1.57079633f, 0.0f }, 0.68f } }) {}
+		{ "quaternius_weapons/bone.glb", { 1.0f, 0.96f, 0.82f, 1.0f }, { 210.0f, 210.0f, 210.0f }, { 0.0f, 1.57079633f, 0.0f }, 0.68f, true } }) {}
 };
 
 class HandgunWeapon final : public AutoProjectileWeapon {
@@ -287,7 +287,7 @@ public:
 	BoomerangWeapon() : AutoProjectileWeapon({ WeaponType::Boomerang, "boomerang", 9.0f, 1.45f,
 		0.95f, 38.0f, 1.0f, 8, "maxHits", 0,
 		NormalBullet::MovementMode::ReturnToPlayer, false, 0.075f,
-		{ "quaternius_weapons/axe_small.glb", { 0.86f, 1.0f, 0.76f, 1.0f }, { 210.0f, 210.0f, 210.0f }, { 0.0f, 0.0f, 1.57079633f }, 0.72f, true } }) {}
+		{ "quaternius_weapons/axe_small.glb", { 0.86f, 1.0f, 0.76f, 1.0f }, { 210.0f, 210.0f, 210.0f }, { 0.0f, 0.0f, 0.0f }, 0.72f, true } }) {}
 };
 
 } // namespace DirectXGame

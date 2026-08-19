@@ -78,6 +78,9 @@ bool ShouldUseSimplifiedEnemyRender(
 	if (enemy.IsBoss() || enemy.IsDeathPresentationActive()) {
 		return false;
 	}
+	if (enemy.GetCollisionRadius() >= 1.9f) {
+		return false;
+	}
 	if (activeEnemyCount <= kEnemyFullModelBudget) {
 		return false;
 	}

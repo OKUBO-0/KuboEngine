@@ -106,7 +106,8 @@ void NormalBullet::Update(const Vector3& playerPosition, float deltaTime)
 	position_.x += direction_.x * distance;
 	position_.y += direction_.y * distance;
 	position_.z += direction_.z * distance;
-	if (movementMode_ == MovementMode::ReturnToPlayer) {
+	if (movementMode_ == MovementMode::ReturnToPlayer ||
+		visualStyle_.spinAroundY) {
 		spinAngle_ += 0.24f * (deltaTime / 0.016f);
 	}
 	traveled_ += distance;
@@ -195,7 +196,7 @@ void NormalBullet::ApplyTransform()
 	if (movementMode_ == MovementMode::ReturnToPlayer) {
 		if (visualStyle_.spinAroundY) {
 			object_->SetRotate({
-				visualStyle_.rotationOffset.x + spinAngle_ * 0.08f,
+				visualStyle_.rotationOffset.x,
 				rotationY_ + spinAngle_ + visualStyle_.rotationOffset.y,
 				visualStyle_.rotationOffset.z,
 				});
@@ -206,6 +207,12 @@ void NormalBullet::ApplyTransform()
 				spinAngle_ + visualStyle_.rotationOffset.z,
 				});
 		}
+	} else if (visualStyle_.spinAroundY) {
+		object_->SetRotate({
+			visualStyle_.rotationOffset.x,
+			rotationY_ + spinAngle_ + visualStyle_.rotationOffset.y,
+			visualStyle_.rotationOffset.z,
+			});
 	} else {
 		object_->SetRotate({
 			visualStyle_.rotationOffset.x,
