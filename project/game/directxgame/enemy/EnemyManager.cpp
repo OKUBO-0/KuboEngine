@@ -22,7 +22,9 @@ namespace DirectXGame {
 namespace {
 
 constexpr char kCoinGainSePath[] = "se/coin_gain.wav";
+constexpr char kPlayerDamageSePath[] = "se/player_damage.wav";
 constexpr char kAudioCoinGain[] = "combat.coinGain";
+constexpr char kAudioPlayerDamage[] = "combat.playerDamage";
 constexpr float kEnemyShadowLodDistanceSq = 42.0f * 42.0f;
 constexpr float kEnemyAnimationLodNearDistanceSq = 28.0f * 28.0f;
 constexpr float kEnemyAnimationLodMidDistanceSq = 52.0f * 52.0f;
@@ -44,6 +46,19 @@ BossAttackType BossAttackTypeFromIndex(int32_t index)
 	case 7: return BossAttackType::DomeBurst;
 	default: return BossAttackType::None;
 	}
+}
+
+void PlayPlayerDamageSound()
+{
+	static SoundHandle sharedPlayerDamageSeHandle{};
+	if (!sharedPlayerDamageSeHandle) {
+		sharedPlayerDamageSeHandle = GameAudioCache::LoadWave(kPlayerDamageSePath);
+	}
+	GameAudioCache::PlayTuned(
+		sharedPlayerDamageSeHandle,
+		kAudioPlayerDamage,
+		0.76f,
+		0.12f);
 }
 
 uint32_t ResolveEnemyAnimationStride(
@@ -1000,7 +1015,9 @@ void EnemyManager::UpdateDeathBombs(float deltaTime)
 			const float dx = playerPosition.x - position.x;
 			const float dz = playerPosition.z - position.z;
 			if (dx * dx + dz * dz <= radius * radius) {
-				playerManager_->TakeDamage(damage);
+				if (playerManager_->TakeDamage(damage)) {
+					PlayPlayerDamageSound();
+				}
 			}
 		}
 		recentExplosionEffectPositions_.push_back(position);
@@ -1026,7 +1043,9 @@ void EnemyManager::ProcessBossAttackEvents()
 			const float dx = playerPosition.x - center.x;
 			const float dz = playerPosition.z - center.z;
 			if (dx * dx + dz * dz <= radius * radius) {
-				playerManager_->TakeDamage(damage);
+				if (playerManager_->TakeDamage(damage)) {
+					PlayPlayerDamageSound();
+				}
 				recentExplosionEffectPositions_.push_back(center);
 			}
 		};
@@ -1304,7 +1323,9 @@ void EnemyManager::UpdateBossInkProjectiles(float deltaTime)
 					const int32_t damage = bossEnemy_
 						? (std::max)(1, bossEnemy_->GetAttackPower() * 2 / 3)
 						: 20;
-					playerManager_->TakeDamage(damage);
+					if (playerManager_->TakeDamage(damage)) {
+						PlayPlayerDamageSound();
+					}
 				}
 				projectile->Deactivate();
 			}
@@ -1448,7 +1469,9 @@ void EnemyManager::UpdateBossAttackVisuals(float deltaTime)
 			const float radius =
 				explosion.radius + player_->GetCollisionRadius();
 			if (dx * dx + dz * dz <= radius * radius) {
-				playerManager_->TakeDamage(explosion.damage);
+				if (playerManager_->TakeDamage(explosion.damage)) {
+					PlayPlayerDamageSound();
+				}
 				recentExplosionEffectPositions_.push_back(explosion.center);
 			}
 		}
@@ -1504,7 +1527,9 @@ void EnemyManager::UpdateBossAttackVisuals(float deltaTime)
 			const float halfWidth =
 				(wave.inward ? 3.4f : 4.5f) + player_->GetCollisionRadius();
 			if (std::abs(distance - currentRadius) <= halfWidth) {
-				playerManager_->TakeDamage(wave.damage);
+				if (playerManager_->TakeDamage(wave.damage)) {
+					PlayPlayerDamageSound();
+				}
 				recentExplosionEffectPositions_.push_back(playerPosition);
 				wave.hitPlayer = true;
 			}

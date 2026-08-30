@@ -139,13 +139,9 @@ private:
 	void DrawDebugUI();
 	void UpdateCoinDisplay();
 	void UpdatePermanentUpgradeDisplay();
-	void UpdateCharacterSelectionInput();
-	bool TryActivateCharacter(int32_t index);
-	void UpdateCharacterSelectionDisplay();
 	void UpdateStartCharacterSelectionDisplay();
 	void DrawCoinDisplay();
 	void DrawPermanentUpgradeDisplay();
-	void DrawCharacterSelectionDisplay();
 	void DrawStartCharacterSelectionDisplay();
 	void ApplyStartCharacterSelectionLayout();
 	void UpdateStartCharacterModel();
@@ -170,7 +166,6 @@ private:
 	static constexpr int32_t kPermanentUpgradeCount = 5;
 	static constexpr int32_t kShopMaxLevelSlots = 5;
 	static constexpr int32_t kPermanentUpgradeCostDigitCount = 4;
-	static constexpr int32_t kCharacterCount = 4;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kCoinDigitCount> coinDigits_;
 	std::array<UILabel, kPermanentUpgradeCount> permanentUpgradeIcons_;
 	std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCount> permanentUpgradeLevelDigits_;
@@ -180,15 +175,11 @@ private:
 	std::array<float, kPermanentUpgradeCount> permanentUpgradePurchaseFlashTimers_{};
 	std::array<std::array<UIPanel, kShopMaxLevelSlots>, kPermanentUpgradeCount> shopLevelSquares_;
 	std::array<UIPanel, kPermanentUpgradeCount> shopHighlights_;
-	std::array<UILabel, kCharacterCount> characterIcons_;
 	std::array<UILabel, 3> startCharacterIcons_;
 	std::array<UIPanel, 3> startCharacterHighlights_;
 	UILabel selectedCharacterFaceIcon_;
 	UILabel selectedWeaponIcon_;
 	UIPanel selectActionButton_;
-	std::array<
-		std::array<std::unique_ptr<Engine::Graphics2D::Sprite>, kPermanentUpgradeCostDigitCount>,
-		kCharacterCount> characterCostDigits_;
 	std::unique_ptr<CurtainTransition> curtain_;
 
 	std::unique_ptr<Engine::CameraSystem::Camera> titleCamera_;
@@ -220,7 +211,6 @@ private:
 	bool curtainOpening_ = true;
 	bool showingUpgradeScreen_ = false;
 	bool awaitingCharacterSelect_ = false;
-	bool shopCharacterSelectionActive_ = false;
 	bool finished_ = false;
 	float animationTime_ = 0.0f;
 	DirectXGame::GameInputBindings::NavigationInputDevice navigationInputDevice_ =

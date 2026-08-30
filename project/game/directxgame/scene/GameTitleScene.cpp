@@ -72,11 +72,6 @@ constexpr Vector2 kPermanentUpgradeCostDigitSize{ 15.0f, 20.0f };
 constexpr float kPermanentUpgradeCostDigitStepX = 14.0f;
 constexpr float kPermanentUpgradePurchaseFlashDuration = 0.42f;
 constexpr std::array<int32_t, 5> kShopLevelCaps{ 3, 5, 3, 3, 3 };
-constexpr Vector2 kCharacterIconBasePosition{ 1016.0f, 96.0f };
-constexpr Vector2 kCharacterIconSize{ 48.0f, 48.0f };
-constexpr Vector2 kCharacterRowHitboxSize{ 160.0f, 52.0f };
-constexpr float kCharacterIconStepY = 58.0f;
-constexpr Vector2 kCharacterCostOffset{ 58.0f, 15.0f };
 constexpr Vector2 kStartCharacterIconBasePosition{ 430.0f, 300.0f };
 constexpr Vector2 kStartCharacterIconSize{ 96.0f, 96.0f };
 constexpr Vector2 kStartCharacterHighlightPadding{ 10.0f, 10.0f };
@@ -233,15 +228,6 @@ Vector2 PermanentUpgradeIconPosition(int32_t index)
 		kPermanentUpgradeIconBasePosition.x,
 		kPermanentUpgradeIconBasePosition.y +
 			kPermanentUpgradeIconStepY * static_cast<float>(index),
-	};
-}
-
-Vector2 CharacterIconPosition(int32_t index)
-{
-	return {
-		kCharacterIconBasePosition.x,
-		kCharacterIconBasePosition.y +
-			kCharacterIconStepY * static_cast<float>(index),
 	};
 }
 
@@ -413,7 +399,6 @@ void TitleScene::Update()
 	UpdateModelAnimation();
 	UpdateCameraAnimation();
 	UpdateCoinDisplay();
-	UpdateCharacterSelectionDisplay();
 	UpdateStartCharacterSelectionDisplay();
 	UpdateShopLevelDisplay();
 
@@ -530,7 +515,6 @@ void TitleScene::Draw()
 	}
 	if (showingUpgradeScreen_) {
 		DrawShopDisplay();
-		DrawCharacterSelectionDisplay();
 	}
 	if (curtain_) {
 		curtain_->Draw();
@@ -715,24 +699,6 @@ void TitleScene::InitializeResources()
 				});
 			permanentUpgradeCostDigits_[index][digitIndex]->SetSize(kPermanentUpgradeCostDigitSize);
 			permanentUpgradeCostDigits_[index][digitIndex]->SetTextureSize({ 24.0f, 32.0f });
-		}
-	}
-	for (int32_t index = 0; index < kCharacterCount; ++index) {
-		const Vector2 iconPosition = CharacterIconPosition(index);
-		characterIcons_[index].Initialize(
-			kCharacterUiDefinitions[static_cast<size_t>(index)].iconPath,
-			iconPosition);
-		characterIcons_[index].SetSize(kCharacterIconSize);
-		for (int32_t digitIndex = 0; digitIndex < kPermanentUpgradeCostDigitCount; ++digitIndex) {
-			characterCostDigits_[index][digitIndex] = GameSpriteFactory::Create(
-				coinDigitTexture_,
-				{
-					iconPosition.x + kCharacterCostOffset.x +
-						kPermanentUpgradeCostDigitStepX * static_cast<float>(digitIndex),
-					iconPosition.y + kCharacterCostOffset.y,
-				});
-			characterCostDigits_[index][digitIndex]->SetSize(kPermanentUpgradeCostDigitSize);
-			characterCostDigits_[index][digitIndex]->SetTextureSize({ 24.0f, 32.0f });
 		}
 	}
 	for (int32_t index = 0; index < 3; ++index) {
@@ -932,7 +898,6 @@ void TitleScene::UpdateNavigation()
 	if (input->TriggerKey(kOpenCharacterSelectKey)) {
 		awaitingCharacterSelect_ = true;
 		showingUpgradeScreen_ = false;
-		shopCharacterSelectionActive_ = false;
 		characterItemIndex_ = StartCharacterIndexFromId(CharacterId::Bow);
 		startCharacterSelectedIndex_ = characterItemIndex_;
 		startCharacterInputDelayFrames_ = 1;
@@ -1059,9 +1024,7 @@ void TitleScene::UpdatePermanentUpgradeInput()
 				mousePosition,
 				layoutSettings_.shopItemPositions[static_cast<size_t>(index)],
 				layoutSettings_.shopItemHitboxSize)) {
-				selectionChanged =
-					shopCharacterSelectionActive_ || shopItemIndex_ != index;
-				shopCharacterSelectionActive_ = false;
+				selectionChanged = shopItemIndex_ != index;
 				shopItemIndex_ = index;
 				if (mouseConfirm) {
 					handledMouseConfirm = true;
@@ -1070,66 +1033,21 @@ void TitleScene::UpdatePermanentUpgradeInput()
 				break;
 			}
 		}
-		for (int32_t index = 0; index < kCharacterCount; ++index) {
-			if (IsPointInRect(
-				mousePosition,
-				CharacterIconPosition(index),
-				kCharacterRowHitboxSize)) {
-				selectionChanged =
-					!shopCharacterSelectionActive_ || characterItemIndex_ != index;
-				shopCharacterSelectionActive_ = true;
-				characterItemIndex_ = index;
-				if (mouseConfirm) {
-					handledMouseConfirm = true;
-					TryActivateCharacter(characterItemIndex_);
-				}
-				break;
-			}
-		}
 	}
 
 	if (menuInput.device != GameInputBindings::NavigationInputDevice::Mouse) {
-		if (GameInputBindings::IsMenuUpTriggered(input) ||
-			GameInputBindings::IsMenuDownTriggered(input)) {
-			shopCharacterSelectionActive_ = !shopCharacterSelectionActive_;
-			if (shopCharacterSelectionActive_) {
-				characterItemIndex_ = std::clamp(
-					characterItemIndex_,
-					0,
-					kCharacterCount - 1);
-			} else {
-				shopItemIndex_ = std::clamp(
-					shopItemIndex_,
-					0,
-					kPermanentUpgradeCount - 1);
-			}
-			selectionChanged = true;
-		}
 		if (GameInputBindings::IsMenuLeftTriggered(input)) {
-			if (shopCharacterSelectionActive_) {
-				characterItemIndex_ =
-					(characterItemIndex_ + kCharacterCount - 1) % kCharacterCount;
-			} else {
-				shopItemIndex_ =
-					(shopItemIndex_ + kPermanentUpgradeCount - 1) %
-					kPermanentUpgradeCount;
-			}
+			shopItemIndex_ =
+				(shopItemIndex_ + kPermanentUpgradeCount - 1) %
+				kPermanentUpgradeCount;
 			selectionChanged = true;
 		}
 		if (GameInputBindings::IsMenuRightTriggered(input)) {
-			if (shopCharacterSelectionActive_) {
-				characterItemIndex_ = (characterItemIndex_ + 1) % kCharacterCount;
-			} else {
-				shopItemIndex_ = (shopItemIndex_ + 1) % kPermanentUpgradeCount;
-			}
+			shopItemIndex_ = (shopItemIndex_ + 1) % kPermanentUpgradeCount;
 			selectionChanged = true;
 		}
 		if (menuInput.confirm) {
-			if (shopCharacterSelectionActive_) {
-				TryActivateCharacter(characterItemIndex_);
-			} else {
-				TryPurchasePermanentUpgrade(shopItemIndex_);
-			}
+			TryPurchasePermanentUpgrade(shopItemIndex_);
 		}
 	}
 
@@ -1319,60 +1237,6 @@ bool TitleScene::TryPurchasePermanentUpgrade(int32_t index)
 	return purchased;
 }
 
-void TitleScene::UpdateCharacterSelectionInput()
-{
-	if (!sessionContext_ || curtainStarted_) {
-		return;
-	}
-
-	Engine::InputSystem::Input* input = Engine::InputSystem::Input::GetInstance();
-	if (!input || !ScreenUtil::IsInsideDebugSceneViewport(input->GetMousePos())) {
-		return;
-	}
-	if (navigationInputDevice_ != GameInputBindings::NavigationInputDevice::Mouse) {
-		return;
-	}
-
-	const Vector2 mousePosition = ScreenUtil::ToGamePosition(input->GetMousePos());
-	const bool mouseConfirm =
-		GameInputBindings::IsMouseConfirmTriggered(input);
-	for (int32_t index = 0; index < kCharacterCount; ++index) {
-		if (IsPointInRect(
-			mousePosition,
-			CharacterIconPosition(index),
-			kCharacterRowHitboxSize)) {
-			if (!shopCharacterSelectionActive_ || characterItemIndex_ != index) {
-				shopCharacterSelectionActive_ = true;
-				characterItemIndex_ = index;
-				if (selectSeHandle_) {
-					GameAudioCache::PlayTuned(selectSeHandle_, kAudioUiSelect, 0.55f, 0.04f);
-				}
-			}
-			if (mouseConfirm) {
-				TryActivateCharacter(characterItemIndex_);
-			}
-			break;
-		}
-	}
-}
-
-bool TitleScene::TryActivateCharacter(int32_t index)
-{
-	if (!sessionContext_ || index < 0 || index >= kCharacterCount) {
-		return false;
-	}
-
-	const CharacterId id =
-		kCharacterUiDefinitions[static_cast<size_t>(index)].id;
-	const bool changed = sessionContext_->IsCharacterUnlocked(id)
-		? sessionContext_->TrySelectCharacter(id)
-		: sessionContext_->TryUnlockCharacter(id);
-	if (changed && decideSeHandle_) {
-		GameAudioCache::PlayTuned(decideSeHandle_, kAudioUiDecide, 0.72f);
-	}
-	return changed;
-}
-
 void TitleScene::UpdateAudio()
 {
 	if (!titleBgmHandle_) {
@@ -1553,70 +1417,6 @@ void TitleScene::UpdatePermanentUpgradeDisplay()
 	}
 }
 
-void TitleScene::UpdateCharacterSelectionDisplay()
-{
-	const CharacterId selectedId = sessionContext_
-		? sessionContext_->GetSelectedCharacterId()
-		: CharacterId::Default;
-	const int32_t ownedCoins = sessionContext_ ? sessionContext_->GetOwnedCoins() : 0;
-
-	for (int32_t index = 0; index < kCharacterCount; ++index) {
-		const CharacterId id =
-			kCharacterUiDefinitions[static_cast<size_t>(index)].id;
-		const bool unlocked = sessionContext_ ? sessionContext_->IsCharacterUnlocked(id) : id == CharacterId::Default;
-		const bool selected = unlocked && id == selectedId;
-		const bool focused =
-			shopCharacterSelectionActive_ && index == characterItemIndex_;
-		const int32_t unlockCost = sessionContext_ ? sessionContext_->GetCharacterUnlockCost(id) : 0;
-		const bool affordable = !unlocked && ownedCoins >= unlockCost;
-		const Vector4 iconColor = selected
-			? Vector4{ 1.0f, 1.0f, 1.0f, 1.0f }
-			: (focused
-				? Vector4{ 1.0f, 0.88f, 0.12f, 0.95f }
-				: (unlocked
-				? Vector4{ 0.45f, 0.78f, 1.0f, 0.9f }
-				: (affordable
-					? Vector4{ 1.0f, 0.86f, 0.32f, 0.78f }
-					: Vector4{ 0.36f, 0.36f, 0.36f, 0.62f })));
-		characterIcons_[index].SetColor(iconColor);
-
-		const Vector2 iconPosition = CharacterIconPosition(index);
-		const int32_t displayCost = unlocked ? 0 : std::clamp(unlockCost, 0, 9999);
-		int32_t divisor = 1000;
-		bool nonZeroSeen = false;
-		for (int32_t digitIndex = 0; digitIndex < kPermanentUpgradeCostDigitCount; ++digitIndex) {
-			std::unique_ptr<Engine::Graphics2D::Sprite>& digit =
-				characterCostDigits_[index][digitIndex];
-			if (!digit) {
-				divisor /= 10;
-				continue;
-			}
-			const int32_t digitValue = divisor > 0 ? (displayCost / divisor) % 10 : 0;
-			nonZeroSeen = nonZeroSeen ||
-				digitValue > 0 ||
-				digitIndex == kPermanentUpgradeCostDigitCount - 1;
-			DigitSpriteUtil::SetDigitSprite(
-				*digit,
-				24.0f,
-				{ 24.0f, 32.0f },
-				digitValue);
-			digit->SetPosition({
-				iconPosition.x + kCharacterCostOffset.x +
-					kPermanentUpgradeCostDigitStepX * static_cast<float>(digitIndex),
-				iconPosition.y + kCharacterCostOffset.y,
-				});
-			digit->SetSize(kPermanentUpgradeCostDigitSize);
-			digit->SetColor({
-				affordable ? 1.0f : 0.7f,
-				affordable ? 0.86f : 0.35f,
-				affordable ? 0.22f : 0.35f,
-				unlocked ? 0.0f : (nonZeroSeen ? 0.95f : 0.0f),
-				});
-			divisor /= 10;
-		}
-	}
-}
-
 void TitleScene::UpdateStartCharacterSelectionDisplay()
 {
 	if (awaitingCharacterSelect_) {
@@ -1688,22 +1488,6 @@ void TitleScene::DrawPermanentUpgradeDisplay()
 		digit->Draw();
 	}
 	for (const auto& costDigits : permanentUpgradeCostDigits_) {
-		for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : costDigits) {
-			if (!digit) {
-				continue;
-			}
-			digit->Update();
-			digit->Draw();
-		}
-	}
-}
-
-void TitleScene::DrawCharacterSelectionDisplay()
-{
-	for (UILabel& icon : characterIcons_) {
-		icon.Draw();
-	}
-	for (const auto& costDigits : characterCostDigits_) {
 		for (const std::unique_ptr<Engine::Graphics2D::Sprite>& digit : costDigits) {
 			if (!digit) {
 				continue;
@@ -1912,7 +1696,7 @@ void TitleScene::UpdateShopLevelDisplay()
 		UIPanel& highlight = shopHighlights_[static_cast<size_t>(itemIndex)];
 		highlight.SetPosition(itemPosition);
 		highlight.SetSize(layoutSettings_.shopItemHitboxSize);
-		highlight.SetColor(!shopCharacterSelectionActive_ && itemIndex == shopItemIndex_
+		highlight.SetColor(itemIndex == shopItemIndex_
 			? Vector4{ 1.0f, 0.88f, 0.12f, 0.22f }
 			: Vector4{ 0.0f, 0.0f, 0.0f, 0.0f });
 		for (int32_t levelIndex = 0; levelIndex < kShopMaxLevelSlots; ++levelIndex) {
