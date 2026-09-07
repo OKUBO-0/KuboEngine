@@ -12,13 +12,13 @@ SkyBoxCommon* SkyBoxCommon::GetInstance()
 	return &instance;
 }
 
-void SkyBoxCommon::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager) {
+void SkyBoxCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager) {
 
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
 
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
-	graphicsPipeline_->Initialize(dxCommon_);
+	graphicsPipeline_->Initialize(dxCommon);
 	graphicsPipeline_->CreateSkybox();
 
 }
@@ -27,18 +27,24 @@ void SkyBoxCommon::Finalize()
 {
 
 	graphicsPipeline_.reset();
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
 	srvManager_ = nullptr;
 
 }
 
 void SkyBoxCommon::commonDraw()
 {
+	const auto dxCommon = dxCommon_.lock();
+	if (!dxCommon) {
+		return;
+	}
 
 	//RootSignatureを設定。POSに設定しているけどベット設定が必要
-	dxCommon_->GetCommandList()->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureSkybox());
-	dxCommon_->GetCommandList()->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateSkybox());
-	dxCommon_->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	const auto rootSignature = graphicsPipeline_->GetRootSignatureSkyboxHandle();
+	const auto pipelineState = graphicsPipeline_->GetGraphicsPipelineStateSkyboxHandle();
+	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
+	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
+	dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 }
 

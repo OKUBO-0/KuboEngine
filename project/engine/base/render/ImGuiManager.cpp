@@ -1,5 +1,6 @@
 #include "ImGuiManager.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "DebugEditorManager.h"
 #include "ImGuizmoManager.h"
 #include "OffscreenRenderManager.h"
@@ -11,6 +12,7 @@
 #include <imgui_impl_dx12.h>
 #include <implot.h>
 #include <imgui_node_editor.h>
+#include <filesystem>
 
 namespace Engine::Base {
 
@@ -54,17 +56,29 @@ void ImGuiManager::FreeSrvDescriptor(
 	manager->freeSrvDescriptorIndices_.push_back(index);
 }
 
-void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* winApp)
+std::shared_ptr<DirectXCommon> ImGuiManager::GetDirectXCommon() const
+{
+	auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	return dxCommon;
+}
+
+void ImGuiManager::Initialize(std::shared_ptr<DirectXCommon> dxCommon, Engine::Base::WinApp* winApp)
 {
 #ifdef _DEBUG
 
+	assert(dxCommon);
 	dxCommon_ = dxCommon;
 	winApp_ = winApp;
 
 	//imguiのコンテキストを生成
 	ImGui::CreateContext();
 	imPlotContext_ = ImPlot::CreateContext();
-	nodeEditorContext_ = ax::NodeEditor::CreateEditor();
+	ax::NodeEditor::Config nodeEditorConfig{};
+	// This editor is a runtime debug preview. Persisted camera values can become
+	// invalid and make NodeEditor::End iterate over an enormous canvas.
+	nodeEditorConfig.SettingsFile = nullptr;
+	nodeEditorContext_ = ax::NodeEditor::CreateEditor(&nodeEditorConfig);
 	ax::NodeEditor::SetCurrentEditor(nodeEditorContext_);
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -121,18 +135,22 @@ void ImGuiManager::Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* win
 	desc.NumDescriptors = kImGuiSrvDescriptorCount;
 	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	//デスクリプターフープ生成
-	HRESULT hr = dxCommon_->GetDevice()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&srvHeap_));
-	assert(SUCCEEDED(hr));
+	HRESULT hr = GetDirectXCommon()->GetDevice()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&srvHeap_));
+	ThrowIfFailed(
+		hr,
+		"ID3D12Device::CreateDescriptorHeap ImGui");
 
-	srvDescriptorSize_ = dxCommon_->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	srvDescriptorSize_ = GetDirectXCommon()->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	nextSrvDescriptorIndex_ = kImGuiFirstDynamicSrvIndex;
 	freeSrvDescriptorIndices_.clear();
+	// ウィンドウ名やDock構成の更新を確実に反映する。
+	// ユーザーによるリサイズはDock比率を保ったままImGui側で追従する。
 	defaultDockLayoutBuilt_ = false;
 
 	ImGui_ImplDX12_InitInfo initInfo{};
-	initInfo.Device = dxCommon_->GetDevice();
-	initInfo.CommandQueue = dxCommon_->GetCommandQueue();
-	initInfo.NumFramesInFlight = static_cast<int>(dxCommon_->GetBackBufferCount());
+	initInfo.Device = GetDirectXCommon()->GetDevice();
+	initInfo.CommandQueue = GetDirectXCommon()->GetCommandQueue();
+	initInfo.NumFramesInFlight = static_cast<int>(GetDirectXCommon()->GetBackBufferCount());
 	initInfo.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 	initInfo.DSVFormat = DXGI_FORMAT_UNKNOWN;
 	initInfo.SrvDescriptorHeap = srvHeap_.Get();
@@ -166,6 +184,8 @@ void ImGuiManager::Finalize()
 	ImGui::DestroyContext();
 
 	srvHeap_.Reset();
+	dxCommon_.reset();
+	winApp_ = nullptr;
 #endif // _DEBUG
 
 
@@ -209,7 +229,7 @@ void ImGuiManager::Draw()
 {
 #ifdef _DEBUG
 
-	ID3D12GraphicsCommandList* commandList = dxCommon_->GetCommandList();
+	ID3D12GraphicsCommandList* commandList = GetDirectXCommon()->GetCommandList();
 
 	//デスクリプタヒープの配列をセットする
 	ID3D12DescriptorHeap* ppHeaps[] = { srvHeap_.Get() };

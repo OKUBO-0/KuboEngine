@@ -2,6 +2,7 @@
 #include "MyMath.h"
 #include <algorithm>
 #include <cmath>
+#include <DirectXMath.h>
 #include <imgui.h>
 #include <numbers>
 
@@ -164,9 +165,12 @@ Vector3 MyMath::Transform(const Vector3& vector, const Matrix4x4& matrix)
 
 Vector3 MyMath::Normalize(const Vector3& vector)
 {
-
-	float length = std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
-	return Vector3(vector.x / length, vector.y / length, vector.z / length);
+	const DirectX::XMVECTOR source =
+		DirectX::XMVectorSet(vector.x, vector.y, vector.z, 0.0f);
+	const DirectX::XMVECTOR normalized = DirectX::XMVector3Normalize(source);
+	DirectX::XMFLOAT3 result{};
+	DirectX::XMStoreFloat3(&result, normalized);
+	return Vector3(result.x, result.y, result.z);
 }
 
 //Add
@@ -179,11 +183,12 @@ Vector3 MyMath::Add(const Vector3& v1, const Vector3& v2) {
 
 Vector3 MyMath::Cross(const Vector3& v1, const Vector3& v2)
 {
-	Vector3 ans;
-	ans.x = v1.y * v2.z - v1.z * v2.y;
-	ans.y = v1.z * v2.x - v1.x * v2.z;
-	ans.z = v1.x * v2.y - v1.y * v2.x;
-	return ans;
+	const DirectX::XMVECTOR lhs = DirectX::XMVectorSet(v1.x, v1.y, v1.z, 0.0f);
+	const DirectX::XMVECTOR rhs = DirectX::XMVectorSet(v2.x, v2.y, v2.z, 0.0f);
+	const DirectX::XMVECTOR crossed = DirectX::XMVector3Cross(lhs, rhs);
+	DirectX::XMFLOAT3 result{};
+	DirectX::XMStoreFloat3(&result, crossed);
+	return Vector3(result.x, result.y, result.z);
 
 
 }
@@ -302,8 +307,9 @@ float MyMath::Cot(float theta)
 
 float MyMath::Dot(const Vector3& v1, const Vector3& v2)
 {
-
-	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+	const DirectX::XMVECTOR lhs = DirectX::XMVectorSet(v1.x, v1.y, v1.z, 0.0f);
+	const DirectX::XMVECTOR rhs = DirectX::XMVectorSet(v2.x, v2.y, v2.z, 0.0f);
+	return DirectX::XMVectorGetX(DirectX::XMVector3Dot(lhs, rhs));
 }
 
 float MyMath::Dot(const Vector3& v1, float num)
@@ -320,10 +326,8 @@ float MyMath::Dot(const Quaternion& q1, const Quaternion& q2)
 
 float MyMath::Length(const Vector3& v)
 {
-	float ans;
-
-	ans = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
-	return ans;
+	const DirectX::XMVECTOR source = DirectX::XMVectorSet(v.x, v.y, v.z, 0.0f);
+	return DirectX::XMVectorGetX(DirectX::XMVector3Length(source));
 }
 
 

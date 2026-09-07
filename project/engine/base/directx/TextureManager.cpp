@@ -1,11 +1,16 @@
 #include "TextureManager.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "SrvManager.h"
 #include "StringUtility.h"
 #include <Windows.h>
 #include <array>
+#include <cassert>
+#include <cstring>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
+#include <unordered_set>
 
 namespace Engine::Base {
 
@@ -55,6 +60,12 @@ std::string ResolveTexturePath(const std::string& filePath)
 	return requestedPath.generic_string();
 }
 
+bool IsUiTexture(const std::string& filePath)
+{
+	const std::string normalized = std::filesystem::path(filePath).generic_string();
+	return normalized.find("/ui/") != std::string::npos;
+}
+
 }
 
 TextureManager* TextureManager::GetInstance()
@@ -65,25 +76,35 @@ TextureManager* TextureManager::GetInstance()
 
 void TextureManager::Finalize()
 {
+	if (srvManager_) {
+		for (const auto& [path, textureData] : textureDatas) {
+			static_cast<void>(path);
+			if (const auto dxCommon = dxCommon_.lock(); dxCommon && textureData.resource) {
+				dxCommon->UntrackResourceState(textureData.resource.Get());
+			}
+			if (textureData.srvIndex != UINT32_MAX) {
+				srvManager_->Free(textureData.srvIndex);
+			}
+		}
+	}
 	textureDatas.clear();
-	dxCommon_ = nullptr;
+	dxCommon_.reset();
 	srvManager_ = nullptr;
 
 }
 
-void TextureManager::Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager)
+void TextureManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
+	assert(dxCommon);
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
-	textureDatas.reserve(Engine::Base::DirectXCommon::kMaxSRVCount);
+	textureDatas.reserve(srvManager_->GetMaxCount());
 
 }
 
 const DirectX::TexMetadata& TextureManager::GetMetaData(const std::string& filepath)
 {
-	assert(textureDatas.size() + kSRVIndexTop < Engine::Base::DirectXCommon::kMaxSRVCount);
-	TexturData& textureData = textureDatas[filepath];
-	return textureData.metadata;
+	return GetLoadedTexture(filepath).metadata;
 }
 
 //Imgui で０番を使用するため１番から使用
@@ -94,11 +115,118 @@ void TextureManager::LoadTexture(const std::string& filePath)
 		return;//読み込み済みなら早期return
 	}
 
-	assert(srvManager_->CheckTexturesNumber());
 	DirectX::ScratchImage image = LoadTextureImage(filePath);
-	DirectX::ScratchImage mipImages = CreateMipImages(std::move(image));
-	TexturData& textureData = textureDatas[filePath];
+	DirectX::ScratchImage mipImages =
+		IsUiTexture(filePath) ? std::move(image) : CreateMipImages(std::move(image));
+	TexturData textureData{};
 	UploadTextureResource(textureData, mipImages);
+	textureDatas.emplace(filePath, std::move(textureData));
+}
+
+void TextureManager::LoadTextureFromMemory(
+	const std::string& key,
+	const void* data,
+	size_t size,
+	bool generateMipMaps)
+{
+	if (textureDatas.contains(key)) {
+		return;
+	}
+	if (!data || size == 0) {
+		throw std::invalid_argument("TextureManager embedded texture memory is empty: " + key);
+	}
+
+	DirectX::ScratchImage image = LoadTextureImageFromMemory(data, size);
+	DirectX::ScratchImage mipImages =
+		generateMipMaps ? CreateMipImages(std::move(image)) : std::move(image);
+	TexturData textureData{};
+	UploadTextureResource(textureData, mipImages);
+	textureDatas.emplace(key, std::move(textureData));
+}
+
+void TextureManager::LoadTextureFromRGBA(
+	const std::string& key,
+	uint32_t width,
+	uint32_t height,
+	const void* rgbaData,
+	size_t rowPitch,
+	bool generateMipMaps)
+{
+	if (textureDatas.contains(key)) {
+		return;
+	}
+	if (!rgbaData || width == 0 || height == 0 || rowPitch < width * 4ull) {
+		throw std::invalid_argument("TextureManager RGBA texture data is invalid: " + key);
+	}
+
+	DirectX::ScratchImage image = CreateRgbaImage(width, height, rgbaData, rowPitch);
+	DirectX::ScratchImage mipImages =
+		generateMipMaps ? CreateMipImages(std::move(image)) : std::move(image);
+	TexturData textureData{};
+	UploadTextureResource(textureData, mipImages);
+	textureDatas.emplace(key, std::move(textureData));
+}
+
+void TextureManager::LoadTextures(const std::vector<std::string>& filePaths)
+{
+	std::vector<std::string> pendingPaths;
+	pendingPaths.reserve(filePaths.size());
+	std::unordered_set<std::string> seenPaths;
+	for (const std::string& filePath : filePaths) {
+		if (!textureDatas.contains(filePath) && seenPaths.insert(filePath).second) {
+			pendingPaths.push_back(filePath);
+		}
+	}
+	if (pendingPaths.empty()) {
+		return;
+	}
+
+	if (pendingPaths.size() > srvManager_->GetRemainingCount()) {
+		throw std::runtime_error(
+			"TextureManager batch exceeds remaining SRV descriptor capacity");
+	}
+
+	std::vector<DirectX::ScratchImage> mipImageBatch;
+	mipImageBatch.reserve(pendingPaths.size());
+	for (const std::string& filePath : pendingPaths) {
+		DirectX::ScratchImage image = LoadTextureImage(filePath);
+		mipImageBatch.push_back(
+			IsUiTexture(filePath)
+			? std::move(image)
+			: CreateMipImages(std::move(image)));
+	}
+
+	std::vector<TexturData> textureDataBatch(pendingPaths.size());
+	std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> intermediateResources;
+	intermediateResources.reserve(pendingPaths.size());
+	for (size_t index = 0; index < pendingPaths.size(); ++index) {
+		intermediateResources.push_back(RecordTextureUpload(
+			textureDataBatch[index],
+			mipImageBatch[index]));
+	}
+
+	GetDirectXCommon()->CommandKick();
+	try {
+		for (TexturData& textureData : textureDataBatch) {
+			CreateTextureSrv(textureData);
+		}
+	} catch (...) {
+		for (const TexturData& textureData : textureDataBatch) {
+			if (textureData.resource) {
+				GetDirectXCommon()->UntrackResourceState(textureData.resource.Get());
+			}
+			if (textureData.srvIndex != UINT32_MAX) {
+				srvManager_->Free(textureData.srvIndex);
+			}
+		}
+		throw;
+	}
+
+	for (size_t index = 0; index < pendingPaths.size(); ++index) {
+		textureDatas.emplace(
+			pendingPaths[index],
+			std::move(textureDataBatch[index]));
+	}
 }
 
 DirectX::ScratchImage TextureManager::LoadTextureImage(const std::string& filePath)
@@ -112,15 +240,54 @@ DirectX::ScratchImage TextureManager::LoadTextureImage(const std::string& filePa
 	} else {
 		hr = DirectX::LoadFromWICFile(filePathW.c_str(), DirectX::WIC_FLAGS_FORCE_SRGB, nullptr, image);
 	}
-	if (FAILED(hr)) {
-		std::ostringstream message;
-		message << "[TextureManager::LoadTextureImage] failed to load texture"
-			<< " requestedPath=\"" << filePath << "\""
-			<< " resolvedPath=\"" << resolvedPath << "\""
-			<< " HRESULT=0x" << std::hex << static_cast<unsigned long>(hr) << "\n";
-		OutputDebugStringA(message.str().c_str());
+	std::ostringstream operation;
+	operation << "TextureManager::LoadTextureImage"
+		<< " requestedPath=\"" << filePath << "\""
+		<< " resolvedPath=\"" << resolvedPath << '"';
+	ThrowIfFailed(hr, operation.str().c_str());
+	return image;
+}
+
+DirectX::ScratchImage TextureManager::LoadTextureImageFromMemory(const void* data, size_t size)
+{
+	DirectX::ScratchImage image{};
+	const HRESULT hr = DirectX::LoadFromWICMemory(
+		static_cast<const uint8_t*>(data),
+		size,
+		DirectX::WIC_FLAGS_FORCE_SRGB,
+		nullptr,
+		image);
+	ThrowIfFailed(hr, "TextureManager::LoadTextureImageFromMemory");
+	return image;
+}
+
+DirectX::ScratchImage TextureManager::CreateRgbaImage(
+	uint32_t width,
+	uint32_t height,
+	const void* rgbaData,
+	size_t rowPitch)
+{
+	DirectX::ScratchImage image{};
+	HRESULT hr = image.Initialize2D(
+		DXGI_FORMAT_R8G8B8A8_UNORM,
+		width,
+		height,
+		1,
+		1);
+	ThrowIfFailed(hr, "TextureManager::CreateRgbaImage Initialize2D");
+
+	const DirectX::Image* destination = image.GetImage(0, 0, 0);
+	if (!destination || !destination->pixels) {
+		throw std::runtime_error("TextureManager::CreateRgbaImage destination image is invalid");
 	}
-	assert(SUCCEEDED(hr));
+
+	const uint8_t* sourcePixels = static_cast<const uint8_t*>(rgbaData);
+	for (uint32_t y = 0; y < height; ++y) {
+		std::memcpy(
+			destination->pixels + destination->rowPitch * y,
+			sourcePixels + rowPitch * y,
+			width * 4ull);
+	}
 	return image;
 }
 
@@ -143,12 +310,33 @@ DirectX::ScratchImage TextureManager::CreateMipImages(DirectX::ScratchImage&& im
 
 void TextureManager::UploadTextureResource(TexturData& textureData, const DirectX::ScratchImage& mipImages)
 {
-	textureData.metadata = mipImages.GetMetadata();
-	textureData.resource = dxCommon_->CreateTextureResource(textureData.metadata);
 	Microsoft::WRL::ComPtr<ID3D12Resource> intermediateResource =
-		dxCommon_->UploadTextureData(textureData.resource, mipImages);
-	dxCommon_->CommandKick();
+		RecordTextureUpload(textureData, mipImages);
+	GetDirectXCommon()->DeferResourceRelease(std::move(intermediateResource));
+	try {
+		CreateTextureSrv(textureData);
+	} catch (...) {
+		if (textureData.srvIndex != UINT32_MAX) {
+			srvManager_->Free(textureData.srvIndex);
+			textureData.srvIndex = UINT32_MAX;
+		}
+		// The recorded copy still references the destination until this frame completes.
+		GetDirectXCommon()->UntrackResourceState(textureData.resource.Get());
+		GetDirectXCommon()->DeferResourceRelease(std::move(textureData.resource));
+		throw;
+	}
+}
 
+Microsoft::WRL::ComPtr<ID3D12Resource> TextureManager::RecordTextureUpload(
+	TexturData& textureData, const DirectX::ScratchImage& mipImages)
+{
+	textureData.metadata = mipImages.GetMetadata();
+	textureData.resource = GetDirectXCommon()->CreateTextureResource(textureData.metadata);
+	return GetDirectXCommon()->UploadTextureData(textureData.resource, mipImages);
+}
+
+void TextureManager::CreateTextureSrv(TexturData& textureData)
+{
 	textureData.srvIndex = srvManager_->Allocate();
 	textureData.srvHandleCPU = srvManager_->GetCPUDescriptorHandle(textureData.srvIndex);
 	textureData.srvHandleGPU = srvManager_->GetGPUDescriptorHandle(textureData.srvIndex);
@@ -163,24 +351,31 @@ void TextureManager::UploadTextureResource(TexturData& textureData, const Direct
 
 uint32_t TextureManager::GetTextureIndexByFilePath(const std::string& filepath)
 {
-
-	if (textureDatas.contains(filepath)) {
-
-		return textureDatas[filepath].srvIndex;
-
-
-
-	}
-
-	assert(0);
-	return 0;
+	return GetLoadedTexture(filepath).srvIndex;
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE TextureManager::GetSrvHandleGPU(const std::string& filepath)
 {
-	assert(textureDatas.size() + kSRVIndexTop < Engine::Base::DirectXCommon::kMaxSRVCount);
+	return GetLoadedTexture(filepath).srvHandleGPU;
+}
 
-	return textureDatas.at(filepath).srvHandleGPU;
+const TextureManager::TexturData& TextureManager::GetLoadedTexture(
+	const std::string& filePath) const
+{
+	const auto it = textureDatas.find(filePath);
+	if (it == textureDatas.end() ||
+		it->second.srvIndex == UINT32_MAX) {
+		throw std::out_of_range(
+			"TextureManager texture is not loaded: " + filePath);
+	}
+	return it->second;
+}
+
+std::shared_ptr<Engine::Base::DirectXCommon> TextureManager::GetDirectXCommon() const
+{
+	auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	return dxCommon;
 }
 
 }

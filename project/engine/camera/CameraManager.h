@@ -34,15 +34,9 @@ public:
 
 	/// @brief カメラを名前付きで登録する
 	/// @param name 登録名
-	/// @param camera 登録するカメラ。登録時に内容をコピーし、ポインタは保持しない
+	/// @param camera 登録するカメラ。所有権は呼び出し側が保持し、破棄前にRemoveCameraする
 	/// @return なし
-	void AddCamera(const std::string& name, const Camera* camera);
-
-	/// @brief 登録済みカメラへ現在のカメラ内容をコピー同期する
-	/// @param name 同期先の登録名
-	/// @param camera コピー元カメラ。ポインタは保持しない
-	/// @return 同期できた場合 true。未登録または camera が null なら false
-	bool SyncCamera(const std::string& name, const Camera* camera);
+	void AddCamera(const std::string& name, Camera* camera);
 
 	/// @brief 登録済みカメラを削除する
 	/// @param name 削除対象名
@@ -73,7 +67,7 @@ public:
 
 private:
 	//カメラデータ
-	std::unordered_map<std::string, Camera> cameras;
+	std::unordered_map<std::string, Camera*> cameras;
 
 	// アクティブカメラ名
 	std::string activeCameraName;

@@ -3,6 +3,7 @@
 #include "RenderingData.h"
 #include <d3d12.h>
 #include <wrl.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -23,6 +24,13 @@ class Model;
 }
 
 namespace Engine::Particle {
+
+struct ParticleGroupHandle {
+	uint32_t index = UINT32_MAX;
+	uint32_t generation = 0;
+
+	explicit operator bool() const { return index != UINT32_MAX; }
+};
 
 enum class VerticesType
 {
@@ -54,31 +62,37 @@ struct ParticleForGPU
 /// @details グループ生成、挙動の差し替え、インスタンシング描画を担当する。
 class ParticleManager
 {
+	static constexpr uint32_t kBufferedFrameCount = 2;
+
 	struct ParticleGroup
 	{
+		ParticleGroupHandle handle{};
 		MaterialData materialdata;
 		std::string debugName;
 		//particleの配列。Update 時に生存粒子を前詰めして compact する
 		std::vector<Particle> particles;
 		std::unique_ptr<IParticleBehavior> behavior;
 
-		// インスタンシング用のSRVインデックス
-		uint32_t srvIndex;
-		// インスタンシング用のリソース
-		Microsoft::WRL::ComPtr<ID3D12Resource> instanceResource;
+		// GPU使用中のdescriptorを上書きしないようframeごとにSRVを持つ
+		std::array<uint32_t, kBufferedFrameCount> srvIndices{
+			UINT32_MAX,
+			UINT32_MAX,
+		};
 		// インスタンス数
 		uint32_t instanceCount;
 		uint32_t maxInstanceCount = 0;
+		uint32_t maxEmitsPerFrame = UINT32_MAX;
+		uint32_t emittedThisFrame = 0;
+		uint32_t droppedThisFrame = 0;
+		uint32_t droppedLastFrame = 0;
 		// インスタンスデータ
-		ParticleForGPU* instanceData = nullptr;
+		std::vector<ParticleForGPU> instanceData;
 		//頂点
 		uint32_t vertexCount = 0;
 		Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource;
 		//VBV
 		D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-		Microsoft::WRL::ComPtr<ID3D12Resource> materialResource;
-		//マテリアルにデータを書き込む	
-		Material* materialData = nullptr;
+		Material materialData{};
 	};
 public:
 	static constexpr uint32_t kDefaultMaxParticleInstanceCount = 1000;
@@ -100,7 +114,7 @@ public:
 	/// @param dxCommon DirectX共通管理
 	/// @param srvManager SRV管理
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon,Engine::Base::SrvManager*srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon,Engine::Base::SrvManager*srvManager);
 
 
 
@@ -128,7 +142,7 @@ public:
 	/// @param behavior 初期挙動
 	/// @param maxInstanceCount グループごとの最大描画インスタンス数
 	/// @return なし
-	void CreateParticleGroup(
+	ParticleGroupHandle CreateParticleGroup(
 		const std::string& name,
 		const std::string& textureFilePath,
 		VerticesType verticesType = VerticesType::Quad,
@@ -141,6 +155,45 @@ public:
 	/// @param count 発生数
 	/// @return なし
 	void Emit(const std::string& name, const Vector3& position, uint32_t count);
+	void Emit(ParticleGroupHandle handle, const Vector3& position, uint32_t count);
+	void EmitTrailSegment(
+		const std::string& name,
+		const Vector3& start,
+		const Vector3& end,
+		float width);
+	void EmitTrailSegment(
+		ParticleGroupHandle handle,
+		const Vector3& start,
+		const Vector3& end,
+		float width);
+	bool EmitTrailSegmentClamped(
+		const std::string& name,
+		const Vector3& previous,
+		const Vector3& current,
+		float width,
+		float lengthMultiplier,
+		float maxFrameDistance);
+	bool EmitTrailSegmentClamped(
+		ParticleGroupHandle handle,
+		const Vector3& previous,
+		const Vector3& current,
+		float width,
+		float lengthMultiplier,
+		float maxFrameDistance);
+	void EmitTrailCircle(
+		const std::string& name,
+		const Vector3& center,
+		float radius,
+		float yOffset,
+		float width,
+		int32_t segments);
+	void EmitTrailCircle(
+		ParticleGroupHandle handle,
+		const Vector3& center,
+		float radius,
+		float yOffset,
+		float width,
+		int32_t segments);
 
 	/// @brief モデル参照を設定する
 	/// @param filepath 読み込むモデルパス
@@ -172,6 +225,9 @@ public:
 	/// @param behavior 設定する振る舞い
 	/// @return なし
 	void SetBehavior(const std::string& groupName, std::unique_ptr<IParticleBehavior> behavior);
+	void SetBehavior(ParticleGroupHandle handle, std::unique_ptr<IParticleBehavior> behavior);
+	std::optional<ParticleGroupHandle> GetParticleGroupHandle(
+		const std::string& groupName) const;
 
 	/// @brief 全グループの生存パーティクル数を取得する
 	/// @return 生存パーティクル数
@@ -186,6 +242,23 @@ public:
 	/// @param groupName 対象グループ名
 	/// @return グループが存在する場合は最大数、存在しない場合は std::nullopt
 	std::optional<uint32_t> GetParticleGroupMaxInstanceCount(const std::string& groupName) const;
+	void SetParticleGroupEmissionLimit(
+		ParticleGroupHandle handle,
+		uint32_t maxEmitsPerFrame);
+	void SetParticleGroupEmissionLimit(
+		const std::string& groupName,
+		uint32_t maxEmitsPerFrame);
+	std::optional<uint32_t> GetParticleGroupEmissionLimit(
+		const std::string& groupName) const;
+	std::optional<uint32_t> GetParticleGroupEffectiveEmissionLimit(
+		const std::string& groupName) const;
+	std::optional<uint32_t> GetParticleGroupDroppedLastFrame(
+		const std::string& groupName) const;
+	void SetGlobalEmissionScale(float emissionScale);
+	float GetGlobalEmissionScale() const { return globalEmissionScale_; }
+	void SetMaxTotalActiveParticleCount(size_t maxCount);
+	size_t GetMaxTotalActiveParticleCount() const { return maxTotalActiveParticleCount_; }
+	uint32_t GetGlobalDroppedLastFrame() const { return globalDroppedLastFrame_; }
 
 	/// @brief 指定グループのデバッグ表示名を設定する
 	/// @param groupName 対象グループ名
@@ -236,22 +309,32 @@ private:
 	void InitializeParticleGroupVertices(ParticleGroup& particleGroup, VerticesType verticesType);
 	void InitializeParticleGroupTexture(ParticleGroup& particleGroup, const std::string& textureFilePath);
 	void InitializeParticleGroupInstances(ParticleGroup& particleGroup);
+	uint32_t ResolveEffectiveEmissionLimit(const ParticleGroup& particleGroup) const;
+	ParticleGroup* ResolveParticleGroup(ParticleGroupHandle handle);
+	const ParticleGroup* ResolveParticleGroup(ParticleGroupHandle handle) const;
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
 
-	Engine::Base::DirectXCommon* dxCommon_=nullptr;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 
 
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;
 
 	Engine::Graphics3D::Model* model_ = nullptr;
-	bool useFixedDeltaTime_ = true;
+	bool useFixedDeltaTime_ = false;
+	uint32_t particleGroupGeneration_ = 1;
 	float lastAppliedDeltaTime_ = kFixedParticleDeltaTime;
 	uint32_t lastDrawCallCount_ = 0;
 	uint32_t lastDrawnInstanceCount_ = 0;
+	float globalEmissionScale_ = 1.0f;
+	size_t maxTotalActiveParticleCount_ = 2800;
+	uint32_t globalDroppedThisFrame_ = 0;
+	uint32_t globalDroppedLastFrame_ = 0;
 
 	std::mt19937 randomEngine;
 
 	std::unordered_map<std::string, ParticleGroup> particleGroups;
+	std::vector<ParticleGroup*> particleGroupsByIndex_;
 };
 
 }

@@ -39,6 +39,14 @@ public:
 	//Getter
 	HWND GetHwnd()const { return hwnd; }
 	HINSTANCE GetHInstance()const { return wc.hInstance; }
+	bool IsFullscreen()const { return fullscreen_; }
+
+	/// @brief フルスクリーン表示を切り替える
+	void ToggleFullscreen();
+
+	/// @brief フルスクリーン表示を明示的に設定する
+	/// @param fullscreen true ならフルスクリーン、false ならウィンドウ表示
+	void SetFullscreen(bool fullscreen);
 
 	/// @brief メッセージキューを処理して終了要求を判定する
 	/// @param なし
@@ -52,6 +60,9 @@ private:
 	//ウィンドウ生成
 	HWND hwnd = nullptr;
 	WNDCLASS wc{};
+	DWORD windowedStyle_ = WS_OVERLAPPEDWINDOW;
+	RECT windowedRect_{};
+	bool fullscreen_ = false;
 
 
 };

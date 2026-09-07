@@ -547,4 +547,23 @@
       <UniqueIdentifier>{0d31f10d-9084-46d4-ab77-677748e137ff}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="engine\base\directx\ShaderCompiler.cpp" />
+    <ClCompile Include="engine\base\render\PipelineRootSignatureFactory.cpp" />
+    <ClCompile Include="engine\base\render\PipelineStateBuilder.cpp" />
+    <ClCompile Include="engine\3d\model\ModelAssetResolver.cpp" />
+    <ClCompile Include="engine\3d\model\ModelMeshConverter.cpp" />
+    <ClInclude Include="engine\base\directx\ShaderCompiler.h" />
+    <ClInclude Include="engine\base\directx\HResult.h" />
+    <ClInclude Include="engine\base\render\PipelineRootSignatureFactory.h" />
+    <ClInclude Include="engine\base\render\PipelineStateBuilder.h" />
+    <ClInclude Include="engine\3d\model\ModelAssetResolver.h" />
+    <ClInclude Include="engine\3d\model\ModelMeshConverter.h" />
+    <None Include="Resources\Shaders\object\ObjectInstanced3d.VS.hlsl" />
+    <None Include="Resources\Shaders\object\ObjectInstancedShadowMap.VS.hlsl" />
+    <None Include="Resources\Shaders\object\ShadowMap.VS.hlsl" />
+    <None Include="Resources\Shaders\object\SkinningInstancedObject3d.VS.hlsl" />
+    <None Include="Resources\Shaders\object\SkinningInstancedShadowMap.VS.hlsl" />
+    <None Include="Resources\Shaders\object\SkinningShadowMap.VS.hlsl" />
+  </ItemGroup>
 </Project>

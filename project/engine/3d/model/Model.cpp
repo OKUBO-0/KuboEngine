@@ -1,18 +1,26 @@
 #include "Model.h"
 #include "DirectXCommon.h"
+#include "ModelAssetResolver.h"
+#include "ModelMeshConverter.h"
+#include "HResult.h"
 #include "ModelCommon.h"
 #include "MyMath.h"
 #include <Windows.h>
 #include <assimp/Importer.hpp>
+#include <assimp/material.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <fstream>
+#include <limits>
 #include <sstream>
+#include <vector>
 #include <assert.h>
 #include "TextureManager.h"
 #include "SrvManager.h"
@@ -20,46 +28,73 @@
 namespace {
 
 Engine::Graphics3D::ModelLoadDiagnostics g_modelLoadDiagnostics{};
+constexpr float kDefaultAnimationTicksPerSecond = 25.0f;
+constexpr const char* kFallbackTexturePath = "Resources/textures/common/white.png";
 
-std::string ResolveModelFilePath(const std::string& directoryPath, const std::string& filename)
+float ResolveAnimationTicksPerSecond(const aiAnimation& animation)
 {
-    const std::filesystem::path resourceRoot = directoryPath;
-    const std::filesystem::path resourceDirectPath = resourceRoot / filename;
-    if (std::filesystem::exists(resourceDirectPath)) {
-        return resourceDirectPath.generic_string();
-    }
-
-    const std::filesystem::path modelRoot = std::filesystem::path(directoryPath) / "models";
-    const std::filesystem::path directPath = modelRoot / filename;
-    if (std::filesystem::exists(directPath)) {
-        return directPath.generic_string();
-    }
-
-    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(modelRoot)) {
-        if (entry.is_regular_file() && entry.path().filename() == filename) {
-            return entry.path().generic_string();
-        }
-    }
-
-    return directPath.generic_string();
+    const float ticksPerSecond =
+        static_cast<float>(animation.mTicksPerSecond);
+    return std::isfinite(ticksPerSecond) && ticksPerSecond > 0.0f
+        ? ticksPerSecond
+        : kDefaultAnimationTicksPerSecond;
 }
 
-std::string ResolveResourceFilePath(const std::string& directoryPath, const std::string& filename)
+std::string ToLowerAscii(std::string value)
 {
-    const std::filesystem::path resourceRoot = directoryPath;
-    const std::filesystem::path directPath = resourceRoot / filename;
-    if (std::filesystem::exists(directPath)) {
-        return directPath.generic_string();
+    for (char& c : value) {
+        c = static_cast<char>(
+            std::tolower(static_cast<unsigned char>(c)));
     }
+    return value;
+}
 
-    const std::filesystem::path targetFilename = std::filesystem::path(filename).filename();
-    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(resourceRoot)) {
-        if (entry.is_regular_file() && entry.path().filename() == targetFilename) {
-            return entry.path().generic_string();
-        }
+std::string ExtractAnimationLeafName(const std::string& animationName)
+{
+    const size_t separator = animationName.find_last_of('|');
+    if (separator == std::string::npos || separator + 1 >= animationName.size()) {
+        return animationName;
     }
+    return animationName.substr(separator + 1);
+}
 
-    return directPath.generic_string();
+std::string ResolveAnimationAlias(const std::string& animationName)
+{
+    const std::string leaf = ToLowerAscii(ExtractAnimationLeafName(animationName));
+	if (leaf == "idle") {
+		return "idle";
+	}
+	if (leaf == "idle_hold") {
+		return "idle_hold";
+	}
+	if (leaf == "walk") {
+		return "walk";
+	}
+	if (leaf == "walk_hold") {
+		return "walk_hold";
+	}
+    if (leaf == "run") {
+        return "run";
+    }
+    if (leaf == "jump") {
+        return "jump";
+    }
+    if (leaf == "fall" || leaf == "falling") {
+        return "fall";
+    }
+    if (leaf == "land" || leaf == "landing") {
+        return "land";
+    }
+    if (leaf == "attack" || leaf == "punch" || leaf == "headbutt") {
+        return "attack";
+    }
+    if (leaf == "hitreact" || leaf == "hitrecieve" || leaf == "hitreceive") {
+        return "hit";
+    }
+    if (leaf == "death") {
+        return "death";
+    }
+    return {};
 }
 
 void FailModelLoad(const std::string& operation, const std::string& path, const std::string& detail)
@@ -93,6 +128,163 @@ void LogMeshFallback(const std::string& path, uint32_t meshIndex, const char* de
     OutputDebugStringA(message.str().c_str());
 }
 
+bool ShouldSkipMeshForCurrentRenderer(
+    const std::string& filename,
+    const aiMesh& mesh)
+{
+    (void)filename;
+    (void)mesh;
+    return false;
+}
+
+std::string ExtractSkinPrefix(const std::string& jointName)
+{
+    const size_t separator = jointName.find("::");
+    if (separator == std::string::npos) {
+        return {};
+    }
+    return jointName.substr(0, separator);
+}
+
+bool HasExistingSkinJointConflict(
+    const aiMesh& mesh,
+    const ModelData& modelData)
+{
+    for (uint32_t boneIndex = 0; boneIndex < mesh.mNumBones; ++boneIndex) {
+        const std::string jointName = mesh.mBones[boneIndex]->mName.C_Str();
+        if (modelData.skinClusterData.contains(jointName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string MakeSkinPrefix(const aiMesh& mesh, uint32_t meshIndex)
+{
+    std::string prefix = mesh.mName.C_Str();
+    if (prefix.empty()) {
+        prefix = "mesh" + std::to_string(meshIndex);
+    }
+    return prefix;
+}
+
+void AddSkinJointAliases(
+    Skeleton& skeleton,
+    const ModelData& modelData)
+{
+    std::vector<std::string> prefixes;
+    for (const auto& jointWeight : modelData.skinClusterData) {
+        const std::string prefix = ExtractSkinPrefix(jointWeight.first);
+        if (!prefix.empty() &&
+            std::find(prefixes.begin(), prefixes.end(), prefix) == prefixes.end()) {
+            prefixes.push_back(prefix);
+        }
+    }
+    if (prefixes.empty()) {
+        return;
+    }
+
+    const size_t originalJointCount = skeleton.joints.size();
+    for (const std::string& prefix : prefixes) {
+        std::vector<int32_t> remap(originalJointCount, -1);
+        for (size_t sourceIndex = 0; sourceIndex < originalJointCount; ++sourceIndex) {
+            Joint duplicate = skeleton.joints[sourceIndex];
+            duplicate.name = prefix + "::" + duplicate.name;
+            duplicate.index = static_cast<int32_t>(skeleton.joints.size());
+            duplicate.children.clear();
+            if (duplicate.parent.has_value()) {
+                duplicate.parent = remap[static_cast<size_t>(*duplicate.parent)];
+            }
+            remap[sourceIndex] = duplicate.index;
+            skeleton.jointMap[duplicate.name] = duplicate.index;
+            skeleton.joints.push_back(std::move(duplicate));
+        }
+        for (size_t sourceIndex = 0; sourceIndex < originalJointCount; ++sourceIndex) {
+            const int32_t duplicateIndex = remap[sourceIndex];
+            for (int32_t childIndex : skeleton.joints[sourceIndex].children) {
+                if (childIndex >= 0 &&
+                    static_cast<size_t>(childIndex) < originalJointCount) {
+                    skeleton.joints[duplicateIndex].children.push_back(
+                        remap[static_cast<size_t>(childIndex)]);
+                }
+            }
+        }
+    }
+}
+
+bool TryParseEmbeddedTextureIndex(const std::string& texturePath, uint32_t& textureIndex)
+{
+    if (texturePath.size() < 2 || texturePath.front() != '*') {
+        return false;
+    }
+
+    char* end = nullptr;
+    const unsigned long parsedIndex = std::strtoul(texturePath.c_str() + 1, &end, 10);
+    if (end == texturePath.c_str() + 1 || *end != '\0') {
+        return false;
+    }
+
+    textureIndex = static_cast<uint32_t>(parsedIndex);
+    return true;
+}
+
+std::string EmbeddedTextureKey(
+    const std::string& directoryPath,
+    const std::string& filename,
+    const std::string& texturePath)
+{
+    std::filesystem::path keyPath(directoryPath);
+    keyPath /= filename;
+    return keyPath.generic_string() + "#embedded_texture_" + texturePath.substr(1);
+}
+
+void LoadEmbeddedTexture(
+    const aiScene* scene,
+    uint32_t textureIndex,
+    const std::string& textureKey)
+{
+    if (!scene || textureIndex >= scene->mNumTextures) {
+        return;
+    }
+
+    const aiTexture* texture = scene->mTextures[textureIndex];
+    if (!texture) {
+        return;
+    }
+
+    Engine::Base::TextureManager* textureManager =
+        Engine::Base::TextureManager::GetInstance();
+    if (texture->mHeight == 0) {
+        textureManager->LoadTextureFromMemory(
+            textureKey,
+            texture->pcData,
+            static_cast<size_t>(texture->mWidth));
+        return;
+    }
+
+    std::vector<uint8_t> rgbaPixels(
+        static_cast<size_t>(texture->mWidth) *
+        static_cast<size_t>(texture->mHeight) * 4ull);
+    for (uint32_t y = 0; y < texture->mHeight; ++y) {
+        for (uint32_t x = 0; x < texture->mWidth; ++x) {
+            const aiTexel& source =
+                texture->pcData[static_cast<size_t>(y) * texture->mWidth + x];
+            uint8_t* destination =
+                &rgbaPixels[(static_cast<size_t>(y) * texture->mWidth + x) * 4ull];
+            destination[0] = source.r;
+            destination[1] = source.g;
+            destination[2] = source.b;
+            destination[3] = source.a;
+        }
+    }
+    textureManager->LoadTextureFromRGBA(
+        textureKey,
+        texture->mWidth,
+        texture->mHeight,
+        rgbaPixels.data(),
+        static_cast<size_t>(texture->mWidth) * 4ull);
+}
+
 }
 
 namespace Engine::Graphics3D {
@@ -102,67 +294,129 @@ ModelLoadDiagnostics Model::GetLoadDiagnostics()
     return g_modelLoadDiagnostics;
 }
 
-void Model::Initialize(ModelCommon* modelCommon, const std::string& directorypath, const std::string& filename)
+void Model::Initialize(
+	ModelCommon* modelCommon,
+	const std::string& directorypath,
+	const std::string& filename,
+	bool loadMaterialTexture)
 {
 	modelCommon_ = modelCommon;
 	LoadRuntimeAssets(directorypath, filename);
 	CreateVertexBuffer();
 	CreateIndexBuffer();
 	CreateMaterialBuffer();
-	LoadMaterialTexture();
+	if (loadMaterialTexture) {
+		LoadMaterialTexture();
+	}
+}
+
+void Model::Finalize()
+{
+	if (modelCommon_ && modelCommon_->GetDxCommon()) {
+		auto dxCommon = modelCommon_->GetDxCommon();
+		dxCommon->UntrackResourceState(vertexResource.Get());
+		dxCommon->UntrackResourceState(indexResource.Get());
+		dxCommon->UntrackResourceState(skinCluster.influenceResource.Get());
+	}
+	vertexResource.Reset();
+	indexResource.Reset();
+	skinCluster.influenceResource.Reset();
 }
 
 void Model::LoadRuntimeAssets(const std::string& directorypath, const std::string& filename)
 {
 	// モデルデータ・アニメーション・スケルトン・スキンクラスターを読み込み/生成
 	modelData = LoadModelFile(directorypath, filename);
-	animation = LoadAnimationFile(directorypath, filename);
+	LoadEmbeddedAnimationClips(directorypath, filename);
 	skeleton = CreateSkeleton(modelData.rootNode);
+    AddSkinJointAliases(skeleton, modelData);
 	skinCluster = CreateSkinCluster();
 }
 
 void Model::CreateVertexBuffer()
 {
 	// 頂点バッファ生成とデータ転送
-	vertexResource = modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(VertexData) * modelData.vertices.size());
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	const size_t vertexBytes = sizeof(VertexData) * modelData.vertices.size();
+	vertexResource = dxCommon->CreateDefaultBufferResource(
+		modelData.vertices.data(),
+		vertexBytes,
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
-	vertexBufferView.SizeInBytes = UINT(sizeof(VertexData) * modelData.vertices.size());
+	vertexBufferView.SizeInBytes = static_cast<UINT>(vertexBytes);
 	vertexBufferView.StrideInBytes = sizeof(VertexData);
-	vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData));
-	std::memcpy(vertexData, modelData.vertices.data(), sizeof(VertexData) * modelData.vertices.size());
 }
 
 void Model::CreateIndexBuffer()
 {
 	// インデックスバッファ生成とデータ転送
-	indexResource = modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(uint32_t) * modelData.indices.size());
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	const size_t indexBytes = sizeof(uint32_t) * modelData.indices.size();
+	indexResource = dxCommon->CreateDefaultBufferResource(
+		modelData.indices.data(),
+		indexBytes,
+		D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	indexBufferView.BufferLocation = indexResource->GetGPUVirtualAddress();
-	indexBufferView.SizeInBytes = UINT(sizeof(uint32_t) * modelData.indices.size());
+	indexBufferView.SizeInBytes = static_cast<UINT>(indexBytes);
 	indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-	indexResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedIndex));
-	std::memcpy(mappedIndex, modelData.indices.data(), sizeof(uint32_t) * modelData.indices.size());
 }
 
 void Model::CreateMaterialBuffer()
 {
-	// マテリアルバッファ生成と初期化
-	materialResource = modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(Material));
-	materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
-	materialData->color = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルト白
-	materialData->enableLighting = true;                        // ライティング有効
-	materialData->uvTransform = materialData->uvTransform.MakeIdentity4x4();
-	materialData->shininess = 60.0f;                       // 光沢度
+	materialData_.color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	materialData_.enableLighting = true;
+	materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
+	materialData_.shininess = 60.0f;
 }
 
 void Model::LoadMaterialTexture()
 {
 	// テクスチャ読み込みとインデックス取得
-	Engine::Base::TextureManager::GetInstance()->LoadTexture(modelData.material.textureFilePath);
-	modelData.material.textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath);
+	Engine::Base::TextureManager* textureManager =
+		Engine::Base::TextureManager::GetInstance();
+	for (MaterialData& material : modelData.materials) {
+		textureManager->LoadTexture(material.textureFilePath);
+		material.textureIndex =
+			textureManager->GetTextureIndexByFilePath(material.textureFilePath);
+	}
+	if (modelData.materials.empty()) {
+		textureManager->LoadTexture(modelData.material.textureFilePath);
+		modelData.material.textureIndex =
+			textureManager->GetTextureIndexByFilePath(modelData.material.textureFilePath);
+		return;
+	}
+	modelData.material = modelData.materials.front();
 }
 
-void Model::Draw()
+void Model::Draw(
+	D3D12_GPU_VIRTUAL_ADDRESS materialAddress,
+	const Material* materialOverride)
 {
+	DrawInstanced(1, materialAddress, materialOverride);
+}
+
+void Model::DrawInstanced(
+	UINT instanceCount,
+	D3D12_GPU_VIRTUAL_ADDRESS materialAddress,
+	const Material* materialOverride)
+{
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+	const Material& baseMaterial =
+		materialOverride ? *materialOverride : materialData_;
+	if (materialAddress == 0) {
+		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
+			dxCommon->AllocateFrameUpload(sizeof(Material), 256);
+		std::memcpy(
+			materialAllocation.cpuAddress,
+			&baseMaterial,
+			sizeof(baseMaterial));
+		materialAddress = materialAllocation.gpuAddress;
+	}
+
 	// 頂点バッファビュー（通常頂点 + スキンクラスター影響情報）
 	D3D12_VERTEX_BUFFER_VIEW vbvs[2] = {
 		vertexBufferView,
@@ -170,25 +424,98 @@ void Model::Draw()
 	};
 
 	// 頂点バッファ設定
-	modelCommon_->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 2, vbvs);
+	commandList->IASetVertexBuffers(0, 2, vbvs);
 
 	// インデックスバッファ設定
-	modelCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
+	commandList->IASetIndexBuffer(&indexBufferView);
 
 	// マテリアルCBV設定
-	modelCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootConstantBufferView(
+		0,
+		materialAddress);
+
+	if (!modelData.submeshes.empty() && !modelData.materials.empty()) {
+		for (const SubmeshData& submesh : modelData.submeshes) {
+			const MaterialData& submeshMaterial =
+				modelData.materials[(std::min)(
+					static_cast<size_t>(submesh.materialIndex),
+					modelData.materials.size() - 1)];
+			Material drawMaterial = baseMaterial;
+			drawMaterial.color.x *= submeshMaterial.diffuseColor.x;
+			drawMaterial.color.y *= submeshMaterial.diffuseColor.y;
+			drawMaterial.color.z *= submeshMaterial.diffuseColor.z;
+			drawMaterial.color.w *= submeshMaterial.diffuseColor.w;
+			const Engine::Base::DirectXCommon::FrameUploadAllocation submeshMaterialAllocation =
+				dxCommon->AllocateFrameUpload(sizeof(Material), 256);
+			std::memcpy(
+				submeshMaterialAllocation.cpuAddress,
+				&drawMaterial,
+				sizeof(drawMaterial));
+			commandList->SetGraphicsRootConstantBufferView(
+				0,
+				submeshMaterialAllocation.gpuAddress);
+			modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(
+				2,
+				Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
+					submeshMaterial.textureFilePath));
+			commandList->DrawIndexedInstanced(
+				submesh.indexCount,
+				instanceCount,
+				submesh.startIndex,
+				0,
+				0);
+		}
+		return;
+	}
 
 	// テクスチャSRV設定
 	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath));
 
 	// インデックス付き描画（インスタンス数 = 1）
-	modelCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(
+	commandList->DrawIndexedInstanced(
 		static_cast<UINT>(modelData.indices.size()), // インデックス数
-		1,  // インスタンス数
+		instanceCount,  // インスタンス数
 		0,  // 開始インデックス
 		0,  // 基準頂点
 		0   // 開始インスタンス
 	);
+}
+
+void Model::DrawGeometry()
+{
+	DrawGeometryInstanced(1);
+}
+
+void Model::DrawGeometryInstanced(UINT instanceCount)
+{
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+	D3D12_VERTEX_BUFFER_VIEW vertexView = vertexBufferView;
+	commandList->IASetVertexBuffers(0, 1, &vertexView);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->DrawIndexedInstanced(
+		static_cast<UINT>(modelData.indices.size()), instanceCount, 0, 0, 0);
+}
+
+void Model::DrawSkinnedGeometry()
+{
+	DrawSkinnedGeometryInstanced(1);
+}
+
+void Model::DrawSkinnedGeometryInstanced(UINT instanceCount)
+{
+	const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+		modelCommon_->GetDxCommon();
+	ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+	D3D12_VERTEX_BUFFER_VIEW vbvs[2] = {
+		vertexBufferView,
+		skinCluster.influenceBufferView,
+	};
+	commandList->IASetVertexBuffers(0, 2, vbvs);
+	commandList->IASetIndexBuffer(&indexBufferView);
+	commandList->DrawIndexedInstanced(
+		static_cast<UINT>(modelData.indices.size()), instanceCount, 0, 0, 0);
 }
 
 Node Model::ReadNode(aiNode* node)
@@ -201,7 +528,7 @@ Node Model::ReadNode(aiNode* node)
 	node->mTransformation.Decompose(scale, rotation, translate);
 	result.transform.scale = { scale.x, scale.y, scale.z };
 	result.transform.rotate = { rotation.x, -rotation.y, -rotation.z, rotation.w };
-	result.transform.translate = { translate.x, translate.y, translate.z };
+	result.transform.translate = { -translate.x, translate.y, translate.z };
 
 	// ローカル行列生成
 	result.localMatrix = MyMath::MakeAffineMatrix(result.transform.scale, result.transform.rotate, result.transform.translate);
@@ -265,7 +592,7 @@ MaterialData Model::LoadMaterialTemplateFile(const std::string& directorypath, c
         if (identifier == "map_Kd") {
             std::string textureFilename;
             s >> textureFilename;
-            materialData.textureFilePath = ResolveResourceFilePath(directorypath, textureFilename);
+            materialData.textureFilePath = ResolveModelResourcePath(directorypath, textureFilename);
         }
     }
     return materialData;
@@ -275,7 +602,7 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
 {
     ModelData modelData; // 構築するモデルデータ
     Assimp::Importer importer;
-    std::string path = ResolveModelFilePath(directoryPath, filename);
+    std::string path = ResolveModelAssetPath(directoryPath, filename);
 
     // 頂点、法線、UV を揃えたうえでエンジン形式へ変換する
     // Assimpでモデルファイル読み込み
@@ -287,9 +614,31 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
         FailModelLoad("LoadModelFile", path, "model has no meshes");
     }
 
+    size_t totalVertexCount = 0;
+    size_t maximumIndexCount = 0;
+    for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
+        const aiMesh* mesh = scene->mMeshes[meshIndex];
+        if (ShouldSkipMeshForCurrentRenderer(filename, *mesh)) {
+            continue;
+        }
+        totalVertexCount += mesh->mNumVertices;
+        maximumIndexCount += static_cast<size_t>(mesh->mNumFaces) * 3;
+    }
+    if (totalVertexCount > (std::numeric_limits<uint32_t>::max)()) {
+        FailModelLoad(
+            "LoadModelFile",
+            path,
+            "model vertex count exceeds 32-bit index range");
+    }
+    modelData.vertices.reserve(totalVertexCount);
+    modelData.indices.reserve(maximumIndexCount);
+
     // メッシュごとの処理
     for (uint32_t meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex) {
         aiMesh* mesh = scene->mMeshes[meshIndex];
+        if (ShouldSkipMeshForCurrentRenderer(filename, *mesh)) {
+            continue;
+        }
         if (!mesh->HasNormals()) {
             LogMeshFallback(path, meshIndex, "mesh has no normals; using fallback normal");
         }
@@ -297,15 +646,34 @@ ModelData Model::LoadModelFile(const std::string& directoryPath, const std::stri
             LogMeshFallback(path, meshIndex, "mesh has no texture coordinates; using fallback uv");
         }
 
+        const uint32_t baseVertex =
+            static_cast<uint32_t>(modelData.vertices.size());
+        const uint32_t startIndex =
+            static_cast<uint32_t>(modelData.indices.size());
         LoadVerticesFromMesh(mesh, modelData);
-        LoadIndicesFromMesh(mesh, modelData);
-        LoadSkinClusterDataFromMesh(mesh, modelData);
+        LoadIndicesFromMesh(mesh, baseVertex, modelData);
+        const bool needsSkinPrefix =
+            mesh->HasBones() && HasExistingSkinJointConflict(*mesh, modelData);
+        LoadSkinClusterDataFromMesh(
+            mesh,
+            baseVertex,
+            modelData,
+            needsSkinPrefix ? MakeSkinPrefix(*mesh, meshIndex) : std::string{});
+        const uint32_t indexCount =
+            static_cast<uint32_t>(modelData.indices.size()) - startIndex;
+        if (indexCount > 0) {
+            modelData.submeshes.push_back({
+                startIndex,
+                indexCount,
+                mesh->mMaterialIndex,
+                });
+        }
     }
     CalculateBounds(modelData);
 
     // 先頭のディフューズテクスチャをモデル側の代表マテリアルとして採用する
     // マテリアル解析
-    LoadMaterialFromScene(scene, directoryPath, modelData);
+    LoadMaterialFromScene(scene, directoryPath, filename, modelData);
 
     // ルートノード読み込み
     modelData.rootNode = ReadNode(scene->mRootNode);
@@ -317,7 +685,7 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
 {
     Animation animation;
     Assimp::Importer importer;
-    std::string filepath = ResolveModelFilePath(directoryPath, filename);
+    std::string filepath = ResolveModelAssetPath(directoryPath, filename);
     const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
     if (scene == nullptr) {
         FailModelLoad("LoadAnimationFile", filepath, std::string("Assimp::ReadFile failed: ") + importer.GetErrorString());
@@ -330,138 +698,219 @@ Animation Model::LoadAnimationFile(const std::string& directoryPath, const std::
 
     // 現状は最初の 1 クリップだけを読み込んで再生対象にしている
     aiAnimation* animationAssimp = scene->mAnimations[0]; // 最初のアニメーションのみ採用
-    animation.duration = float(animationAssimp->mDuration / animationAssimp->mTicksPerSecond);
+    animation = BuildAnimationClip(animationAssimp);
+    return animation;
+}
+
+void Model::LoadEmbeddedAnimationClips(
+    const std::string& directoryPath,
+    const std::string& filename)
+{
+    Assimp::Importer importer;
+    const std::string filepath = ResolveModelAssetPath(directoryPath, filename);
+    const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
+    if (scene == nullptr || scene->mNumAnimations == 0) {
+        return;
+    }
+
+    for (uint32_t animationIndex = 0; animationIndex < scene->mNumAnimations; ++animationIndex) {
+        aiAnimation* animationAssimp = scene->mAnimations[animationIndex];
+        if (!animationAssimp) {
+            continue;
+        }
+        Animation clip = BuildAnimationClip(animationAssimp);
+        if (clip.nodeAnimations.empty()) {
+            continue;
+        }
+        const std::string fullName = animationAssimp->mName.C_Str();
+        const std::string alias = ResolveAnimationAlias(fullName);
+        if (!alias.empty()) {
+            animationClips_[alias] = clip;
+        }
+        if (animationIndex == 0) {
+            animation = clip;
+            animationClips_["default"] = clip;
+        }
+    }
+}
+
+Animation Model::BuildAnimationClip(const aiAnimation* animationAssimp)
+{
+    Animation animation;
+    if (!animationAssimp) {
+        return animation;
+    }
+    const float ticksPerSecond =
+        ResolveAnimationTicksPerSecond(*animationAssimp);
+    const float duration =
+        static_cast<float>(animationAssimp->mDuration) /
+        ticksPerSecond;
+    animation.duration =
+        std::isfinite(duration) && duration >= 0.0f
+        ? duration
+        : 0.0f;
     LoadAnimationChannels(animationAssimp, animation);
     return animation;
 }
 
+const Animation* Model::FindAnimationClip(const std::string& clipName) const
+{
+    const auto it = animationClips_.find(clipName);
+    if (it != animationClips_.end()) {
+        return &it->second;
+    }
+    if (clipName == "default" && !animation.nodeAnimations.empty()) {
+        return &animation;
+    }
+    return nullptr;
+}
+
+bool Model::HasAnimationClip(const std::string& clipName) const
+{
+    return FindAnimationClip(clipName) != nullptr;
+}
+
+bool Model::LoadAnimationClip(
+    const std::string& clipName,
+    const std::string& directoryPath,
+    const std::string& filename)
+{
+    Animation loadedAnimation;
+    Assimp::Importer importer;
+    const std::string filepath = ResolveModelAssetPath(directoryPath, filename);
+    const aiScene* scene = importer.ReadFile(filepath.c_str(), 0);
+    if (scene == nullptr) {
+        std::ostringstream message;
+        message << "[Model::LoadAnimationClip] optional clip load failed"
+            << " clip=\"" << clipName
+            << "\" path=\"" << filepath
+            << "\" detail=\"" << importer.GetErrorString() << "\"\n";
+        OutputDebugStringA(message.str().c_str());
+        return false;
+    }
+    if (scene->mNumAnimations == 0) {
+        std::ostringstream message;
+        message << "[Model::LoadAnimationClip] optional clip has no animations"
+            << " clip=\"" << clipName
+            << "\" path=\"" << filepath << "\"\n";
+        OutputDebugStringA(message.str().c_str());
+        return false;
+    }
+    loadedAnimation = BuildAnimationClip(scene->mAnimations[0]);
+    if (loadedAnimation.nodeAnimations.empty()) {
+        return false;
+    }
+    animationClips_[clipName] = std::move(loadedAnimation);
+    if (animation.nodeAnimations.empty()) {
+        animation = animationClips_.at(clipName);
+        animationClips_["default"] = animation;
+    }
+    return true;
+}
+
 void Model::LoadVerticesFromMesh(aiMesh* mesh, ModelData& modelData)
 {
-    modelData.vertices.resize(mesh->mNumVertices);
-
-    // 頂点情報の読み込み
-    for (uint32_t vertexIndex = 0; vertexIndex < mesh->mNumVertices; ++vertexIndex) {
-        aiVector3D& position = mesh->mVertices[vertexIndex];
-        const aiVector3D normal = mesh->HasNormals() ? mesh->mNormals[vertexIndex] : aiVector3D{ 0.0f, 1.0f, 0.0f };
-        const aiVector3D texcoord = mesh->HasTextureCoords(0) ? mesh->mTextureCoords[0][vertexIndex] : aiVector3D{ 0.0f, 0.0f, 0.0f };
-
-        // 右手系 → 左手系変換
-        modelData.vertices[vertexIndex].position = { -position.x, position.y, position.z, 1.0f };
-        modelData.vertices[vertexIndex].normal = { -normal.x, normal.y, normal.z };
-        modelData.vertices[vertexIndex].texcoord = { texcoord.x, texcoord.y };
-    }
+    AppendVerticesFromMesh(*mesh, modelData);
 }
 
 void Model::CalculateBounds(ModelData& modelData)
 {
-    if (modelData.vertices.empty()) {
-        modelData.localAabbMin = { 0.0f, 0.0f, 0.0f };
-        modelData.localAabbMax = { 0.0f, 0.0f, 0.0f };
-        modelData.localAabbCenter = { 0.0f, 0.0f, 0.0f };
-        modelData.localBoundingRadius = 1.0f;
-        modelData.hasBounds = false;
-        return;
-    }
-
-    Vector3 min{
-        modelData.vertices.front().position.x,
-        modelData.vertices.front().position.y,
-        modelData.vertices.front().position.z,
-    };
-    Vector3 max = min;
-    for (const VertexData& vertex : modelData.vertices) {
-        min.x = (std::min)(min.x, vertex.position.x);
-        min.y = (std::min)(min.y, vertex.position.y);
-        min.z = (std::min)(min.z, vertex.position.z);
-        max.x = (std::max)(max.x, vertex.position.x);
-        max.y = (std::max)(max.y, vertex.position.y);
-        max.z = (std::max)(max.z, vertex.position.z);
-    }
-
-    const Vector3 center{
-        (min.x + max.x) * 0.5f,
-        (min.y + max.y) * 0.5f,
-        (min.z + max.z) * 0.5f,
-    };
-    float radiusSq = 0.0f;
-    for (const VertexData& vertex : modelData.vertices) {
-        const float dx = vertex.position.x - center.x;
-        const float dy = vertex.position.y - center.y;
-        const float dz = vertex.position.z - center.z;
-        radiusSq = (std::max)(radiusSq, dx * dx + dy * dy + dz * dz);
-    }
-
-    modelData.localAabbMin = min;
-    modelData.localAabbMax = max;
-    modelData.localAabbCenter = center;
-    modelData.localBoundingRadius = std::sqrt(radiusSq);
-    modelData.hasBounds = true;
+    CalculateModelBounds(modelData);
 }
 
-void Model::LoadIndicesFromMesh(aiMesh* mesh, ModelData& modelData)
+void Model::LoadIndicesFromMesh(
+    aiMesh* mesh,
+    uint32_t baseVertex,
+    ModelData& modelData)
 {
-    // インデックス情報の読み込み（三角形のみ対応）
-    for (uint32_t faceIndex = 0; faceIndex < mesh->mNumFaces; ++faceIndex) {
-        aiFace& face = mesh->mFaces[faceIndex];
-        if (face.mNumIndices != 3) {
-            LogSkippedNonTriangleFace(mesh->mName.C_Str(), faceIndex, face.mNumIndices);
-            continue;
-        }
-        for (uint32_t element = 0; element < face.mNumIndices; ++element) {
-            modelData.indices.push_back(face.mIndices[element]);
-        }
-    }
+    AppendIndicesFromMesh(*mesh, baseVertex, modelData, LogSkippedNonTriangleFace);
 }
 
-void Model::LoadSkinClusterDataFromMesh(aiMesh* mesh, ModelData& modelData)
+void Model::LoadSkinClusterDataFromMesh(
+    aiMesh* mesh,
+    uint32_t baseVertex,
+    ModelData& modelData,
+    const std::string& skinPrefix)
 {
-    // ボーンごとの逆バインド姿勢と頂点ウェイトを収集する
-    for (uint32_t boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
-        aiBone* bone = mesh->mBones[boneIndex];
-        std::string jointName = bone->mName.C_Str();
-        JointWeightData& jointWeightData = modelData.skinClusterData[jointName];
-
-        // バインドポーズ行列を分解する
-        aiMatrix4x4 bindPoseMatrixAssimp = bone->mOffsetMatrix.Inverse();
-        aiVector3D scale, translate;
-        aiQuaternion rotation;
-        bindPoseMatrixAssimp.Decompose(scale, rotation, translate);
-
-        Matrix4x4 bindposeMatrix = MyMath::MakeAffineMatrix(
-            { scale.x, scale.y, scale.z },
-            { rotation.x, -rotation.y, -rotation.z, rotation.w },
-            { -translate.x, translate.y, translate.z }
-        );
-        jointWeightData.inverseBindPoseMatrix = bindposeMatrix.Inverse();
-
-        // 頂点ごとの重みを格納する
-        for (uint32_t weightIndex = 0; weightIndex < bone->mNumWeights; ++weightIndex) {
-            jointWeightData.vertexWeights.push_back({
-                bone->mWeights[weightIndex].mWeight,
-                bone->mWeights[weightIndex].mVertexId
-                });
-        }
-    }
+    AppendSkinClusterDataFromMesh(*mesh, baseVertex, modelData, skinPrefix);
 }
 
-void Model::LoadMaterialFromScene(const aiScene* scene, const std::string& directoryPath, ModelData& modelData)
+void Model::LoadMaterialFromScene(
+	const aiScene* scene,
+	const std::string& directoryPath,
+	const std::string& filename,
+	ModelData& modelData)
 {
-    for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
-        aiMaterial* material = scene->mMaterials[materialIndex];
-        if (material->GetTextureCount(aiTextureType_DIFFUSE) == 0) {
-            continue;
-        }
+	for (uint32_t materialIndex = 0; materialIndex < scene->mNumMaterials; ++materialIndex) {
+		aiMaterial* material = scene->mMaterials[materialIndex];
+		MaterialData materialData;
+		materialData.textureFilePath = kFallbackTexturePath;
 
-        aiString texturePath;
-        material->GetTexture(aiTextureType_DIFFUSE, 0, &texturePath);
-        modelData.material.textureFilePath = ResolveResourceFilePath(directoryPath, texturePath.C_Str());
-    }
+		aiColor4D diffuseColor;
+		if (AI_SUCCESS == aiGetMaterialColor(
+			material,
+			AI_MATKEY_BASE_COLOR,
+			&diffuseColor) ||
+			AI_SUCCESS == aiGetMaterialColor(
+			material,
+			AI_MATKEY_COLOR_DIFFUSE,
+			&diffuseColor)) {
+			materialData.diffuseColor = {
+				diffuseColor.r,
+				diffuseColor.g,
+				diffuseColor.b,
+				diffuseColor.a,
+			};
+		}
+
+		const aiTextureType textureType =
+			material->GetTextureCount(aiTextureType_BASE_COLOR) > 0
+				? aiTextureType_BASE_COLOR
+				: aiTextureType_DIFFUSE;
+		if (material->GetTextureCount(textureType) > 0) {
+			aiString texturePath;
+			material->GetTexture(textureType, 0, &texturePath);
+			const std::string texturePathString = texturePath.C_Str();
+			uint32_t embeddedTextureIndex = 0;
+			if (TryParseEmbeddedTextureIndex(texturePathString, embeddedTextureIndex)) {
+				materialData.textureFilePath =
+					EmbeddedTextureKey(directoryPath, filename, texturePathString);
+				LoadEmbeddedTexture(
+					scene,
+					embeddedTextureIndex,
+					materialData.textureFilePath);
+			} else if (!texturePathString.empty()) {
+				const std::filesystem::path modelDirectory =
+					std::filesystem::path(ResolveModelAssetPath(directoryPath, filename)).parent_path();
+				std::string resolvedTexture =
+					ResolveModelResourcePath(modelDirectory.generic_string(), texturePathString);
+				if (!std::filesystem::exists(resolvedTexture)) {
+					resolvedTexture = ResolveModelResourcePath(directoryPath, texturePathString);
+				}
+				if (std::filesystem::exists(resolvedTexture)) {
+					materialData.textureFilePath = resolvedTexture;
+				} else {
+					OutputDebugStringA(("[Model] Missing material texture: " + texturePathString +
+						" in " + filename + "; using white fallback\n").c_str());
+				}
+			}
+		}
+
+		modelData.materials.push_back(materialData);
+	}
+	if (modelData.materials.empty()) {
+		modelData.materials.push_back({
+			kFallbackTexturePath,
+			0,
+			{ 1.0f, 1.0f, 1.0f, 1.0f },
+			});
+	}
+	modelData.material = modelData.materials.front();
 }
 
 SkinCluster Model::CreateSkinCluster()
 {
     SkinCluster skinCluster;
-    InitializePaletteResources(skinCluster);
     InitializeInfluenceResources(skinCluster);
     InitializeInverseBindPoseMatrices(skinCluster);
     ApplyJointWeightsToSkinCluster(skinCluster);
@@ -470,7 +919,8 @@ SkinCluster Model::CreateSkinCluster()
 
 void Model::LoadAnimationChannels(const aiAnimation* animationAssimp, Animation& animation)
 {
-    const float ticksPerSecond = float(animationAssimp->mTicksPerSecond);
+    const float ticksPerSecond =
+        ResolveAnimationTicksPerSecond(*animationAssimp);
     for (uint32_t channelIndex = 0; channelIndex < animationAssimp->mNumChannels; ++channelIndex) {
         aiNodeAnim* nodeAnimationAssimp = animationAssimp->mChannels[channelIndex];
         NodeAnimation& nodeAnimation = animation.nodeAnimations[nodeAnimationAssimp->mNodeName.C_Str()];
@@ -522,32 +972,9 @@ void Model::LoadScaleKeys(
     }
 }
 
-void Model::InitializePaletteResources(SkinCluster& skinCluster)
-{
-    skinCluster.paletteResource =
-        modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(WellForGPU) * skeleton.joints.size());
-    WellForGPU* mappedPalette = nullptr;
-    skinCluster.paletteResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedPalette));
-    skinCluster.mappedPalette = { mappedPalette, skeleton.joints.size() };
-
-    uint32_t srvIndex = modelCommon_->GetSRVManager()->Allocate();
-    modelCommon_->GetSRVManager()->CreateSRVforStructuredBuffer(
-        srvIndex, skinCluster.paletteResource.Get(), static_cast<UINT>(skeleton.joints.size()), sizeof(WellForGPU));
-    skinCluster.paletteSrvHandle.first = modelCommon_->GetSRVManager()->GetCPUDescriptorHandle(srvIndex);
-    skinCluster.paletteSrvHandle.second = modelCommon_->GetSRVManager()->GetGPUDescriptorHandle(srvIndex);
-}
-
 void Model::InitializeInfluenceResources(SkinCluster& skinCluster)
 {
-    skinCluster.influenceResource =
-        modelCommon_->GetDxCommon()->CreateBufferResource(sizeof(VertexInfluence) * modelData.vertices.size());
-    VertexInfluence* mappedInfluence = nullptr;
-    skinCluster.influenceResource->Map(0, nullptr, reinterpret_cast<void**>(&mappedInfluence));
-    std::memset(mappedInfluence, 0, sizeof(VertexInfluence) * modelData.vertices.size());
-    skinCluster.mappedInfluence = { mappedInfluence, modelData.vertices.size() };
-    skinCluster.influenceBufferView.BufferLocation = skinCluster.influenceResource->GetGPUVirtualAddress();
-    skinCluster.influenceBufferView.SizeInBytes = UINT(sizeof(VertexInfluence) * modelData.vertices.size());
-    skinCluster.influenceBufferView.StrideInBytes = sizeof(VertexInfluence);
+    skinCluster.influenceData.resize(modelData.vertices.size());
 }
 
 void Model::InitializeInverseBindPoseMatrices(SkinCluster& skinCluster)
@@ -570,7 +997,7 @@ void Model::ApplyJointWeightsToSkinCluster(SkinCluster& skinCluster)
         const uint32_t jointIndex = (*it).second;
         skinCluster.inverseBindPoseMatrices[jointIndex] = jointWeight.second.inverseBindPoseMatrix;
         for (const auto& vertexWeight : jointWeight.second.vertexWeights) {
-            auto& currentInfluence = skinCluster.mappedInfluence[vertexWeight.vectorIndex];
+            auto& currentInfluence = skinCluster.influenceData[vertexWeight.vectorIndex];
             for (uint32_t index = 0; index < kNumMaxInfluence; ++index) {
                 if (currentInfluence.weights[index] == 0.0f) {
                     currentInfluence.weights[index] = vertexWeight.weight;
@@ -580,6 +1007,22 @@ void Model::ApplyJointWeightsToSkinCluster(SkinCluster& skinCluster)
             }
         }
     }
+
+    const size_t influenceBytes =
+        sizeof(VertexInfluence) * skinCluster.influenceData.size();
+    const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+        modelCommon_->GetDxCommon();
+    skinCluster.influenceResource =
+        dxCommon->CreateDefaultBufferResource(
+            skinCluster.influenceData.data(),
+            influenceBytes,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    skinCluster.influenceBufferView.BufferLocation =
+        skinCluster.influenceResource->GetGPUVirtualAddress();
+    skinCluster.influenceBufferView.SizeInBytes =
+        static_cast<UINT>(influenceBytes);
+    skinCluster.influenceBufferView.StrideInBytes = sizeof(VertexInfluence);
+    std::vector<VertexInfluence>().swap(skinCluster.influenceData);
 }
 
 }

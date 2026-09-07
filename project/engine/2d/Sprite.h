@@ -5,6 +5,7 @@
 #include "Matrix4x4.h"
 #include "RenderingData.h"
 
+#include <array>
 #include <string>
 #include <wrl/client.h>
 #include <d3d12.h>
@@ -19,6 +20,7 @@ class Sprite
 public:
     /// 初期化処理（共通設定とテクスチャ読み込み）
     void Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath);
+    void SetTexture(const std::string& textureFilePath);
 
     /// 毎フレーム更新（座標・回転・UVなど）
     void Update();
@@ -38,9 +40,13 @@ public:
     float GetRotation() const { return rotation; }
     void SetRotation(float rotation) { this->rotation = rotation; }
 
+    // 上辺をスプライト幅に対する割合で横へずらす
+    float GetSkewX() const { return skewX_; }
+    void SetSkewX(float skewX) { skewX_ = skewX; }
+
     // 色（マテリアルカラー）
-    const Vector4& GetColor() const { return materialData->color; }
-    void SetColor(const Vector4& color) { materialData->color = color; }
+    const Vector4& GetColor() const { return materialData_.color; }
+    void SetColor(const Vector4& color) { materialData_.color = color; }
 
     // アンカーポイント（基準位置）
     const Vector2& GetAnchorPoint() const { return anchorPoint_; }
@@ -72,33 +78,17 @@ private:
 
     /// テクスチャサイズを画像に合わせる
     void AdjustTextureSize();
-    void CreateGpuResources();
-    void InitializeBufferViews();
     void InitializeMaterialData();
     void InitializeTransformationData();
-    void InitializeCameraData();
-    void UpdateCameraData();
     void UpdateVertexData();
-    void UpdateIndexData();
     void UpdateMatrices();
+    D3D12_GPU_VIRTUAL_ADDRESS UploadFrameConstant(const void* data, size_t size);
 
     SpriteCommon* spriteCommon_ = nullptr;
 
-    // GPUリソース
-    Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource;               // 頂点バッファ
-    Microsoft::WRL::ComPtr<ID3D12Resource> indexResource;                // インデックスバッファ
-    Microsoft::WRL::ComPtr<ID3D12Resource> materialResource;             // マテリアル用バッファ
-    Microsoft::WRL::ComPtr<ID3D12Resource> transformationMatrixResource; // 行列用バッファ
-
-    // バッファデータへのポインタ
-    VertexData* vertexData = nullptr;
-    uint32_t* indexData = nullptr;
-    MaterialSprite* materialData = nullptr;
-    TransformationMatrixsprite* transformationMatrixData_ = nullptr;
-
-    // バッファビュー
-    D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-    D3D12_INDEX_BUFFER_VIEW indexBufferView;
+    std::array<VertexData, 4> vertexData_{};
+    MaterialSprite materialData_{};
+    TransformationMatrixsprite transformationMatrixData_{};
 
     // 変換情報（スケール・回転・平行移動）
     EulerTransform transform{ {1.0f,1.0f,1.0f},{0.0f,0.0f,0.0f},{0.0f,0.0f,0.0f} };
@@ -107,6 +97,7 @@ private:
     Vector2 size = { 640.0f,360.0f };
     Vector2 position = { 0.0f,0.0f };
     float rotation = 0.0f;
+    float skewX_ = 0.0f;
     uint32_t textureIndex = 0;
 
     Vector2 anchorPoint_ = { 0.0f,0.0f }; // アンカーポイント
@@ -122,9 +113,6 @@ private:
     Matrix4x4 projectionMatrix;
     Matrix4x4 worldViewProjectionMatrix;
 
-    // カメラ関連
-    Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource; // GPU送信用カメラリソース
-    CameraForGpu* cameraForGpu = nullptr;                  // GPU送信用カメラ構造体
 };
 
 }

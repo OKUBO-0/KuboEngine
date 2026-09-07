@@ -1,10 +1,13 @@
 #include "Sprite.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "SpriteCommon.h"
 #include "TextureManager.h"
+#include "WinApp.h"
 #include "Matrix4x4.h"
 #include <MyMath.h>
-#include <CameraManager.h>
+#include <cstring>
+#include <memory>
 
 namespace Engine::Graphics2D {
 
@@ -14,39 +17,71 @@ void Sprite::Initialize(SpriteCommon* spriteCommon, const std::string& textureFi
     spriteCommon_ = spriteCommon;
     Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_);
     textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_);
-    CreateGpuResources();
-    InitializeBufferViews();
     InitializeMaterialData();
     InitializeTransformationData();
-    InitializeCameraData();
     AdjustTextureSize();
+}
+
+void Sprite::SetTexture(const std::string& textureFilePath)
+{
+    textureFilePath_ = textureFilePath;
+    Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_);
+    textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_);
+    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
+    textureLeftTop_ = { 0.0f, 0.0f };
+    textureSize_ = { static_cast<float>(metadata.width), static_cast<float>(metadata.height) };
 }
 
 void Sprite::Update()
 {
-    UpdateCameraData();
     UpdateVertexData();
-    UpdateIndexData();
     UpdateMatrices();
 }
 
 void Sprite::Draw()
 {
+    const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+        spriteCommon_->GetDxCommon();
+    ID3D12GraphicsCommandList* commandList = dxCommon->GetCommandList();
+    const D3D12_GPU_VIRTUAL_ADDRESS materialAddress =
+        UploadFrameConstant(&materialData_, sizeof(materialData_));
+    const D3D12_GPU_VIRTUAL_ADDRESS transformAddress =
+        UploadFrameConstant(&transformationMatrixData_, sizeof(transformationMatrixData_));
+    const Engine::Base::DirectXCommon::FrameUploadAllocation vertexAllocation =
+        dxCommon->AllocateFrameUpload(
+            sizeof(vertexData_),
+            alignof(VertexData));
+    std::memcpy(
+        vertexAllocation.cpuAddress,
+        vertexData_.data(),
+        sizeof(vertexData_));
+    const D3D12_VERTEX_BUFFER_VIEW vertexBufferView{
+        .BufferLocation = vertexAllocation.gpuAddress,
+        .SizeInBytes = static_cast<UINT>(sizeof(vertexData_)),
+        .StrideInBytes = sizeof(VertexData),
+    };
+
     // 頂点バッファ設定
-    spriteCommon_->GetDxCommon()->GetCommandList()->IASetVertexBuffers(0, 1, &vertexBufferView);
-    spriteCommon_->GetDxCommon()->GetCommandList()->IASetIndexBuffer(&indexBufferView);
+    commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+    commandList->IASetIndexBuffer(
+        &spriteCommon_->GetSharedIndexBufferView());
 
     // マテリアルCBV設定 (RootParameter[0])
-    spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+    commandList->SetGraphicsRootConstantBufferView(0, materialAddress);
 
     // テクスチャSRV設定 (RootParameter[1])
-    spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_));
+    commandList->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_));
 
     // 行列CBV設定 (RootParameter[2])
-    spriteCommon_->GetDxCommon()->GetCommandList()->SetGraphicsRootConstantBufferView(2, transformationMatrixResource->GetGPUVirtualAddress());
+    commandList->SetGraphicsRootConstantBufferView(2, transformAddress);
 
     // インデックス付き描画
-    spriteCommon_->GetDxCommon()->GetCommandList()->DrawIndexedInstanced(6, 1, 0, 0, 0);
+    commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+    spriteCommon_->RecordSpriteDraw(
+        static_cast<uint32_t>(
+            sizeof(materialData_) +
+            sizeof(transformationMatrixData_) +
+            sizeof(vertexData_)));
 }
 
 void Sprite::AdjustTextureSize()
@@ -61,60 +96,30 @@ void Sprite::AdjustTextureSize()
     size = textureSize_;
 }
 
-void Sprite::CreateGpuResources()
-{
-    vertexResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(VertexData) * 4);
-    indexResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(uint32_t) * 6);
-    materialResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(MaterialSprite));
-    transformationMatrixResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(TransformationMatrixsprite));
-}
-
-void Sprite::InitializeBufferViews()
-{
-    vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
-    vertexBufferView.SizeInBytes = sizeof(VertexData) * 4;
-    vertexBufferView.StrideInBytes = sizeof(VertexData);
-
-    indexBufferView.BufferLocation = indexResource->GetGPUVirtualAddress();
-    indexBufferView.SizeInBytes = sizeof(uint32_t) * 6;
-    indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-}
-
 void Sprite::InitializeMaterialData()
 {
-    materialResource->Map(0, nullptr, reinterpret_cast<void**>(&materialData));
-    materialData->color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-    materialData->uvTransform = materialData->uvTransform.MakeIdentity4x4();
+    materialData_.color = Vector4(1.0f, 1.0f, 1.0f, 1.0f);
+    materialData_.uvTransform = materialData_.uvTransform.MakeIdentity4x4();
 }
 
 void Sprite::InitializeTransformationData()
 {
-    transformationMatrixResource->Map(0, nullptr, reinterpret_cast<void**>(&transformationMatrixData_));
-    transformationMatrixData_->WVP = transformationMatrixData_->WVP.MakeIdentity4x4();
-    transformationMatrixData_->World = transformationMatrixData_->World.MakeIdentity4x4();
-}
-
-void Sprite::InitializeCameraData()
-{
-    cameraResource = spriteCommon_->GetDxCommon()->CreateBufferResource(sizeof(CameraForGpu));
-    cameraResource->Map(0, nullptr, reinterpret_cast<void**>(&cameraForGpu));
-    cameraForGpu->worldPosition = { 0.0f,0.0f,0.0f };
-}
-
-void Sprite::UpdateCameraData()
-{
-    Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
-    if (activeCamera) {
-        cameraForGpu->worldPosition = activeCamera->GetTransform().translate;
-    }
+    transformationMatrixData_.WVP =
+        transformationMatrixData_.WVP.MakeIdentity4x4();
+    transformationMatrixData_.World =
+        transformationMatrixData_.World.MakeIdentity4x4();
 }
 
 void Sprite::UpdateVertexData()
 {
+    // Anchor はスプライト矩形内の基準点を 0..1 で表す。
+    // ここでは左上(0,0)-右下(1,1)の単位矩形を、Anchor が原点に来るローカル座標へずらす。
     float left = 0.0f - anchorPoint_.x;
     float right = 1.0f - anchorPoint_.x;
     float top = 0.0f - anchorPoint_.y;
     float bottom = 1.0f - anchorPoint_.y;
+    // 反転は頂点順ではなく矩形の左右/上下座標を入れ替えることで表現する。
+    // Index は固定のままなので、以降の描画順を変えずに向きだけ反転できる。
     if (isFlipX_) {
         left = -left;
         right = -right;
@@ -124,36 +129,30 @@ void Sprite::UpdateVertexData()
         bottom = -bottom;
     }
 
+    // textureLeftTop_ と textureSize_ はピクセル単位の切り出し範囲。
+    // シェーダーへ渡す UV は 0..1 の正規化座標なので、元テクスチャの幅/高さで割る。
     const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
     const float texLeft = textureLeftTop_.x / metadata.width;
     const float texRight = (textureLeftTop_.x + textureSize_.x) / metadata.width;
     const float texTop = textureLeftTop_.y / metadata.height;
     const float texBottom = (textureLeftTop_.y + textureSize_.y) / metadata.height;
 
-    vertexResource->Map(0, nullptr, reinterpret_cast<void**>(&vertexData));
-    vertexData[0].position = { left, bottom, 0.0f, 1.0f };
-    vertexData[1].position = { left, top, 0.0f, 1.0f };
-    vertexData[2].position = { right, bottom, 0.0f, 1.0f };
-    vertexData[3].position = { right, top, 0.0f, 1.0f };
-    vertexData[0].texcoord = { texLeft, texBottom };
-    vertexData[1].texcoord = { texLeft, texTop };
-    vertexData[2].texcoord = { texRight, texBottom };
-    vertexData[3].texcoord = { texRight, texTop };
-    vertexData[0].normal = { 0.0f,0.0f,-1.0f };
-    vertexData[1].normal = { 0.0f,0.0f,-1.0f };
-    vertexData[2].normal = { 0.0f,0.0f,-1.0f };
-    vertexData[3].normal = { 0.0f,0.0f,-1.0f };
-}
-
-void Sprite::UpdateIndexData()
-{
-    indexResource->Map(0, nullptr, reinterpret_cast<void**>(&indexData));
-    indexData[0] = 0;
-    indexData[1] = 1;
-    indexData[2] = 2;
-    indexData[3] = 1;
-    indexData[4] = 3;
-    indexData[5] = 2;
+    // 下2頂点と上2頂点で X に skewX_ を加え、矩形を平行四辺形に傾ける。
+    // 実際の画面サイズ・回転・移動は UpdateMatrices() の World 行列で後段適用する。
+    vertexData_[0].position = { left, bottom, 0.0f, 1.0f };
+    vertexData_[1].position = { left + skewX_, top, 0.0f, 1.0f };
+    vertexData_[2].position = { right, bottom, 0.0f, 1.0f };
+    vertexData_[3].position = { right + skewX_, top, 0.0f, 1.0f };
+    // 頂点配列と同じ順に、切り出し範囲の左下/左上/右下/右上 UV を対応させる。
+    vertexData_[0].texcoord = { texLeft, texBottom };
+    vertexData_[1].texcoord = { texLeft, texTop };
+    vertexData_[2].texcoord = { texRight, texBottom };
+    vertexData_[3].texcoord = { texRight, texTop };
+    // 2D はカメラへ向いた平面として扱うため、全頂点で同じ法線を持たせる。
+    vertexData_[0].normal = { 0.0f,0.0f,-1.0f };
+    vertexData_[1].normal = { 0.0f,0.0f,-1.0f };
+    vertexData_[2].normal = { 0.0f,0.0f,-1.0f };
+    vertexData_[3].normal = { 0.0f,0.0f,-1.0f };
 }
 
 void Sprite::UpdateMatrices()
@@ -165,8 +164,20 @@ void Sprite::UpdateMatrices()
 	projectionMatrix = MyMath::MakeOrthographicMatrix(
         0.0f, 0.0f, float(Engine::Base::WinApp::kClientWidth), float(Engine::Base::WinApp::kClientHeight), 0.0f, 100.0f);
     worldViewProjectionMatrix = worldMatrix * viewMatrix.MakeIdentity4x4() * projectionMatrix;
-    transformationMatrixData_->WVP = worldViewProjectionMatrix;
-    transformationMatrixData_->World = worldMatrix;
+    transformationMatrixData_.WVP = worldViewProjectionMatrix;
+    transformationMatrixData_.World = worldMatrix;
+}
+
+D3D12_GPU_VIRTUAL_ADDRESS Sprite::UploadFrameConstant(
+    const void* data,
+    size_t size)
+{
+    const std::shared_ptr<Engine::Base::DirectXCommon> dxCommon =
+        spriteCommon_->GetDxCommon();
+    const Engine::Base::DirectXCommon::FrameUploadAllocation allocation =
+        dxCommon->AllocateFrameUpload(size, 256);
+    std::memcpy(allocation.cpuAddress, data, size);
+    return allocation.gpuAddress;
 }
 
 }

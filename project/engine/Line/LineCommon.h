@@ -50,7 +50,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param srvManager SRV 管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
 
 	/// @brief 共通管理インスタンスを解放する
 	/// @param なし
@@ -78,8 +78,8 @@ public:
 	/// @param color ライン色
 	/// @return なし
 	void DrawLine(const Vector3& start, const Vector3& end, const Vector4& color);
-	//DXCommon
-	Engine::Base::DirectXCommon* GetDxCommon()const { return dxCommon_; }
+	/// @brief DirectX 共通管理を shared_ptr で返し、呼び出し側の一時保持中に破棄されないようにする
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDxCommon() const { return dxCommon_.lock(); }
 	//SrvManager
 	Engine::Base::SrvManager* GetSrvManager()const { return srvManager_; }
 
@@ -91,27 +91,24 @@ private:
 	LineCommon& operator=(const LineCommon&) = delete;
 	void InitializePipeline();
 	void InitializeVertexResources();
-	void InitializeCameraResource();
 	void UpdateCameraBuffer();
-	void EnsureInstanceResourceCapacity(size_t instanceSize);
-	void UploadInstances(size_t instanceSize);
-	void EnsureInstanceSrvIndex();
-	void UpdateInstanceSrv();
 private:
 	static const Vector3 kDefaultLineStart_;
 	static const Vector3 kDefaultLineEnd_;
 	static const Vector4 kDefaultLineColor_;
 	static const std::array<VertexDataLine, 2> kDefaultLineVertices_;
 
-	Engine::Base::DirectXCommon* dxCommon_;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	Engine::Base::SrvManager* srvManager_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> graphicsPipeline_;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_;
 
-	uint32_t instanceSrvIndex_ = UINT32_MAX;
-	Microsoft::WRL::ComPtr<ID3D12Resource> instanceResource_;
+	std::array<uint32_t, 2> instanceSrvIndices_{
+		UINT32_MAX,
+		UINT32_MAX,
+	};
 
 	LineInstanceData instance = {
 		.start = kDefaultLineStart_,
@@ -122,8 +119,7 @@ private:
 	std::vector<VertexDataLine>linevertices = { kDefaultLineVertices_.begin(), kDefaultLineVertices_.end() };
 	std::vector<LineInstanceData> instances_; // ← 複数ライン用
 
-	Microsoft::WRL::ComPtr<ID3D12Resource> cameraResource;//カメラのデータを送るためのリソース
-	CameraBufferforGpu* camerabuffer = nullptr;//カメラのデータをGPUに送るための構造体
+	CameraBufferforGpu cameraData_{};
 
 
 };

@@ -169,6 +169,8 @@ void Game::DrawDebugEditorShell()
 
 void Game::Draw()
 {
+	dxCommon->PrepareForFrame();
+	dxCommon->BeginGpuFrameTiming();
 	// DirectXの描画準備。すべての描画に共通のグラフィックスコマンドを積む
 	offscreenRenderManager->Begin();
 	srvManager->PreDraw();

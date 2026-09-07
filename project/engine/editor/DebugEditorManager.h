@@ -16,6 +16,14 @@ struct DebugSceneViewportState {
 struct DebugEditorMenuItem {
 	const char* label = "";
 	bool* open = nullptr;
+	const char* icon = "";
+};
+
+enum class DebugPlaybackState {
+	Unavailable,
+	Playing,
+	Paused,
+	Stopped,
 };
 
 struct DebugEditorMenuConfig {
@@ -34,11 +42,14 @@ struct DebugEditorMenuConfig {
 	std::function<void()> onGoGame;
 	std::function<void()> onGoResult;
 	bool* windowSwitcher = nullptr;
+	DebugPlaybackState playbackState = DebugPlaybackState::Unavailable;
+	std::function<void()> onTogglePlayback;
 };
 
 class DebugEditorManager {
 public:
 	static void BuildDefaultDockLayout(unsigned int dockspaceId);
+	static void ApplyDarkEditorStyle();
 	static void DrawMainMenu(const DebugEditorMenuConfig& config);
 	static void DrawHotReloadButton();
 	static void RequestPseudoHotReload();

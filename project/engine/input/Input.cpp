@@ -1,4 +1,5 @@
 #include "Input.h"
+#include "HResult.h"
 #include "WinApp.h"
 #include <cassert>
 #pragma comment(lib,"dinput8.lib")
@@ -11,6 +12,12 @@ namespace {
 constexpr float kGamePadAxisMaxValue = 32767.0f;
 constexpr float kGamePadDeadZone = 0.2f;
 constexpr float kGamePadVibrationMaxValue = 65535.0f;
+
+float NormalizeStickAxis(SHORT rawValue)
+{
+	const float value = static_cast<float>(rawValue) / kGamePadAxisMaxValue;
+	return std::fabs(value) < kGamePadDeadZone ? 0.0f : value;
+}
 }
 
 Input* Input::GetInstance()
@@ -35,28 +42,28 @@ void Input::Initialize(Engine::Base::WinApp* winApp)
 	// キーボードとマウスの両方で使う DirectInput の本体を生成する
 	//DirectInputのインスタンスを生成
 	hr = DirectInput8Create(winApp->GetHInstance(), DIRECTINPUT_VERSION, IID_IDirectInput8, (void**)&directInput, nullptr);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "DirectInput8Create");
 	//キーボードデバイス生成
 
 	hr = directInput->CreateDevice(GUID_SysKeyboard, &keyboard, NULL);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInput8::CreateDevice keyboard");
 	//入力データ形式のセット
 	hr = keyboard->SetDataFormat(&c_dfDIKeyboard);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetDataFormat keyboard");
 	//排他制御レベルのセット
 	hr = keyboard->SetCooperativeLevel(winApp->GetHwnd(), DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetCooperativeLevel keyboard");
 
 	// マウスはクライアント座標へ変換して扱うためウィンドウハンドルに紐付ける
 	//マウスデバイス生成
 	hr = directInput->CreateDevice(GUID_SysMouse, &devMouse_, NULL);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInput8::CreateDevice mouse");
 	//入力データ形式のセット
 	hr = devMouse_->SetDataFormat(&c_dfDIMouse2);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetDataFormat mouse");
 	//排他制御レベルのセット
 	hr = devMouse_->SetCooperativeLevel(winApp_->GetHwnd(), DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-	assert(SUCCEEDED(hr));
+	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetCooperativeLevel mouse");
 
 
 }
@@ -150,28 +157,32 @@ float Input::GetGamePadStickX(bool right)
 {
 	if (!gamepadConnected_) return 0.0f;
 
-	SHORT rawX = right ? state_.Gamepad.sThumbRX : state_.Gamepad.sThumbLX;
-	float normX = rawX / kGamePadAxisMaxValue; // -1.0 ~ 1.0 に正規化
-
-	// 微小入力で不要に反応しないよう中央付近は切り捨てる
-	// デッドゾーン処理
-	if (std::fabs(normX) < kGamePadDeadZone) return 0.0f;
-
-	return normX;
+	const SHORT rawX = right ? state_.Gamepad.sThumbRX : state_.Gamepad.sThumbLX;
+	return NormalizeStickAxis(rawX);
 }
 
 float Input::GetGamePadStickY(bool right)
 {
 	if (!gamepadConnected_) return 0.0f;
 
-	SHORT rawY = right ? state_.Gamepad.sThumbRY : state_.Gamepad.sThumbLY;
-	float normY = rawY / kGamePadAxisMaxValue; // -1.0 ~ 1.0 に正規化
+	const SHORT rawY = right ? state_.Gamepad.sThumbRY : state_.Gamepad.sThumbLY;
+	return NormalizeStickAxis(rawY);
+}
 
-	// 微小入力で不要に反応しないよう中央付近は切り捨てる
-	// デッドゾーン処理
-	if (std::fabs(normY) < kGamePadDeadZone) return 0.0f;
+float Input::GetPreviousGamePadStickX(bool right)
+{
+	if (!gamepadConnected_) return 0.0f;
 
-	return normY; // Y軸は通常、上がマイナスなので反転
+	const SHORT rawX = right ? prevState_.Gamepad.sThumbRX : prevState_.Gamepad.sThumbLX;
+	return NormalizeStickAxis(rawX);
+}
+
+float Input::GetPreviousGamePadStickY(bool right)
+{
+	if (!gamepadConnected_) return 0.0f;
+
+	const SHORT rawY = right ? prevState_.Gamepad.sThumbRY : prevState_.Gamepad.sThumbLY;
+	return NormalizeStickAxis(rawY);
 }
 
 BYTE Input::GetGamePadTrigger(bool right)

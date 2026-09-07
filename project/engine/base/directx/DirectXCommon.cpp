@@ -1,7 +1,12 @@
 #include "DirectXCommon.h"
+#include "HResult.h"
+#include "ShaderCompiler.h"
 #include "WinApp.h"
+#include <algorithm>
 #include <cassert>
 #include <format>
+#include <limits>
+#include <stdexcept>
 #pragma comment(lib,"d3d12.lib")
 #pragma comment(lib,"dxgi.lib")
 #include "Logger.h"
@@ -9,15 +14,50 @@
 
 namespace {
 
-constexpr float kTargetFrameRate = 60.0f;
-constexpr float kFrameCheckMarginRate = 65.0f;
 constexpr float kMicrosecondsPerSecond = 1000000.0f;
+constexpr float kMinTargetFrameRate = 15.0f;
+constexpr float kMaxTargetFrameRate = 1000.0f;
 constexpr float kDefaultClearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
+
+double P95(std::vector<double> samples)
+{
+	if (samples.empty()) {
+		return 0.0;
+	}
+	std::sort(samples.begin(), samples.end());
+	const size_t index = ((samples.size() * 95 + 99) / 100) - 1;
+	return samples[index];
+}
+
+double Maximum(const std::vector<double>& samples)
+{
+	return samples.empty()
+		? 0.0
+		: *std::max_element(samples.begin(), samples.end());
+}
 
 }
 
 namespace Engine::Base {
 
+DirectXCommon::~DirectXCommon()
+{
+	WaitForAllFrames();
+	if (gpuTimestampReadback_ && gpuTimestampCpuData_) {
+		gpuTimestampReadback_->Unmap(0, nullptr);
+		gpuTimestampCpuData_ = nullptr;
+	}
+	for (FrameContext& frameContext : frameContexts_) {
+		if (frameContext.uploadArena && frameContext.uploadCpuAddress) {
+			frameContext.uploadArena->Unmap(0, nullptr);
+			frameContext.uploadCpuAddress = nullptr;
+		}
+	}
+	if (fenceEvent) {
+		CloseHandle(fenceEvent);
+		fenceEvent = nullptr;
+	}
+}
 
 void DirectXCommon::EnableDebugLayer()
 {
@@ -39,7 +79,7 @@ Microsoft::WRL::ComPtr<IDXGIAdapter4> DirectXCommon::SelectAdapter()
 
 		DXGI_ADAPTER_DESC3 adapterDesc{};
 		hr = useAdapter->GetDesc3(&adapterDesc);
-		assert(SUCCEEDED(hr));
+		ThrowIfFailed(hr, "IDXGIAdapter4::GetDesc3");
 
 		if (!(adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)) {
 			Logger::Log(StringUtility::ConvertString(std::format(L"Use Adapater:{}\n", adapterDesc.Description)));
@@ -66,7 +106,9 @@ void DirectXCommon::CreateDevice(IDXGIAdapter4* adapter)
 		}
 	}
 
-	assert(device != nullptr);
+	if (!device) {
+		ThrowIfFailed(hr, "D3D12CreateDevice");
+	}
 	Logger::Log("Complete create D3D12Device!!!\n");
 }
 
@@ -76,9 +118,9 @@ void DirectXCommon::ConfigureInfoQueue()
 	Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue = nullptr;
 
 	if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
-		// 破損レベルだけ即停止する。ERROR は Output に残すが、移行中の Scene 切り替え検証を止めない。
+		// リソース状態不整合を発生地点で検出する。
 		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, false);
+		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
 		// WARNING で毎回停止すると、終了時の live object レポートなどでも 0x87A が飛ぶ。
 		infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, false);
 
@@ -105,12 +147,15 @@ void DirectXCommon::DeviceInitialize()
 	// DXGI ファクトリを作り、以後のアダプタ列挙とスワップチェーン生成の起点にする
 
 	HRESULT hr = CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "CreateDXGIFactory");
 #pragma endregion
 
 	// ハードウェアアダプタを選び、そのアダプタ上に D3D12 デバイスを作成する
 	Microsoft::WRL::ComPtr<IDXGIAdapter4> useAdapter = SelectAdapter();
-	assert(useAdapter != nullptr);
+	if (!useAdapter) {
+		throw std::runtime_error(
+			"DirectXCommon could not find a hardware adapter");
+	}
 
 	CreateDevice(useAdapter.Get());
 	ConfigureInfoQueue();
@@ -123,19 +168,25 @@ void DirectXCommon::CommandInitialize()
 	//コマンドキューを生成する
 	D3D12_COMMAND_QUEUE_DESC commandQueueDesc{};
 	hr = device->CreateCommandQueue(&commandQueueDesc, IID_PPV_ARGS(&commandQueue));
-	//生成がうまくできなかった
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12Device::CreateCommandQueue");
 
-	//コマンドアロケーターを生成する
-	hr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
-	//コマンドアロケーターの生成がうまく行かなった
-	assert(SUCCEEDED(hr));
+	// バックバッファごとに独立したコマンドアロケーターを持つ
+	for (FrameContext& frameContext : frameContexts_) {
+		hr = device->CreateCommandAllocator(
+			D3D12_COMMAND_LIST_TYPE_DIRECT,
+			IID_PPV_ARGS(&frameContext.commandAllocator));
+		ThrowIfFailed(hr, "ID3D12Device::CreateCommandAllocator");
+	}
+	InitializeFrameUploadArenas();
 
 	//コマンドリストを生成する
-	hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator.Get(), nullptr,
+	hr = device->CreateCommandList(
+		0,
+		D3D12_COMMAND_LIST_TYPE_DIRECT,
+		frameContexts_[currentFrameIndex_].commandAllocator.Get(),
+		nullptr,
 		IID_PPV_ARGS(&commandList));
-	//コマンドリストの生成がうまく行かなかったので起動できない
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12Device::CreateCommandList");
 #pragma endregion
 
 }
@@ -154,7 +205,8 @@ void DirectXCommon::SwapChainInitialize()
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;//モニタに写したら、中身を破壊
 	//コマンドキュー、ウィンドウハンドル、設定渡して生成する
 	hr = dxgiFactory->CreateSwapChainForHwnd(commandQueue.Get(), winApp_->GetHwnd(), &swapChainDesc, nullptr, nullptr, reinterpret_cast<IDXGISwapChain1**>(swapChain.GetAddressOf()));
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "IDXGIFactory::CreateSwapChainForHwnd");
+	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 
 #pragma endregion 
 
@@ -165,8 +217,8 @@ void DirectXCommon::DepthBufferInitialize()
 {
 	// 深度バッファは毎フレームの 3D 描画で共通利用するため、画面サイズ固定で 1 枚確保する
 	D3D12_RESOURCE_DESC resourceDesc{};
-	resourceDesc.Width = Engine::Base::WinApp::kClientWidth;//Textureの幅
-	resourceDesc.Height = Engine::Base::WinApp::kClientHeight;//Textureの高さ
+	resourceDesc.Width = swapChainDesc.Width;//Textureの幅
+	resourceDesc.Height = swapChainDesc.Height;//Textureの高さ
 	resourceDesc.MipLevels = 1;//mipmapの数
 	resourceDesc.DepthOrArraySize = 1;//奥行きor配列Texturの配列数
 	resourceDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;//DetpthStencilとして利用可能なフォーマット
@@ -190,23 +242,22 @@ void DirectXCommon::DepthBufferInitialize()
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,//深度値を書き込む状態のしておく
 		&depthClerValue,//Clear最適値
 		IID_PPV_ARGS(&resource));//作成するResourceポインタへのポインタ
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12Device::CreateCommittedResource depth buffer");
 	//DepthStencilTextureをウィンドウサイズで作成
 	depthStenciResource = resource;
+	TrackResourceState(
+		depthStenciResource.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
 }
 
-const uint32_t DirectXCommon::kMaxSRVCount = 512;
 void DirectXCommon::DescriptorHeapInitialize()
 {
 	//サイズを取得
-	descriptorSizeSRV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	descriptorSizeRTV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	descriptorSizeDSV = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
-	// RTV、SRV、DSV を用途ごとに分けて確保し、後続の各マネージャーから再利用する
+	// SRV heap は SrvManager が単独で所有する
 	rtvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 3, false);//RTV
-	srvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, kMaxSRVCount, true);//SRV
 	dsvDescriptorHeap = CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1, false);//DSV用のヒープでディスクリプタの数は1。DSVはShader内で触るものではない
 
 }
@@ -217,10 +268,11 @@ void DirectXCommon::RTVInitialize()
 	// スワップチェーンの各バックバッファへ RTV を張り、描画先として扱えるようにする
 
 	hr = swapChain->GetBuffer(0, IID_PPV_ARGS(&swapChainResources[0]));
-	//うまく取得できなければ起動できない
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "IDXGISwapChain::GetBuffer 0");
 	hr = swapChain->GetBuffer(1, IID_PPV_ARGS(&swapChainResources[1]));
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "IDXGISwapChain::GetBuffer 1");
+	TrackResourceState(swapChainResources[0].Get(), D3D12_RESOURCE_STATE_PRESENT);
+	TrackResourceState(swapChainResources[1].Get(), D3D12_RESOURCE_STATE_PRESENT);
 
 #pragma region RTV
 	//RTVの設定
@@ -258,12 +310,16 @@ void DirectXCommon::FenceInitialize()
 #pragma region Fence
 	// CPU/GPU 同期に使う Fence と待機イベントを作成する
 
-	hr = device->CreateFence(fenceValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-	assert(SUCCEEDED(hr));
+	hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+	ThrowIfFailed(hr, "ID3D12Device::CreateFence");
 
 	//fenceのSignalを待つためのイベントを作成する
 	fenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	assert(fenceEvent != nullptr);
+	if (!fenceEvent) {
+		ThrowIfFailed(
+			HRESULT_FROM_WIN32(GetLastError()),
+			"CreateEvent fence");
+	}
 
 #pragma endregion
 
@@ -293,20 +349,6 @@ void DirectXCommon::ScissorInitialize()
 
 }
 
-void DirectXCommon::DxcCompilerInitialize()
-{
-#pragma region DxcCompiler
-	// HLSL コンパイルを実行する DXC 本体と include 解決用ハンドラを初期化する
-	hr = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&dxcUtils));
-	assert(SUCCEEDED(hr));
-	hr = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&dxcCompiler));
-	assert(SUCCEEDED(hr));
-	//includeに対する設定
-	hr = dxcUtils->CreateDefaultIncludeHandler(&includeHandler);
-	assert(SUCCEEDED(hr));
-#pragma endregion
-}
-
 void DirectXCommon::ImguiInitialize()
 {
 }
@@ -316,6 +358,7 @@ void DirectXCommon::InitializeGraphicsResources()
 	// 描画基盤を依存順に初期化し、後段のリソース生成が前段の結果に依存できるようにする
 	DeviceInitialize();
 	CommandInitialize();
+	InitializeGpuTiming();
 	SwapChainInitialize();
 	DepthBufferInitialize();
 	DescriptorHeapInitialize();
@@ -324,60 +367,9 @@ void DirectXCommon::InitializeGraphicsResources()
 	FenceInitialize();
 	ViewportInitialize();
 	ScissorInitialize();
-	DxcCompilerInitialize();
+	shaderCompiler_ = std::make_unique<ShaderCompiler>();
+	shaderCompiler_->Initialize();
 	ImguiInitialize();
-}
-
-Microsoft::WRL::ComPtr<IDxcBlobEncoding> DirectXCommon::LoadShaderSource(const std::wstring& filePath)
-{
-	Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource = nullptr;
-	hr = dxcUtils->LoadFile(filePath.c_str(), nullptr, shaderSource.GetAddressOf());
-	assert(SUCCEEDED(hr));
-	return shaderSource;
-}
-
-DxcBuffer DirectXCommon::CreateShaderSourceBuffer(IDxcBlobEncoding* shaderSource) const
-{
-	DxcBuffer shaderSourceBuffer{};
-	shaderSourceBuffer.Ptr = shaderSource->GetBufferPointer();
-	shaderSourceBuffer.Size = shaderSource->GetBufferSize();
-	shaderSourceBuffer.Encoding = DXC_CP_UTF8;
-	return shaderSourceBuffer;
-}
-
-std::array<LPCWSTR, 9> DirectXCommon::CreateShaderCompileArguments(const std::wstring& filePath, const wchar_t* profile) const
-{
-	return {
-		filePath.c_str(),
-		L"-E", L"main",
-		L"-T", profile,
-		L"-Zi", L"-Qembed_debug",
-		L"-Od", L"-Zpr",
-	};
-}
-
-Microsoft::WRL::ComPtr<IDxcResult> DirectXCommon::ExecuteShaderCompile(const DxcBuffer& shaderSourceBuffer,
-	std::array<LPCWSTR, 9> arguments)
-{
-	Microsoft::WRL::ComPtr<IDxcResult> shaderResult = nullptr;
-	hr = dxcCompiler->Compile(
-		&shaderSourceBuffer,
-		arguments.data(),
-		static_cast<UINT32>(arguments.size()),
-		includeHandler,
-		IID_PPV_ARGS(shaderResult.GetAddressOf()));
-	assert(SUCCEEDED(hr));
-	return shaderResult;
-}
-
-void DirectXCommon::ValidateShaderCompileResult(IDxcResult* shaderResult)
-{
-	Microsoft::WRL::ComPtr<IDxcBlobUtf8> shaderError = nullptr;
-	shaderResult->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(shaderError.GetAddressOf()), nullptr);
-	if (shaderError != nullptr && shaderError->GetStringLength() != 0) {
-		Logger::Log(shaderError->GetStringPointer());
-		assert(false);
-	}
 }
 
 //初期化
@@ -393,13 +385,9 @@ void DirectXCommon::Initialize(Engine::Base::WinApp* winApp)
 
 void DirectXCommon::PrepareBackBufferForRendering(uint32_t backBufferIndex)
 {
-	// Present 状態のバックバッファを描画可能状態へ遷移する
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = swapChainResources[backBufferIndex].Get();
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	commandList->ResourceBarrier(1, &barrier);
+	TransitionResource(
+		swapChainResources[backBufferIndex].Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	// 描画先の RTV を設定し、描画開始前にクリアする
 	commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, nullptr);
@@ -408,50 +396,137 @@ void DirectXCommon::PrepareBackBufferForRendering(uint32_t backBufferIndex)
 
 void DirectXCommon::FinalizeFrameTransition()
 {
-	// 描画完了後は Present 用状態へ戻してから実行キューへ送る
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-	commandList->ResourceBarrier(1, &barrier);
+	TransitionResource(
+		swapChainResources[currentFrameIndex_].Get(),
+		D3D12_RESOURCE_STATE_PRESENT);
 	CloseAndExecuteCommandList();
-	swapChain->Present(1, 0);
+	ThrowIfFailed(
+		swapChain->Present(vSyncEnabled_ ? 1 : 0, 0),
+		"IDXGISwapChain::Present");
+}
+
+void DirectXCommon::ResizeSwapChainIfNeeded()
+{
+	RECT clientRect{};
+	if (!winApp_ || !GetClientRect(winApp_->GetHwnd(), &clientRect)) {
+		return;
+	}
+	const uint32_t width = static_cast<uint32_t>(
+		(std::max)(0L, clientRect.right - clientRect.left));
+	const uint32_t height = static_cast<uint32_t>(
+		(std::max)(0L, clientRect.bottom - clientRect.top));
+	if (width == 0 || height == 0 ||
+		(width == swapChainDesc.Width && height == swapChainDesc.Height)) {
+		return;
+	}
+
+	WaitForAllFrames();
+	for (auto& resource : swapChainResources) {
+		UntrackResourceState(resource.Get());
+		resource.Reset();
+	}
+	UntrackResourceState(depthStenciResource.Get());
+	depthStenciResource.Reset();
+	ThrowIfFailed(
+		swapChain->ResizeBuffers(
+			kFrameCount,
+			width,
+			height,
+			swapChainDesc.Format,
+			0),
+		"IDXGISwapChain::ResizeBuffers");
+	swapChainDesc.Width = width;
+	swapChainDesc.Height = height;
+	RTVInitialize();
+	DepthBufferInitialize();
+	DSVInitialize();
+	viewport.Width = static_cast<float>(width);
+	viewport.Height = static_cast<float>(height);
+	scissorRect.right = static_cast<LONG>(width);
+	scissorRect.bottom = static_cast<LONG>(height);
+	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 }
 
 void DirectXCommon::CloseAndExecuteCommandList()
 {
 	hr = commandList->Close();
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12GraphicsCommandList::Close");
 	ID3D12CommandList* commandLists[] = { commandList.Get() };
 	commandQueue->ExecuteCommandLists(1, commandLists);
 }
 
 void DirectXCommon::WaitForGpuCompletion()
 {
-	// GPU が前フレームを消化し切るまで待ち、コマンドアロケータ再利用の安全を確保する
-	fenceValue++;
-	commandQueue->Signal(fence.Get(), fenceValue);
-	if (fence->GetCompletedValue() < fenceValue) {
-		fence->SetEventOnCompletion(fenceValue, fenceEvent);
-		WaitForSingleObject(fenceEvent, INFINITE);
+	FrameContext& frameContext = frameContexts_[currentFrameIndex_];
+	SignalFrame(frameContext);
+	WaitForFrame(frameContext);
+}
+
+void DirectXCommon::WaitForAllFrames()
+{
+	if (!fence || !fenceEvent) {
+		return;
+	}
+	for (const FrameContext& frameContext : frameContexts_) {
+		WaitForFrame(frameContext);
 	}
 }
 
-void DirectXCommon::ResetCommandObjects()
+void DirectXCommon::InitializeFrameUploadArenas()
 {
-	// 次フレーム用にコマンドアロケータとコマンドリストを初期化し直す
-	hr = commandAllocator->Reset();
-	assert(SUCCEEDED(hr));
-	hr = commandList->Reset(commandAllocator.Get(), nullptr);
-	assert(SUCCEEDED(hr));
+	for (FrameContext& frameContext : frameContexts_) {
+		frameContext.uploadArena = CreateBufferResource(kFrameUploadArenaSize);
+		frameContext.uploadCpuAddress = MapResource<std::byte>(
+			frameContext.uploadArena.Get(),
+			"ID3D12Resource::Map frame upload arena");
+		frameContext.uploadOffset = 0;
+	}
+}
+
+void DirectXCommon::SignalFrame(FrameContext& frameContext)
+{
+	frameContext.fenceValue = ++nextFenceValue_;
+	ThrowIfFailed(
+		commandQueue->Signal(fence.Get(), frameContext.fenceValue),
+		"ID3D12CommandQueue::Signal");
+}
+
+void DirectXCommon::WaitForFrame(const FrameContext& frameContext)
+{
+	if (frameContext.fenceValue == 0 ||
+		fence->GetCompletedValue() >= frameContext.fenceValue) {
+		return;
+	}
+
+	ThrowIfFailed(
+		fence->SetEventOnCompletion(frameContext.fenceValue, fenceEvent),
+		"ID3D12Fence::SetEventOnCompletion");
+	const DWORD waitResult = WaitForSingleObject(fenceEvent, INFINITE);
+	if (waitResult != WAIT_OBJECT_0) {
+		ThrowIfFailed(
+			HRESULT_FROM_WIN32(GetLastError()),
+			"WaitForSingleObject fence");
+	}
+}
+
+void DirectXCommon::ResetCommandObjects(uint32_t frameIndex)
+{
+	FrameContext& frameContext = frameContexts_[frameIndex];
+	hr = frameContext.commandAllocator->Reset();
+	ThrowIfFailed(hr, "ID3D12CommandAllocator::Reset");
+	hr = commandList->Reset(frameContext.commandAllocator.Get(), nullptr);
+	ThrowIfFailed(hr, "ID3D12GraphicsCommandList::Reset");
+	frameContext.uploadOffset = 0;
+	frameContext.deferredReleaseResources.clear();
 }
 
 
 
 void DirectXCommon::Begin()
 {
-
 	//これから書き込むバックバッファのインデックスを取得する
-	UINT backBufferIndex = swapChain->GetCurrentBackBufferIndex();
-	PrepareBackBufferForRendering(backBufferIndex);
+	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
+	PrepareBackBufferForRendering(currentFrameIndex_);
 
 	// 以降の描画がウィンドウ全体へ正しく出るようビューポートとシザーを固定する
 	commandList->RSSetViewports(1, &viewport);
@@ -462,20 +537,177 @@ void DirectXCommon::Begin()
 
 void DirectXCommon::End()
 {
+	FrameContext& submittedFrame = frameContexts_[currentFrameIndex_];
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase + 1);
+	commandList->ResolveQueryData(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase,
+		submittedFrame.shadowTimestampRecording ? 4u : 2u,
+		gpuTimestampReadback_.Get(),
+		static_cast<uint64_t>(timestampBase) * sizeof(uint64_t));
+	submittedFrame.gpuTimestampSubmitted = true;
+	submittedFrame.shadowTimestampSubmitted =
+		submittedFrame.shadowTimestampRecording;
 	FinalizeFrameTransition();
-	WaitForGpuCompletion();
+	SignalFrame(submittedFrame);
 	UpdateFixFPS();
-	ResetCommandObjects();
+	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
+	WaitForFrame(frameContexts_[currentFrameIndex_]);
+	ResetCommandObjects(currentFrameIndex_);
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetSRVCPUDescriptorHandle(uint32_t index)
+void DirectXCommon::PrepareForFrame()
 {
-	return GetCPUDescriptorHandle(srvDescriptorHeap, descriptorSizeSRV, index);
+	ResizeSwapChainIfNeeded();
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE DirectXCommon::GetSRVGPUDescriptorHandle(uint32_t index)
+void DirectXCommon::BeginGpuFrameTiming()
 {
-	return GetGPUDescriptorHandle(srvDescriptorHeap, descriptorSizeSRV, index);
+	CollectCompletedGpuTiming(currentFrameIndex_);
+	FrameContext& frameContext = frameContexts_[currentFrameIndex_];
+	frameContext.shadowTimestampRecording = false;
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(), D3D12_QUERY_TYPE_TIMESTAMP, timestampBase);
+}
+
+void DirectXCommon::InitializeGpuTiming()
+{
+	D3D12_QUERY_HEAP_DESC queryHeapDesc{};
+	queryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+	queryHeapDesc.Count = kFrameCount * 4;
+	ThrowIfFailed(
+		device->CreateQueryHeap(
+			&queryHeapDesc, IID_PPV_ARGS(&gpuTimestampQueryHeap_)),
+		"ID3D12Device::CreateQueryHeap GPU timing");
+
+	D3D12_HEAP_PROPERTIES heapProperties{};
+	heapProperties.Type = D3D12_HEAP_TYPE_READBACK;
+	D3D12_RESOURCE_DESC resourceDesc{};
+	resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resourceDesc.Width = sizeof(uint64_t) * queryHeapDesc.Count;
+	resourceDesc.Height = 1;
+	resourceDesc.DepthOrArraySize = 1;
+	resourceDesc.MipLevels = 1;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	ThrowIfFailed(
+		device->CreateCommittedResource(
+			&heapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&gpuTimestampReadback_)),
+		"ID3D12Device::CreateCommittedResource GPU timing readback");
+	ThrowIfFailed(
+		gpuTimestampReadback_->Map(
+			0, nullptr, reinterpret_cast<void**>(&gpuTimestampCpuData_)),
+		"ID3D12Resource::Map GPU timing readback");
+	ThrowIfFailed(
+		commandQueue->GetTimestampFrequency(&gpuTimestampFrequency_),
+		"ID3D12CommandQueue::GetTimestampFrequency");
+}
+
+void DirectXCommon::CollectCompletedGpuTiming(uint32_t frameIndex)
+{
+	FrameContext& frameContext = frameContexts_[frameIndex];
+	if (!frameContext.gpuTimestampSubmitted || !gpuTimestampCpuData_ ||
+		gpuTimestampFrequency_ == 0) {
+		return;
+	}
+	const uint32_t timestampBase = frameIndex * 4;
+	const double millisecondsPerTick =
+		1000.0 / static_cast<double>(gpuTimestampFrequency_);
+	const uint64_t frameStart = gpuTimestampCpuData_[timestampBase];
+	const uint64_t frameEnd = gpuTimestampCpuData_[timestampBase + 1];
+	if (frameEnd >= frameStart) {
+		const double frameMilliseconds =
+			static_cast<double>(frameEnd - frameStart) * millisecondsPerTick;
+		frameGpuMillisecondsTotal_ += frameMilliseconds;
+		frameGpuMillisecondsSamples_.push_back(frameMilliseconds);
+		++frameGpuSampleCount_;
+	}
+	if (frameContext.shadowTimestampSubmitted) {
+		const uint64_t shadowStart = gpuTimestampCpuData_[timestampBase + 2];
+		const uint64_t shadowEnd = gpuTimestampCpuData_[timestampBase + 3];
+		if (shadowEnd >= shadowStart) {
+			const double shadowMilliseconds =
+				static_cast<double>(shadowEnd - shadowStart) * millisecondsPerTick;
+			shadowGpuMillisecondsTotal_ += shadowMilliseconds;
+			shadowGpuMillisecondsSamples_.push_back(shadowMilliseconds);
+			++shadowGpuSampleCount_;
+		}
+	}
+	frameContext.gpuTimestampSubmitted = false;
+}
+
+void DirectXCommon::BeginShadowGpuTiming()
+{
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase + 2);
+	frameContexts_[currentFrameIndex_].shadowTimestampRecording = true;
+}
+
+void DirectXCommon::EndShadowGpuTiming()
+{
+	const uint32_t timestampBase = currentFrameIndex_ * 4;
+	commandList->EndQuery(
+		gpuTimestampQueryHeap_.Get(),
+		D3D12_QUERY_TYPE_TIMESTAMP,
+		timestampBase + 3);
+}
+
+void DirectXCommon::ResetGpuTimingStatistics()
+{
+	frameGpuMillisecondsTotal_ = 0.0;
+	shadowGpuMillisecondsTotal_ = 0.0;
+	frameGpuSampleCount_ = 0;
+	shadowGpuSampleCount_ = 0;
+	frameGpuMillisecondsSamples_.clear();
+	shadowGpuMillisecondsSamples_.clear();
+}
+
+double DirectXCommon::GetAverageFrameGpuMilliseconds() const
+{
+	return frameGpuSampleCount_ > 0
+		? frameGpuMillisecondsTotal_ / static_cast<double>(frameGpuSampleCount_)
+		: 0.0;
+}
+
+double DirectXCommon::GetAverageShadowGpuMilliseconds() const
+{
+	return shadowGpuSampleCount_ > 0
+		? shadowGpuMillisecondsTotal_ / static_cast<double>(shadowGpuSampleCount_)
+		: 0.0;
+}
+
+double DirectXCommon::GetFrameGpuP95Milliseconds() const
+{
+	return P95(frameGpuMillisecondsSamples_);
+}
+
+double DirectXCommon::GetShadowGpuP95Milliseconds() const
+{
+	return P95(shadowGpuMillisecondsSamples_);
+}
+
+double DirectXCommon::GetFrameGpuMaxMilliseconds() const
+{
+	return Maximum(frameGpuMillisecondsSamples_);
+}
+
+double DirectXCommon::GetShadowGpuMaxMilliseconds() const
+{
+	return Maximum(shadowGpuMillisecondsSamples_);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DirectXCommon::GetRTVCPUDescriptorHandle(uint32_t index)
@@ -499,8 +731,7 @@ Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> DirectXCommon::CreateDescriptorHeap
 	descriptorHeapDesc.NumDescriptors = numDescriptrs;
 	descriptorHeapDesc.Flags = shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;//ダブルバッファ用に2つ。多くても別に構わない
 	HRESULT hr = device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&descriptorHeap));
-	//ディスクリプトひーぷが作れなかったので起動できない
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12Device::CreateDescriptorHeap");
 	return descriptorHeap;
 }
 
@@ -512,30 +743,33 @@ void DirectXCommon::InitializeFixFPS()
 
 void DirectXCommon::UpdateFixFPS()
 {
-	//1/60秒ピッタリの時間
-	const std::chrono::microseconds kMinTime(
-		uint64_t(kMicrosecondsPerSecond / kTargetFrameRate));
-	//1/60秒よりわずかに短い時間
-	const std::chrono::microseconds kMinCheckTime(
-		uint64_t(kMicrosecondsPerSecond / kFrameCheckMarginRate));
-
-	//現在時間を取得する
-	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-	//前回記録からの経過時間を取得する
-	std::chrono::microseconds elapsed =
-		std::chrono::duration_cast<std::chrono::microseconds>(now - reference_);
-
-	//1/60秒(よりわずかに短い時間)経っていない場合
-	if (elapsed < kMinCheckTime) {
-		//1/60秒経過するまで微小なスリープを繰り返す
-		while (std::chrono::steady_clock::now() - reference_ < kMinTime) {
-
-			//1マイクロ秒スリープ
-			std::this_thread::sleep_for(std::chrono::microseconds(1));
-
-		}
+	if (!frameRateLimitEnabled_ || targetFrameRate_ <= 0.0f) {
+		reference_ = std::chrono::steady_clock::now();
+		return;
 	}
-	//現在の時間を記録をする
+
+	const std::chrono::microseconds targetFrameTime(
+		uint64_t(kMicrosecondsPerSecond / targetFrameRate_));
+	const auto nextFrameTime = reference_ + targetFrameTime;
+	std::this_thread::sleep_until(nextFrameTime);
+
+	const auto now = std::chrono::steady_clock::now();
+	if (now > nextFrameTime + targetFrameTime) {
+		reference_ = now;
+	} else {
+		reference_ = nextFrameTime;
+	}
+}
+
+void DirectXCommon::SetFrameRateLimitEnabled(bool enabled)
+{
+	frameRateLimitEnabled_ = enabled;
+	reference_ = std::chrono::steady_clock::now();
+}
+
+void DirectXCommon::SetTargetFrameRate(float frameRate)
+{
+	targetFrameRate_ = std::clamp(frameRate, kMinTargetFrameRate, kMaxTargetFrameRate);
 	reference_ = std::chrono::steady_clock::now();
 }
 
@@ -557,24 +791,11 @@ D3D12_GPU_DESCRIPTOR_HANDLE DirectXCommon::GetGPUDescriptorHandle(Microsoft::WRL
 
 }
 
-IDxcBlob* DirectXCommon::CompileShader(const std::wstring& filePath, const wchar_t* profile)
+Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(
+	const std::wstring& filePath,
+	const wchar_t* profile)
 {
-	//シェーダーをコンパイルする旨をログに出す
-	Logger::Log(StringUtility::ConvertString(std::format(L"Begin CompileShader,path:{},profile:{}\n", filePath, profile)));
-	Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource = LoadShaderSource(filePath);
-	DxcBuffer shaderSourceBuffer = CreateShaderSourceBuffer(shaderSource.Get());
-	std::array<LPCWSTR, 9> arguments = CreateShaderCompileArguments(filePath, profile);
-	Microsoft::WRL::ComPtr<IDxcResult> shaderResult = ExecuteShaderCompile(shaderSourceBuffer, arguments);
-	ValidateShaderCompileResult(shaderResult.Get());
-
-	//コンパイル結果から実行用のバイナリ部分を取得
-	Microsoft::WRL::ComPtr<IDxcBlob> shaderBlob = nullptr;
-	hr = shaderResult->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(shaderBlob.GetAddressOf()), nullptr);
-	assert(SUCCEEDED(hr));
-	//成功したログを出す
-	Logger::Log(StringUtility::ConvertString(std::format(L"Complite Succeded,path:{},profile:{}\n", filePath, profile)));
-
-	return shaderBlob.Detach();
+	return shaderCompiler_->Compile(filePath, profile);
 }
 
 
@@ -604,10 +825,121 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateBufferResource(size_
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource = nullptr;
 	HRESULT hr = device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE,
 		&vertexResourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&vertexResource));
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12Device::CreateCommittedResource buffer");
 
 	return vertexResource;
 
+}
+
+Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateDefaultBufferResource(
+	const void* data,
+	size_t sizeInBytes,
+	D3D12_RESOURCE_STATES finalState)
+{
+	if (!data || sizeInBytes == 0) {
+		throw std::invalid_argument(
+			"DirectXCommon::CreateDefaultBufferResource requires non-empty data");
+	}
+
+	D3D12_HEAP_PROPERTIES defaultHeapProperties{};
+	defaultHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+	D3D12_RESOURCE_DESC resourceDesc{};
+	resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	resourceDesc.Width = sizeInBytes;
+	resourceDesc.Height = 1;
+	resourceDesc.DepthOrArraySize = 1;
+	resourceDesc.MipLevels = 1;
+	resourceDesc.SampleDesc.Count = 1;
+	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> defaultResource;
+	ThrowIfFailed(
+		device->CreateCommittedResource(
+			&defaultHeapProperties,
+			D3D12_HEAP_FLAG_NONE,
+			&resourceDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			nullptr,
+			IID_PPV_ARGS(&defaultResource)),
+		"ID3D12Device::CreateCommittedResource default buffer");
+	TrackResourceState(
+		defaultResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+
+	Microsoft::WRL::ComPtr<ID3D12Resource> uploadResource =
+		CreateBufferResource(sizeInBytes);
+	void* mappedData = MapResource<void>(
+		uploadResource.Get(),
+		"ID3D12Resource::Map default buffer staging");
+	std::memcpy(mappedData, data, sizeInBytes);
+	uploadResource->Unmap(0, nullptr);
+
+	commandList->CopyBufferRegion(
+		defaultResource.Get(),
+		0,
+		uploadResource.Get(),
+		0,
+		sizeInBytes);
+	TransitionResource(defaultResource.Get(), finalState);
+	frameContexts_[currentFrameIndex_].deferredReleaseResources.push_back(
+		std::move(uploadResource));
+	return defaultResource;
+}
+
+DirectXCommon::FrameUploadAllocation DirectXCommon::AllocateFrameUpload(
+	size_t sizeInBytes,
+	size_t alignment)
+{
+	if (sizeInBytes == 0) {
+		throw std::invalid_argument(
+			"DirectXCommon::AllocateFrameUpload requires a non-zero size");
+	}
+	if (alignment == 0) {
+		throw std::invalid_argument(
+			"DirectXCommon::AllocateFrameUpload alignment must be non-zero");
+	}
+
+	FrameContext& frameContext = frameContexts_[currentFrameIndex_];
+	if (frameContext.uploadOffset >
+		(std::numeric_limits<size_t>::max)() - (alignment - 1)) {
+		throw std::overflow_error(
+			"DirectXCommon::AllocateFrameUpload offset overflow");
+	}
+	const size_t alignedOffset =
+		((frameContext.uploadOffset + alignment - 1) / alignment) * alignment;
+	if (alignedOffset > kFrameUploadArenaSize ||
+		sizeInBytes > kFrameUploadArenaSize - alignedOffset) {
+		throw std::runtime_error(std::format(
+			"Frame upload arena exhausted: requested {} bytes with {}-byte alignment, {} of {} bytes used",
+			sizeInBytes,
+			alignment,
+			frameContext.uploadOffset,
+			kFrameUploadArenaSize));
+	}
+
+	FrameUploadAllocation allocation{
+		.cpuAddress = frameContext.uploadCpuAddress + alignedOffset,
+		.gpuAddress =
+			frameContext.uploadArena->GetGPUVirtualAddress() + alignedOffset,
+		.resource = frameContext.uploadArena.Get(),
+		.offset = alignedOffset,
+		.size = sizeInBytes,
+	};
+	frameContext.uploadOffset = alignedOffset + sizeInBytes;
+	return allocation;
+}
+
+size_t DirectXCommon::GetCurrentFrameUploadUsedBytes() const
+{
+	return frameContexts_[currentFrameIndex_].uploadOffset;
+}
+
+void DirectXCommon::DeferResourceRelease(
+	Microsoft::WRL::ComPtr<ID3D12Resource>&& resource)
+{
+	if (resource) {
+		frameContexts_[currentFrameIndex_].deferredReleaseResources.push_back(
+			std::move(resource));
+	}
 }
 
 Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateTextureResource(const DirectX::TexMetadata& metadata)
@@ -634,7 +966,8 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateTextureResource(cons
 		nullptr,//Clear最適値。使わないのでnullptr
 		IID_PPV_ARGS(&resource));
 
-	assert(SUCCEEDED(hr));
+	ThrowIfFailed(hr, "ID3D12Device::CreateCommittedResource texture");
+	TrackResourceState(resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
 	return resource;
 
 }
@@ -654,14 +987,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::UploadTextureData
 	UpdateSubresources(commandList.Get(), texture.Get(), intermediateResource.Get(), 0, 0, UINT(subresources.size()), subresources.data());
 
 	// 転送完了後はシェーダーから参照できる状態へ戻す
-	D3D12_RESOURCE_BARRIER barrier{};
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = texture.Get();
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_GENERIC_READ;
-	commandList->ResourceBarrier(1, &barrier);
+	TransitionResource(texture.Get(), D3D12_RESOURCE_STATE_GENERIC_READ);
 
 
 	return intermediateResource;
@@ -672,15 +998,173 @@ void DirectXCommon::CommandKick()
 	// 初期化中に積んだコマンドを即時実行し、以後の生成処理で参照できる状態まで進める
 	CloseAndExecuteCommandList();
 	WaitForGpuCompletion();
-	ResetCommandObjects();
+	ResetCommandObjects(currentFrameIndex_);
 }
 
-void DirectXCommon::TransitionResource(ID3D12Resource* resource, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+void DirectXCommon::TrackResourceState(
+	ID3D12Resource* resource,
+	D3D12_RESOURCE_STATES initialState,
+	UINT subresource)
 {
+	if (!resource) {
+		throw std::invalid_argument("TrackResourceState requires a resource");
+	}
+	if (subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		UntrackResourceState(resource);
+	} else {
+		ExpandWholeResourceState(resource);
+	}
+	resourceStates_[{ resource, subresource }] = initialState;
+}
 
+void DirectXCommon::UntrackResourceState(ID3D12Resource* resource)
+{
+	if (!resource) {
+		return;
+	}
+	for (auto it = resourceStates_.begin(); it != resourceStates_.end();) {
+		if (it->first.resource == resource) {
+			it = resourceStates_.erase(it);
+		} else {
+			++it;
+		}
+	}
+}
 
+D3D12_RESOURCE_STATES DirectXCommon::GetTrackedResourceState(
+	ID3D12Resource* resource,
+	UINT subresource) const
+{
+	const auto exact = resourceStates_.find({ resource, subresource });
+	if (exact != resourceStates_.end()) {
+		return exact->second;
+	}
+	const auto whole = resourceStates_.find(
+		{ resource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES });
+	if (whole != resourceStates_.end()) {
+		return whole->second;
+	}
+	throw std::logic_error("Resource state is not tracked");
+}
 
+UINT DirectXCommon::GetResourceSubresourceCount(ID3D12Resource* resource) const
+{
+	const D3D12_RESOURCE_DESC desc = resource->GetDesc();
+	if (desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+		return 1;
+	}
+	UINT planeCount = 1;
+	if (device && desc.Format != DXGI_FORMAT_UNKNOWN) {
+		planeCount = D3D12GetFormatPlaneCount(device.Get(), desc.Format);
+		planeCount = (std::max)(1u, planeCount);
+	}
+	return static_cast<UINT>(desc.MipLevels) *
+		static_cast<UINT>(desc.DepthOrArraySize) * planeCount;
+}
 
+void DirectXCommon::ExpandWholeResourceState(ID3D12Resource* resource)
+{
+	const ResourceStateKey wholeKey{
+		resource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES };
+	const auto whole = resourceStates_.find(wholeKey);
+	if (whole == resourceStates_.end()) {
+		return;
+	}
+	const D3D12_RESOURCE_STATES state = whole->second;
+	resourceStates_.erase(whole);
+	const UINT count = GetResourceSubresourceCount(resource);
+	for (UINT index = 0; index < count; ++index) {
+		resourceStates_[{ resource, index }] = state;
+	}
+}
+
+void DirectXCommon::TransitionResource(
+	ID3D12Resource* resource,
+	D3D12_RESOURCE_STATES after,
+	UINT subresource)
+{
+	if (subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES &&
+		resourceStates_.find({ resource, subresource }) == resourceStates_.end()) {
+		bool found = false;
+		for (const auto& [key, state] : resourceStates_) {
+			if (key.resource != resource) {
+				continue;
+			}
+			found = true;
+			if (state == after) {
+				continue;
+			}
+			D3D12_RESOURCE_BARRIER transition{};
+			transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+			transition.Transition.pResource = resource;
+			transition.Transition.Subresource = key.subresource;
+			transition.Transition.StateBefore = state;
+			transition.Transition.StateAfter = after;
+			commandList->ResourceBarrier(1, &transition);
+		}
+		if (!found) {
+			throw std::logic_error("Resource state is not tracked");
+		}
+		UntrackResourceState(resource);
+		resourceStates_[{ resource, subresource }] = after;
+		return;
+	}
+	if (subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		ExpandWholeResourceState(resource);
+	}
+	TransitionResource(resource,
+		GetTrackedResourceState(resource, subresource), after, subresource);
+}
+
+void DirectXCommon::TransitionResource(
+	ID3D12Resource* resource,
+	D3D12_RESOURCE_STATES before,
+	D3D12_RESOURCE_STATES after,
+	UINT subresource)
+{
+	if (!resource || !commandList) {
+		throw std::invalid_argument(
+			"TransitionResource requires resource and command list");
+	}
+	if (subresource != D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		ExpandWholeResourceState(resource);
+	}
+	if (GetTrackedResourceState(resource, subresource) != before) {
+		throw std::logic_error("Resource state mismatch before transition");
+	}
+	if (before == after) {
+		return;
+	}
+	D3D12_RESOURCE_BARRIER transition{};
+	transition.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	transition.Transition.pResource = resource;
+	transition.Transition.Subresource = subresource;
+	transition.Transition.StateBefore = before;
+	transition.Transition.StateAfter = after;
+	commandList->ResourceBarrier(1, &transition);
+	if (subresource == D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) {
+		UntrackResourceState(resource);
+	}
+	resourceStates_[{ resource, subresource }] = after;
+}
+
+void DirectXCommon::InsertUavBarrier(ID3D12Resource* resource)
+{
+	D3D12_RESOURCE_BARRIER uav{};
+	uav.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	uav.UAV.pResource = resource;
+	commandList->ResourceBarrier(1, &uav);
+}
+
+void DirectXCommon::InsertAliasingBarrier(
+	ID3D12Resource* beforeResource,
+	ID3D12Resource* afterResource)
+{
+	D3D12_RESOURCE_BARRIER aliasing{};
+	aliasing.Type = D3D12_RESOURCE_BARRIER_TYPE_ALIASING;
+	aliasing.Aliasing.pResourceBefore = beforeResource;
+	aliasing.Aliasing.pResourceAfter = afterResource;
+	commandList->ResourceBarrier(1, &aliasing);
 }
 
 }

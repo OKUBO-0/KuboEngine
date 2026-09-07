@@ -80,10 +80,39 @@ void DrawMenuItems(const DebugEditorMenuItem* items, size_t count)
 {
 	for (size_t index = 0; index < count; ++index) {
 		if (items[index].open) {
-			if (ImGui::MenuItem(items[index].label, nullptr, items[index].open)) {
+			std::string label;
+			if (items[index].icon && items[index].icon[0] != '\0') {
+				label += items[index].icon;
+				label += ' ';
+			}
+			label += items[index].label ? items[index].label : "";
+			if (ImGui::MenuItem(label.c_str(), nullptr, items[index].open)) {
 				SaveWindowOpen(items[index].label, *items[index].open);
 			}
 		}
+	}
+}
+
+void DrawPlaybackToolbar(const DebugEditorMenuConfig& config)
+{
+	if (config.playbackState == DebugPlaybackState::Unavailable) {
+		return;
+	}
+	ImGui::Separator();
+
+	const bool frozen = config.playbackState == DebugPlaybackState::Paused;
+	const ImVec4 playColor = frozen
+		? ImVec4{ 0.15f, 0.62f, 0.26f, 1.0f }
+		: ImVec4{ 0.72f, 0.44f, 0.10f, 1.0f };
+	ImGui::PushStyleColor(ImGuiCol_Button, playColor);
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{ playColor.x + 0.10f, playColor.y + 0.10f, playColor.z + 0.10f, 1.0f });
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{ playColor.x * 0.75f, playColor.y * 0.75f, playColor.z * 0.75f, 1.0f });
+	if (ImGui::Button(frozen ? ICON_FA_PLAY : ICON_FA_PAUSE) && config.onTogglePlayback) {
+		config.onTogglePlayback();
+	}
+	ImGui::PopStyleColor(3);
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip(frozen ? "Resume Gameplay" : "Freeze Gameplay");
 	}
 }
 
@@ -154,20 +183,55 @@ void DebugEditorManager::BuildDefaultDockLayout(unsigned int dockspaceId)
 	ImGui::DockBuilderDockWindow("キー操作デバッグ", dockBottom);
 	ImGui::DockBuilderDockWindow("ライト設定", dockRight);
 	ImGui::DockBuilderDockWindow("オーディオ", dockRight);
-	ImGui::DockBuilderDockWindow("OffscreenRenderManager", dockRight);
 	ImGui::DockBuilderDockWindow("シーン固有デバッグ", dockRight);
-	ImGui::DockBuilderDockWindow("オブジェクトビュー / オブジェクト設定", dockRight);
-	ImGui::DockBuilderDockWindow("パーティクルビュー / スプライトマネージャ", dockRight);
+	ImGui::DockBuilderDockWindow("プレイヤー状態", dockRight);
+	ImGui::DockBuilderDockWindow("プレイヤー設定・武器デバッグ", dockRight);
+	ImGui::DockBuilderDockWindow("パーティクル・演出", dockRight);
+	ImGui::DockBuilderDockWindow("HUD・UI調整", dockRight);
 	ImGui::DockBuilderDockWindow("オフスクリーン設定", dockRight);
 	ImGui::DockBuilderDockWindow("ギズモ", dockRight);
 	ImGui::DockBuilderDockWindow("オブジェクトマネージャ", dockRight);
 	ImGui::DockBuilderDockWindow("モーションエディター", dockRight);
-	ImGui::DockBuilderDockWindow("コライダー/タグ管理", dockRight);
+	ImGui::DockBuilderDockWindow("コライダー・当たり判定", dockRight);
 	ImGui::DockBuilderFinish(dockspaceId);
+}
+
+void DebugEditorManager::ApplyDarkEditorStyle()
+{
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.WindowRounding = 4.0f;
+	style.FrameRounding = 3.0f;
+	style.PopupRounding = 4.0f;
+	style.ScrollbarRounding = 4.0f;
+	style.GrabRounding = 3.0f;
+	style.WindowBorderSize = 1.0f;
+	style.FrameBorderSize = 1.0f;
+	style.Colors[ImGuiCol_Text] = ImVec4{ 0.94f, 0.94f, 0.94f, 1.0f };
+	style.Colors[ImGuiCol_TextDisabled] = ImVec4{ 0.45f, 0.45f, 0.45f, 1.0f };
+	style.Colors[ImGuiCol_WindowBg] = ImVec4{ 0.02f, 0.02f, 0.025f, 0.98f };
+	style.Colors[ImGuiCol_ChildBg] = ImVec4{ 0.03f, 0.03f, 0.035f, 1.0f };
+	style.Colors[ImGuiCol_PopupBg] = ImVec4{ 0.015f, 0.015f, 0.02f, 0.98f };
+	style.Colors[ImGuiCol_Border] = ImVec4{ 0.20f, 0.20f, 0.22f, 1.0f };
+	style.Colors[ImGuiCol_FrameBg] = ImVec4{ 0.08f, 0.08f, 0.09f, 1.0f };
+	style.Colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.16f, 0.16f, 0.18f, 1.0f };
+	style.Colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.22f, 0.22f, 0.25f, 1.0f };
+	style.Colors[ImGuiCol_TitleBg] = ImVec4{ 0.02f, 0.02f, 0.025f, 1.0f };
+	style.Colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.04f, 0.04f, 0.05f, 1.0f };
+	style.Colors[ImGuiCol_MenuBarBg] = ImVec4{ 0.00f, 0.00f, 0.00f, 1.0f };
+	style.Colors[ImGuiCol_Button] = ImVec4{ 0.10f, 0.10f, 0.12f, 1.0f };
+	style.Colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.20f, 0.20f, 0.23f, 1.0f };
+	style.Colors[ImGuiCol_ButtonActive] = ImVec4{ 0.28f, 0.28f, 0.32f, 1.0f };
+	style.Colors[ImGuiCol_Header] = ImVec4{ 0.12f, 0.12f, 0.14f, 1.0f };
+	style.Colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.22f, 0.22f, 0.26f, 1.0f };
+	style.Colors[ImGuiCol_HeaderActive] = ImVec4{ 0.30f, 0.30f, 0.34f, 1.0f };
+	style.Colors[ImGuiCol_Tab] = ImVec4{ 0.06f, 0.06f, 0.07f, 1.0f };
+	style.Colors[ImGuiCol_TabHovered] = ImVec4{ 0.18f, 0.18f, 0.22f, 1.0f };
+	style.Colors[ImGuiCol_TabActive] = ImVec4{ 0.12f, 0.12f, 0.15f, 1.0f };
 }
 
 void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 {
+	ApplyDarkEditorStyle();
 	ApplyPersistedWindowItems(config.windowItems, config.windowItemCount);
 	ApplyPersistedWindowItems(config.editItems, config.editItemCount);
 	ApplyPersistedWindowItems(config.objectItems, config.objectItemCount);
@@ -175,54 +239,57 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 		return;
 	}
 
-	if (ImGui::BeginMenu(ICON_FA_FILE " ファイル")) {
-		if (config.saveLabel && config.onSave && ImGui::MenuItem(config.saveLabel)) {
+	if (ImGui::BeginMenu(ICON_FA_FOLDER_OPEN " File")) {
+		if (config.saveLabel && config.onSave && ImGui::MenuItem((std::string(ICON_FA_SAVE " ") + config.saveLabel).c_str())) {
 			config.onSave();
 		}
-		if (config.restoreLabel && config.onRestore && ImGui::MenuItem(config.restoreLabel)) {
+		if (config.restoreLabel && config.onRestore && ImGui::MenuItem((std::string(ICON_FA_FOLDER_OPEN " ") + config.restoreLabel).c_str())) {
 			config.onRestore();
 		}
-		if (ImGui::MenuItem("疑似ホットリロード")) {
+		if (ImGui::MenuItem(ICON_FA_SYNC " Hot Reload")) {
 			RequestPseudoHotReload();
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_EDIT " 編集")) {
+	if (ImGui::BeginMenu(ICON_FA_TOOLS " Tools")) {
 		DrawMenuItems(config.editItems, config.editItemCount);
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_EYE " 表示")) {
-		if (ImGui::BeginMenu("ウィンドウ")) {
+	if (ImGui::BeginMenu(ICON_FA_EYE " View")) {
+		if (ImGui::BeginMenu(ICON_FA_WINDOW_RESTORE " Windows")) {
 			DrawMenuItems(config.windowItems, config.windowItemCount);
 			ImGui::EndMenu();
 		}
 		if (config.windowSwitcher) {
-			ImGui::MenuItem("ウィンドウ表示切り替え", nullptr, config.windowSwitcher);
+			ImGui::MenuItem(ICON_FA_LIST " Window Switcher", nullptr, config.windowSwitcher);
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_CUBE " オブジェクト")) {
+	if (ImGui::BeginMenu(ICON_FA_CUBE " Object")) {
 		DrawMenuItems(config.objectItems, config.objectItemCount);
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_QUESTION_CIRCLE " ヘルプ")) {
+	if (ImGui::BeginMenu(ICON_FA_GAMEPAD " Game")) {
+		if (config.onGoGame && ImGui::MenuItem(ICON_FA_PLAY " Game")) {
+			config.onGoGame();
+		}
+		if (config.onGoResult && ImGui::MenuItem(ICON_FA_FLAG_CHECKERED " Result")) {
+			config.onGoResult();
+		}
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu(ICON_FA_SLIDERS_H " Layout")) {
+		ImGui::MenuItem(ICON_FA_WINDOW_RESTORE " Dock: Scene / Inspector / Console", nullptr, false, false);
+		ImGui::MenuItem(ICON_FA_PALETTE " Theme: Dark", nullptr, false, false);
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu(ICON_FA_QUESTION_CIRCLE " Help")) {
 		if (config.helpText) {
 			ImGui::TextUnformatted(config.helpText);
 		}
 		ImGui::EndMenu();
 	}
-	if (ImGui::BeginMenu(ICON_FA_GLOBE " シーン選択")) {
-		if (config.onGoTitle && ImGui::MenuItem("タイトルへ移動")) {
-			config.onGoTitle();
-		}
-		if (config.onGoGame && ImGui::MenuItem("ゲームへ移動")) {
-			config.onGoGame();
-		}
-		if (config.onGoResult && ImGui::MenuItem("リザルトへ移動")) {
-			config.onGoResult();
-		}
-		ImGui::EndMenu();
-	}
+	DrawPlaybackToolbar(config);
 
 	ImGui::EndMainMenuBar();
 }
@@ -307,16 +374,18 @@ DebugSceneViewportState DebugEditorManager::DrawSceneViewport(bool* open)
 	ImGui::SetNextWindowPos(ImVec2(288.0f, 12.0f), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(430.0f, 300.0f), ImGuiCond_FirstUseEver);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-	if (!ImGui::Begin("Scene", open)) {
+	constexpr ImGuiWindowFlags kSceneWindowFlags =
+		ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoScrollWithMouse;
+	if (!ImGui::Begin("Scene", open, kSceneWindowFlags)) {
 		ImGui::End();
 		ImGui::PopStyleVar();
 		return state;
 	}
 
-	state.inputActive = ImGui::IsWindowHovered() || ImGui::IsWindowFocused();
 	if (Engine::Base::OffscreenRenderManager* offscreen = Engine::Base::OffscreenRenderManager::GetInstance();
 		offscreen && offscreen->HasImGuiSceneTexture()) {
-		ImVec2 availableSize = ImGui::GetContentRegionAvail();
+		const ImVec2 availableSize = ImGui::GetContentRegionAvail();
 		constexpr float kSceneAspect = 16.0f / 9.0f;
 		ImVec2 imageSize{ availableSize.x, availableSize.x / kSceneAspect };
 		if (imageSize.y > availableSize.y) {
@@ -324,22 +393,37 @@ DebugSceneViewportState DebugEditorManager::DrawSceneViewport(bool* open)
 			imageSize.x = imageSize.y * kSceneAspect;
 		}
 
-		const float cursorX = ImGui::GetCursorPosX() + (availableSize.x - imageSize.x) * 0.5f;
-		ImGui::SetCursorPosX(cursorX);
-		const ImVec2 imageMin = ImGui::GetCursorScreenPos();
+		const ImVec2 contentMin = ImGui::GetCursorScreenPos();
+		const ImVec2 contentMax{
+			contentMin.x + availableSize.x,
+			contentMin.y + availableSize.y,
+		};
+		ImGui::GetWindowDrawList()->AddRectFilled(
+			contentMin,
+			contentMax,
+			ImGui::GetColorU32(ImGuiCol_WindowBg));
+		const ImVec2 imageMin{
+			contentMin.x + (availableSize.x - imageSize.x) * 0.5f,
+			contentMin.y + (availableSize.y - imageSize.y) * 0.5f,
+		};
+		const ImVec2 imageMax{
+			imageMin.x + imageSize.x,
+			imageMin.y + imageSize.y,
+		};
 		state.drawn = imageSize.x > 0.0f && imageSize.y > 0.0f;
 		state.min = { imageMin.x, imageMin.y };
 		state.size = { imageSize.x, imageSize.y };
-
-		ImGui::GetWindowDrawList()->AddRectFilled(
-			imageMin,
-			ImVec2(imageMin.x + imageSize.x, imageMin.y + imageSize.y),
-			IM_COL32(0, 0, 0, 255));
-		ImGui::Image(
+		ImGui::GetWindowDrawList()->AddImage(
 			static_cast<ImTextureID>(offscreen->GetImGuiSceneTextureHandle().ptr),
-			imageSize,
+			imageMin,
+			imageMax,
 			ImVec2(0.0f, 0.0f),
 			ImVec2(1.0f, 1.0f));
+		const ImVec2 mouse = ImGui::GetMousePos();
+		const bool imageHovered =
+			mouse.x >= imageMin.x && mouse.x <= imageMax.x &&
+			mouse.y >= imageMin.y && mouse.y <= imageMax.y;
+		state.inputActive = imageHovered || ImGui::IsWindowFocused();
 	}
 
 	ImGui::End();

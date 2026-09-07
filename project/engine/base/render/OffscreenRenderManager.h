@@ -35,11 +35,13 @@ public:
 	/// @param dxCommon DirectX共通管理
 	/// @param srvManager SRV管理
 	/// @return なし
-	void Initialize(Engine::Base::DirectXCommon* dxCommon, Engine::Base::SrvManager* srvManager);
+	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager);
+	void Finalize();
 	/// @brief オフスクリーン描画の開始処理を行う
 	/// @param なし
 	/// @return なし
 	void Begin();
+	void BindRenderTarget();
 	/// @brief オフスクリーン描画の終了処理を行う
 	/// @param なし
 	/// @return なし
@@ -70,18 +72,18 @@ public:
 	D3D12_GPU_DESCRIPTOR_HANDLE GetImGuiSceneTextureHandle() const { return imGuiSceneTextureGpuHandle_; }
 	bool HasImGuiSceneTexture() const { return imGuiSceneTextureReady_; }
 private:
+	std::shared_ptr<Engine::Base::DirectXCommon> GetDirectXCommon() const;
 	static OffscreenRenderManager* instance_;
 
-	//DirectXCommonのポインタ
-	Engine::Base::DirectXCommon* dxCommon_ = nullptr;
+	std::weak_ptr<Engine::Base::DirectXCommon> dxCommon_;
 	//SRVManagerのポインタ
 	Engine::Base::SrvManager* srvManager_ = nullptr;
 	//レンダーテクスチャ
 	DirectX::TexMetadata renderTargetMetadata_;
 	Microsoft::WRL::ComPtr<ID3D12Resource> renderTargetTextureResource;//レンダーテクスチャ
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetTextureHandle;//レンダーテクスチャのハンドル
-	inline static const Vector4 kClearColor = { 0.0f,0.0f,0.0f,1.0f };
-	uint32_t srvIndex = 0;
+	inline static const Vector4 kClearColor = { 0.55f,0.68f,0.92f,1.0f };
+	uint32_t srvIndex = UINT32_MAX;
 	D3D12_CPU_DESCRIPTOR_HANDLE imGuiSceneTextureCpuHandle{};
 	D3D12_GPU_DESCRIPTOR_HANDLE imGuiSceneTextureGpuHandle_{};
 	bool imGuiSceneTextureReady_ = false;
@@ -90,9 +92,6 @@ private:
 	PostEffectType sceneEffectType_ = PostEffectType::Fullscreen;
 	bool autoSceneEffectEnabled_ = true;
 	std::unique_ptr<GraphicsPipeline> graphicsPipeline_;
-
-	D3D12_RESOURCE_STATES currentState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
-
 
 };
 

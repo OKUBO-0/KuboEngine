@@ -75,6 +75,22 @@ struct DirectionalLight {
 	int enable;
 };
 
+struct SceneLightData {
+	Vector4 color;
+	Vector3 direction;
+	float intensity;
+	Vector4 ambientColor;
+	float ambientIntensity;
+	float specularStrength;
+	int enable;
+	float padding;
+};
+
+struct ShadowMapData {
+	Matrix4x4 lightViewProjection;
+	Vector4 settings;
+};
+
 struct PointLight {
 	
 	Vector4 color;//ライトの色
@@ -105,6 +121,15 @@ struct MaterialData {
 
 	std::string textureFilePath;
 	uint32_t textureIndex = 0;
+	Vector4 diffuseColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+
+};
+
+struct SubmeshData {
+
+	uint32_t startIndex = 0;
+	uint32_t indexCount = 0;
+	uint32_t materialIndex = 0;
 
 };
 
@@ -137,6 +162,8 @@ struct ModelData {
 	std::vector<VertexData>vertices;
 	std::vector<uint32_t> indices;
 	MaterialData material;
+	std::vector<MaterialData> materials;
+	std::vector<SubmeshData> submeshes;
 	Node rootNode;
 	Vector3 localAabbMin{ 0.0f, 0.0f, 0.0f };
 	Vector3 localAabbMax{ 0.0f, 0.0f, 0.0f };
@@ -210,8 +237,11 @@ using Engine::Math::Node;
 using Engine::Math::NodeAnimation;
 using Engine::Math::PointLight;
 using Engine::Math::QuaternionTransform;
+using Engine::Math::SceneLightData;
 using Engine::Math::Skeleton;
+using Engine::Math::ShadowMapData;
 using Engine::Math::SpotLight;
+using Engine::Math::SubmeshData;
 using Engine::Math::TransformationMatrix;
 using Engine::Math::TransformationMatrixsprite;
 using Engine::Math::VertexData;

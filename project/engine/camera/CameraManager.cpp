@@ -20,8 +20,9 @@ void CameraManager::Finalize()
 
 void CameraManager::Initialize()
 {
-
-    // デフォルトカメラの作成
+	cameras.clear();
+	activeCameraName.clear();
+	// デフォルトカメラの作成
     defaultCamera = std::make_unique<Camera>();
     defaultCamera->SetTranslate({ 0, 0, -5 });
     AddCamera("default", defaultCamera.get());
@@ -31,31 +32,17 @@ void CameraManager::Initialize()
 
 }
 
-void CameraManager::AddCamera(const std::string& name, const Camera* camera)
+void CameraManager::AddCamera(const std::string& name, Camera* camera)
 {
     if (!camera) {
         Engine::Base::Logger::Log("Warning: Attempted to add a null camera.");
         return;
     }
-    cameras[name] = *camera; // Dereference the pointer to store the Camera object
+    cameras[name] = camera;
     // 最初のカメラをアクティブに設定
     if (activeCameraName.empty()) {
         activeCameraName = name;
     }
-}
-
-bool CameraManager::SyncCamera(const std::string& name, const Camera* camera)
-{
-    if (!camera) {
-        Engine::Base::Logger::Log("Warning: Attempted to sync a null camera.");
-        return false;
-    }
-    auto it = cameras.find(name);
-    if (it == cameras.end()) {
-        return false;
-    }
-    it->second = *camera;
-    return true;
 }
 
 void CameraManager::RemoveCamera(const std::string& name) {
@@ -73,19 +60,24 @@ void CameraManager::RemoveCamera(const std::string& name) {
 Camera* CameraManager::GetCamera(const std::string& name) {
     auto it = cameras.find(name);
     if (it != cameras.end()) {
-        return &(it->second);
+        return it->second;
     }
     return nullptr;
 }
 
 
 Camera* CameraManager::GetActiveCamera() {
-    if (activeCameraName.empty() || cameras.find(activeCameraName) == cameras.end()) {
+    auto activeIt = cameras.find(activeCameraName);
+    if (activeCameraName.empty() || activeIt == cameras.end()) {
         // アクティブカメラが無効な場合、デフォルトカメラを使用
-        SetActiveCamera("default"); // デフォルトカメラをアクティブカメラとして設定
-        return defaultCamera.get();
+        activeIt = cameras.find("default");
+        if (activeIt == cameras.end()) {
+            activeCameraName.clear();
+            return nullptr;
+        }
+        activeCameraName = "default";
     }
-    return &cameras[activeCameraName];
+    return activeIt->second;
 }
 
 void CameraManager::SetActiveCamera(const std::string& name) {

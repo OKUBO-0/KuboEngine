@@ -1,6 +1,7 @@
 #pragma once
 #include <d3d12.h>
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <wrl.h>
 
@@ -24,7 +25,7 @@ public:
 	/// @param dxCommon DirectX 共通管理クラス
 	/// @param winApp ウィンドウ管理クラス
 	/// @return なし
-	void Initialize(DirectXCommon* dxCommon, Engine::Base::WinApp* winApp);
+	void Initialize(std::shared_ptr<DirectXCommon> dxCommon, Engine::Base::WinApp* winApp);
 
 	/// @brief ImGui の使用資源を解放する
 	/// @param なし
@@ -47,6 +48,7 @@ public:
 	void Draw();
 
 private:
+	std::shared_ptr<DirectXCommon> GetDirectXCommon() const;
 	static void AllocateSrvDescriptor(ImGui_ImplDX12_InitInfo* info,
 		D3D12_CPU_DESCRIPTOR_HANDLE* outCpuHandle,
 		D3D12_GPU_DESCRIPTOR_HANDLE* outGpuHandle);
@@ -62,7 +64,7 @@ private:
 	ax::NodeEditor::EditorContext* nodeEditorContext_ = nullptr;
 	bool defaultDockLayoutBuilt_ = false;
 
-	DirectXCommon* dxCommon_ = nullptr;
+	std::weak_ptr<DirectXCommon> dxCommon_;
 	Engine::Base::WinApp* winApp_ = nullptr;
 };
 

@@ -1,8 +1,15 @@
 #include "GraphicsPipeline.h"
 #include "DirectXCommon.h"
+#include "HResult.h"
 #include "Logger.h"
 #include "OffscreenRenderManager.h"
+#include "PipelineRootSignatureFactory.h"
+#include "PipelineStateBuilder.h"
 #include <array>
+#include <cassert>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -20,11 +27,43 @@ D3D12_BLEND_DESC CreateAlphaBlendDesc(D3D12_BLEND destBlend)
 	return blendDesc;
 }
 
+D3D12_BLEND_DESC CreateDisabledBlendDesc()
+{
+	D3D12_BLEND_DESC blendDesc{};
+	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	blendDesc.RenderTarget[0].BlendEnable = false;
+	return blendDesc;
+}
+
+D3D12_BLEND_DESC CreateBlendDesc(Engine::Base::GraphicsPipeline::PipelineBlendMode mode)
+{
+	switch (mode) {
+	case Engine::Base::GraphicsPipeline::PipelineBlendMode::Alpha:
+		return CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
+	case Engine::Base::GraphicsPipeline::PipelineBlendMode::Additive:
+		return CreateAlphaBlendDesc(D3D12_BLEND_ONE);
+	case Engine::Base::GraphicsPipeline::PipelineBlendMode::Disabled:
+	default:
+		return CreateDisabledBlendDesc();
+	}
+}
+
 D3D12_RASTERIZER_DESC CreateSolidRasterizerDesc(D3D12_CULL_MODE cullMode = D3D12_CULL_MODE_NONE)
 {
 	D3D12_RASTERIZER_DESC rasterizerDesc{};
 	rasterizerDesc.CullMode = cullMode;
 	rasterizerDesc.FillMode = D3D12_FILL_MODE_SOLID;
+	return rasterizerDesc;
+}
+
+D3D12_RASTERIZER_DESC CreateRasterizerDesc(
+	const Engine::Base::GraphicsPipeline::PipelineCreateDesc& definition)
+{
+	D3D12_RASTERIZER_DESC rasterizerDesc =
+		CreateSolidRasterizerDesc(definition.cullMode);
+	rasterizerDesc.DepthBias = definition.depthBias;
+	rasterizerDesc.SlopeScaledDepthBias = definition.slopeScaledDepthBias;
+	rasterizerDesc.DepthBiasClamp = definition.depthBiasClamp;
 	return rasterizerDesc;
 }
 
@@ -45,53 +84,21 @@ D3D12_DEPTH_STENCIL_DESC CreateDisabledDepthStencilDesc()
 	return depthStencilDesc;
 }
 
-D3D12_DESCRIPTOR_RANGE CreateSrvDescriptorRange(UINT shaderRegister)
+D3D12_DEPTH_STENCIL_DESC CreateDepthStencilDesc(
+	Engine::Base::GraphicsPipeline::PipelineDepthMode mode)
 {
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	descriptorRange.BaseShaderRegister = shaderRegister;
-	descriptorRange.NumDescriptors = 1;
-	descriptorRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-	descriptorRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-	return descriptorRange;
+	switch (mode) {
+	case Engine::Base::GraphicsPipeline::PipelineDepthMode::ReadWrite:
+		return CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
+	case Engine::Base::GraphicsPipeline::PipelineDepthMode::ReadOnly:
+		return CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
+	case Engine::Base::GraphicsPipeline::PipelineDepthMode::Disabled:
+	default:
+		return CreateDisabledDepthStencilDesc();
+	}
 }
 
-D3D12_ROOT_PARAMETER CreateCbvRootParameter(UINT shaderRegister, D3D12_SHADER_VISIBILITY shaderVisibility)
-{
-	D3D12_ROOT_PARAMETER rootParameter{};
-	rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-	rootParameter.ShaderVisibility = shaderVisibility;
-	rootParameter.Descriptor.ShaderRegister = shaderRegister;
-	return rootParameter;
-}
-
-D3D12_ROOT_PARAMETER CreateDescriptorTableRootParameter(
-	const D3D12_DESCRIPTOR_RANGE* descriptorRanges,
-	UINT descriptorRangeCount,
-	D3D12_SHADER_VISIBILITY shaderVisibility)
-{
-	D3D12_ROOT_PARAMETER rootParameter{};
-	rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-	rootParameter.ShaderVisibility = shaderVisibility;
-	rootParameter.DescriptorTable.pDescriptorRanges = descriptorRanges;
-	rootParameter.DescriptorTable.NumDescriptorRanges = descriptorRangeCount;
-	return rootParameter;
-}
-
-D3D12_STATIC_SAMPLER_DESC CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE addressMode)
-{
-	D3D12_STATIC_SAMPLER_DESC staticSampler{};
-	staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-	staticSampler.AddressU = addressMode;
-	staticSampler.AddressV = addressMode;
-	staticSampler.AddressW = addressMode;
-	staticSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-	staticSampler.MaxLOD = D3D12_FLOAT32_MAX;
-	staticSampler.ShaderRegister = 0;
-	staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-	return staticSampler;
-}
-
-void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[3])
+void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
 {
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -109,7 +116,7 @@ void SetupStandardInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[3]
 	inputElementDescs[2].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
 }
 
-void SetupSkinningInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[5])
+void SetupSkinningInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
 {
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -139,7 +146,7 @@ void SetupSkinningInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[5]
 	inputElementDescs[4].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
 }
 
-void SetupLineInputElements(D3D12_INPUT_ELEMENT_DESC (&inputElementDescs)[1])
+void SetupLineInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
 {
 	inputElementDescs[0].SemanticName = "POSITION";
 	inputElementDescs[0].SemanticIndex = 0;
@@ -163,18 +170,118 @@ D3D12_INPUT_LAYOUT_DESC CreateEmptyInputLayoutDesc()
 	return inputLayoutDesc;
 }
 
-std::pair<IDxcBlob*, IDxcBlob*> CompileShaderPair(
-	Engine::Base::DirectXCommon* dxCommon,
+void SetupPositionTexcoordInputElements(D3D12_INPUT_ELEMENT_DESC* inputElementDescs)
+{
+	inputElementDescs[0].SemanticName = "POSITION";
+	inputElementDescs[0].SemanticIndex = 0;
+	inputElementDescs[0].Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+	inputElementDescs[0].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+
+	inputElementDescs[1].SemanticName = "TEXCOORD";
+	inputElementDescs[1].SemanticIndex = 0;
+	inputElementDescs[1].Format = DXGI_FORMAT_R32G32_FLOAT;
+	inputElementDescs[1].AlignedByteOffset = D3D12_APPEND_ALIGNED_ELEMENT;
+}
+
+std::vector<D3D12_INPUT_ELEMENT_DESC> CreateInputElements(
+	Engine::Base::GraphicsPipeline::PipelineInputLayout inputLayout)
+{
+	switch (inputLayout) {
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Standard: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(3);
+		SetupStandardInputElements(inputElements.data());
+		return inputElements;
+	}
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::PositionTexcoord: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(2);
+		SetupPositionTexcoordInputElements(inputElements.data());
+		return inputElements;
+	}
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Skinning: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(5);
+		SetupSkinningInputElements(inputElements.data());
+		return inputElements;
+	}
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Line: {
+		std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements(1);
+		SetupLineInputElements(inputElements.data());
+		return inputElements;
+	}
+	case Engine::Base::GraphicsPipeline::PipelineInputLayout::Empty:
+	default:
+		return {};
+	}
+}
+
+D3D12_INPUT_LAYOUT_DESC CreateInputLayoutDesc(
+	const std::vector<D3D12_INPUT_ELEMENT_DESC>& inputElements)
+{
+	if (inputElements.empty()) {
+		return CreateEmptyInputLayoutDesc();
+	}
+	return CreateInputLayoutDesc(
+		const_cast<D3D12_INPUT_ELEMENT_DESC*>(inputElements.data()),
+		static_cast<UINT>(inputElements.size()));
+}
+
+std::pair<Microsoft::WRL::ComPtr<IDxcBlob>, Microsoft::WRL::ComPtr<IDxcBlob>> CompileShaderPair(
+	Engine::Base::DirectXCommon& dxCommon,
 	const wchar_t* vertexShaderPath,
 	const wchar_t* pixelShaderPath)
 {
-	IDxcBlob* vertexShaderBlob = dxCommon->CompileShader(vertexShaderPath, L"vs_6_0");
+	Microsoft::WRL::ComPtr<IDxcBlob> vertexShaderBlob =
+		dxCommon.CompileShader(vertexShaderPath, L"vs_6_0");
 	assert(vertexShaderBlob != nullptr);
 
-	IDxcBlob* pixelShaderBlob = dxCommon->CompileShader(pixelShaderPath, L"ps_6_0");
-	assert(pixelShaderBlob != nullptr);
+	Microsoft::WRL::ComPtr<IDxcBlob> pixelShaderBlob =
+		pixelShaderPath ? dxCommon.CompileShader(pixelShaderPath, L"ps_6_0") : nullptr;
+	assert(pixelShaderPath == nullptr || pixelShaderBlob != nullptr);
 
 	return { vertexShaderBlob, pixelShaderBlob };
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState> CreatePipelineFromDefinition(
+	Engine::Base::GraphicsPipeline& owner,
+	Engine::Base::DirectXCommon& dxCommon,
+	const Engine::Base::GraphicsPipeline::PipelineCreateDesc& definition)
+{
+	assert(definition.key != nullptr);
+	assert(definition.rootSignature != nullptr);
+	assert(definition.vertexShaderPath != nullptr);
+	if (definition.rootSignature == nullptr) {
+		throw std::runtime_error(
+			std::string("GraphicsPipeline root signature is not created: ") +
+			definition.key);
+	}
+	const std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements =
+		CreateInputElements(definition.inputLayout);
+	const D3D12_INPUT_LAYOUT_DESC inputLayoutDesc =
+		CreateInputLayoutDesc(inputElements);
+	auto [vertexShaderBlob, pixelShaderBlob] = CompileShaderPair(
+		dxCommon,
+		definition.vertexShaderPath,
+		definition.pixelShaderPath);
+	const std::string failureContext =
+		std::string(definition.failureContext) +
+		" [" + definition.key + "]";
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignatureHandle = definition.rootSignature;
+	return owner.CreateAndRegisterPipelineState(
+		definition.key,
+		rootSignatureHandle,
+		{
+			definition.rootSignature,
+			inputLayoutDesc,
+			vertexShaderBlob.Get(),
+			pixelShaderBlob.Get(),
+			CreateBlendDesc(definition.blendMode),
+			CreateRasterizerDesc(definition),
+			CreateDepthStencilDesc(definition.depthMode),
+			definition.topology,
+			definition.renderTargetCount,
+			definition.renderTargetFormat,
+			definition.depthStencilFormat,
+			failureContext.c_str(),
+		});
 }
 
 using PostEffectEntry = std::pair<PostEffectType, const wchar_t*>;
@@ -188,231 +295,110 @@ const std::array<PostEffectEntry, 6> kPostEffectEntries = { {
 	{ PostEffectType::RadialBlur, L"Resources/Shaders/post/fullscreen/RadialBlur.PS.hlsl" },
 } };
 
-void CreateRootSignatureFromDesc(
-	Engine::Base::DirectXCommon* dxCommon,
-	const D3D12_ROOT_SIGNATURE_DESC& descriptionRootSignature,
-	ID3D12RootSignature** rootSignature)
-{
-	ID3DBlob* signatureBlob = nullptr;
-	ID3DBlob* errorBlob = nullptr;
-	HRESULT hr = D3D12SerializeRootSignature(
-		&descriptionRootSignature, D3D_ROOT_SIGNATURE_VERSION_1, &signatureBlob, &errorBlob);
-	if (FAILED(hr)) {
-		Engine::Base::Logger::Log(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
-		assert(false);
-	}
-
-	hr = dxCommon->GetDevice()->CreateRootSignature(
-		0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(rootSignature));
-	assert(SUCCEEDED(hr));
-}
-
-void CreateRootSignatureWithParameters(
-	Engine::Base::DirectXCommon* dxCommon,
-	const D3D12_ROOT_PARAMETER* rootParameters,
-	UINT rootParameterCount,
-	const D3D12_STATIC_SAMPLER_DESC* staticSamplers,
-	UINT staticSamplerCount,
-	ID3D12RootSignature** rootSignature)
-{
-	D3D12_ROOT_SIGNATURE_DESC descriptionRootSignature{};
-	descriptionRootSignature.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-	descriptionRootSignature.pParameters = rootParameters;
-	descriptionRootSignature.NumParameters = rootParameterCount;
-	descriptionRootSignature.pStaticSamplers = staticSamplers;
-	descriptionRootSignature.NumStaticSamplers = staticSamplerCount;
-	CreateRootSignatureFromDesc(dxCommon, descriptionRootSignature, rootSignature);
-}
-
-std::array<D3D12_ROOT_PARAMETER, 9> CreateObjectRootParameters(
-	std::array<D3D12_DESCRIPTOR_RANGE, 2>& descriptorRanges)
-{
-	descriptorRanges[0] = CreateSrvDescriptorRange(0);
-	descriptorRanges[1] = CreateSrvDescriptorRange(1);
-	return {
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
-		CreateDescriptorTableRootParameter(&descriptorRanges[0], 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(2, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
-	};
-}
-
-std::array<D3D12_ROOT_PARAMETER, 3> CreateParticleRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
-{
-	descriptorRange = CreateSrvDescriptorRange(0);
-	return {
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_VERTEX),
-		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_PIXEL),
-	};
-}
-
-std::array<D3D12_ROOT_PARAMETER, 2> CreateLineRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
-{
-	descriptorRange = CreateSrvDescriptorRange(0);
-	return {
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
-		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_VERTEX),
-	};
-}
-
-std::array<D3D12_ROOT_PARAMETER, 10> CreateSkinningRootParameters(
-	std::array<D3D12_DESCRIPTOR_RANGE, 3>& descriptorRanges)
-{
-	descriptorRanges[0] = CreateSrvDescriptorRange(0);
-	descriptorRanges[1] = CreateSrvDescriptorRange(1);
-	descriptorRanges[2] = CreateSrvDescriptorRange(2);
-	return {
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
-		CreateDescriptorTableRootParameter(&descriptorRanges[0], 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(2, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_VERTEX),
-		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
-	};
-}
-
-std::array<D3D12_ROOT_PARAMETER, 3> CreateSpriteRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
-{
-	descriptorRange = CreateSrvDescriptorRange(0);
-	return {
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
-	};
-}
-
-std::array<D3D12_ROOT_PARAMETER, 3> CreateSkyboxRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
-{
-	descriptorRange = CreateSrvDescriptorRange(0);
-	return {
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_PIXEL),
-		CreateCbvRootParameter(0, D3D12_SHADER_VISIBILITY_VERTEX),
-		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_PIXEL),
-	};
-}
-
-std::array<D3D12_ROOT_PARAMETER, 1> CreateCopyImageRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
-{
-	descriptorRange = CreateSrvDescriptorRange(0);
-	return {
-		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_PIXEL),
-	};
-}
-
-void CreateGraphicsPipelineStateFromDesc(
-	Engine::Base::DirectXCommon* dxCommon,
-	ID3D12RootSignature* rootSignature,
-	const D3D12_INPUT_LAYOUT_DESC& inputLayoutDesc,
-	IDxcBlob* vertexShaderBlob,
-	IDxcBlob* pixelShaderBlob,
-	const D3D12_BLEND_DESC& blendDesc,
-	const D3D12_RASTERIZER_DESC& rasterizerDesc,
-	const D3D12_DEPTH_STENCIL_DESC& depthStencilDesc,
-	D3D12_PRIMITIVE_TOPOLOGY_TYPE primitiveTopologyType,
-	ID3D12PipelineState** pipelineState)
-{
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
-	pipelineDesc.pRootSignature = rootSignature;
-	pipelineDesc.InputLayout = inputLayoutDesc;
-	pipelineDesc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
-	pipelineDesc.PS = { pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize() };
-	pipelineDesc.BlendState = blendDesc;
-	pipelineDesc.RasterizerState = rasterizerDesc;
-	pipelineDesc.NumRenderTargets = 1;
-	pipelineDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-	pipelineDesc.PrimitiveTopologyType = primitiveTopologyType;
-	pipelineDesc.SampleDesc.Count = 1;
-	pipelineDesc.SampleMask = D3D12_DEFAULT_SAMPLE_MASK;
-	pipelineDesc.DepthStencilState = depthStencilDesc;
-	pipelineDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-
-	HRESULT hr = dxCommon->GetDevice()->CreateGraphicsPipelineState(&pipelineDesc, IID_PPV_ARGS(pipelineState));
-	assert(SUCCEEDED(hr));
-}
-
 }
 
 namespace Engine::Base {
 
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::CreatePipeline(const PipelineCreateDesc& desc)
+{
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	return CreatePipelineFromDefinition(*this, *dxCommon, desc);
+}
+
 void GraphicsPipeline::Create()
 {
-
 	RootSignatureCreate();
+	graphicsPipelineState = CreatePipeline({
+		"Object3D",
+		rootSignature.Get(),
+		L"Resources/Shaders/object/Object3d.VS.hlsl",
+		L"Resources/Shaders/object/Object3d.PS.hlsl",
+	});
 
-	// Object3D 用の頂点レイアウトを組み立てる
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
+}
 
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
+void GraphicsPipeline::CreateObjectInstancing()
+{
+	RootSignatureObjectInstancingCreate();
+	graphicsPipelineStateObjectInstancing = CreatePipeline({
+		"ObjectInstancing",
+		rootSignatureObjectInstancing.Get(),
+		L"Resources/Shaders/object/ObjectInstanced3d.VS.hlsl",
+		L"Resources/Shaders/object/Object3d.PS.hlsl",
+		PipelineInputLayout::Standard,
+	});
+}
 
-	// 通常 3D 描画用のシェーダーを読み込み、共通 PSO を生成する
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/object/Object3d.VS.hlsl", L"Resources/Shaders/object/Object3d.PS.hlsl");
-
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignature.Get(), inputLayoutDesc, vertexshaderBlob,
-		pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, graphicsPipelineState.GetAddressOf());
-
+void GraphicsPipeline::CreateObjectInstancingShadowMap()
+{
+	RootSignatureObjectInstancingCreate();
+	graphicsPipelineStateObjectInstancingShadowMap = CreatePipeline({
+		"ObjectInstancingShadowMap",
+		rootSignatureObjectInstancing.Get(),
+		L"Resources/Shaders/object/ObjectInstancedShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState object instancing shadow map",
+	});
 }
 
 
 void GraphicsPipeline::RootSignatureCreate()
 {
-	// 3D オブジェクト描画で使う CBV/SRV の並びをここで固定する
-	std::array<D3D12_DESCRIPTOR_RANGE, 2> descriptorRanges{};
-	const auto rootParameters = CreateObjectRootParameters(descriptorRanges);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignature.GetAddressOf());
+	if (rootSignature.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateObjectRootSignature(*dxCommon, rootSignature.GetAddressOf());
+}
+
+void GraphicsPipeline::RootSignatureObjectInstancingCreate()
+{
+	if (rootSignatureObjectInstancing.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateObjectInstancingRootSignature(*dxCommon, rootSignatureObjectInstancing.GetAddressOf());
 }
 
 
 void GraphicsPipeline::CreateParticle()
 {
-
 	RootSignatureParticleCreate();
-
-	// パーティクルは通常メッシュと同じ頂点を使いつつ、加算合成で描画する
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_ONE);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/particle/Particle.VS.hlsl", L"Resources/Shaders/particle/Particle.PS.hlsl");
-
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignatureParticle.Get(), inputLayoutDesc, vertexshaderBlob,
-		pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, graphicsPipelineStateParticle.GetAddressOf());
+	graphicsPipelineStateParticle = CreatePipeline({
+		"Particle",
+		rootSignatureParticle.Get(),
+		L"Resources/Shaders/particle/Particle.VS.hlsl",
+		L"Resources/Shaders/particle/Particle.PS.hlsl",
+		PipelineInputLayout::PositionTexcoord,
+		PipelineBlendMode::Additive,
+		PipelineDepthMode::ReadOnly,
+	});
 
 }
 
 void GraphicsPipeline::RootSignatureParticleCreate()
 {
-	// パーティクルは material、instance SRV、texture SRV の最小構成で組む
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	const auto rootParameters = CreateParticleRootParameters(descriptorRange);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignatureParticle.GetAddressOf());
+	if (rootSignatureParticle.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateParticleRootSignature(*dxCommon, rootSignatureParticle.GetAddressOf());
 }
 
 
@@ -422,77 +408,162 @@ void GraphicsPipeline::RootSignatureParticleCreate()
 void GraphicsPipeline::CreateSprite()
 {
 	RootSignatureSpriteCreate();
-
-	// Sprite 用の最小構成パイプラインを作成する
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/sprite/Sprite.VS.hlsl", L"Resources/Shaders/sprite/Sprite.PS.hlsl");
-
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignatureSprite.Get(), inputLayoutDesc, vertexshaderBlob,
-		pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, graphicsPipelineStateSprite.GetAddressOf());
+	graphicsPipelineStateSprite = CreatePipeline({
+		"Sprite",
+		rootSignatureSprite.Get(),
+		L"Resources/Shaders/sprite/Sprite.VS.hlsl",
+		L"Resources/Shaders/sprite/Sprite.PS.hlsl",
+	});
 
 }
 
 
 void GraphicsPipeline::RootSignatureLineCreate()
 {
-	// ラインはカメラ CBV とインスタンス StructuredBuffer だけで描ける構成にする
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	const auto rootParameters = CreateLineRootParameters(descriptorRange);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		nullptr, 0, rootSignatureLine.GetAddressOf());
+	if (rootSignatureLine.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateLineRootSignature(*dxCommon, rootSignatureLine.GetAddressOf());
 }
 
 void GraphicsPipeline::RootSignatureSkinningCreate()
 {
-	std::array<D3D12_DESCRIPTOR_RANGE, 3> descriptorRanges{};
-	const auto rootParameters = CreateSkinningRootParameters(descriptorRanges);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignatureSkinning.GetAddressOf());
+	if (rootSignatureSkinning.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSkinningRootSignature(*dxCommon, rootSignatureSkinning.GetAddressOf());
+}
+
+void GraphicsPipeline::RootSignatureSkinningInstancingCreate()
+{
+	if (rootSignatureSkinningInstancing.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSkinningInstancingRootSignature(*dxCommon, rootSignatureSkinningInstancing.GetAddressOf());
+}
+
+void GraphicsPipeline::CreateShadowMap()
+{
+	RootSignatureShadowMapCreate();
+	graphicsPipelineStateShadowMap = CreatePipeline({
+		"ShadowMap",
+		rootSignatureShadowMap.Get(),
+		L"Resources/Shaders/object/ShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState shadow map",
+	});
+}
+
+void GraphicsPipeline::CreateSkinningShadowMap()
+{
+	RootSignatureSkinningCreate();
+	graphicsPipelineStateSkinningShadowMap = CreatePipeline({
+		"SkinningShadowMap",
+		rootSignatureSkinning.Get(),
+		L"Resources/Shaders/object/SkinningShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Skinning,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState skinning shadow map",
+	});
+}
+
+void GraphicsPipeline::CreateSkinningInstancingShadowMap()
+{
+	RootSignatureSkinningInstancingCreate();
+	graphicsPipelineStateSkinningInstancingShadowMap = CreatePipeline({
+		"SkinningInstancingShadowMap",
+		rootSignatureSkinningInstancing.Get(),
+		L"Resources/Shaders/object/SkinningInstancedShadowMap.VS.hlsl",
+		nullptr,
+		PipelineInputLayout::Skinning,
+		PipelineBlendMode::Disabled,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE,
+		D3D12_CULL_MODE_NONE,
+		0,
+		DXGI_FORMAT_UNKNOWN,
+		DXGI_FORMAT_D32_FLOAT,
+		180,
+		1.0f,
+		0.002f,
+		"ID3D12Device::CreateGraphicsPipelineState skinning instancing shadow map",
+	});
+}
+
+void GraphicsPipeline::RootSignatureShadowMapCreate()
+{
+	if (rootSignatureShadowMap.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateShadowMapRootSignature(*dxCommon, rootSignatureShadowMap.GetAddressOf());
 }
 
 void GraphicsPipeline::CreateSkinning()
 {
 	RootSignatureSkinningCreate();
+	graphicsPipelineStateSkinning = CreatePipeline({
+		"Skinning",
+		rootSignatureSkinning.Get(),
+		L"Resources/Shaders/object/SkinningObject3d.VS.hlsl",
+		L"Resources/Shaders/object/SkinningObject3d.PS.hlsl",
+		PipelineInputLayout::Skinning,
+	});
+}
 
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[5] = {};
-	SetupSkinningInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/object/SkinningObject3d.VS.hlsl", L"Resources/Shaders/object/SkinningObject3d.PS.hlsl");
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignatureSkinning.Get(), inputLayoutDesc, vertexshaderBlob,
-		pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, graphicsPipelineStateSkinning.GetAddressOf());
+void GraphicsPipeline::CreateSkinningInstancing()
+{
+	RootSignatureSkinningInstancingCreate();
+	graphicsPipelineStateSkinningInstancing = CreatePipeline({
+		"SkinningInstancing",
+		rootSignatureSkinningInstancing.Get(),
+		L"Resources/Shaders/object/SkinningInstancedObject3d.VS.hlsl",
+		L"Resources/Shaders/object/SkinningObject3d.PS.hlsl",
+		PipelineInputLayout::Skinning,
+	});
 }
 
 void GraphicsPipeline::CreateLine()
 {
-	// RootSignature作成（ライン用）
 	RootSignatureLineCreate(); 
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[1] = {};
-	SetupLineInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ALL);
-	auto [vertexShaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/line/Line.VS.hlsl", L"Resources/Shaders/line/Line.PS.hlsl");
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignatureLine.Get(), inputLayoutDesc, vertexShaderBlob,
-		pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE, graphicsPipelineStateLine.GetAddressOf());
+	graphicsPipelineStateLine = CreatePipeline({
+		"Line",
+		rootSignatureLine.Get(),
+		L"Resources/Shaders/line/Line.VS.hlsl",
+		L"Resources/Shaders/line/Line.PS.hlsl",
+		PipelineInputLayout::Line,
+		PipelineBlendMode::Alpha,
+		PipelineDepthMode::ReadWrite,
+		D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE,
+	});
 }
 
 
@@ -500,31 +571,30 @@ void GraphicsPipeline::CreateLine()
 
 void GraphicsPipeline::RootSignatureSpriteCreate()
 {
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	const auto rootParameters = CreateSpriteRootParameters(descriptorRange);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignatureSprite.GetAddressOf());
+	if (rootSignatureSprite.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSpriteRootSignature(*dxCommon, rootSignatureSprite.GetAddressOf());
 }
 void GraphicsPipeline::CreateCopyImage(PostEffectType type, const std::wstring& psFilename)
 {
 	RootSignatureCopyImageCreate();
-
-	// フルスクリーン三角形で共通 VS とポストエフェクト別 PS を組み合わせる
-	auto [vertexShaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/post/fullscreen/Fullscreen.VS.hlsl", psFilename.c_str());
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateEmptyInputLayoutDesc();
-	D3D12_BLEND_DESC blendDesc{};
-	blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDisabledDepthStencilDesc();
-	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignatureCopyImage.Get(), inputLayoutDesc,
-		vertexShaderBlob, pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, pso.GetAddressOf());
-
-	// 後段描画で種類ごとに切り替えられるよう PSO を保持する
+	if (rootSignatureCopyImage.Get() == nullptr) {
+		throw std::runtime_error("GraphicsPipeline failed to create post-effect root signature");
+	}
+	const std::string key = "PostEffect." + std::to_string(static_cast<int>(type));
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> pso =
+		CreatePipeline({
+			key.c_str(),
+			rootSignatureCopyImage.Get(),
+			L"Resources/Shaders/post/fullscreen/Fullscreen.VS.hlsl",
+			psFilename.c_str(),
+			PipelineInputLayout::Empty,
+			PipelineBlendMode::Disabled,
+			PipelineDepthMode::Disabled,
+		});
 	copyImagePipelines_[type] = pso;
 }
 
@@ -538,12 +608,12 @@ void GraphicsPipeline::CreateAllPostEffects() {
 
 void GraphicsPipeline::RootSignatureCopyImageCreate()
 {
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	const auto rootParameters = CreateCopyImageRootParameters(descriptorRange);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignatureCopyImage.GetAddressOf());
+	if (rootSignatureCopyImage.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateCopyImageRootSignature(*dxCommon, rootSignatureCopyImage.GetAddressOf());
 }
 
 
@@ -552,41 +622,88 @@ void GraphicsPipeline::RootSignatureCopyImageCreate()
 void GraphicsPipeline::CreateSkybox()
 {
 	RootSignatureSkyboxCreate();
-
-	// スカイボックスは通常メッシュと同じ頂点形式を使うが、深度書き込みだけ無効化する
-	D3D12_INPUT_ELEMENT_DESC inputElementDescs[3] = {};
-	SetupStandardInputElements(inputElementDescs);
-	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = CreateInputLayoutDesc(inputElementDescs, _countof(inputElementDescs));
-	D3D12_BLEND_DESC blendDesc = CreateAlphaBlendDesc(D3D12_BLEND_INV_SRC_ALPHA);
-	D3D12_RASTERIZER_DESC rasterizerDesc = CreateSolidRasterizerDesc();
-	auto [vertexshaderBlob, pixelShaderBlob] = CompileShaderPair(
-		dxCommon_, L"Resources/Shaders/skybox/Skybox.VS.hlsl", L"Resources/Shaders/skybox/Skybox.PS.hlsl");
-	D3D12_DEPTH_STENCIL_DESC depthStencilDesc = CreateDepthStencilDesc(D3D12_DEPTH_WRITE_MASK_ZERO);
-	CreateGraphicsPipelineStateFromDesc(dxCommon_, rootSignatureSkybox.Get(), inputLayoutDesc, vertexshaderBlob,
-		pixelShaderBlob, blendDesc, rasterizerDesc, depthStencilDesc,
-		D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE, graphicsPipelineStateSkybox.GetAddressOf());
+	graphicsPipelineStateSkybox = CreatePipeline({
+		"Skybox",
+		rootSignatureSkybox.Get(),
+		L"Resources/Shaders/skybox/Skybox.VS.hlsl",
+		L"Resources/Shaders/skybox/Skybox.PS.hlsl",
+		PipelineInputLayout::Standard,
+		PipelineBlendMode::Alpha,
+		PipelineDepthMode::ReadOnly,
+	});
 }
 
 void GraphicsPipeline::RootSignatureSkyboxCreate()
 {
-	D3D12_DESCRIPTOR_RANGE descriptorRange{};
-	const auto rootParameters = CreateSkyboxRootParameters(descriptorRange);
-	const D3D12_STATIC_SAMPLER_DESC staticSampler =
-		CreateLinearStaticSamplerDesc(D3D12_TEXTURE_ADDRESS_MODE_WRAP);
-	CreateRootSignatureWithParameters(dxCommon_, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
-		&staticSampler, 1, rootSignatureSkybox.GetAddressOf());
+	if (rootSignatureSkybox.Get() != nullptr) {
+		return;
+	}
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	CreateSkyboxRootSignature(*dxCommon, rootSignatureSkybox.GetAddressOf());
 }
 
-ID3D12PipelineState* GraphicsPipeline::GetGraphicsPipelineStateCopyImage(PostEffectType type) {
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::GetGraphicsPipelineStateCopyImageHandle(PostEffectType type) const
+{
 	auto it = copyImagePipelines_.find(type);
 	if (it != copyImagePipelines_.end()) {
-		return it->second.Get();
+		return it->second;
 	}
-	return nullptr; // または assert(false)
+	return nullptr;
 }
 
-void GraphicsPipeline::Initialize(Engine::Base::DirectXCommon* dxCommon)
+void GraphicsPipeline::RegisterPipeline(
+	const std::string& key,
+	const Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSignature,
+	const Microsoft::WRL::ComPtr<ID3D12PipelineState>& pipelineState)
 {
+	pipelineRegistry_[key] = { rootSignature, pipelineState };
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::CreateAndRegisterPipelineState(
+	const std::string& key,
+	const Microsoft::WRL::ComPtr<ID3D12RootSignature>& rootSignature,
+	const GraphicsPipelineStateRequest& request)
+{
+	GraphicsPipelineStateRequest adjustedRequest = request;
+	adjustedRequest.rootSignature = rootSignature.Get();
+	const auto dxCommon = dxCommon_.lock();
+	assert(dxCommon);
+	Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState;
+	CreateGraphicsPipelineState(
+		*dxCommon,
+		adjustedRequest,
+		pipelineState.GetAddressOf());
+	RegisterPipeline(key, rootSignature, pipelineState);
+	return pipelineState;
+}
+
+const GraphicsPipeline::PipelineResourceSet*
+GraphicsPipeline::FindPipeline(const std::string& key) const
+{
+	const auto it = pipelineRegistry_.find(key);
+	return it != pipelineRegistry_.end() ? &it->second : nullptr;
+}
+
+Microsoft::WRL::ComPtr<ID3D12RootSignature>
+GraphicsPipeline::GetRootSignatureHandle(const std::string& key) const
+{
+	const PipelineResourceSet* pipeline = FindPipeline(key);
+	return pipeline ? pipeline->rootSignature : nullptr;
+}
+
+Microsoft::WRL::ComPtr<ID3D12PipelineState>
+GraphicsPipeline::GetPipelineStateHandle(const std::string& key) const
+{
+	const PipelineResourceSet* pipeline = FindPipeline(key);
+	return pipeline ? pipeline->pipelineState : nullptr;
+}
+
+void GraphicsPipeline::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon)
+{
+	assert(dxCommon);
 	dxCommon_ = dxCommon;
 
 }

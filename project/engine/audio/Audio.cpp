@@ -1,4 +1,5 @@
 #include "Audio.h"
+#include "HResult.h"
 #include <Windows.h>
 #include <algorithm>
 #include <cstdlib>
@@ -124,20 +125,22 @@ void Audio::Initialize()
 {
     // XAudio2 本体とマスターボイスを先に生成して、以降の SourceVoice 作成先を確保する
     HRESULT hr = XAudio2Create(&xAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
-    assert(SUCCEEDED(hr));
+    Engine::Base::ThrowIfFailed(hr, "XAudio2Create");
 
     hr = xAudio2->CreateMasteringVoice(&masterVoice);
-    assert(SUCCEEDED(hr));
+    Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateMasteringVoice");
 }
 
 void Audio::Finalize()
 {
     // すべての再生中の音を停止
-    for (auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            voice->Stop();
-            voice->DestroyVoice();
+    for (auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                voice->Stop();
+                voice->DestroyVoice();
+            }
         }
     }
     activeVoices.clear();
@@ -176,16 +179,22 @@ void Audio::SoundUnload(SoundData* soundData)
     soundData->wfex = {};
 }
 
-void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
+void Audio::SoundPlayWave(
+	const SoundData& soundData,
+	bool loop,
+	float volume)
 {
     HRESULT hr;
-
-    // 同じ SoundData の二重再生を避けるため、既存 Voice があれば先に止める
-    StopSpecificAudio(const_cast<SoundData*>(&soundData));
+    PruneFinishedVoices();
 
     IXAudio2SourceVoice* newVoice = nullptr;
-    hr = xAudio2->CreateSourceVoice(&newVoice, &soundData.wfex);
-    assert(SUCCEEDED(hr));
+	hr = xAudio2->CreateSourceVoice(&newVoice, &soundData.wfex);
+	Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateSourceVoice");
+	hr = newVoice->SetVolume(std::clamp(volume, 0.0f, 1.0f));
+	if (FAILED(hr)) {
+		newVoice->DestroyVoice();
+		Engine::Base::ThrowIfFailed(hr, "IXAudio2Voice::SetVolume before start");
+	}
 
     // 読み込み済みバッファをそのまま SourceVoice へ渡して再生する
     XAUDIO2_BUFFER buf{};
@@ -195,19 +204,63 @@ void Audio::SoundPlayWave(const SoundData& soundData, bool loop)
     buf.LoopCount = loop ? XAUDIO2_LOOP_INFINITE : 0;
 
     hr = newVoice->SubmitSourceBuffer(&buf);
+    if (FAILED(hr)) {
+        newVoice->DestroyVoice();
+        Engine::Base::ThrowIfFailed(
+            hr,
+            "IXAudio2SourceVoice::SubmitSourceBuffer");
+    }
     hr = newVoice->Start();
+    if (FAILED(hr)) {
+        newVoice->DestroyVoice();
+        Engine::Base::ThrowIfFailed(
+            hr,
+            "IXAudio2SourceVoice::Start");
+    }
 
-    activeVoices[const_cast<SoundData*>(&soundData)] = newVoice;
+    try {
+        activeVoices[&soundData].push_back(newVoice);
+    } catch (...) {
+        newVoice->Stop();
+        newVoice->DestroyVoice();
+        throw;
+    }
+}
+
+void Audio::PruneFinishedVoices()
+{
+    for (auto mapIt = activeVoices.begin(); mapIt != activeVoices.end();) {
+        std::vector<IXAudio2SourceVoice*>& voices = mapIt->second;
+        std::erase_if(voices, [](IXAudio2SourceVoice* voice) {
+            if (!voice) {
+                return true;
+            }
+            XAUDIO2_VOICE_STATE state{};
+            voice->GetState(&state);
+            if (state.BuffersQueued > 0) {
+                return false;
+            }
+            voice->DestroyVoice();
+            return true;
+            });
+        if (voices.empty()) {
+            mapIt = activeVoices.erase(mapIt);
+        } else {
+            ++mapIt;
+        }
+    }
 }
 
 void Audio::StopAudio()
 {
     // 生成済み Voice をすべて破棄して再生状態をリセットする
-    for (auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            voice->Stop();
-            voice->DestroyVoice();
+    for (auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                voice->Stop();
+                voice->DestroyVoice();
+            }
         }
     }
     activeVoices.clear();
@@ -217,10 +270,11 @@ void Audio::StopSpecificAudio(SoundData* soundData)
 {
     auto it = activeVoices.find(soundData);
     if (it != activeVoices.end()) {
-        IXAudio2SourceVoice* voice = it->second;
-        if (voice) {
-            voice->Stop();
-            voice->DestroyVoice();
+        for (IXAudio2SourceVoice* voice : it->second) {
+            if (voice) {
+                voice->Stop();
+                voice->DestroyVoice();
+            }
         }
         activeVoices.erase(it);
     }
@@ -228,10 +282,12 @@ void Audio::StopSpecificAudio(SoundData* soundData)
 
 void Audio::PauseAudio()
 {
-    for (auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            voice->Stop();
+    for (auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                voice->Stop();
+            }
         }
     }
 }
@@ -240,19 +296,24 @@ void Audio::PauseSpecificAudio(SoundData* soundData)
 {
     auto it = activeVoices.find(soundData);
     if (it != activeVoices.end()) {
-        IXAudio2SourceVoice* voice = it->second;
-        if (voice) {
-            voice->Stop();
+        for (IXAudio2SourceVoice* voice : it->second) {
+            if (voice) {
+                voice->Stop();
+            }
         }
     }
 }
 
 void Audio::ResumeAudio()
 {
-    for (auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            voice->Start();
+    for (auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                Engine::Base::ThrowIfFailed(
+                    voice->Start(),
+                    "IXAudio2SourceVoice::Start resume all");
+            }
         }
     }
 }
@@ -261,9 +322,12 @@ void Audio::ResumeSpecificAudio(SoundData* soundData)
 {
     auto it = activeVoices.find(soundData);
     if (it != activeVoices.end()) {
-        IXAudio2SourceVoice* voice = it->second;
-        if (voice) {
-            voice->Start();
+        for (IXAudio2SourceVoice* voice : it->second) {
+            if (voice) {
+                Engine::Base::ThrowIfFailed(
+                    voice->Start(),
+                    "IXAudio2SourceVoice::Start resume specific");
+            }
         }
     }
 }
@@ -271,11 +335,15 @@ void Audio::ResumeSpecificAudio(SoundData* soundData)
 void Audio::SetPlaybackSpeed(float speed)
 {
     // 再生中の全 Voice に同じ周波数比を適用する
-    for (auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            HRESULT hr = voice->SetFrequencyRatio(speed);
-            assert(SUCCEEDED(hr));
+    for (auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                HRESULT hr = voice->SetFrequencyRatio(speed);
+                Engine::Base::ThrowIfFailed(
+                    hr,
+                    "IXAudio2SourceVoice::SetFrequencyRatio");
+            }
         }
     }
 }
@@ -284,23 +352,28 @@ void Audio::SetPlaybackSpeed(SoundData* soundData, float speed)
 {
     auto it = activeVoices.find(soundData);
     if (it != activeVoices.end()) {
-        IXAudio2SourceVoice* voice = it->second;
-        if (voice) {
-            HRESULT hr = voice->SetFrequencyRatio(speed);
-            assert(SUCCEEDED(hr));
+        for (IXAudio2SourceVoice* voice : it->second) {
+            if (voice) {
+                HRESULT hr = voice->SetFrequencyRatio(speed);
+                Engine::Base::ThrowIfFailed(
+                    hr,
+                    "IXAudio2SourceVoice::SetFrequencyRatio");
+            }
         }
     }
 }
 
 bool Audio::IsSoundPlaying() const
 {
-    for (const auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            XAUDIO2_VOICE_STATE state;
-            voice->GetState(&state);
-            if (state.BuffersQueued > 0) {
-                return true;
+    for (const auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                XAUDIO2_VOICE_STATE state{};
+                voice->GetState(&state);
+                if (state.BuffersQueued > 0) {
+                    return true;
+                }
             }
         }
     }
@@ -313,11 +386,14 @@ bool Audio::IsSoundPlaying(SoundData* soundData) const
 {
     auto it = activeVoices.find(soundData);
     if (it != activeVoices.end()) {
-        IXAudio2SourceVoice* voice = it->second;
-        if (voice) {
-            XAUDIO2_VOICE_STATE state;
-            voice->GetState(&state);
-            return state.BuffersQueued > 0;
+        for (IXAudio2SourceVoice* voice : it->second) {
+            if (voice) {
+                XAUDIO2_VOICE_STATE state{};
+                voice->GetState(&state);
+                if (state.BuffersQueued > 0) {
+                    return true;
+                }
+            }
         }
     }
     return false;
@@ -325,10 +401,14 @@ bool Audio::IsSoundPlaying(SoundData* soundData) const
 
 void Audio::SetVolume(float volume)
 {
-    for (auto& voiceEntry : activeVoices) {
-        IXAudio2SourceVoice* voice = voiceEntry.second;
-        if (voice) {
-            voice->SetVolume(volume);
+    for (auto& [soundData, voices] : activeVoices) {
+        (void)soundData;
+        for (IXAudio2SourceVoice* voice : voices) {
+            if (voice) {
+                Engine::Base::ThrowIfFailed(
+                    voice->SetVolume(volume),
+                    "IXAudio2Voice::SetVolume all");
+            }
         }
     }
 }
@@ -337,9 +417,12 @@ void Audio::SetVolume(SoundData* soundData, float volume)
 {
     auto it = activeVoices.find(soundData);
     if (it != activeVoices.end()) {
-        IXAudio2SourceVoice* voice = it->second;
-        if (voice) {
-            voice->SetVolume(volume);
+        for (IXAudio2SourceVoice* voice : it->second) {
+            if (voice) {
+                Engine::Base::ThrowIfFailed(
+                    voice->SetVolume(volume),
+                    "IXAudio2Voice::SetVolume specific");
+            }
         }
     }
 }

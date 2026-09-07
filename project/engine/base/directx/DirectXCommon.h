@@ -1,15 +1,19 @@
 #pragma once
+#include "ShaderCompiler.h"
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <wrl.h>
 #include <array>
+#include <cstddef>
 #include <dxcapi.h>
+#include <memory>
 #pragma comment(lib, "dxcompiler.lib")
 #include"externals/DirectXTex/DirectXTex.h"
 #include"externals/DirectXTex/d3dx12.h"
 #include<vector>
 #include <chrono>
 #include <thread>  // std::this_thread
+#include <unordered_map>
 #include <Vector4.h>
 
 /// @brief DirectX12 のデバイス生成とフレーム描画基盤を管理するクラス
@@ -18,9 +22,34 @@
 namespace Engine::Base {
 
 class WinApp;
-
 class DirectXCommon
 {
+public:
+	static constexpr uint32_t kFrameCount = 2;
+
+	struct FrameUploadAllocation
+	{
+		void* cpuAddress = nullptr;
+		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = 0;
+		ID3D12Resource* resource = nullptr;
+		size_t offset = 0;
+		size_t size = 0;
+	};
+
+private:
+	struct FrameContext
+	{
+		Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator;
+		Microsoft::WRL::ComPtr<ID3D12Resource> uploadArena;
+		std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> deferredReleaseResources;
+		std::byte* uploadCpuAddress = nullptr;
+		size_t uploadOffset = 0;
+		uint64_t fenceValue = 0;
+		bool gpuTimestampSubmitted = false;
+		bool shadowTimestampSubmitted = false;
+		bool shadowTimestampRecording = false;
+	};
+
 	void DeviceInitialize();
 	void EnableDebugLayer();
 	Microsoft::WRL::ComPtr<IDXGIAdapter4> SelectAdapter();
@@ -35,22 +64,23 @@ class DirectXCommon
 	void FenceInitialize();
 	void ViewportInitialize();
 	void ScissorInitialize();
-	void DxcCompilerInitialize();
 	void ImguiInitialize();
 	void InitializeGraphicsResources();
-	Microsoft::WRL::ComPtr<IDxcBlobEncoding> LoadShaderSource(const std::wstring& filePath);
-	DxcBuffer CreateShaderSourceBuffer(IDxcBlobEncoding* shaderSource) const;
-	std::array<LPCWSTR, 9> CreateShaderCompileArguments(const std::wstring& filePath, const wchar_t* profile) const;
-	Microsoft::WRL::ComPtr<IDxcResult> ExecuteShaderCompile(const DxcBuffer& shaderSourceBuffer,
-		std::array<LPCWSTR, 9> arguments);
-	void ValidateShaderCompileResult(IDxcResult* shaderResult);
+	void ResizeSwapChainIfNeeded();
 	void PrepareBackBufferForRendering(uint32_t backBufferIndex);
 	void CloseAndExecuteCommandList();
 	void FinalizeFrameTransition();
 	void WaitForGpuCompletion();
-	void ResetCommandObjects();
+	void SignalFrame(FrameContext& frameContext);
+	void WaitForFrame(const FrameContext& frameContext);
+	void ResetCommandObjects(uint32_t frameIndex);
+	void InitializeFrameUploadArenas();
+	void InitializeGpuTiming();
+	void CollectCompletedGpuTiming(uint32_t frameIndex);
 
 public:
+	~DirectXCommon();
+
 	/// @brief DirectX12 の描画基盤を初期化する
 	/// @param winApp ウィンドウ情報を持つアプリケーション管理クラス
 	/// @return なし
@@ -60,21 +90,13 @@ public:
 	/// @param なし
 	/// @return なし
 	void Begin();
+	void PrepareForFrame();
+	void BeginGpuFrameTiming();
 
 	/// @brief フレーム描画後の表示反映と同期を行う
 	/// @param なし
 	/// @return なし
 	void End();
-
-	/// @brief SRV 用ヒープの CPU デスクリプタハンドルを取得する
-	/// @param index 取得したい SRV のインデックス
-	/// @return 指定インデックスの CPU デスクリプタハンドル
-	D3D12_CPU_DESCRIPTOR_HANDLE GetSRVCPUDescriptorHandle(uint32_t index);
-
-	/// @brief SRV 用ヒープの GPU デスクリプタハンドルを取得する
-	/// @param index 取得したい SRV のインデックス
-	/// @return 指定インデックスの GPU デスクリプタハンドル
-	D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index);
 
 	/// @brief RTV 用ヒープの CPU デスクリプタハンドルを取得する
 	/// @param index 取得したい RTV のインデックス
@@ -123,6 +145,21 @@ public:
 	ID3D12GraphicsCommandList* GetCommandList()const { return commandList.Get(); }
 
 	ID3D12CommandQueue* GetCommandQueue() const { return commandQueue.Get(); }
+	uint32_t GetCurrentFrameIndex() const { return currentFrameIndex_; }
+	uint64_t GetPendingSubmissionFenceValue() const { return nextFenceValue_ + 1; }
+	uint64_t GetCompletedFenceValue() const { return fence ? fence->GetCompletedValue() : 0; }
+	void WaitForAllFrames();
+	void BeginShadowGpuTiming();
+	void EndShadowGpuTiming();
+	void ResetGpuTimingStatistics();
+	double GetAverageFrameGpuMilliseconds() const;
+	double GetAverageShadowGpuMilliseconds() const;
+	double GetFrameGpuP95Milliseconds() const;
+	double GetShadowGpuP95Milliseconds() const;
+	double GetFrameGpuMaxMilliseconds() const;
+	double GetShadowGpuMaxMilliseconds() const;
+	uint64_t GetFrameGpuSampleCount() const { return frameGpuSampleCount_; }
+	uint64_t GetShadowGpuSampleCount() const { return shadowGpuSampleCount_; }
 
 	/// @brief RTV のビュー記述子を取得する
 	/// @param なし
@@ -148,7 +185,7 @@ public:
 	/// @param filePath コンパイル対象のシェーダーファイルパス
 	/// @param profile 使用するシェーダープロファイル
 	/// @return コンパイル済みシェーダーバイトコード
-	IDxcBlob* CompileShader(
+	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(
 		const std::wstring& filePath,
 		const wchar_t* profile);
 
@@ -164,6 +201,24 @@ public:
 	/// @param sizeInBytes バッファサイズ
 	/// @return 生成したバッファリソース
 	Microsoft::WRL::ComPtr<ID3D12Resource> CreateBufferResource(size_t sizeInBytes);
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBufferResource(
+		const void* data,
+		size_t sizeInBytes,
+		D3D12_RESOURCE_STATES finalState);
+
+	/// @brief 現在のframeが所有するupload arenaから一時領域を確保する
+	/// @param sizeInBytes 必要なバイト数
+	/// @param alignment CPU/GPU addressのアラインメント
+	/// @return CPU書込先とGPU仮想アドレス
+	FrameUploadAllocation AllocateFrameUpload(
+		size_t sizeInBytes,
+		size_t alignment = 16);
+	size_t GetCurrentFrameUploadUsedBytes() const;
+	size_t GetFrameUploadArenaSizeBytes() const { return kFrameUploadArenaSize; }
+
+	/// @brief 現在のframeが完了するまで一時リソースを保持する
+	/// @param resource GPU参照完了後に解放するリソース
+	void DeferResourceRelease(Microsoft::WRL::ComPtr<ID3D12Resource>&& resource);
 
 	/// @brief テクスチャメタデータに基づいてリソースを生成する
 	/// @param metadata テクスチャのメタデータ
@@ -187,18 +242,51 @@ public:
 	/// @return なし
 	void CommandKick();
 
+	bool IsFrameRateLimitEnabled() const { return frameRateLimitEnabled_; }
+	void SetFrameRateLimitEnabled(bool enabled);
+	float GetTargetFrameRate() const { return targetFrameRate_; }
+	void SetTargetFrameRate(float frameRate);
+	bool IsVSyncEnabled() const { return vSyncEnabled_; }
+	void SetVSyncEnabled(bool enabled) { vSyncEnabled_ = enabled; }
+
 	/// @brief リソースの状態遷移バリアを発行する
 	/// @param resource 遷移対象リソース
 	/// @param before 遷移前の状態
 	/// @param after 遷移後の状態
 	/// @return なし
-	void TransitionResource(ID3D12Resource* resource,D3D12_RESOURCE_STATES before,D3D12_RESOURCE_STATES after);
+	void TrackResourceState(ID3D12Resource* resource,
+		D3D12_RESOURCE_STATES initialState,
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void UntrackResourceState(ID3D12Resource* resource);
+	void TransitionResource(ID3D12Resource* resource,
+		D3D12_RESOURCE_STATES after,
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void TransitionResource(ID3D12Resource* resource,
+		D3D12_RESOURCE_STATES before,
+		D3D12_RESOURCE_STATES after,
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void InsertUavBarrier(ID3D12Resource* resource = nullptr);
+	void InsertAliasingBarrier(ID3D12Resource* beforeResource,
+		ID3D12Resource* afterResource);
+	size_t GetTrackedResourceStateCount() const { return resourceStates_.size(); }
 
-	
-	/// @brief 最大 SRV 数
-	/// @details 1 フレーム中に参照可能な SRV スロットの上限値。
-	static const uint32_t kMaxSRVCount;
 private:
+	struct ResourceStateKey {
+		ID3D12Resource* resource = nullptr;
+		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		bool operator==(const ResourceStateKey&) const = default;
+	};
+	struct ResourceStateKeyHash {
+		size_t operator()(const ResourceStateKey& key) const noexcept
+		{
+			return std::hash<ID3D12Resource*>{}(key.resource) ^
+				(static_cast<size_t>(key.subresource) << 1);
+		}
+	};
+	D3D12_RESOURCE_STATES GetTrackedResourceState(
+		ID3D12Resource* resource, UINT subresource) const;
+	UINT GetResourceSubresourceCount(ID3D12Resource* resource) const;
+	void ExpandWholeResourceState(ID3D12Resource* resource);
 
 	// Windows API 管理
 	Engine::Base::WinApp* winApp_ = nullptr;
@@ -207,9 +295,21 @@ private:
 	Microsoft::WRL::ComPtr< IDXGIFactory7> dxgiFactory = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Device> device = nullptr;
 	// コマンド
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator = nullptr;
+	static constexpr size_t kFrameUploadArenaSize = 4 * 1024 * 1024;
+	std::array<FrameContext, kFrameCount> frameContexts_;
+	uint32_t currentFrameIndex_ = 0;
 	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue = nullptr;
+	Microsoft::WRL::ComPtr<ID3D12QueryHeap> gpuTimestampQueryHeap_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> gpuTimestampReadback_;
+	uint64_t* gpuTimestampCpuData_ = nullptr;
+	uint64_t gpuTimestampFrequency_ = 0;
+	double frameGpuMillisecondsTotal_ = 0.0;
+	double shadowGpuMillisecondsTotal_ = 0.0;
+	uint64_t frameGpuSampleCount_ = 0;
+	uint64_t shadowGpuSampleCount_ = 0;
+	std::vector<double> frameGpuMillisecondsSamples_;
+	std::vector<double> shadowGpuMillisecondsSamples_;
 	// スワップチェーン
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
 	Microsoft::WRL::ComPtr<IDXGISwapChain4> swapChain = nullptr;
@@ -217,11 +317,9 @@ private:
 	// 深度バッファ
 	Microsoft::WRL::ComPtr<ID3D12Resource> depthStenciResource;
 	// ディスクリプタヒープ
-	uint32_t descriptorSizeSRV;
 	uint32_t descriptorSizeRTV;
 	uint32_t descriptorSizeDSV;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvDescriptorHeap;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvDescriptorHeap;
 
 
@@ -232,20 +330,20 @@ private:
 	std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> rtvHandles;
 	// Fence
 	Microsoft::WRL::ComPtr<ID3D12Fence> fence = nullptr;
-	HANDLE fenceEvent;
-	uint64_t fenceValue = 0;
+	HANDLE fenceEvent = nullptr;
+	uint64_t nextFenceValue_ = 0;
 	// ビューポート
 	D3D12_VIEWPORT viewport{};
 	// シザー矩形
 	D3D12_RECT scissorRect{};
-	// DXC
-	IDxcUtils* dxcUtils = nullptr;
-	IDxcCompiler3* dxcCompiler = nullptr;
-	IDxcIncludeHandler* includeHandler = nullptr;
-	// バリア
-	D3D12_RESOURCE_BARRIER barrier{};
+	std::unique_ptr<ShaderCompiler> shaderCompiler_;
+	std::unordered_map<ResourceStateKey, D3D12_RESOURCE_STATES,
+		ResourceStateKeyHash> resourceStates_;
 	// FPS 固定用の基準時刻
 	std::chrono::steady_clock::time_point reference_;
+	bool frameRateLimitEnabled_ = true;
+	bool vSyncEnabled_ = true;
+	float targetFrameRate_ = 60.0f;
 
 	
 
