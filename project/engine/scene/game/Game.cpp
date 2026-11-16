@@ -21,6 +21,7 @@
 #include "engine/editor/ProjectSceneSave.h"
 #include "engine/editor/NativeBuildSettings.h"
 #include "engine/base/ProjectPaths.h"
+#include "engine/base/AtomicFile.h"
 #include "SceneFactory.h"
 #include "SceneManager.h"
 #include "ImGuiManager.h"
@@ -226,7 +227,8 @@ void Game::Update()
 		}
 		auto scriptFrame=scriptRuntime_.BeginFrame();
 		scriptRuntime_.Update(editorWorld_, genericDelta);
-		physicsWorld_.Advance(editorWorld_,genericDelta,[this](float dt){scriptRuntime_.FixedUpdate(editorWorld_,dt);});
+		physicsWorld_.Advance(editorWorld_,genericDelta,[this](float dt){scriptRuntime_.FixedUpdate(editorWorld_,dt);},
+			[this](std::span<const Physics::TriggerEvent> events){scriptRuntime_.DispatchTriggers(editorWorld_,events);});
 	}
 	else if(genericWorldReady_){
 		physicsWorld_.Advance(editorWorld_,0);
@@ -2069,6 +2071,26 @@ void Game::DrawGenericEntityEditor()
 					}
 				}
 				if (ImGui::CollapsingHeader("Script", ImGuiTreeNodeFlags_DefaultOpen)) {
+					ImGui::BeginDisabled(SceneEditUnavailableReason(Action::Duplicate) != nullptr || projectFile_.empty());
+					if (ImGui::Button("New Lua Script...")) {
+						wchar_t filename[32768]=L"Trigger.lua";
+						OPENFILENAMEW dialog{};
+						dialog.lStructSize=sizeof(dialog);
+						dialog.hwndOwner=winApp->GetHwnd();
+						dialog.lpstrFilter=L"Lua scripts\0*.lua\0";
+						dialog.lpstrFile=filename;
+						dialog.nMaxFile=static_cast<DWORD>(std::size(filename));
+						dialog.lpstrInitialDir=projectAssetRoot_.c_str();
+						dialog.lpstrDefExt=L"lua";
+						dialog.Flags=OFN_EXPLORER|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR;
+						if (GetSaveFileNameW(&dialog)) {
+							std::string error;
+							if (CreateLuaScriptAsset(filename,error))
+								genericWorldStatus_="Lua script created. Select it under Registered Script after import.";
+							else genericWorldStatus_="Lua creation: " + error;
+						}
+					}
+					ImGui::EndDisabled();
 					ImGui::TextWrapped("GUID: %s", entity->script.assetGuid.empty() ? "legacy path reference" : entity->script.assetGuid.c_str());
 					if (ImGui::BeginCombo("Registered Script", entity->script.assetPath.c_str())) {
 						for (const auto* asset : projectAssets_.Search("", Engine::Assets::AssetType::Script)) {
@@ -2569,6 +2591,46 @@ bool Game::UnlinkEditorPrefab(EntityId root,std::string& error)
 bool Game::CreateEditorEntity(const std::string& name,EntityId parent,EntityId& created,std::string& error)
 {
 	return CreateEditorEntityWithInitial(name,parent,created,error,{});
+}
+
+bool Game::CreateLuaScriptAsset(const std::filesystem::path& path,std::string& error)
+{
+	try {
+		if (!CheckPrefabRecovery(error)) return false;
+		if (const auto* blocked = SceneEditUnavailableReason(Engine::Editor::SceneEditAction::Duplicate))
+			throw std::runtime_error(blocked);
+		if (!path.is_absolute() || projectFile_.empty() || _wcsicmp(path.extension().c_str(),L".lua")!=0)
+			throw std::runtime_error("Choose a .lua file inside this project's asset root");
+		const auto root = std::filesystem::canonical(projectAssetRoot_);
+		const auto project = std::filesystem::canonical(GetProjectRoot());
+		const auto projectRelative = root.lexically_relative(project);
+		if (projectRelative.empty() || *projectRelative.begin()==L"..")
+			throw std::runtime_error("Lua creation requires a project-local asset root");
+		const auto relative = Assets::MoveDetail::Relative(Base::PathToUtf8(
+			path.lexically_normal().lexically_relative(projectAssetRoot_.lexically_normal())));
+		Assets::MoveDetail::CheckParents(root,relative);
+		const auto destination = root / relative;
+		if (std::filesystem::exists(root / ".kubo/asset-move.pending.json") ||
+			std::filesystem::exists(Assets::AssetRegistry::MetadataPath(destination)))
+			throw std::runtime_error("Recover the pending asset move or choose a name without existing metadata");
+		constexpr char source[] = R"(-- Attach this script to an Entity involved in a trigger overlap.
+function on_trigger_enter(entity, other_id)
+    -- Called once when the two colliders start overlapping.
+end
+
+function on_trigger_exit(entity, other_id)
+    -- Called once when the two colliders stop overlapping.
+end
+)";
+		if (!Base::AtomicFile::Write(destination,source,sizeof(source),error,false)) return false;
+		if (!assetImportJob_.Start({GetProjectRoot(),projectAssetRoot_,{},false,projectFile_}))
+			throw std::runtime_error("File created. Refresh Asset Browser to register it.");
+		error.clear();
+		return true;
+	} catch (const std::exception& exception) {
+		error=exception.what();
+		return false;
+	}
 }
 
 bool Game::PlaceSceneAsset(const std::string& guid,Vector3 position,std::string& error)

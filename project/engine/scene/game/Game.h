@@ -232,6 +232,7 @@ private:
 	void DrawEditorCameraToolbar();
 	void DrawAddComponentMenu(const EntityRecord& entity);
 	void DrawInspectorAssetDropTarget(const EntityRecord& entity);
+	bool CreateLuaScriptAsset(const std::filesystem::path& path,std::string& error);
 	void DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewport);
 	bool DrawSceneAssetDropTarget(const Engine::Editor::DebugSceneViewportState& viewport);
 	bool PlaceSceneAsset(const std::string& guid,Vector3 position,std::string& error);

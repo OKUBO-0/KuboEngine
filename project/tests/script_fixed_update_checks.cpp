@@ -38,6 +38,60 @@ int main(){
         Require(limited.GetLuaResourceUsage().instructions==100 && limited.GetLuaResourceUsage().instructionExhausted && limited.GetLastError(fault).find("frame instruction")!=std::string::npos && limitedWorld.Find(fault)->transform.position.x==1 && limited.TakeAudioRequests().empty() && peerTicks==8,"Fixed hooks reset frame budget, leaked fault mutation/audio or stopped native peer");
         limited.Shutdown(limitedWorld);limited.Clear();Require(!limited.GetLuaResourceUsage().memoryBytes && !limited.GetLuaResourceUsage().states,"Fixed fault leaked resource budget");
         Write(fixture/"bad.lua","on_fixed_update=3");ScriptRuntime invalid;Require(!invalid.LoadResolvedAsset("bad",fixture/"bad.lua",error) && !invalid.GetLuaResourceUsage().states,"Invalid fixed hook accepted/leaked VM");
+        Write(fixture/"sensor.lua",R"(
+function on_trigger_enter(entity, other)
+    assert(other == scene.find('Visitor'))
+    assert(scene.translate(scene.find('Output'), 1, 0, 0))
+end
+function on_trigger_exit(entity, other)
+    assert(other == scene.find('Visitor'))
+    assert(scene.translate(scene.find('Output'), 0, 1, 0))
+end
+)");
+        Write(fixture/"visitor.lua",R"(
+function on_trigger_enter(entity, other)
+    assert(other == scene.find('Sensor'))
+    entity:translate(100, 0, 0)
+    error('discard failed trigger hook')
+end
+)");
+        EntityWorld sensorWorld;
+        const auto sensor=sensorWorld.CreateEntity("Sensor"),visitor=sensorWorld.CreateEntity("Visitor"),
+            output=sensorWorld.CreateEntity("Output");
+        sensorWorld.SetCollider(sensor,{{1,1,1},true});
+        sensorWorld.SetCollider(visitor,{{1,1,1},false});
+        sensorWorld.SetScript(sensor,"sensor");
+        sensorWorld.SetScript(visitor,"visitor");
+        sensorWorld.Find(visitor)->transform.position={10,0,0};
+        PhysicsWorld sensorPhysics;
+        ScriptRuntime sensorScripts;
+        Require(sensorScripts.LoadResolvedAsset("sensor",fixture/"sensor.lua",error) &&
+            sensorScripts.LoadResolvedAsset("visitor",fixture/"visitor.lua",error),error.c_str());
+        const auto sensorFrame=[&](float dt) {
+            auto frame=sensorScripts.BeginFrame();
+            if (dt>0) sensorScripts.Update(sensorWorld,dt);
+            sensorPhysics.Advance(sensorWorld,dt,[&](float tick){sensorScripts.FixedUpdate(sensorWorld,tick);},
+                [&](std::span<const TriggerEvent> events){sensorScripts.DispatchTriggers(sensorWorld,events);});
+        };
+        sensorFrame(0.1f);
+        Require(sensorWorld.Find(output)->transform.position.x==0,"Separated colliders fired trigger enter");
+        sensorWorld.Find(visitor)->transform.position={0,0,0};
+        sensorFrame(0.1f);
+        Require(sensorWorld.Find(output)->transform.position.x==1 &&
+            sensorScripts.GetLastError(visitor).find("discard failed trigger hook")!=std::string::npos &&
+            sensorWorld.Find(visitor)->transform.position.x==0,
+            "Trigger enter repeated or failed Lua trigger mutation was published");
+        sensorWorld.Find(visitor)->transform.position={10,0,0};
+        sensorFrame(0);
+        Require(sensorWorld.Find(output)->transform.position.y==0,"Paused trigger tracking fired an exit");
+        sensorFrame(0.1f);sensorFrame(0.1f);
+        Require(sensorWorld.Find(output)->transform.position.y==1,"Trigger exit lost or repeated during catch-up");
+        sensorWorld.Find(visitor)->transform.position={0,0,0};
+        sensorFrame(0.1f);
+        sensorPhysics.ResetSimulation();
+        sensorFrame(0.1f);
+        Require(sensorWorld.Find(output)->transform.position.x==3,"A new simulation retained stale trigger pairs");
+        sensorScripts.Shutdown(sensorWorld);
         std::error_code cleanup;std::filesystem::remove_all(fixture,cleanup);std::cout<<"PASS: fixed-only Lua/native/legacy phases, partition equivalence, lifecycle, shared variable/fixed budget, fault/audio rollback and native peer progress\n";return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<"; retained fixture "<<fixture<<'\n';return 1;}
 }

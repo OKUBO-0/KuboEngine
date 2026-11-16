@@ -69,7 +69,8 @@ void RuntimeGame::Update()
         lastScriptLoadError_ = std::move(error);
         auto scriptFrame=scripts_.BeginFrame();
         scripts_.Update(world_, frameDeltaTime_);
-        physics_.Advance(world_,frameDeltaTime_,[this](float dt){scripts_.FixedUpdate(world_,dt);});
+        physics_.Advance(world_,frameDeltaTime_,[this](float dt){scripts_.FixedUpdate(world_,dt);},
+            [this](std::span<const Physics::TriggerEvent> events){scripts_.DispatchTriggers(world_,events);});
         if(diagnosticOutput_)for(const auto& entity:world_.GetEntities()) {
             const auto fault=scripts_.GetLastError(entity.id);
             if(fault.empty()){diagnosticLuaErrors_.erase(entity.id);continue;}

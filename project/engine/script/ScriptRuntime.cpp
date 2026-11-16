@@ -1,5 +1,6 @@
 #include "ScriptRuntime.h"
 #include "LuaScript.h"
+#include "../physics/PhysicsWorld.h"
 
 #include <cmath>
 #include <fstream>
@@ -79,7 +80,8 @@ bool ScriptRuntime::ConfigureLuaResourceLimits(LuaResourceLimits limits,std::str
 
 bool ScriptRuntime::Register(std::string assetPath, ScriptCallbacks callbacks)
 {
-    if (assetPath.empty() || (!callbacks.onUpdate && !callbacks.onFixedUpdate)) return false;
+    if (assetPath.empty() || (!callbacks.onUpdate && !callbacks.onFixedUpdate &&
+        !callbacks.onTriggerEnter && !callbacks.onTriggerExit)) return false;
     failedLoads_.erase(assetPath);
     scripts_[std::move(assetPath)] = {[callbacks=std::move(callbacks)] { return callbacks; }, nextRevision_++};
     return true;
@@ -333,6 +335,42 @@ void ScriptRuntime::Dispatch(Scene::EntityWorld& world,float deltaSeconds,bool f
         if (!CanRun(entity) || !entity->script.started || entity->script.RegistrationKey() != running->second.assetPath ||
             scripts_.at(entity->script.RegistrationKey()).revision != running->second.revision) StopInstance(world, id);
         else running->second.lastRecord = *entity;
+    }
+}
+
+void ScriptRuntime::DispatchTriggers(Scene::EntityWorld& world,std::span<const Physics::TriggerEvent> events)
+{
+    if (shuttingDown_ || events.empty()) return;
+    ScriptSceneView::WriteScope sceneScope(*sceneView_,world,assetOwner_.get(),animatorReader_);
+    LuaResourceBudget::FrameScope frame(*luaBudget_);
+    const auto dispatch = [&](Scene::EntityId id,Scene::EntityId other,bool entered) {
+        auto* entity = world.Find(id);
+        const auto instance = instances_.find(id);
+        if (instance==instances_.end() || instance->second.faulted || !CanRun(entity) ||
+            !entity->script.started || entity->script.RegistrationKey()!=instance->second.assetPath) return;
+        const auto& registration = scripts_.at(instance->second.assetPath);
+        if (registration.revision!=instance->second.revision) return;
+        const auto& hook = entered ? instance->second.callbacks.onTriggerEnter : instance->second.callbacks.onTriggerExit;
+        if (!hook) return;
+        if (registration.lua && !luaBudget_->HasFrameAllowance()) {luaBudget_->DeferEntity();return;}
+        try {
+            if (registration.lua) {
+                auto record = *entity;
+                hook(record,other);
+                CommitLuaSelf(world,record);
+                instance->second.lastRecord = record;
+            } else {
+                hook(*entity,other);
+                if (const auto* updated = world.Find(id)) instance->second.lastRecord = *updated;
+            }
+        } catch (const LuaScriptError& exception) {
+            instance->second.faulted = true;
+            RecordFault(id,exception.what());
+        }
+    };
+    for (const auto& event : events) {
+        dispatch(event.first,event.second,event.entered);
+        dispatch(event.second,event.first,event.entered);
     }
 }
 

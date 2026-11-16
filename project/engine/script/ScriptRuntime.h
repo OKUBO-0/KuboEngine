@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 #include <stdexcept>
+#include <span>
 #include <memory>
 #include "../input/InputFrame.h"
 #include "../input/FixedInputBuffer.h"
@@ -17,6 +18,7 @@
 #include "ScriptSceneView.h"
 #include "ScriptAssetView.h"
 
+namespace Engine::Physics { struct TriggerEvent; }
 namespace Engine::Scripting {
 
 class LuaScriptError final : public std::runtime_error { public: using std::runtime_error::runtime_error; };
@@ -26,6 +28,8 @@ struct ScriptCallbacks {
     std::function<void(Scene::EntityRecord&, float)> onUpdate;
     std::function<void(Scene::EntityRecord&)> onDestroy;
     std::function<void(Scene::EntityRecord&, float)> onFixedUpdate;
+    std::function<void(Scene::EntityRecord&, Scene::EntityId)> onTriggerEnter;
+    std::function<void(Scene::EntityRecord&, Scene::EntityId)> onTriggerExit;
 };
 
 /// @brief Host-agnostic script lifecycle dispatcher.
@@ -53,6 +57,7 @@ public:
 
     void Update(Scene::EntityWorld& world, float deltaSeconds);
     void FixedUpdate(Scene::EntityWorld& world,float fixedSeconds);
+    void DispatchTriggers(Scene::EntityWorld& world,std::span<const Physics::TriggerEvent> events);
     // Runtime-thread only, including Create/Update/Fixed/Destroy callbacks.
     // Hosts must refuse teardown before retiring GPU/UI/jobs during dispatch.
     bool IsDispatchActive() const noexcept { return sceneView_->World()!=nullptr; }

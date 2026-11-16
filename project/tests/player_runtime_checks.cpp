@@ -78,6 +78,10 @@ public:
                 sawFixed=true;Require(entity.script.started && entity.transform.position.y==3 && std::abs(entity.transform.position.x-double(physicsTicks_)*Engine::Physics::PhysicsWorld::FixedStepSeconds)<1e-4,"Actual Player did not dispatch fixed-only Lua once before each physics tick");
             }
             Require(sawFixed,"Actual Player fixed-hook fixture missing");
+            const auto& entities=GetWorld().GetEntities();
+            const auto sensor=std::find_if(entities.begin(),entities.end(),[](const auto& entity){return entity.name=="Player trigger";});
+            Require(sensor!=entities.end() && sensor->script.started && sensor->transform.rotation.z==1,
+                "Actual Player did not dispatch one Lua enter for a persistent overlap");
             const auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
             Require(scene && scene->GetModelRenderStatus(mover).loaded,"Player did not actually load the authored model renderer");
             const auto* scripted=GetWorld().Find(mover); const auto* falling=GetWorld().Find(body);
@@ -240,6 +244,14 @@ function on_destroy(e) assert(e:property('label')=="日本語") end
             Engine::Scene::EntityWorld world; std::string error;
             {std::ofstream fixed(fixture/"Assets/fixed.lua");fixed<<"function on_create(e) e:translate(0,3,0) end\nfunction on_fixed_update(e,dt) e:translate(dt,0,0) end\n";Require(bool(fixed),"Cannot create fixed-only Player fixture");}
             const auto fixedProbe=world.CreateEntity("Fixed hook probe");world.SetScript(fixedProbe,"Assets/fixed.lua");
+            {std::ofstream trigger(fixture/"Assets/trigger.lua");trigger<<
+                "local n=0\nfunction on_trigger_enter(e,id) assert(id==scene.find('Player trigger visitor')); n=n+1; e:set_rotation(0,0,n) end\n";
+                Require(bool(trigger),"Cannot create Player trigger-only Lua fixture");}
+            const auto sensor=world.CreateEntity("Player trigger"),visitor=world.CreateEntity("Player trigger visitor");
+            world.Find(sensor)->transform.position={0,100,0};
+            world.Find(visitor)->transform.position={0,100,0};
+            Require(world.SetCollider(sensor,{{1,1,1},true}) && world.SetCollider(visitor,{{1,1,1},false}) &&
+                world.SetScript(sensor,"Assets/trigger.lua"),"Cannot author Player trigger");
             const auto camera=world.CreateEntity("Camera"); world.SetCamera(camera,{true,0.8f,0.1f,100,true,8}); world.Find(camera)->transform.position={0,0,-5};
             mover=world.CreateEntity("Model/script"); world.SetModel(mover,"Assets/モデル/axis.obj"); world.SetScript(mover,scriptName);
             Engine::AudioSystem::AudioComponent authoredAudio;authoredAudio.assetPath="Assets/音声.wav";authoredAudio.playOnAwake=true;authoredAudio.loop=true;authoredAudio.volume=0;

@@ -62,7 +62,7 @@ public:
     const ScriptProperties& Defaults() const { return defaults_; }
     bool HasHook(size_t index) const noexcept {return hooks_[index]!=LUA_NOREF;}
     void SetDefaults(const ScriptProperties& defaults) { defaults_=defaults; }
-    void Call(size_t hook,Scene::EntityRecord& entity,float dt=0) {
+    void Call(size_t hook,Scene::EntityRecord& entity,float dt=0,Scene::EntityId other=0) {
         if(hooks_[hook]==LUA_NOREF) return;
         // All bound mutations are isolated until this hook succeeds.
         auto candidate=entity;
@@ -76,7 +76,8 @@ public:
             lua_rawgeti(state_,LUA_REGISTRYINDEX,hooks_[hook]);
             lua_rawgeti(state_,LUA_REGISTRYINDEX,entityReference_);
             if(hook==1 || hook==3) lua_pushnumber(state_,dt);
-            ProtectedCall(hook==1 || hook==3?2:1,0);
+            if(hook==4 || hook==5) lua_pushinteger(state_,static_cast<lua_Integer>(other));
+            ProtectedCall(hook==1 || hook>=3?2:1,0);
             if(!sceneCommands_.Prepare())throw LuaScriptError("Scene command targets or write scope expired before publication");
             try {
                 if(animator_) {
@@ -819,7 +820,9 @@ private:
             if(!lua_isfunction(state,-1)) return luaL_error(state,"%s must be a function",hookNames_[index]);
             self.hooks_[index]=luaL_ref(state,LUA_REGISTRYINDEX);
         }
-        if(self.hooks_[1]==LUA_NOREF && self.hooks_[3]==LUA_NOREF) return luaL_error(state,"Lua script must define on_update(entity, dt) or on_fixed_update(entity, dt)");
+        if(self.hooks_[1]==LUA_NOREF && self.hooks_[3]==LUA_NOREF &&
+            self.hooks_[4]==LUA_NOREF && self.hooks_[5]==LUA_NOREF)
+            return luaL_error(state,"Lua script must define an update or trigger hook");
         lua_pop(state,1);return 0;
     }
     static int Initialize(lua_State* state) {
@@ -899,8 +902,9 @@ private:
     ScriptSceneCommands sceneCommands_;
     std::vector<Scene::EntityId> queryHits_;
     ScriptProperties defaults_;
-    std::array<int,4> hooks_{LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF};
-    static constexpr std::array<const char*,4> hookNames_{"on_create","on_update","on_destroy","on_fixed_update"};
+    std::array<int,6> hooks_{LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF,LUA_NOREF};
+    static constexpr std::array<const char*,6> hookNames_{
+        "on_create","on_update","on_destroy","on_fixed_update","on_trigger_enter","on_trigger_exit"};
 };
 }
 std::function<ScriptCallbacks()> CreateLuaScriptFactory(const std::string& source,const std::string& name,std::shared_ptr<const InputSystem::InputFrame> input,ScriptProperties& defaults,std::shared_ptr<ScriptAudioRequests> audio,std::shared_ptr<LuaResourceBudget> budget,std::shared_ptr<const ScriptSceneView> scene,std::shared_ptr<ScriptAnimatorRequests> animator) {
@@ -918,6 +922,8 @@ std::function<ScriptCallbacks()> CreateLuaScriptFactory(const std::string& sourc
         if(state->HasHook(1))callbacks.onUpdate=[state](Scene::EntityRecord& entity,float dt){state->Call(1,entity,dt);};
         if(state->HasHook(2))callbacks.onDestroy=[state](Scene::EntityRecord& entity){state->Call(2,entity);};
         if(state->HasHook(3))callbacks.onFixedUpdate=[state](Scene::EntityRecord& entity,float dt){state->Call(3,entity,dt);};
+        if(state->HasHook(4))callbacks.onTriggerEnter=[state](Scene::EntityRecord& entity,Scene::EntityId other){state->Call(4,entity,0,other);};
+        if(state->HasHook(5))callbacks.onTriggerExit=[state](Scene::EntityRecord& entity,Scene::EntityId other){state->Call(5,entity,0,other);};
         return callbacks;
     };
 }

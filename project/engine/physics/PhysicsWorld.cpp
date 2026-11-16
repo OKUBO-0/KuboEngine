@@ -265,16 +265,21 @@ PhysicsQueryResult PhysicsWorld::OverlapBox(const Scene::EntityWorld& world,Vect
 
 void PhysicsWorld::Step(Scene::EntityWorld& world, float deltaSeconds)
 {
+    StepInternal(world,deltaSeconds,nullptr);
+}
+
+bool PhysicsWorld::StepInternal(Scene::EntityWorld& world,float deltaSeconds,std::vector<TriggerPair>* triggers)
+{
     events_.clear();
     diagnostic_.clear();
     if (!std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f) {
-        return;
+        return false;
     }
     deltaSeconds = std::min(deltaSeconds, 0.1f);
 
     auto& entities = world.GetEntities();
     std::vector<Node> nodes;
-    if(!BuildFrame(world,nodes,diagnostic_)) return;
+    if(!BuildFrame(world,nodes,diagnostic_)) return false;
     for(size_t i=0;i<nodes.size();++i) {
         auto& node=nodes[i];const auto& entity=entities[i];
         if(!node.valid || !entity.hasRigidBody || node.inverseMass==0) continue;
@@ -283,7 +288,7 @@ void PhysicsWorld::Step(Scene::EntityWorld& world, float deltaSeconds)
         if(!IsFinite(node.velocity)) node.velocity={};
         if(!FloatVector(double(node.position.x)+node.velocity.x*double(deltaSeconds),double(node.position.y)+node.velocity.y*double(deltaSeconds),
             double(node.position.z)+node.velocity.z*double(deltaSeconds),node.position)) {
-            diagnostic_="Physics integration exceeds finite World coordinates";events_.clear();return;
+            diagnostic_="Physics integration exceeds finite World coordinates";events_.clear();return false;
         }
     }
     BoundsBroadPhase broadPhase;
@@ -404,7 +409,7 @@ void PhysicsWorld::Step(Scene::EntityWorld& world, float deltaSeconds)
         const auto& node=nodes[i];if(!node.valid || !entities[i].hasRigidBody) continue;
         if(node.parent>=nodes.size()) {localPositions[i]=node.position;continue;}
         Vector3 parentCenter{};
-        if(!Center(nodes,node.parent,parentCenter)) {diagnostic_="Physics parent center exceeds finite coordinates";events_.clear();return;}
+        if(!Center(nodes,node.parent,parentCenter)) {diagnostic_="Physics parent center exceeds finite coordinates";events_.clear();return false;}
         if(node.position.x==node.start.x && node.position.y==node.start.y && node.position.z==node.start.z &&
             parentCenter.x==nodes[node.parent].start.x && parentCenter.y==nodes[node.parent].start.y && parentCenter.z==nodes[node.parent].start.z) {
             localPositions[i]=entities[i].transform.position;continue;
@@ -413,7 +418,7 @@ void PhysicsWorld::Step(Scene::EntityWorld& world, float deltaSeconds)
         const auto& inverse=nodes[node.parent].inverse;double local[3]{};
         for(int j=0;j<3;++j) for(int k=0;k<3;++k) local[j]+=delta[k]*inverse[k][j];
         if(!FloatVector(local[0],local[1],local[2],localPositions[i])) {
-            diagnostic_="Physics cannot publish finite parent-local positions; frame retained";events_.clear();return;
+            diagnostic_="Physics cannot publish finite parent-local positions; frame retained";events_.clear();return false;
         }
     }
     for(size_t i=0;i<nodes.size();++i) if(entities[i].hasRigidBody) {
@@ -422,9 +427,33 @@ void PhysicsWorld::Step(Scene::EntityWorld& world, float deltaSeconds)
         entities[i].transform.position=localPositions[i];
         if(nodes[i].inverseMass>0) {entities[i].rigidBody.velocity=nodes[i].velocity;entities[i].rigidBody.grounded=nodes[i].grounded;}
     }
+    if (!triggers) return true;
+    // Resolve sensor overlap against the final poses from the solver.
+    for (size_t i=0; i<nodes.size(); ++i) {
+        if (!nodes[i].valid || !nodes[i].collider || !entities[i].collider.isTrigger) continue;
+        Bounds a{};Vector3 center{};
+        if (!MakeBounds(nodes,i,a,center)) continue;
+        for (const auto j : broadPhase.Query(a,0)) {
+            if (i==j || (entities[j].collider.isTrigger && j<i) ||
+                (nodes[i].owner<nodes.size() && nodes[i].owner==nodes[j].owner)) continue;
+            Bounds b{};
+            if (!MakeBounds(nodes,j,b,center) ||
+                std::min(a.max.x,b.max.x)<=std::max(a.min.x,b.min.x) ||
+                std::min(a.max.y,b.max.y)<=std::max(a.min.y,b.min.y) ||
+                std::min(a.max.z,b.max.z)<=std::max(a.min.z,b.min.z)) continue;
+            if (triggers->size() == MaximumFrameEvents) {
+                diagnostic_ = "Physics trigger overlap limit exceeded";
+                return false;
+            }
+            triggers->emplace_back(std::min(entities[i].id,entities[j].id),std::max(entities[i].id,entities[j].id));
+        }
+    }
+    std::sort(triggers->begin(),triggers->end());
+    return true;
 }
 
-void PhysicsWorld::Advance(Scene::EntityWorld& world,float frameSeconds,const std::function<void(float)>& beforeStep)
+void PhysicsWorld::Advance(Scene::EntityWorld& world,float frameSeconds,const std::function<void(float)>& beforeStep,
+    const std::function<void(std::span<const TriggerEvent>)>& onTriggers)
 {
     advanceUsage_={};events_.clear();
     if(!std::isfinite(frameSeconds) || frameSeconds<=0) {
@@ -446,12 +475,24 @@ void PhysicsWorld::Advance(Scene::EntityWorld& world,float frameSeconds,const st
     std::vector<CollisionEvent> collected;std::string firstDiagnostic;
     for(size_t index=0;index<count;++index) {
         if(beforeStep)beforeStep(static_cast<float>(FixedStepSeconds));
-        Step(world,static_cast<float>(FixedStepSeconds));
+        std::vector<TriggerPair> triggers;
+        const bool snapshotValid=StepInternal(world,static_cast<float>(FixedStepSeconds),onTriggers ? &triggers : nullptr);
         ++advanceUsage_.steps;advanceUsage_.consumedSeconds+=FixedStepSeconds;
         if(firstDiagnostic.empty() && !diagnostic_.empty())firstDiagnostic=diagnostic_;
         for(const auto& event:events_) {
             if(collected.size()<MaximumFrameEvents)collected.push_back(event);
             else ++advanceUsage_.discardedEvents;
+        }
+        if (onTriggers && snapshotValid) {
+            std::vector<TriggerEvent> edges;
+            for (const auto& [a,b] : activeTriggers_) {
+                if (!std::binary_search(triggers.begin(),triggers.end(),TriggerPair{a,b})) edges.push_back({a,b,false});
+            }
+            for (const auto& [a,b] : triggers) {
+                if (!std::binary_search(activeTriggers_.begin(),activeTriggers_.end(),TriggerPair{a,b})) edges.push_back({a,b,true});
+            }
+            activeTriggers_.swap(triggers);
+            if (!edges.empty()) onTriggers(edges);
         }
     }
     events_.swap(collected);diagnostic_=std::move(firstDiagnostic);

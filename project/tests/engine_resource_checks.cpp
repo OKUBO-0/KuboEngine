@@ -109,6 +109,9 @@ public:
         game.editorCameraState_.orthographic=true;
     }
     static const std::string& EditorStatus(const Game& game) {return game.genericWorldStatus_;}
+    static bool CreateLuaScriptAsset(Game& game,const std::filesystem::path& path,std::string& error) {
+        return game.CreateLuaScriptAsset(path,error);
+    }
     static void FocusSceneSelection(Game& game) { game.FocusEditorSelection(); }
     static Vector3 SceneCameraPosition(const Game& game) { return game.editorCameraState_.position; }
     static bool GameViewportReceivesInput(const Game& game) { return game.gameScriptInputAllowed_; }
@@ -2669,19 +2672,29 @@ public:
     ~FixedEditorHooksChecks() override {if(passed_){std::error_code error;std::filesystem::remove_all(fixture_,error);}else if(!fixture_.empty())std::cerr<<"Retained fixed Editor fixture: "<<fixture_<<'\n';}
     void Initialize() override {
         fixture_=std::filesystem::temp_directory_path()/(L"kubo-fixed-editor-日本語-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));std::filesystem::create_directories(fixture_/"Assets");
-        {std::ofstream out(fixture_/"Assets/fixed.lua");out<<"function on_create(e) assert(scene.find('Fixed Editor probe')==e:id() and scene.entity_count()==2);e:translate(0,3,0);local x,y,z=scene.world_position(e:id());assert(y==3 and scene.world_matrix(e:id())[14]==3);local t=scene.find('Fixed command target');assert(scene.set_rotation(t,0,0.25,0) and scene.set_active(t,false));local born=scene.spawn('Fixed spawned');assert(born and scene.set_position(born,4,0,0)) end\nfunction on_fixed_update(e,dt) assert(scene.exists(e:id()));e:translate(dt,0,0);local x=e:position();assert(scene.world_matrix(e:id())[13]==x);local t=scene.find('Fixed command target');assert(scene.translate(t,2*dt,0,0));assert(scene.world_position(t)==scene.position(t));local temp=scene.spawn('Fixed temporary');assert(scene.destroy(temp) and not scene.exists(temp)) end\nfunction on_destroy(e) assert(scene.exists(e:id()));assert(scene.destroy(scene.find('Fixed spawned')));assert(scene.spawn('Destroy transient')) end\n";Require(bool(out),"Fixed Editor script write failed");}
+        {std::ofstream out(fixture_/"Assets/fixed.lua");out<<"function on_create(e) assert(scene.find('Fixed Editor probe')==e:id() and scene.entity_count()==4);e:translate(0,3,0);local x,y,z=scene.world_position(e:id());assert(y==3 and scene.world_matrix(e:id())[14]==3);local t=scene.find('Fixed command target');assert(scene.set_rotation(t,0,0.25,0) and scene.set_active(t,false));local born=scene.spawn('Fixed spawned');assert(born and scene.set_position(born,4,0,0)) end\nfunction on_fixed_update(e,dt) assert(scene.exists(e:id()));e:translate(dt,0,0);local x=e:position();assert(scene.world_matrix(e:id())[13]==x);local t=scene.find('Fixed command target');assert(scene.translate(t,2*dt,0,0));assert(scene.world_position(t)==scene.position(t));local temp=scene.spawn('Fixed temporary');assert(scene.destroy(temp) and not scene.exists(temp)) end\nfunction on_destroy(e) assert(scene.exists(e:id()));assert(scene.destroy(scene.find('Fixed spawned')));assert(scene.spawn('Destroy transient')) end\n";Require(bool(out),"Fixed Editor script write failed");}
         const auto modelDirectory=std::filesystem::current_path()/"Resources/models/axis";
         std::filesystem::copy(modelDirectory,fixture_/"Assets/models",std::filesystem::copy_options::recursive);
         {std::ofstream out(fixture_/"Assets/fixed.lua",std::ios::app);out<<"local original_create=on_create;function on_create(e) original_create(e);local id=scene.spawn_model('Fixed model','Assets/models/axis.obj');assert(id and scene.set_position(id,2,0,0)) end\nlocal original_fixed=on_fixed_update;function on_fixed_update(e,dt) original_fixed(e,dt);local id=scene.spawn_model('Fixed model temporary','Assets/models/axis.obj');assert(id and scene.destroy(id)) end\n";Require(bool(out),"Fixed Editor Model script write failed");}
         {std::ofstream out(fixture_/"entry.kubo");out<<R"({"name":"Fixed Editor","startupScene":"entry.scene"})";Require(bool(out),"Fixed Editor manifest write failed");}
-        Engine::Scene::EntityWorld world;const auto id=world.CreateEntity("Fixed Editor probe");world.SetScript(id,"Assets/fixed.lua");world.CreateEntity("Fixed command target");std::string error;Require(world.Save(fixture_/"entry.scene",error),error.c_str());
+        {std::ofstream trigger(fixture_/"Assets/trigger.lua");trigger<<
+            "local n=0\nfunction on_trigger_enter(e,id) assert(id==scene.find('Trigger visitor')); n=n+1; e:set_rotation(0,0,n) end\n";
+            Require(bool(trigger),"Cannot create Editor trigger-only Lua fixture");}
+        Engine::Scene::EntityWorld world;const auto id=world.CreateEntity("Fixed Editor probe");world.SetScript(id,"Assets/fixed.lua");world.CreateEntity("Fixed command target");
+        sensor_=world.CreateEntity("Editor trigger");
+        const auto visitor=world.CreateEntity("Trigger visitor");
+        world.Find(sensor_)->transform.position={0,100,0};
+        world.Find(visitor)->transform.position={0,100,0};
+        Require(world.SetCollider(sensor_,{{1,1,1},true}) && world.SetCollider(visitor,{{1,1,1},false}) &&
+            world.SetScript(sensor_,"Assets/trigger.lua"),"Cannot author Editor trigger");
+        std::string error;Require(world.Save(fixture_/"entry.scene",error),error.c_str());
         SetProjectRoot(fixture_);SetProjectFile(fixture_/"entry.kubo");SetProjectAssetRoot(fixture_/"Assets");SetEditorMode(true);Require(ConfigureStartupScene(fixture_/"entry.scene",error),error.c_str());Game::Initialize();
         // The Asset Browser worker has its own runner. Keep this frame-indexed
         // Pause/Resume scenario independent of the background import job.
         Access::HideAssetBrowser(*this);
         original_=Access::World(*this);Require(PlayEditorScene(error),error);
     }
-    bool IsEndRequest() const override {return frames_>=9 || Game::IsEndRequest();}
+    bool IsEndRequest() const override {return templateRegistered_ || Game::IsEndRequest();}
     void Update() override {
         Game::Update();++frames_;const auto usage=Access::PhysicsUsage(*this);ticks_+=usage.steps;Require(usage.steps<=Engine::Physics::PhysicsWorld::MaximumFrameSteps,"Editor fixed tick cap exceeded");
         std::string error;
@@ -2691,17 +2704,40 @@ public:
             const auto snapshot=Engine::Scene::SceneValue::parse(Access::World(*this));const auto& transform=snapshot["entities"][size_t(0)]["transform"]["position"];
             Require(ticks_>0 && std::abs(transform[size_t(0)].get<double>()-double(ticks_)*Engine::Physics::PhysicsWorld::FixedStepSeconds)<1e-4 && transform[size_t(1)].get<double>()==3,"Actual Editor fixed-only Lua dispatch/Create failed");
             const auto& peer=snapshot["entities"][size_t(1)];Require(std::abs(peer["transform"]["position"][size_t(0)].get<double>()-2*double(ticks_)*Engine::Physics::PhysicsWorld::FixedStepSeconds)<1e-4 && peer["transform"]["rotation"][size_t(1)].get<double>()==0.25 && !peer["active"].get<bool>(),"Actual Editor did not publish Create/fixed peer commands");
-            const auto& records=snapshot["entities"].get<crude_json::array>();Require(records.size()==4 && records[2]["name"].get<std::string>()=="Fixed spawned" && records[2]["transform"]["position"][size_t(0)].get<double>()==4,"Actual Editor did not publish Lua spawn/delete or leaked fixed transient");
+            Require(Access::Entities(*this).Find(sensor_)->transform.rotation.z==1,"Actual Editor repeated or omitted Trigger enter");
+            const auto& records=snapshot["entities"].get<crude_json::array>();Require(records.size()==6 && records[4]["name"].get<std::string>()=="Fixed spawned" && records[4]["transform"]["position"][size_t(0)].get<double>()==4,"Actual Editor did not publish Lua spawn/delete or leaked fixed transient");
             const auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
-            Require(records[3]["name"].get<std::string>()=="Fixed model" && records[3]["model"].get<std::string>()=="Assets/models/axis.obj" && scene && scene->GetModelRenderStatus(static_cast<Engine::Scene::EntityId>(records[3]["id"].get<double>())).loaded,"Actual Editor Lua Model generation did not publish/load renderer");
+            Require(records[5]["name"].get<std::string>()=="Fixed model" && records[5]["model"].get<std::string>()=="Assets/models/axis.obj" && scene && scene->GetModelRenderStatus(static_cast<Engine::Scene::EntityId>(records[5]["id"].get<double>())).loaded,"Actual Editor Lua Model generation did not publish/load renderer");
             Engine::InputSystem::InputFrame press;press.available=true;press.mouse[0]={true,true,false};press.pad.disconnectedThisFrame=true;press.pad.buttons[10]={false,false,true};Access::QueueInput(*this,std::move(press));Require(Access::FixedInputUsage(*this).pendingSamples==1,"Stop pending input setup failed");
             Require(Access::Stop(*this,error) && Access::World(*this)==original_ && Access::PhysicsUsage(*this).remainingSeconds==0 && !Access::FixedInputUsage(*this).pendingSamples,"Editor Stop lost authoring snapshot/fixed clock/input reset");
         }
         if(frames_>=8)Require(usage.steps==0 && Access::World(*this)==original_,"Editing after Stop executed fixed hooks");
+        const auto path=fixture_/L"Assets/当たり判定.lua";
+        if (frames_==8) {
+            auto& world=Access::Entities(*this);
+            Require(SelectEditorEntity(world.GetEntities().front().id,false,false,error),error);
+            Require(!Access::CreateLuaScriptAsset(*this,fixture_/"outside.lua",error) &&
+                !std::filesystem::exists(fixture_/"outside.lua"),"Lua editor accepted a destination outside Assets");
+            Require(Access::CreateLuaScriptAsset(*this,path,error),error);
+        }
+        if (frames_>8 && !Access::ImportBusy(*this)) {
+            const auto* asset=Access::ControllerAssets(*this).FindByPath(path);
+            Require(asset && asset->type==Engine::Assets::AssetType::Script,"Template did not register as a Script asset");
+            std::ifstream source(path);
+            const std::string bytes{std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>()};
+            Require(bytes.find("function on_trigger_enter")!=std::string::npos &&
+                bytes.find("function on_trigger_exit")!=std::string::npos,"Trigger template source missing hooks");
+            Require(!Access::CreateLuaScriptAsset(*this,path,error),"Template creation overwrote an existing script");
+            templateRegistered_=true;
+            std::cout<<"PASS: Editor created and registered a Japanese Lua trigger template without overwriting files\n";
+        }
+        Require(frames_<120,"Editor template import timed out");
     }
-    void Verify(){Require(frames_==9,"Fixed Editor runner stopped early");passed_=true;}
+    void Verify(){Require(frames_>=9 && templateRegistered_,"Fixed Editor runner stopped early");passed_=true;}
 private:
     std::filesystem::path fixture_;std::string original_,paused_;double fraction_=0;size_t ticks_=0;int frames_=0;bool passed_=false;
+    Engine::Scene::EntityId sensor_=0;
+    bool templateRegistered_=false;
 };
 
 class RenderChecks final : public Engine::Scene::Game {

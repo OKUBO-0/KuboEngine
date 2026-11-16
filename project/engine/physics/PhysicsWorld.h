@@ -9,6 +9,7 @@
 #include <vector>
 #include <string>
 #include <span>
+#include <utility>
 
 namespace Engine::Physics {
 
@@ -23,6 +24,12 @@ struct CollisionEvent {
 struct PhysicsAdvanceUsage {
     size_t steps=0,discardedEvents=0;
     double consumedSeconds=0,droppedSeconds=0,remainingSeconds=0;
+};
+
+struct TriggerEvent {
+    Scene::EntityId first = 0;
+    Scene::EntityId second = 0;
+    bool entered = false;
 };
 
 struct PhysicsQueryOverride {Scene::EntityId id=0;Scene::TransformComponent transform{};bool active=true;};
@@ -55,15 +62,21 @@ public:
     // Host frame scheduler; Step remains the explicit single-step API.
     static constexpr double FixedStepSeconds=1.0/60.0;
     static constexpr size_t MaximumFrameSteps=8,MaximumFrameEvents=65536;
-    void Advance(Scene::EntityWorld& world,float frameSeconds,const std::function<void(float)>& beforeStep={});
+    // Trigger edges are dispatched after each successful fixed step, before
+    // the next input sample is consumed. A zero-step frame preserves contacts.
+    void Advance(Scene::EntityWorld& world,float frameSeconds,const std::function<void(float)>& beforeStep={},
+        const std::function<void(std::span<const TriggerEvent>)>& onTriggers={});
     const PhysicsAdvanceUsage& GetAdvanceUsage() const noexcept {return advanceUsage_;}
-    void ResetSimulation() {ClearEvents();accumulator_=0;advanceUsage_={};}
+    void ResetSimulation() {ClearEvents();activeTriggers_.clear();accumulator_=0;advanceUsage_={};}
 
     const std::vector<CollisionEvent>& GetEvents() const { return events_; }
     void ClearEvents() { events_.clear(); diagnostic_.clear(); }
     const std::string& GetDiagnostic() const {return diagnostic_;}
 
 private:
+    using TriggerPair = std::pair<Scene::EntityId,Scene::EntityId>;
+    bool StepInternal(Scene::EntityWorld& world,float deltaSeconds,std::vector<TriggerPair>* triggers);
+    std::vector<TriggerPair> activeTriggers_;
     Vector3 gravity_{0.0f, -9.8f, 0.0f};
     std::vector<CollisionEvent> events_;
     std::string diagnostic_;
