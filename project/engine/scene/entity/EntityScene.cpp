@@ -19,6 +19,11 @@
 #include "../../base/ProjectManifestSelection.h"
 
 namespace {
+void ApplyMaterial(Engine::Graphics3D::Object3D& object,const Engine::Scene::MaterialComponent& material) {
+    object.SetLighting(material.lighting);object.SetColor(material.color);
+    object.SetShininess(material.shininess);object.SetEnvironmentRoughness(material.roughness);
+    object.SetEnvironmentReflectionStrength(material.reflectionStrength);object.SetTextureInfluence(material.textureInfluence);
+}
 bool ApplyAnimatorSettings(Engine::Graphics3D::Object3D& object,const Engine::AnimationSystem::AnimatorBinding& binding) {
     if(!binding.settings.controllerGuid.empty()) {
         if(!object.SetControllerPlaybackRate(binding.settings.speed))return false;
@@ -67,6 +72,7 @@ void EntityScene::Finalize()
 void EntityScene::ResetWorldRenderState()
 {
     FinalizeParticles();
+    ClearAnimationPreview();
     if (!models_.empty() || !sprites_.empty() || !texts_.empty()) graphics_.WaitForAllFrames();
     models_.clear();
     sprites_.clear();spriteFrame_.items.clear();editorSpriteFrame_.items.clear();
@@ -191,11 +197,7 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
         const auto& transform = entity.transform;
         const MaterialComponent material=entity.hasMaterial?entity.material:MaterialComponent{};
         if(material.IsValid()){
-            entry.object->SetLighting(material.lighting);entry.object->SetColor(material.color);
-            entry.object->SetShininess(material.shininess);
-            entry.object->SetEnvironmentRoughness(material.roughness);
-            entry.object->SetEnvironmentReflectionStrength(material.reflectionStrength);
-            entry.object->SetTextureInfluence(material.textureInfluence);
+            ApplyMaterial(*entry.object,material);
         }else{
             const auto message="Entity Material settings rejected: "+std::to_string(entity.id);
             if(reportedModelErrors_.size()<256 && reportedModelErrors_.insert(message).second)Base::Logger::Log(message,Base::Logger::Level::Error);
@@ -255,7 +257,10 @@ void EntityScene::DrawView(bool editorView)
         if (!entity.active || !entity.hasModel) continue;
         const auto found = models_.find(entity.id);
         if (found == models_.end() || !found->second.object) continue;
-        found->second.object->DrawAnimated();
+        if(editorView && animationPreview_.entity==entity.id && animationPreview_.object){
+            animationPreview_.object->RefreshViewTransform();
+            animationPreview_.object->DrawAnimated();
+        }else found->second.object->DrawAnimated();
     }
     if(editorView || !IsParticlePreview())DrawParticles();
     DrawSprites(editorView?editorSpriteFrame_:spriteFrame_);
@@ -428,6 +433,48 @@ std::vector<std::string> EntityScene::GetAnimationClipNames(EntityId id) const
     const auto& entry=found->second;
     if(!entry.object || !entry.revision.failed.empty() || entry.authoredAsset!=entity->model.assetPath || entry.guid!=entity->model.assetGuid)return {};
     return entry.object->GetAnimationClipNames();
+}
+std::optional<float> EntityScene::GetAnimationClipDuration(EntityId id,const std::string& clip) const {
+    const auto* entity=world_.Find(id);const auto found=models_.find(id);
+    if(!entity || !entity->active || !entity->hasModel || found==models_.end())return {};
+    const auto& entry=found->second;
+    if(!entry.object || !entry.revision.failed.empty() || entry.authoredAsset!=entity->model.assetPath || entry.guid!=entity->model.assetGuid)return {};
+    return entry.object->GetAnimationClipDuration(clip);
+}
+std::optional<float> EntityScene::GetControllerBlendProgress(EntityId id,size_t layer) const {
+    const auto* object=ReadyController(id);
+    return object?object->GetControllerBlendProgress(layer):std::nullopt;
+}
+void EntityScene::ClearAnimationPreview() noexcept {animationPreview_={};}
+bool EntityScene::SetAnimationPreview(EntityId id,const std::string& clip,float seconds) {
+    const auto duration=GetAnimationClipDuration(id,clip);
+    if(!duration || !std::isfinite(seconds)){ClearAnimationPreview();return false;}
+    const auto& model=models_.at(id);
+    Matrix4x4 worldMatrix{};
+    if(!world_.GetWorldMatrix(id,worldMatrix)){ClearAnimationPreview();return false;}
+    const auto sampledTime=std::clamp(seconds,0.f,*duration);
+    auto& preview=animationPreview_;
+    try{
+        if(!preview.object || preview.entity!=id || preview.asset!=model.asset || preview.revision!=model.revision.current){
+            auto object=model.object->CreateAnimationPreview();
+            if(!object){ClearAnimationPreview();return false;}
+            preview={id,model.asset,model.revision.current,{},-1,std::move(object)};
+        }
+        const auto* entity=world_.Find(id);
+        const auto material=entity->hasMaterial && entity->material.IsValid()?entity->material:MaterialComponent{};
+        ApplyMaterial(*preview.object,material);
+        preview.object->SetWorldMatrix(worldMatrix);
+        if(preview.time!=sampledTime || preview.clip!=clip){
+            if(!preview.object->SampleAnimationPreview(clip,sampledTime)){ClearAnimationPreview();return false;}
+            preview.time=sampledTime;preview.clip=clip;
+        }
+        // Commit lighting and color even when the pose is held.
+        preview.object->UpdatePreviewAppearance();
+        return true;
+    }catch(const std::exception& error){
+        ClearAnimationPreview();Base::Logger::Log(std::string("Animation preview refused: ")+error.what());
+        return false;
+    }
 }
 EntityScene::AnimatorRequestUsage EntityScene::ApplyAnimatorRequests(const Scripting::ScriptAnimatorRequests::Pending& requests)
 {

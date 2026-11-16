@@ -19,9 +19,21 @@
 class AnimatorHostFixture final {
 public:
     static void Check(bool value,const char* message){if(!value)throw std::runtime_error(message);}
+    ~AnimatorHostFixture(){
+        std::error_code error;
+        if(!ownedRoot.empty() && std::filesystem::canonical(ownedRoot,error)==ownedRoot && !error)
+            std::filesystem::remove_all(ownedRoot,error);
+    }
     void Prepare(const char* role) {
         const auto resource=std::filesystem::current_path()/"Resources/models/walk";
-        root=std::filesystem::temp_directory_path()/(L"kubo-animator-host-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
+        root=std::filesystem::canonical(std::filesystem::temp_directory_path())/
+            (L"kubo-animator-host-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
+        Check(std::filesystem::create_directory(root),"Refuse existing Animator fixture");
+        ownedRoot=root;
+        Microsoft::WRL::ComPtr<ID3D12Debug1> debug;
+        Check(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))),"Animator GPU debug layer unavailable");
+        debug->EnableDebugLayer();
+        debug->SetEnableGPUBasedValidation(TRUE);
         std::filesystem::create_directories(root/"Assets/models");
         std::filesystem::copy(resource,root/"Assets/models",std::filesystem::copy_options::recursive);
         {std::ofstream out(root/"entry.kubo");out<<"{\"name\":\""<<role<<" Animator\",\"startupScene\":\"entry.scene\"}";Check(bool(out),"Animator manifest write failed");}
@@ -101,6 +113,7 @@ end
     }
     std::filesystem::path root;Engine::Scene::EntityId owner=0,fault=0,fixed=0,controllerEntity=0;std::string baseline;int stage=0;float time=0,fixedTicks=0,fixedTime=0,controllerTime=0;
 private:
+    std::filesystem::path ownedRoot;
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> messages;
     bool lastPlaying=false;
     bool blendChecked=false;

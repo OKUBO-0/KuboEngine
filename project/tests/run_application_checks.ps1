@@ -12,7 +12,7 @@ New-Item -ItemType Directory -Path $applicationLogs -Force | Out-Null
 $applicationTag=[guid]::NewGuid().ToString('N')
 $applicationCases=@()
 foreach($argument in @('','--generic','--lua','--lua-failure','--lua-input','--lua-properties','--animator','--prefab','--lights','--ui','--lua-ui','--ui-button','--particles')) {$applicationCases+=@{exe='PlayerRuntimeChecks.exe';argument=$argument}}
-foreach($argument in @('','--shaders','--gizmo-input','--generic-views','--render','--mcp-export-guard','--fixed-hooks','--git-index','--shutdown','--animator','--controller-save','--controller-save-as','--controller-recovery','--controller-owner-retry','--startup-close','--prefab','--lights','--render-inspector','--ui-inspector','--ui-move','--ui-button','--particles','--particle-authoring')) {$applicationCases+=@{exe='EngineResourceChecks.exe';argument=$argument}}
+foreach($argument in @('','--shaders','--gizmo-input','--generic-views','--render','--mcp-export-guard','--fixed-hooks','--git-index','--shutdown','--animator','--animation-preview','--controller-save','--controller-save-as','--controller-recovery','--controller-owner-retry','--startup-close','--prefab','--lights','--render-inspector','--ui-inspector','--ui-move','--ui-button','--particles','--particle-authoring')) {$applicationCases+=@{exe='EngineResourceChecks.exe';argument=$argument}}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--asset-thumbnails'}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--scene-grid'}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--selection-inspector'}

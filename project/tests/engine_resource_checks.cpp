@@ -87,6 +87,9 @@ public:
     static const auto& ScriptAudio(const Game& game){return game.scriptAudio_;}
     static auto& Entities(Game& game){return game.editorWorld_;}
     static void OpenAnimatorInspector(Game& game){game.genericInspectorOpen_=true;}
+    static void StartClipPreview(Game& game,EntityId id,float time,bool playing){
+        game.clipPreview_={id,"default",time,true,playing};
+    }
     static auto& ControllerPanel(Game& game){return game.controllerEditor_;}
     static auto& ControllerAssets(Game& game){return game.projectAssets_;}
     static size_t ControllerInventorySize(const Game& game){return game.controllerPendingEntries_.size();}
@@ -2421,11 +2424,13 @@ public:
 class AnimatorEditorChecks final : public Engine::Scene::Game {
     using Access=Engine::Scene::GameApplicationChecksAccess;
 public:
+    explicit AnimatorEditorChecks(bool previewOnly=false):previewOnly_(previewOnly){}
     void Initialize() override {
         fixture_.Prepare("Editor");SetProjectRoot(fixture_.root);SetProjectFile(fixture_.root/"entry.kubo");SetProjectAssetRoot(fixture_.root/"Assets");SetEditorMode(true);std::string error;
         Require(ConfigureStartupScene(fixture_.root/"entry.scene",error),error.c_str());Game::Initialize();fixture_.CaptureGpu(dxCommon->GetDevice());original_=Access::World(*this);
         Require(SelectEditorEntity(fixture_.controllerEntity,false,false,error),error.c_str());Access::OpenAnimatorInspector(*this);
         const auto guid=Access::Entities(*this).Find(fixture_.controllerEntity)->animator.controllerGuid;
+        if(previewOnly_)return;
         Require(OpenControllerAssetEditor(guid,error),error.c_str());
         auto& panel=Access::ControllerPanel(*this);sourceFile_=panel.Session().Source()->source;sourceBytes_=panel.Session().Source()->bytes;
         auto renamed=panel.Session().Document()->Definition().layers[0].states[0];renamed.name="Draft ### state";
@@ -2434,6 +2439,28 @@ public:
     }
     void Update() override {
         Game::Update();++updates_;std::string error;
+        if(previewOnly_ && updates_<=3){
+            auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
+            Require(scene && Access::World(*this)==original_,"Animation preview changed authored Scene");
+            const auto duration=scene->GetAnimationClipDuration(fixture_.controllerEntity,"default");
+            Require(duration && *duration>0,"Animation preview could not read the loaded clip duration");
+            Require(scene->GetAnimatorRenderStatus(fixture_.controllerEntity).time==0 &&
+                scene->GetControllerState(fixture_.controllerEntity)=="Idle","Animation preview changed Controller state or time");
+            if(updates_==1)Access::StartClipPreview(*this,fixture_.controllerEntity,*duration*0.75f,false);
+            if(updates_==2){
+                Require(scene->GetAnimationPreviewTime()==*duration*0.75f,"Animation preview did not sample the requested time");
+                Access::StartClipPreview(*this,fixture_.controllerEntity,0,true);
+            }
+            if(updates_==3)Require(scene->GetAnimationPreviewTime().value_or(0)>0,"Animation preview playback did not advance");
+            return;
+        }
+        if(previewOnly_ && updates_==4){
+            Require(PlayEditorScene(error),error.c_str());
+            auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
+            Require(scene && !scene->GetAnimationPreviewTime(),"Play retained the Scene animation preview");
+            std::cout<<"PASS: Editor clip scrub and playback use a separate Scene pose and retire on Play\n";
+            finished_=true;return;
+        }
         if(stopped_){Require(Access::Editing(*this) && Access::World(*this)==original_,"Animator Editor Stop did not preserve Editing snapshot");finished_=true;return;}
         fixture_.Observe(Access::Entities(*this),paused_?0:GetFrameDeltaTime(),Access::Scripts(*this).GetLastError(fixture_.fault));
         if(paused_){Require(Access::World(*this)==pausedWorld_,"Paused Animator Editor dispatched Script");paused_=false;Require(PlayEditorScene(error),error.c_str());return;}
@@ -2449,7 +2476,7 @@ public:
     }
     void Draw() override {
         Game::Draw();++draws_;
-        if(draws_<=5){auto& panel=Access::ControllerPanel(*this);std::string error;
+        if(!previewOnly_ && draws_<=5){auto& panel=Access::ControllerPanel(*this);std::string error;
             if(draws_==1)Engine::Editor::ControllerCanvasChecksAccess::Position(panel,true);
             else {Engine::Editor::ControllerCanvasChecksAccess::Position(panel,false);
                 auto& document=*panel.Session().Document();
@@ -2460,11 +2487,12 @@ public:
             }
         }
     }
-    bool IsEndRequest() const override {return finished_ || updates_>25 || Game::IsEndRequest();}
+    bool IsEndRequest() const override {return finished_ || updates_>30 || Game::IsEndRequest();}
     void Finalize() override {Game::Finalize();retired_=true;}
-    void Verify(){Require(finished_ && pauseChecked_ && fixture_.stage==8 && draws_>=8 && retired_,"Animator Editor incomplete Pause/Stop/render/retirement");std::ifstream source(sourceFile_,std::ios::binary);Require(std::string(std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>())==sourceBytes_,"Controller draft changed source bytes");fixture_.VerifyGpu();}
+    void Verify(){fixture_.VerifyGpu();if(previewOnly_){Require(finished_ && draws_==3 && retired_,"Animator Editor preview incomplete");return;}Require(finished_ && pauseChecked_ && fixture_.stage==8 && draws_>=8 && retired_,"Animator Editor incomplete Pause/Stop/render/retirement");std::ifstream source(sourceFile_,std::ios::binary);Require(std::string(std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>())==sourceBytes_,"Controller draft changed source bytes");}
 private:
     AnimatorHostFixture fixture_;std::string original_,pausedWorld_,sourceBytes_,draftText_;std::filesystem::path sourceFile_;int updates_=0,draws_=0;bool paused_=false,pauseChecked_=false,stopped_=false,finished_=false,retired_=false;
+    bool previewOnly_=false;
 };
 
 #include "controller_owner_retry_editor_checks.h"
@@ -2971,7 +2999,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     if(mode=="--particles"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunParticleGroupChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunAuthoredLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--prefab"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<PrefabEditorChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
-    if(!mode.empty() && mode!="--controller-owner-retry" && mode!="--controller-recovery" && mode!="--controller-save-as" && mode!="--controller-save" && mode!="--startup-close" && mode!="--animator" && mode!="--gizmo-input" && mode!="--shaders" && mode!="--render" && mode!="--generic-views" && mode!="--mcp-export-guard" && mode!="--fixed-hooks" && mode!="--scene-transition" && mode!="--ui-button" && mode!="--git-index" && mode!="--shutdown") {std::cerr<<"Unknown Editor runner mode\n";return 1;}
+    if(!mode.empty() && mode!="--controller-owner-retry" && mode!="--controller-recovery" && mode!="--controller-save-as" && mode!="--controller-save" && mode!="--startup-close" && mode!="--animator" && mode!="--animation-preview" && mode!="--gizmo-input" && mode!="--shaders" && mode!="--render" && mode!="--generic-views" && mode!="--mcp-export-guard" && mode!="--fixed-hooks" && mode!="--scene-transition" && mode!="--ui-button" && mode!="--git-index" && mode!="--shutdown") {std::cerr<<"Unknown Editor runner mode\n";return 1;}
     std::cout<<"RUNNER_MODE="<<mode<<'\n';
     if(mode=="--controller-owner-retry"){
         try{auto checks=std::make_unique<ControllerOwnerRetryEditorChecks>();checks->Run();checks->Verify();return 0;}
@@ -2993,6 +3021,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     }
     if(mode=="--startup-close") {
         try{auto checks=std::make_unique<StartupCloseEditorChecks>();checks->Run();checks->Verify();return 0;}
+        catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
+    }
+    if(mode=="--animation-preview"){
+        try{auto checks=std::make_unique<AnimatorEditorChecks>(true);checks->Run();checks->Verify();return 0;}
         catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
     }
     if(mode=="--animator"){

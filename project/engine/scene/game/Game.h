@@ -40,6 +40,7 @@ namespace Engine::Editor {struct ControllerRecordReport;}
 
 namespace Engine::Scene {
 class AbstractSceneFactory;
+class EntityScene;
 }
 namespace Engine::Editor { struct DebugSceneViewportState; struct DebugEditorMenuConfig; struct EntityCreation; enum class SceneEditAction; class ProjectPreviewCapture; }
 
@@ -230,6 +231,8 @@ private:
 	bool HasHierarchyHiddenSelection() const;
 	bool DrawHierarchyTree();
 	void DrawEditorCameraToolbar();
+	void DrawAnimationPreviewInspector(EntityScene& scene,const EntityRecord& entity);
+	void UpdateEditorAnimationPreview(EntityScene& scene,bool editing);
 	void DrawUILayout();
 	void DrawAddComponentMenu(const EntityRecord& entity);
 	void DrawInspectorAssetDropTarget(const EntityRecord& entity);
@@ -315,6 +318,12 @@ private:
 	Engine::Editor::EntityDocumentState documentState_;
 	Engine::Scene::EntityId authoredSelection_ = 0;
 	Engine::Scene::EntityId selectedEditorEntity_ = 0;
+	struct ClipPreview {
+		EntityId entity=0;
+		std::string clip;
+		float time=0;
+		bool active=false,playing=false;
+	} clipPreview_;
 	EntityId particlePreviewEntity_=0;
 	bool particlePreviewPaused_=false,particlePreviewRestart_=false;
 	Engine::Editor::EntitySelection editorSelection_;

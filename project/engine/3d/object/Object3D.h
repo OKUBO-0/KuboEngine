@@ -126,6 +126,11 @@ public:
 	void SetAnimationUpdateStride(uint32_t stride);
 	void SetFrustumCullingEnabled(bool enabled) { frustumCullingEnabled_ = enabled; }
 	bool HasAnimationClip(const std::string& clipName) const;
+	std::optional<float> GetAnimationClipDuration(const std::string& clipName) const;
+	std::unique_ptr<Object3D> CreateAnimationPreview() const;
+	bool SampleAnimationPreview(const std::string& clipName,float seconds);
+	void UpdatePreviewAppearance() { ApplyModelSettings(); }
+	std::optional<float> GetControllerBlendProgress(size_t layer) const noexcept;
 	std::vector<std::string> GetAnimationClipNames() const;
 	bool CanDrawSkinning() const;
 	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;

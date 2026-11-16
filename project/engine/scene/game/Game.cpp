@@ -332,6 +332,7 @@ void Game::Update()
 		if(animatorRequests.count){scene->SynchronizeModels(0);scene->ApplyAnimatorRequests(animatorRequests);}
 		scene->SynchronizeModels(editorMode_ ? (prefabRecoveryBlocked_?0.0f:worldPlayback_.SimulationDelta(frameDeltaTime_)) : frameDeltaTime_);
         const bool editing=editorMode_ && worldPlayback_.GetState()==WorldPlayback::State::Editing;
+        UpdateEditorAnimationPreview(*scene,editing);
         const auto* preview=editorWorld_.Find(particlePreviewEntity_);
         if(!editing || prefabRecoveryBlocked_ || documentState_.HasPendingAction() || !preview || !preview->hasParticle ||
             preview->id!=selectedEditorEntity_)particlePreviewEntity_=0;
@@ -486,6 +487,8 @@ void Game::DrawDebugEditorShell()
 	if (prefabRecoveryBlocked_) assetRefreshBlockedReason = "Asset refresh paused. Resolve pending Prefab Recovery first.";
 	else if (exportJob_.GetState() == Engine::Services::ExportJob::State::Running)
 		assetRefreshBlockedReason = "Asset refresh paused during game export.";
+	else if (worldPlayback_.GetState() != WorldPlayback::State::Editing)
+		assetRefreshBlockedReason = "Asset refresh resumes after Stop.";
 	Engine::Editor::DebugEditorManager::DrawAssetBrowser(&debugAssetBrowserOpen_, projectAssetRoot_, &projectAssets_, &assetImportJob_,
 		assetRefreshBlockedReason,
         worldPlayback_.GetState() == WorldPlayback::State::Editing && !documentState_.HasPendingAction(), GetProjectRoot(), projectFile_,
@@ -645,6 +648,79 @@ void Game::DrawUILayout()
 	if (const auto* entity=editorWorld_.Find(hit)) ImGui::SetTooltip("%s",entity->name.c_str());
 	ImGui::End();
 #endif
+}
+
+void Game::DrawAnimationPreviewInspector(EntityScene& scene,const EntityRecord& entity)
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+	if(clipPreview_.entity!=entity.id) {
+		clipPreview_={};clipPreview_.entity=entity.id;
+		clipPreview_.clip=entity.animator.clip;
+	}
+	const auto names=scene.GetAnimationClipNames(entity.id);
+	auto duration=scene.GetAnimationClipDuration(entity.id,clipPreview_.clip);
+	if(!duration){
+		for(const auto& name:names){
+			duration=scene.GetAnimationClipDuration(entity.id,name);
+			if(duration){clipPreview_.clip=name;clipPreview_.time=0;break;}
+		}
+	}
+	if(!duration)return;
+	if(!ImGui::TreeNode("Clip Preview"))return;
+	const bool canPreview=!EditorDocumentBusyReason() && !gizmoDragActive_ &&
+		worldPlayback_.GetState()==WorldPlayback::State::Editing;
+	ImGui::BeginDisabled(!canPreview);
+	if(ImGui::BeginCombo("Preview Clip",clipPreview_.clip.c_str())){
+		for(const auto& name:names){
+			const auto length=scene.GetAnimationClipDuration(entity.id,name);
+			if(!length)continue;
+			ImGui::PushID(name.c_str());
+			if(ImGui::Selectable(name.c_str(),name==clipPreview_.clip)){
+				clipPreview_.clip=name;duration=length;clipPreview_.time=0;
+				clipPreview_.active=true;clipPreview_.playing=false;
+			}
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
+	}
+	clipPreview_.time=std::clamp(clipPreview_.time,0.f,*duration);
+	ImGui::BeginDisabled(*duration==0);
+	if(ImGui::SliderFloat("Preview Time",&clipPreview_.time,0,*duration,"%.3f s",ImGuiSliderFlags_AlwaysClamp)){
+		clipPreview_.active=true;clipPreview_.playing=false;
+	}
+	if(ImGui::Button(clipPreview_.playing?"Pause Preview":"Play Preview")){
+		if(!clipPreview_.playing && clipPreview_.time>=*duration)clipPreview_.time=0;
+		clipPreview_.active=true;clipPreview_.playing=!clipPreview_.playing;
+	}
+	ImGui::EndDisabled();
+	if(ImGui::Button("Preview First Frame")){
+		clipPreview_.active=true;clipPreview_.playing=false;clipPreview_.time=0;
+	}
+	ImGui::SameLine();
+	if(ImGui::Button("Close Preview")){clipPreview_.active=false;clipPreview_.playing=false;clipPreview_.time=0;}
+	ImGui::EndDisabled();
+	ImGui::TreePop();
+#else
+	(void)scene;(void)entity;
+#endif
+}
+
+void Game::UpdateEditorAnimationPreview(EntityScene& scene,bool editing)
+{
+	const auto* entity=editorWorld_.Find(clipPreview_.entity);
+	if(!editing || prefabRecoveryBlocked_ || documentState_.HasPendingAction() ||
+		clipPreview_.entity!=selectedEditorEntity_ || !entity || !entity->hasAnimator){
+		clipPreview_={};
+	}
+	if(!clipPreview_.active){scene.ClearAnimationPreview();return;}
+	const auto duration=scene.GetAnimationClipDuration(clipPreview_.entity,clipPreview_.clip);
+	if(duration && clipPreview_.playing){
+		clipPreview_.time=(std::min)(*duration,clipPreview_.time+frameDeltaTime_);
+		if(clipPreview_.time>=*duration)clipPreview_.playing=false;
+	}
+	if(!duration || !scene.SetAnimationPreview(clipPreview_.entity,clipPreview_.clip,clipPreview_.time)){
+		clipPreview_.active=false;clipPreview_.playing=false;
+	}
 }
 
 void Game::DrawEditorCameraToolbar()
@@ -2182,6 +2258,8 @@ void Game::DrawGenericEntityEditor()
 						if (!entity->hasModel) ImGui::TextWrapped("Animator draft: add a Model to bind an animation clip.");
 						else if (!status.ready) ImGui::TextWrapped("Animator not ready: model/clip missing, settings pending, or owner preparation failed. Previous valid owner may remain active.");
 						else ImGui::Text("Animator: %s; time %.3f s", status.playing ? "Playing" : "Stopped / paused", status.time);
+						if(scene && worldPlayback_.GetState()==WorldPlayback::State::Editing)
+							DrawAnimationPreviewInspector(*scene,*entity);
 						if(scene && !entity->animator.controllerGuid.empty()) {
 							ImGui::SliderFloat("Force-state blend (seconds)",&controllerDebugBlendSeconds_,0,60,"%.2f",ImGuiSliderFlags_AlwaysClamp);
 							for(size_t layer=0;layer<4;++layer) {
@@ -2190,6 +2268,8 @@ void Game::DrawGenericEntityEditor()
 								ImGui::PushID(static_cast<int>(layer));
 								ImGui::Text("Layer %u: %s",static_cast<unsigned>(layer),current.c_str());
 								ImGui::Text("Time %.3f s; progress %.3f; normalized %.3f",actual.time,actual.progress,actual.normalized);
+								if(const auto blend=scene->GetControllerBlendProgress(entity->id,layer))
+									ImGui::ProgressBar(*blend,ImVec2(-1,0),"Transition blend");
 								ImGui::BeginDisabled(!status.ready || assetImportJob_.IsBusy() || exportJob_.GetState()==Engine::Services::ExportJob::State::Running || worldPlayback_.GetState()==WorldPlayback::State::Editing);
 								float weight=actual.weight;
 								if(ImGui::SliderFloat("Runtime weight",&weight,0,1,"%.3f",ImGuiSliderFlags_AlwaysClamp) && !scene->SetControllerLayerWeight(entity->id,layer,weight))genericWorldStatus_="Controller weight refused: binding unavailable or stale";
@@ -3061,6 +3141,7 @@ bool Game::OpenGenericDocument(const std::filesystem::path& path,std::string& er
 
 void Game::CommitGenericDocument(EntityWorld candidate,const std::filesystem::path& path)
 {
+	clipPreview_={};
 	particlePreviewEntity_=0;
 	const bool differentDocument = genericWorldPath_!=path;
 	mcpSession_.Stop();mcpStatus_="MCP disabled after Scene change; enable again for the new document";
@@ -3667,8 +3748,13 @@ bool Game::PlayEditorScene(std::string& error)
 		const bool starting=worldPlayback_.GetState()==WorldPlayback::State::Editing;
 		auto settled=entityHistory_;settled.Commit();
 		if(!worldPlayback_.Play(editorWorld_))throw std::runtime_error("Editor playback could not start");
-		entityHistory_.Swap(settled);if(starting)authoredSelection_=selectedEditorEntity_;
-		if(starting)particlePreviewEntity_=0;
+		entityHistory_.Swap(settled);
+		if(starting){
+			authoredSelection_=selectedEditorEntity_;
+			particlePreviewEntity_=0;
+			clipPreview_={};
+			if(auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))scene->ClearAnimationPreview();
+		}
 		error.clear();return true;
 	}catch(const std::exception& exception){error=exception.what();genericWorldStatus_="Play rejected: "+error;return false;}
 }

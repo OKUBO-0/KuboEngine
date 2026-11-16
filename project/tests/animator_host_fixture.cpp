@@ -54,6 +54,19 @@ void AnimatorHostFixture::Observe(const Engine::Scene::EntityWorld& world,float 
             auto first=Engine::Graphics3D::Object3D::Create(common,"walk.gltf",resourceRoot);
             auto second=Engine::Graphics3D::Object3D::Create(common,"walk.gltf",resourceRoot);
             const float step=clip->duration/16;
+            auto preview=first->CreateAnimationPreview();
+            Check(preview && preview->SampleAnimationPreview("default",step*9) &&
+                preview->GetAnimationTime()==step*9 && first->GetAnimationTime()==0,
+                "Independent clip pose preview changed live animation time");
+            std::vector<QuaternionTransform> previewPose;
+            Check(Engine::AnimationSystem::SampleLocalPose(loadedModel->GetSkeleton(),*clip,step*9,previewPose),
+                "Clip preview expected pose could not be sampled");
+            for(size_t i=0;i<previewPose.size();++i){
+                QuaternionTransform actual;
+                Check(preview->GetAnimationJointTransform(i,actual) &&
+                    std::abs(actual.translate.x-previewPose[i].translate.x)<1e-5f &&
+                    std::abs(actual.rotate.w-previewPose[i].rotate.w)<1e-5f,"Preview pose differs from exact clip sample");
+            }
             VerifyLayeredObject(common,loadedModel,resourceRoot,step);
             first->SetAnimationLoop(false);first->Update(step);
             Check(!first->BlendToAnimationClip("missing-owned-clip",step) && first->GetAnimationTime()==step,"Blend missing admission changed clock");
@@ -81,6 +94,9 @@ void AnimatorHostFixture::Observe(const Engine::Scene::EntityWorld& world,float 
             first->SetAnimationSpeed(0);first->Update(step);Check(first->GetControllerState()=="Idle","Paused controller consumed transition");
             first->SetAnimationSpeed(1);first->Update(step);
             Check(first->GetControllerState()=="Run" && second->GetControllerState()=="Idle" && first->IsAnimationBlending() && std::abs(first->GetAnimationTime()-2*step)<1e-5f,"Controller transition did not reach independent actual blend/clock");
+            const auto blend=first->GetControllerBlendProgress(0);
+            Check(blend && std::abs(*blend-.5f)<1e-5f && !second->GetControllerBlendProgress(0),
+                "Controller monitor disagrees with active blend clock");
             first->Update(clip->duration);first->Update(step);
             Check(first->GetControllerState()=="Idle","Actual unwrapped loop clock missed exit crossing");
             first->Update(step);Check(first->GetControllerState()=="Idle","Actual controller trigger was not consumed");

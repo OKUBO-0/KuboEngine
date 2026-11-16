@@ -70,6 +70,13 @@ public:
     struct AnimatorRenderStatus { bool ready = false, playing = false; float time = 0; };
     AnimatorRenderStatus GetAnimatorRenderStatus(EntityId id) const;
     std::vector<std::string> GetAnimationClipNames(EntityId id) const;
+    std::optional<float> GetAnimationClipDuration(EntityId id,const std::string& clip) const;
+    std::optional<float> GetControllerBlendProgress(EntityId id,size_t layer) const;
+    bool SetAnimationPreview(EntityId id,const std::string& clip,float seconds);
+    void ClearAnimationPreview() noexcept;
+    std::optional<float> GetAnimationPreviewTime() const noexcept {
+        return animationPreview_.object?std::optional<float>(animationPreview_.time):std::nullopt;
+    }
     std::string GetControllerState(EntityId id) const;
     std::string GetControllerState(EntityId id,size_t layer) const;
     bool SetControllerLayerWeight(EntityId id,size_t layer,float weight);
@@ -117,6 +124,13 @@ private:
     std::unordered_set<std::string> reportedModelErrors_;
     std::string environmentPath_;
     std::unordered_map<EntityId, RenderEntry> models_;
+    struct AnimationPreview {
+        EntityId entity=0;
+        std::string asset,revision,clip;
+        float time=-1;
+        std::unique_ptr<Graphics3D::Object3D> object;
+    };
+    AnimationPreview animationPreview_;
     struct SpriteEntry {
         std::string asset,guid,authoredAsset;
         std::unique_ptr<Graphics2D::Sprite> object;

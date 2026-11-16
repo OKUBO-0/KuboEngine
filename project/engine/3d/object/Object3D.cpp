@@ -1249,6 +1249,56 @@ bool Object3D::HasAnimationClip(const std::string& clipName) const
 	return model_ && model_->FindAnimationClip(clipName) != nullptr;
 }
 
+std::optional<float> Object3D::GetAnimationClipDuration(const std::string& clipName) const
+{
+    const auto* clip=model_ && model_->HasSkinningData()?model_->FindAnimationClip(clipName):nullptr;
+    if(!clip || clip->nodeAnimations.empty() || !std::isfinite(clip->duration) || clip->duration<0)return {};
+    return clip->duration;
+}
+
+std::unique_ptr<Object3D> Object3D::CreateAnimationPreview() const
+{
+    if(!modelLease_ || !model_->HasSkinningData())return {};
+    auto preview=std::make_unique<Object3D>();
+    preview->Initialize(object3DCommon_);
+    preview->SetModelLease(modelLease_);
+    preview->SetFrustumCullingEnabled(false);
+    preview->SetSkyboxFilePath(skyboxFilePath_);
+    return preview;
+}
+
+bool Object3D::SampleAnimationPreview(const std::string& clipName,float seconds)
+{
+    if(animationController_ || !std::isfinite(seconds))return false;
+    const auto duration=GetAnimationClipDuration(clipName);
+    if(!duration)return false;
+    const auto time=std::clamp(seconds,0.f,*duration);
+    const auto* clip=model_->FindAnimationClip(clipName);
+    std::vector<QuaternionTransform> pose;
+    if(!Engine::AnimationSystem::SampleLocalPose(model_->GetSkeleton(),*clip,time,pose))return false;
+    Skeleton skeleton;std::vector<Matrix4x4> matrices;std::vector<WellForGPU> palette;
+    if(!PrepareLayerPalette(model_->GetSkeleton(),model_->GetSkinCluster(),pose,skeleton,matrices,palette))return false;
+    animationClipName_=clipName;
+    std::swap(skeleton_,skeleton);
+    skeletonPose_.swap(matrices);
+    skinPaletteData_.swap(palette);
+    animationTime=time;
+    animationBlendActive_=false;
+    skinPaletteCacheKeyValid_=false;
+    return true;
+}
+
+std::optional<float> Object3D::GetControllerBlendProgress(size_t layer) const noexcept
+{
+    if(animationLayers_){
+        const auto* clock=animationLayers_->GetClock(layer);
+        if(clock && clock->blending && clock->duration>0)return std::clamp(clock->elapsed/clock->duration,0.f,1.f);
+    }else if(layer==0 && animationController_ && animationBlendActive_ && animationBlendDuration_>0){
+        return std::clamp(animationBlendElapsed_/animationBlendDuration_,0.f,1.f);
+    }
+    return {};
+}
+
 std::vector<std::string> Object3D::GetAnimationClipNames() const
 {
 	return model_ ? model_->GetAnimationClipNames() : std::vector<std::string>{};
