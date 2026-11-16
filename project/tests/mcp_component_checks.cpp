@@ -44,7 +44,7 @@ int main(){
             Value initialize=Value::parse(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{},"clientInfo":{"name":"test","version":"1"}}})");initialize["params"]["protocolVersion"]=protocol;session.Handle(initialize);
             session.HandleText(R"({"jsonrpc":"2.0","method":"notifications/initialized"})");
             const auto tools=session.HandleText(R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})")["result"]["tools"];
-            Require(tools.get<crude_json::array>().size()==8 && tools[6]["inputSchema"]["oneOf"].get<crude_json::array>().size()==10 && tools[6]["annotations"]["destructiveHint"].get<bool>(),"Component schema missing");
+            Require(tools.get<crude_json::array>().size()==14 && tools[6]["inputSchema"]["oneOf"].get<crude_json::array>().size()==10 && tools[6]["annotations"]["destructiveHint"].get<bool>(),"Component schema missing");
             for(const char* arguments:{"{}",R"({"entityId":1,"component":"prefab","patch":null})",R"({"entityId":1,"component":"camera"})",R"({"entityId":1,"component":"camera","patch":{"mass":1}})",R"({"entityId":0,"component":"camera","patch":null})",R"({"entityId":1.5,"component":"camera","patch":null})",R"({"entityId":9007199254740992,"component":"camera","patch":null})",R"({"entityId":1,"component":"camera","patch":null,"extra":true})"}) {
                 Value request;request["jsonrpc"]="2.0";request["id"]=3.0;request["method"]="tools/call";request["params"]["name"]="scene_set_component";request["params"]["arguments"]=Value::parse(arguments);
                 Require(session.Handle(request)["result"]["isError"].get<bool>() && forwarded==0,"Invalid component request forwarded");

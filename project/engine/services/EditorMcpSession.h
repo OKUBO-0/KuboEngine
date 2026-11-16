@@ -14,6 +14,7 @@
 #include <array>
 #include <fstream>
 #include <functional>
+#include <optional>
 #include <vector>
 #include <algorithm>
 #include <cstring>
@@ -131,7 +132,8 @@ public:
 
     void Tick(Scene::EntityWorld& world, bool editing, Editor::EntityHistory* history = nullptr, Scene::EntityId selection = 0,
         const std::function<void(const std::filesystem::path&, const Scene::EntityWorld&)>& onSaved = {},Editor::EntitySelection* fullSelection=nullptr,const Assets::AssetRegistry* assets=nullptr,
-        const std::function<Value()>& readEditorStatus = {})
+        const std::function<Value()>& readEditorStatus = {},
+        const std::function<std::optional<Value>(const Value&)>& editorCommand={})
     {
         if (!IsRunning()) return;
         if (state_ != State::Connect && GetTickCount64() - activeSince_ > 10000) { Reconnect(); return; }
@@ -170,7 +172,9 @@ public:
                     const auto method = request.is_object() && request.contains("method") && request["method"].is_string()
                         ? request["method"].get<crude_json::string>() : std::string{};
                     Value response;
-                    if (method == "editor.get_status") {
+                    auto handled=editorCommand?editorCommand(request):std::nullopt;
+                    if(handled)response=std::move(*handled);
+                    else if (method == "editor.get_status") {
                         response["jsonrpc"] = "2.0";
                         response["id"] = request.contains("id") ? request["id"] : Value(nullptr);
                         if (request.contains("params") &&
@@ -189,30 +193,44 @@ public:
                         response["jsonrpc"] = "2.0";
                         response["id"] = request.is_object() && request.contains("id") ? request["id"] : Value(nullptr);
                         response["error"]["code"] = -32000.0;
-                        response["error"]["message"] = "Scene editing is locked by playback, a pending document action or an active authoring operation";
-                    } else {
-                        Scene::EntityWorld backup;
-                        if (editing && history) backup = world;
-                        const auto before = editing && history ? backup.Capture() : Value{};
-                        Editor::EntitySelection selectedBefore;
-                        if(fullSelection)selectedBefore=*fullSelection;else selectedBefore.Replace(selection);
-                        response = McpCommandBridge(root_,assets).Handle(request, world);
-                        if (!before.is_null() && before.dump() != world.Capture().dump()) {
-                            // One command per accepted IPC request, distinct from a UI drag.
-                            history->Commit();
-                            std::string historyError;
-                            auto selectedAfter=selectedBefore;auto primary=selectedAfter.Primary();selectedAfter.Synchronize(world,primary);
-                            if (!history->Record(before, world, selectedBefore.Capture(), selectedAfter.Capture(), historyError)) {
-                                // Preserve allocation counters and transient component
-                                // fields too, not just serialized authored properties.
-                                world = std::move(backup);
-                                response = Value{};
-                                response["jsonrpc"] = "2.0";
-                                response["id"] = request.contains("id") ? request["id"] : Value(nullptr);
-                                response["error"]["code"] = -32000.0;
-                                response["error"]["message"] = "MCP edit rejected: " + historyError;
-                            } else {history->Commit();if(fullSelection)*fullSelection=std::move(selectedAfter);selection=primary;}
+                        std::string message="Scene editing is locked by playback, a pending document action or an active authoring operation";
+                        if(readEditorStatus){
+                            const auto status=readEditorStatus();
+                            if(status.contains("editBlockedReason") && status["editBlockedReason"].is_string())
+                                message+=". "+status["editBlockedReason"].get<crude_json::string>();
                         }
+                        response["error"]["message"]=std::move(message);
+                    } else {
+                        if(history && method!="scene.save"){
+                            auto candidate=world;
+                            response=McpCommandBridge(root_,assets).Handle(request,candidate);
+                            if(response.contains("result")){
+                                const auto before=world.Capture();
+                                if(before.dump()!=candidate.Capture().dump()){
+                                    Editor::EntitySelection selectedBefore;
+                                    if(fullSelection)selectedBefore=*fullSelection;else selectedBefore.Replace(selection);
+                                    auto selectedAfter=selectedBefore;
+                                    auto primary=selectedAfter.Primary();
+                                    selectedAfter.Synchronize(candidate,primary);
+                                    auto nextHistory=*history;
+                                    nextHistory.Commit();
+                                    std::string historyError;
+                                    if(!nextHistory.Record(before,candidate,selectedBefore.Capture(),selectedAfter.Capture(),historyError)){
+                                        response=Value{};
+                                        response["jsonrpc"]="2.0";
+                                        response["id"]=request.contains("id")?request["id"]:Value(nullptr);
+                                        response["error"]["code"]=-32000.0;
+                                        response["error"]["message"]="MCP edit rejected: "+historyError;
+                                    }else{
+                                        nextHistory.Commit();
+                                        world.Swap(candidate);
+                                        history->Swap(nextHistory);
+                                        if(fullSelection)*fullSelection=std::move(selectedAfter);
+                                        selection=primary;
+                                    }
+                                }
+                            }
+                        }else response=McpCommandBridge(root_,assets).Handle(request,world);
                         if (onSaved && response.contains("result") && request["method"].get<crude_json::string>() == "scene.save") {
                             const auto& text = request["params"]["path"].get<crude_json::string>();
                             std::u8string utf8(text.size(), u8'\0');
@@ -230,6 +248,8 @@ public:
                 if (reply_.size() > 4 * 1024 * 1024) { Reconnect(); return; }
                 state_ = State::Write;
                 activeSince_ = GetTickCount64();
+                // The next request uses the playback/document admission for a new host update.
+                return;
             }
         }
     }

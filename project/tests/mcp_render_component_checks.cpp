@@ -48,7 +48,7 @@ int main(){
             initialize["params"]["protocolVersion"]=protocol;session.Handle(initialize);
             session.HandleText(R"({"jsonrpc":"2.0","method":"notifications/initialized"})");
             const auto tools=session.HandleText(R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})")["result"]["tools"];
-            Require(tools.get<crude_json::array>().size()==8 && tools[6]["inputSchema"]["oneOf"].get<crude_json::array>().size()==10,"Render component schema missing or tool count changed");
+            Require(tools.get<crude_json::array>().size()==14 && tools[6]["inputSchema"]["oneOf"].get<crude_json::array>().size()==10,"Render component schema missing or tool count changed");
             const auto send=[&](const char* component,const char* patch){
                 Value request;request["jsonrpc"]="2.0";request["id"]=3.0;request["method"]="tools/call";
                 request["params"]["name"]="scene_set_component";auto& arguments=request["params"]["arguments"];

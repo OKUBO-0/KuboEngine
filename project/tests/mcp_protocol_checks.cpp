@@ -39,8 +39,9 @@ int main()
         Require(Code(handle(R"({"jsonrpc":"2.0","id":3,"method":"tools/list"})")) == -32002, "Tools accepted before initialized notification");
         Require(handle(R"({"jsonrpc":"2.0","method":"notifications/initialized"})").is_null(), "Notification got a response");
         const auto tools = handle(R"({"jsonrpc":"2.0","id":4,"method":"tools/list"})");
-        Require(tools["result"]["tools"].get<crude_json::array>().size() == 8 &&
-            tools["result"]["tools"][2]["inputSchema"]["required"].is_array() &&
+        Require(tools["result"]["tools"].get<crude_json::array>().size() == 14 &&
+                        !tools["result"]["tools"][2]["inputSchema"].contains("required") &&
+            tools["result"]["tools"][8]["inputSchema"]["properties"]["entityId"]["type"].get<std::string>()=="integer" &&
             tools["result"]["tools"][7]["name"].get<crude_json::string>() == "editor_get_status" &&
             tools["result"]["tools"][7]["annotations"]["readOnlyHint"].get<bool>(), "Tool schemas missing");
         Require(handle(R"({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"editor_get_status","arguments":{"unexpected":true}}})")["result"]["isError"].get<bool>() &&
@@ -53,6 +54,9 @@ int main()
         Require(invalidArgs["result"]["isError"].get<crude_json::boolean>() && forwarded == 0, "Schema error mutated Editor or used a protocol error");
         Require(handle(R"({"jsonrpc":"2.0","method":"tools/call","params":{"name":"scene_create_entity"}})").is_null() && forwarded == 0,
             "Tool notification caused a mutation");
+        Require(handle(R"({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"editor_select_entity","arguments":{"entityId":2.5}}})")["result"]["isError"].get<bool>() &&
+            handle(R"({"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"editor_undo","arguments":{"steps":2}}})")["result"]["isError"].get<bool>() &&
+            forwarded==0,"Malformed selection/history arguments passed the adapter");
         const auto modern = handle(R"({"jsonrpc":"2.0","id":"list","method":"tools/call","params":{"name":"scene_list_entities"}})");
         Require(modern["result"]["structuredContent"]["entities"].is_array() && forwarded == 1, "Modern structured result missing");
         for (int i = 0; i < 29; ++i) {

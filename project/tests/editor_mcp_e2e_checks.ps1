@@ -1,4 +1,4 @@
-param([ValidateSet('2025-11-25', '2024-11-05')][string]$ProtocolVersion = '2025-11-25', [switch]$WithCamera, [switch]$WithModel, [switch]$WithScript, [switch]$UnicodePaths, [switch]$OrthographicCamera, [switch]$WithAudio, [switch]$WithRender, [switch]$WithUI, [switch]$WithEditorStatus, [string]$EngineDirectory)
+param([ValidateSet('2025-11-25', '2024-11-05')][string]$ProtocolVersion = '2025-11-25', [switch]$WithCamera, [switch]$WithModel, [switch]$WithScript, [switch]$UnicodePaths, [switch]$OrthographicCamera, [switch]$WithAudio, [switch]$WithRender, [switch]$WithUI, [switch]$WithEditorStatus, [switch]$WithEditorAuthoring, [string]$EngineDirectory)
 $ErrorActionPreference = 'Stop'
 if ($OrthographicCamera) { $WithCamera = $true }
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('kubo-mcp-e2e-' + [Guid]::NewGuid().ToString('N'))
@@ -16,13 +16,19 @@ New-Item -ItemType Directory -Path $rpcLogRoot -Force|Out-Null
 $rpcLog=Join-Path $rpcLogRoot ('mcp-rpc-'+(Split-Path -Leaf $fixture)+'.log')
 function Require([bool]$Value, [string]$Message) { if (!$Value) { throw $Message } }
 function Rpc([string]$Line, $ExpectedId, [int]$ExpectedError = 0) {
-    $adapterInput.WriteLine($Line)
-    $adapterInput.Flush()
-    $read = $adapter.StandardOutput.ReadLineAsync()
-    if (!$read.Wait(15000)) { throw 'MCP adapter response timeout' }
-    if (!$read.Result) { throw 'MCP adapter closed stdout' }
-    [IO.File]::AppendAllText($rpcLog,"SEND $Line`nRECV $($read.Result)`n",[Text.UTF8Encoding]::new($false))
-    $response = $read.Result | ConvertFrom-Json
+    for($attempt=0;$attempt -lt 5;++$attempt){
+        $adapterInput.WriteLine($Line)
+        $adapterInput.Flush()
+        $read = $adapter.StandardOutput.ReadLineAsync()
+        if (!$read.Wait(15000)) { throw 'MCP adapter response timeout' }
+        if (!$read.Result) { throw 'MCP adapter closed stdout' }
+        [IO.File]::AppendAllText($rpcLog,"SEND $Line`nRECV $($read.Result)`n",[Text.UTF8Encoding]::new($false))
+        $response = $read.Result | ConvertFrom-Json
+        if(!$response.result.isError -or $response.result.content[0].text -notlike '*Wait for the asset import to finish.*'){break}
+        # The live Asset Browser may be refreshing this fixture mid-scenario.
+        # Retry only the explicit transient lock. Every refusal remains logged.
+        Start-Sleep -Milliseconds 1100
+    }
     Require ($response.id -eq $ExpectedId) "Response id mismatch: expected=$ExpectedId actual=$($response.id) payload=$($read.Result)"
     if ($ExpectedError -ne 0) { Require ($response.error.code -eq $ExpectedError) 'Expected JSON-RPC error was not returned' }
     else { Require (!$response.error) ('JSON-RPC error: ' + ($response.error | ConvertTo-Json -Compress)) }
@@ -142,7 +148,10 @@ try {
     # Legacy package replay keeps its six-component contract unless explicitly opted in.
     $expectedComponentBranches=if($WithUI){10}elseif($WithRender){8}else{6}
     $statusTool = $tools.result.tools | Where-Object name -EQ 'editor_get_status'
-    $expectedTools = if ($statusTool) { 8 } else { 7 }
+    $authoringNames=@('editor_select_entity','editor_undo','editor_redo','editor_play','editor_pause','editor_stop')
+    $authoringTools=@($tools.result.tools | Where-Object {$_.name -in $authoringNames})
+    if($WithEditorAuthoring){Require ($authoringTools.Count -eq 6) 'Live Editor authoring tools missing'}
+    $expectedTools = $(if ($statusTool) { 8 } else { 7 }) + $authoringTools.Count
     Require ($tools.result.tools.Count -eq $expectedTools -and $tools.result.tools[0].inputSchema.type -eq 'object' -and $tools.result.tools[3].inputSchema.anyOf.Count -eq 3 -and $tools.result.tools[4].annotations.destructiveHint -and $tools.result.tools[5].inputSchema.properties.parentId.minimum -eq 0 -and $tools.result.tools[6].inputSchema.oneOf.Count -eq $expectedComponentBranches) 'Tool schema missing'
     if ($WithEditorStatus) { Require ($statusTool -and $statusTool.annotations.readOnlyHint) 'Editor status tool missing' }
     if ($statusTool) {
@@ -379,6 +388,68 @@ try {
     }
     $denied = Rpc '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"scene_save","arguments":{"path":"../outside.json"}}}' 6
     Require ([bool]$denied.result.isError) 'Path traversal was accepted'
+    if($WithEditorAuthoring){
+        Start-Sleep -Milliseconds 1100
+        function Command([string]$Name,[int]$RpcId,[hashtable]$Arguments=@{},[bool]$MustReject=$false) {
+            $reply=Rpc (@{jsonrpc='2.0';id=$RpcId;method='tools/call';params=@{name=$Name;arguments=$Arguments}} | ConvertTo-Json -Depth 8 -Compress) $RpcId
+            Require ([bool]$reply.result.isError -eq $MustReject) "$Name unexpected response: $($reply.result.content[0].text)"
+            if(!$MustReject){ return ($reply.result.content[0].text | ConvertFrom-Json).result }
+        }
+        # A project-relative spelling through an existing junction must not write
+        # outside the selected project, even when its final file is a valid Scene.
+        $external=[IO.Path]::GetFullPath($fixture+'-outside')
+        $junction=Join-Path $fixture 'ExternalLink'
+        $null=[IO.Directory]::CreateDirectory($external)
+        try {
+            $protected=Join-Path $external 'protected.scene'
+            [IO.File]::WriteAllText($protected,$startup,[Text.UTF8Encoding]::new($false))
+            $digest=(Get-FileHash -LiteralPath $protected).Hash
+            $null=New-Item -ItemType Junction -Path $junction -Target $external
+            Command 'scene_save' 199 @{path='ExternalLink/protected.scene'} $true
+            Require ((Get-FileHash -LiteralPath $protected).Hash -eq $digest) 'Scene save through a junction changed the external file'
+        }finally {
+            if(Test-Path -LiteralPath $junction){[IO.Directory]::Delete($junction)}
+            [IO.File]::Delete((Join-Path $external 'protected.scene'))
+            [IO.Directory]::Delete($external)
+        }
+        $copyStatus=Command 'editor_get_status' 200
+        Require ($copyStatus.dirty -and $copyStatus.scenePath -ceq $startupSceneName) 'Copy save changed the open document baseline'
+        $authoredX=$transformed.transform.position[0]
+        $selected=Command 'editor_select_entity' 201 @{entityId=$createdReply.result.entityId}
+        Require ($selected.primaryEntityId -eq $createdReply.result.entityId) 'Selection did not reach the Editor'
+        Command 'editor_select_entity' 202 @{entityId=999999} $true
+        Command 'scene_set_transform' 203 @{entityId=$createdReply.result.entityId;position=@(9,4,5)}|Out-Null
+        $undo=Command 'editor_undo' 204
+        $undoEntity=Command 'scene_list_entities' 205 | Where-Object id -EQ $createdReply.result.entityId
+        Require ($undo.canUndo -and $undo.canRedo -and $undo.primaryEntityId -eq $createdReply.result.entityId -and $undoEntity.transform.position[0] -eq $authoredX) 'Undo did not restore Transform and selection'
+        $redo=Command 'editor_redo' 206
+        $redoEntity=Command 'scene_list_entities' 207 | Where-Object id -EQ $createdReply.result.entityId
+        Require (!$redo.canRedo -and $redoEntity.transform.position[0] -eq 9) 'Redo did not restore the edited Transform'
+        Command 'editor_undo' 208|Out-Null
+        $currentSave=Command 'scene_save' 209
+        $currentSaved=Get-Content -LiteralPath (Join-Path $fixture $startupSceneName) -Encoding UTF8 -Raw | ConvertFrom-Json
+        Require ($currentSave.savedCurrentScene -and $currentSave.path -ceq $startupSceneName -and
+            ($currentSaved.entities | Where-Object id -EQ $createdReply.result.entityId).transform.position[0] -eq $authoredX) 'Pathless save did not persist the current document'
+        Require (!(Command 'editor_get_status' 210).dirty) 'Current save did not clear the Editor dirty flag'
+        $playing=Command 'editor_play' 211
+        Require ($playing.playback -eq 'playing' -and !$playing.canEditScene) 'Play did not lock editing'
+        Command 'scene_save' 212 @{} $true
+        Command 'editor_undo' 213 @{} $true
+        Command 'editor_select_entity' 214 @{entityId=1} $true
+        Command 'scene_create_entity' 215 @{name='Refused while playing'} $true
+        $paused=Command 'editor_pause' 216
+        Require ($paused.playback -eq 'paused' -and !$paused.canEditScene) 'Pause did not retain the edit lock'
+        Command 'editor_redo' 217 @{} $true
+        $resumed=Command 'editor_play' 218
+        Require ($resumed.playback -eq 'playing') 'Resume did not resume the same Scene'
+        $stopped=Command 'editor_stop' 219
+        $restored=Command 'scene_list_entities' 220 | Where-Object id -EQ $createdReply.result.entityId
+        Require ($stopped.playback -eq 'editing' -and $stopped.canEditScene -and !$stopped.dirty -and
+            $stopped.primaryEntityId -eq $createdReply.result.entityId -and $restored.transform.position[0] -eq $authoredX) 'Stop did not restore authored Scene, selection and saved baseline'
+        $explicit=Command 'scene_save' 221 @{path=$startupSceneName}
+        Require ($explicit.savedCurrentScene -and $explicit.path -ceq $startupSceneName) 'Explicit save of current path did not use the Editor baseline route'
+        Write-Output 'PASS: live MCP selection, history Undo/Redo, current vs copy save, Play/Pause/resume/Stop, authored restoration and mutation locks'
+    }
     $adapterInput.Dispose();$adapterInput=$null
     $adapter.StandardInput.Close()
     Require ($adapter.WaitForExit(5000) -and $adapter.ExitCode -eq 0) 'Adapter did not exit cleanly on stdin EOF'

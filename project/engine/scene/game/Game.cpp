@@ -24,6 +24,8 @@
 #include "engine/editor/NativeBuildSettings.h"
 #include "engine/base/ProjectPaths.h"
 #include "engine/base/AtomicFile.h"
+#include "engine/services/McpEntityArguments.h"
+#include "engine/services/McpProtocolSession.h"
 #include "SceneFactory.h"
 #include "SceneManager.h"
 #include "ImGuiManager.h"
@@ -292,26 +294,9 @@ void Game::Update()
 	}
 	if (editorMode_ && genericSceneSelected_ && genericWorldReady_) {
 		const bool editing = worldPlayback_.GetState() == WorldPlayback::State::Editing && !EditorDocumentBusyReason();
-		mcpSession_.Tick(editorWorld_, editing, &entityHistory_, selectedEditorEntity_,
-			[this](const std::filesystem::path& path, const EntityWorld& world) { documentState_.MarkSavedAt(world, path); },
-			&editorSelection_, &projectAssets_, [this, editing] {
-				SceneValue status;
-				const auto playback = worldPlayback_.GetState();
-				const auto& path = documentState_.Path();
-				status["scenePath"] = path.empty() ? std::string{} : Engine::Base::PathToUtf8(path.lexically_relative(GetProjectRoot()));
-				status["playback"] = playback == WorldPlayback::State::Playing ? "playing" :
-					playback == WorldPlayback::State::Paused ? "paused" : "editing";
-				status["dirty"] = playback == WorldPlayback::State::Editing
-					? documentState_.WouldBeDirty(editorWorld_) : documentState_.IsDirty();
-				status["canEditScene"] = editing;
-				const char* reason = EditorDocumentBusyReason();
-				status["editBlockedReason"] = editing ? "" : reason ? reason : "Stop playback to edit the Scene.";
-				status["primaryEntityId"] = double(editorSelection_.Primary());
-				status["selectionCount"] = double(editorSelection_.Ids().size());
-				status["sceneGridEnabled"] = editorViewEnabled_ && editorGridVisible_;
-				status["transformGizmoEnabled"] = editorViewEnabled_ && gizmoEnabled_;
-				return status;
-			});
+        mcpSession_.Tick(editorWorld_,editing,&entityHistory_,selectedEditorEntity_,{},&editorSelection_,&projectAssets_,
+            [this]{return ReadMcpEditorStatus();},
+            [this](const SceneValue& request){return HandleMcpEditorCommand(request);});
 		selectedEditorEntity_=editorSelection_.Primary();
 		editorSelection_.Synchronize(editorWorld_,selectedEditorEntity_);
 	}
@@ -1584,7 +1569,12 @@ bool Game::OpenDiagnosticEntity(const Base::Logger::Target& target,std::string& 
         error="The diagnostic Entity is unavailable in the current Scene";
         return false;
     }
-    if(!SelectEditorEntity(target.entity,false,false,error))return false;
+    return RevealEditorEntity(target.entity,error);
+}
+
+bool Game::RevealEditorEntity(EntityId id,std::string& error)
+{
+    if(!SelectEditorEntity(id,false,false,error))return false;
     hierarchySearch_[0]='\0';
     hierarchyType_=HierarchyType::All;
     genericHierarchyOpen_=genericInspectorOpen_=true;
@@ -2727,6 +2717,115 @@ void Game::DrawGenericEntityEditor()
 	ImGui::EndDisabled();
 	SynchronizeGenericPlayer();
 #endif // _DEBUG
+}
+
+SceneValue Game::ReadMcpEditorStatus() const
+{
+    using State=WorldPlayback::State;
+    const auto playback=worldPlayback_.GetState();
+    const auto* reason=EditorDocumentBusyReason();
+    const bool editing=playback==State::Editing && !reason;
+    const auto& path=documentState_.Path();
+    SceneValue status;
+    status["scenePath"]=path.empty()?std::string{}:Base::PathToUtf8(path.lexically_relative(GetProjectRoot()));
+    status["playback"]=playback==State::Playing?"playing":playback==State::Paused?"paused":"editing";
+    status["dirty"]=playback==State::Editing?documentState_.WouldBeDirty(editorWorld_):documentState_.IsDirty();
+    status["canEditScene"]=editing;
+    status["editBlockedReason"]=editing?"":reason?reason:"Stop playback to edit the Scene.";
+    status["primaryEntityId"]=double(editorSelection_.Primary());
+    status["selectionCount"]=double(editorSelection_.Ids().size());
+    status["canUndo"]=editing && entityHistory_.CanUndo();
+    status["canRedo"]=editing && entityHistory_.CanRedo();
+    status["sceneGridEnabled"]=editorViewEnabled_ && editorGridVisible_;
+    status["transformGizmoEnabled"]=editorViewEnabled_ && gizmoEnabled_;
+    return status;
+}
+
+std::optional<SceneValue> Game::HandleMcpEditorCommand(const SceneValue& request)
+{
+    if(!request.is_object() || !request.contains("method") || !request["method"].is_string())return std::nullopt;
+    const auto& method=request["method"].get<crude_json::string>();
+    const bool playback=method=="editor.play" || method=="editor.pause" || method=="editor.stop";
+    if(!playback && method!="editor.select_entity" && method!="editor.undo" && method!="editor.redo" && method!="scene.save")
+        return std::nullopt;
+
+    using State=WorldPlayback::State;
+    const auto id=request.contains("id")?request["id"]:SceneValue(nullptr);
+    const auto errorReply=[&](const std::string& error,int code=-32000){return Services::McpProtocolSession::Error(id,code,error);};
+    try {
+        const auto args=request.contains("params")?request["params"]:SceneValue(crude_json::object{});
+        if(!args.is_object())return errorReply("Scene command arguments must be an object", -32602);
+        if(const auto* busy=EditorDocumentBusyReason())return errorReply(busy);
+        if(!playback && worldPlayback_.GetState()!=State::Editing)return errorReply("Stop playback to edit the Scene.");
+
+        std::string error;
+        SceneValue result;
+        if(method=="editor.select_entity"){
+            if(!Services::ValidateMcpEntityArguments(args,false,error))return errorReply(error,-32602);
+            if(!RevealEditorEntity(EntityId(args["entityId"].get<double>()),error))return errorReply(error);
+            result["primaryEntityId"]=double(editorSelection_.Primary());
+        }else if(method=="scene.save"){
+            const auto& arguments=args.get<crude_json::object>();
+            if(arguments.size()>1 || (!arguments.empty() && (!args.contains("path") || !args["path"].is_string())))
+                return errorReply("Scene save accepts only an optional project-relative path", -32602);
+            bool current=arguments.empty();
+            if(!current){
+                const auto& text=args["path"].get<crude_json::string>();
+                if(text.empty() || !Scripting::ValidScriptText(text,4096) || text.find(':')!=std::string::npos)
+                    return errorReply("Scene save requires a project-relative .scene/.json path", -32602);
+                const auto relative=Base::PathFromUtf8(text);
+                if(relative.has_root_path() || std::any_of(relative.begin(),relative.end(),[](const auto& part){return part==L"..";}))
+                    return errorReply("Scene save path escapes the project", -32602);
+                Base::ProjectContext project;
+                if(!project.Open(projectFile_,error) || project.GetRootPath()!=GetProjectRoot())
+                    return errorReply(error.empty()?"The project root changed; reopen the project":error);
+                const auto target=project.ResolvePath(relative);
+                const auto rootCanonical=std::filesystem::canonical(project.GetRootPath());
+                const auto targetCanonical=std::filesystem::weakly_canonical(target);
+                auto part=targetCanonical.begin();
+                for(const auto& rootPart:rootCanonical){
+                    if(part==targetCanonical.end() || CompareStringOrdinal(rootPart.c_str(),-1,part->c_str(),-1,TRUE)!=CSTR_EQUAL)
+                        return errorReply("Scene save resolves outside the project", -32602);
+                    ++part;
+                }
+                const auto openCanonical=genericWorldPath_.empty()?std::filesystem::path{}:std::filesystem::weakly_canonical(genericWorldPath_);
+                current=!openCanonical.empty() && CompareStringOrdinal(openCanonical.c_str(),-1,targetCanonical.c_str(),-1,TRUE)==CSTR_EQUAL;
+                if(!current){
+                    if(!CheckPrefabRecovery(error))return errorReply(error);
+                    std::filesystem::path saved;
+                    if(!Editor::SaveProjectSceneAs(project,editorWorld_,targetCanonical,true,saved,error))return errorReply(error);
+                    result["path"]=Base::PathToUtf8(saved.lexically_relative(GetProjectRoot()));
+                }
+            }
+            if(current){
+                if(genericWorldPath_.empty())return errorReply("This Scene has no filename. Use Save As in the Editor or supply a copy path.");
+                if(!SaveGenericDocument())return errorReply(genericWorldStatus_);
+                result["path"]=Base::PathToUtf8(genericWorldPath_.lexically_relative(GetProjectRoot()));
+            }
+            result["saved"]=true;
+            result["savedCurrentScene"]=current;
+        }else{
+            if(!args.get<crude_json::object>().empty())return errorReply("This Editor command accepts no arguments", -32602);
+            if(method=="editor.undo" || method=="editor.redo"){
+                if(!ApplyEditorHistory(method=="editor.redo",error))return errorReply(error);
+                result=ReadMcpEditorStatus();
+            }else{
+                if(method=="editor.play"){
+                    if(!PlayEditorScene(error))return errorReply(error);
+                }else if(method=="editor.pause"){
+                    if(worldPlayback_.GetState()!=State::Playing)return errorReply("Only a running Scene can be paused");
+                    worldPlayback_.Pause();
+                }else{
+                    if(worldPlayback_.GetState()==State::Editing)return errorReply("The Scene is already stopped");
+                    if(!StopEditorPreview(error))return errorReply(error);
+                }
+                result=ReadMcpEditorStatus();
+            }
+        }
+        SceneValue response;
+        response["jsonrpc"]="2.0";response["id"]=id;response["result"]=std::move(result);
+        return response;
+    } catch(const std::exception& exception) {return errorReply(exception.what());}
 }
 
 bool Game::SaveGenericDocument()
@@ -3984,6 +4083,15 @@ bool Game::StopEditorPlayback(std::string& error)
 		runtimeSceneChanged_ = false;
 	}
 	return true;
+}
+
+bool Game::StopEditorPreview(std::string& error)
+{
+    if(!StopEditorPlayback(error))return false;
+    selectedEditorEntity_=editorWorld_.Find(authoredSelection_)?authoredSelection_:0;
+    editorSelection_.Synchronize(editorWorld_,selectedEditorEntity_);
+    if(auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))scene->ResetAnimations();
+    return true;
 }
 
 void Game::SynchronizeGenericPlayer()

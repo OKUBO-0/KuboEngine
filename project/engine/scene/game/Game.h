@@ -251,6 +251,10 @@ private:
 	void DrawInspectorAssetDropTarget(const EntityRecord& entity);
 	bool CreateLuaScriptAsset(const std::filesystem::path& path,std::string& error);
 	bool StopEditorPlayback(std::string& error);
+    bool StopEditorPreview(std::string& error);
+    bool RevealEditorEntity(EntityId id,std::string& error);
+    SceneValue ReadMcpEditorStatus() const;
+    std::optional<SceneValue> HandleMcpEditorCommand(const SceneValue& request);
 	void DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewport);
 	bool DrawSceneAssetDropTarget(const Engine::Editor::DebugSceneViewportState& viewport);
 	bool PlaceSceneAsset(const std::string& guid,Vector3 position,std::string& error);

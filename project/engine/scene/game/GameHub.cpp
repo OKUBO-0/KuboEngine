@@ -90,14 +90,7 @@ void Game::ConfigureEditorMenuCommands(Editor::DebugEditorMenuConfig& menu)
     if (state == State::Playing) menu.onPause = [this] { worldPlayback_.Pause(); };
     if (state != State::Editing) menu.onStop = [this] {
         std::string error;
-        if (!StopEditorPlayback(error)) {
-            if (!error.empty()) genericWorldStatus_ = error;
-            return;
-        }
-        selectedEditorEntity_ = editorWorld_.Find(authoredSelection_) ? authoredSelection_ : 0;
-        editorSelection_.Synchronize(editorWorld_,selectedEditorEntity_);
-        if (auto* scene = dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))
-            scene->ResetAnimations();
+        if (!StopEditorPreview(error) && !error.empty()) genericWorldStatus_ = error;
     };
 }
 

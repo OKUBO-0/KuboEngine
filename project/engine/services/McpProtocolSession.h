@@ -96,7 +96,7 @@ public:
             result["capabilities"]["tools"]["listChanged"] = false;
             result["serverInfo"]["name"] = "KuboEngine";
             result["serverInfo"]["version"] = "0.1.0";
-            result["instructions"] = "Tools target the opened, explicitly enabled Editor project. Saving replaces the selected scene file. Stop playback before modifying scenes.";
+            result["instructions"] = "Tools target the opened, explicitly enabled Editor project. Scene save uses the open file by default. Stop playback before modifying scenes.";
             state_ = State::Negotiated;
             return Response(id, std::move(result));
         }
@@ -107,9 +107,8 @@ public:
             result["tools"] = crude_json::array{};
             result["tools"].push_back(Tool("scene_list_entities", "List entities in the opened Editor scene", {}, true, false));
             result["tools"].push_back(Tool("scene_create_entity", "Create an entity in the opened Editor scene", "name", false, false));
-            auto save = Tool("scene_save", "Save the opened scene to a project-relative .scene/.json path, replacing that scene file", "path", false, true);
-            save["inputSchema"]["required"] = crude_json::array{"path"};
-            result["tools"].push_back(std::move(save));
+            result["tools"].push_back(Tool("scene_save",
+                "Save the current Editor Scene. Optional project-relative .scene/.json path writes a copy when different from the open Scene.", "path", false, true));
             result["tools"].push_back(EntityTool(true));
             result["tools"].push_back(EntityTool(false));
             auto parent=Tool("scene_set_parent","Set parentId (0=root); keepWorld boolean optionally preserves World pose or rejects unrepresentable TRS; default retains local TRS; one undo command",{},false,true);
@@ -125,7 +124,18 @@ public:
             component["inputSchema"]=McpComponentToolSchema();
             result["tools"].push_back(std::move(component));
             result["tools"].push_back(Tool("editor_get_status",
-                "Read the current Editor Scene, playback, authoring lock, selection, and Scene overlay status", {}, true, false));
+                "Read the current Editor Scene, playback, authoring lock, selection, history availability and Scene overlay status", {}, true, false));
+            auto select=Tool("editor_select_entity","Select one Entity in the Scene Hierarchy and Inspector",{},false,false);
+            select["inputSchema"]["required"]=crude_json::array{"entityId"};
+            select["inputSchema"]["properties"]["entityId"]["type"]="integer";
+            select["inputSchema"]["properties"]["entityId"]["minimum"]=1.0;
+            select["inputSchema"]["properties"]["entityId"]["maximum"]=9007199254740991.0;
+            result["tools"].push_back(std::move(select));
+            result["tools"].push_back(Tool("editor_undo","Undo the last recorded Scene edit",{},false,true));
+            result["tools"].push_back(Tool("editor_redo","Redo the next recorded Scene edit",{},false,true));
+            result["tools"].push_back(Tool("editor_play","Start or resume playback in the current Editor Scene",{},false,false));
+            result["tools"].push_back(Tool("editor_pause","Pause the running Editor Scene",{},false,false));
+            result["tools"].push_back(Tool("editor_stop","Stop playback and restore the authored Scene",{},false,false));
             return Response(id, std::move(result));
         }
         if (method != "tools/call") return Error(id, -32601, "Method not found");
@@ -141,19 +151,26 @@ public:
         else if (name == "scene_set_parent") command = "scene.set_parent";
         else if (name == "scene_set_component") command = "scene.set_component";
         else if (name == "editor_get_status") command = "editor.get_status";
+        else if (name == "editor_select_entity") command = "editor.select_entity";
+        else if (name == "editor_undo") command = "editor.undo";
+        else if (name == "editor_redo") command = "editor.redo";
+        else if (name == "editor_play") command = "editor.play";
+        else if (name == "editor_pause") command = "editor.pause";
+        else if (name == "editor_stop") command = "editor.stop";
         else return Error(id, -32602, "Unknown tool: " + name);
         const Value arguments = params.contains("arguments") ? params["arguments"] : Value(crude_json::object{});
         if(name=="scene_set_component") {
             std::string error;if(!ValidateMcpComponentArguments(arguments,error))return ToolError(id,error);
         } else if(name=="scene_set_parent") {
             std::string error;if(!ValidateMcpParentArguments(arguments,error)) return ToolError(id,error);
-        } else if(name=="scene_set_transform" || name=="scene_delete_entity") {
+        } else if(name=="scene_set_transform" || name=="scene_delete_entity" || name=="editor_select_entity") {
             std::string error;
             if(!ValidateMcpEntityArguments(arguments,name=="scene_set_transform",error)) return ToolError(id,error);
         } else for (const auto& [key, field] : arguments.get<crude_json::object>()) {
             if (key != property || !field.is_string()) return ToolError(id, "Arguments do not match the advertised tool input schema");
         }
-        if (name == "scene_save" && (!StringField(arguments, "path") || arguments["path"].get<crude_json::string>().empty())) return ToolError(id, "scene_save requires a non-empty path");
+                if (name == "scene_save" && arguments.contains("path") && arguments["path"].get<crude_json::string>().empty())
+            return ToolError(id, "Scene save path must be non-empty when supplied");
         const auto now = clock_();
         if (now - rateWindow_ >= std::chrono::seconds(1)) { rateWindow_ = now; callsInWindow_ = 0; }
         if (callsInWindow_ >= 30) return ToolError(id, "Tool rate limit reached (30 calls/second per adapter); retry later");
