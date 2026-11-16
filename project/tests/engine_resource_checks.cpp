@@ -103,6 +103,12 @@ public:
         game.editorSelectionGuides_ = enabled;
         game.editorComponentGuides_ = enabled;
     }
+    static void SetFrontOrthographicView(Game& game) {
+        game.editorCameraState_.position={0,0,-10};
+        game.editorCameraState_.rotation={0,0,0};
+        game.editorCameraState_.orthographic=true;
+    }
+    static const std::string& EditorStatus(const Game& game) {return game.genericWorldStatus_;}
     static void FocusSceneSelection(Game& game) { game.FocusEditorSelection(); }
     static Vector3 SceneCameraPosition(const Game& game) { return game.editorCameraState_.position; }
     static bool GameViewportReceivesInput(const Game& game) { return game.gameScriptInputAllowed_; }
@@ -889,6 +895,119 @@ private:
     std::string sourceBeforeGuides_;
     std::unordered_map<std::string, Control> controls_;
     int frame_ = 0;
+};
+
+class SceneAssetPlacementChecks final : public EditorViewportFixture {
+public:
+    void Initialize() override {
+        EditorViewportFixture::Initialize();
+        const auto model=GetProjectRoot()/L"Assets/配置モデル.obj";
+        const auto prefab=GetProjectRoot()/L"Assets/配置プレハブ.prefab";
+        std::filesystem::copy_file("Resources/models/axis/axis.obj",model);
+        std::filesystem::copy_file("Resources/models/axis/axis.mtl",GetProjectRoot()/"Assets/axis.mtl");
+        std::string error;
+        std::filesystem::path saved;
+        Require(SaveEditorPrefab(prefab,saved,error),error);
+        auto& registry=Access::ControllerAssets(*this);
+        Require(registry.Scan(GetProjectRoot()/"Assets",error),error);
+        Require(registry.FindByPath(model) && registry.FindByPath(prefab),"Placement assets were not registered");
+        modelGuid_=registry.FindByPath(model)->guid;
+        prefabGuid_=registry.FindByPath(prefab)->guid;
+        Access::ShowAssetBrowser(*this);
+        Access::SetSceneOverlays(*this,false,false);
+        current_=this;
+        Engine::Editor::assetBrowserChecksObserver=[](const char* guid,uint64_t,Vector2 min,Vector2 max,bool) {
+            const ImVec2 center{(min.x+max.x)*0.5f,(min.y+max.y)*0.5f};
+            if (current_->modelGuid_==guid) current_->modelRow_=center;
+            if (current_->prefabGuid_==guid) current_->prefabRow_=center;
+        };
+        ImGuiContextHook hook{};
+        hook.Type=ImGuiContextHookType_NewFramePre;
+        hook.UserData=this;
+        hook.Callback=[](ImGuiContext*,ImGuiContextHook* current) {
+            static_cast<SceneAssetPlacementChecks*>(current->UserData)->SendInput();
+        };
+        ImGui::AddContextHook(ImGui::GetCurrentContext(), &hook);
+    }
+
+    ~SceneAssetPlacementChecks() override {
+        Engine::Editor::assetBrowserChecksObserver=nullptr;
+        current_=nullptr;
+    }
+
+    void Update() override {
+        std::string error;
+        if (frame_ == 3) {
+            const auto arrange = [](const char* title,ImVec2 position,ImVec2 size) {
+                auto* window=ImGui::FindWindowByName(title);
+                Require(window!=nullptr,"Could not arrange Scene placement fixture windows");
+                ImGui::DockContextProcessUndockWindow(ImGui::GetCurrentContext(),window,true);
+                ImGui::SetWindowPos(window,position,ImGuiCond_Always);
+                ImGui::SetWindowSize(window,size,ImGuiCond_Always);
+            };
+            arrange("Asset Browser",{20,65},{390,560});
+            arrange("Scene",{420,65},{650,560});
+            ImGui::SetWindowFocus("Asset Browser");
+            ImGui::SetWindowFocus("Scene");
+            Access::FocusSceneSelection(*this);
+            original_=Access::World(*this);
+        }
+        if (frame_ == 21) {
+            auto& world=Access::Entities(*this);
+            const auto ids=GetEditorSelection();
+            const auto* placed=ids.size()==1 ? world.Find(ids.front()) : nullptr;
+            Require(placed && placed->model.assetGuid==modelGuid_ && placed->name=="配置モデル" && IsSceneDirty(),
+                "Dragging the registered model did not publish a selected Entity: "+Access::EditorStatus(*this));
+            Require(std::abs(placed->transform.position.x)>0.01f &&
+                (std::abs(placed->transform.position.y)<0.001f || std::abs(placed->transform.position.z)<0.001f),
+                "Model was not placed on a Scene plane at the cursor");
+            modelWorld_=world.Capture().dump();
+            Require(ApplyEditorHistory(false,error) && Access::World(*this)==original_ && !IsSceneDirty(),
+                "Model drag was not one Undo operation: "+error);
+            Require(ApplyEditorHistory(true,error) && Access::World(*this)==modelWorld_ && IsSceneDirty(),
+                "Model drag Redo lost the model binding: "+error);
+            Access::SetFrontOrthographicView(*this);
+        }
+        if (frame_ == 39) {
+            const auto ids=GetEditorSelection();
+            const auto* linked=ids.size()==1 ? Access::Entities(*this).Find(ids.front()) : nullptr;
+            Require(linked && !linked->prefabLink.is_null() && linked->prefabLink["sourceGuid"].get<std::string>()==prefabGuid_ &&
+                std::abs(linked->transform.position.x)>0.01f && std::abs(linked->transform.position.y)>0.01f &&
+                std::abs(linked->transform.position.z)<0.001f,
+                "Prefab drag lost the source link or cursor position on the XY plane: "+Access::EditorStatus(*this));
+            Require(ApplyEditorHistory(false,error) && Access::World(*this)==modelWorld_,
+                "Prefab placement did not Undo in one operation");
+            std::cout<<"PASS: Asset Browser drag for model and Prefab, Japanese name/GUID, perspective/XY placement, link and single-step Undo/Redo\n";
+            endRequest_=true;
+        }
+        Game::Update();
+    }
+
+    void Draw() override {Game::Draw();++frame_;}
+
+private:
+    void SendInput() {
+        auto& io=ImGui::GetIO();
+        const bool modelSource=frame_>=7 && frame_<=9;
+        const bool prefabSource=frame_>=25 && frame_<=27;
+        if (modelSource || prefabSource) {
+            const auto row=modelSource ? modelRow_ : prefabRow_;
+            Require(row.x>0 && row.y>0,"Asset Browser did not draw the drag source");
+            io.AddMousePosEvent(row.x,row.y);
+        }
+        if ((frame_>=10 && frame_<=17) || (frame_>=28 && frame_<=35)) {
+            const auto* scene=ImGui::FindWindowByName("Scene");
+            Require(scene && scene->Active,"Scene window unavailable during drag");
+            const auto point=scene->InnerRect.GetCenter();
+            io.AddMousePosEvent(point.x+20,point.y+20);
+        }
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left,(frame_>=8 && frame_<=15) || (frame_>=26 && frame_<=33));
+    }
+
+    static inline SceneAssetPlacementChecks* current_{};
+    ImVec2 modelRow_{},prefabRow_{};
+    std::string modelGuid_,prefabGuid_,original_,modelWorld_;
+    int frame_{};
 };
 
 class EditorInputFocusChecks final : public EditorViewportFixture {
@@ -2691,6 +2810,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     if(mode=="--scene-grid"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunSceneGridRenderChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--editor-endurance"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<EditorEnduranceChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--editor-toolbar"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<EditorToolbarChecks>();checks->Run();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
+    if(mode=="--scene-asset-placement"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<SceneAssetPlacementChecks>();checks->Run();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--editor-input-focus" || mode=="--editor-input-focus-oversized"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<EditorInputFocusChecks>(mode=="--editor-input-focus-oversized");checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--particles"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunParticleGroupChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunAuthoredLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}

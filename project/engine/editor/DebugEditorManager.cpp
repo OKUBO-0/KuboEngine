@@ -260,7 +260,10 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 		ImGui::EndPopup();
 	}
 	if (refreshBlockedReason) ImGui::TextWrapped("%s", refreshBlockedReason);
-	if (allowRefresh && !recoveryDialog && pendingMove.guid.empty() && !job.IsBusy() && (refreshPending || (autoRefresh && now - lastScan > std::chrono::seconds(2)))) {
+	const auto* drag = ImGui::GetDragDropPayload();
+	const bool placingAsset = drag && drag->IsDataType(SceneAssetPayload);
+	if (allowRefresh && !placingAsset && !recoveryDialog && pendingMove.guid.empty() && !job.IsBusy() &&
+		(refreshPending || (autoRefresh && now - lastScan > std::chrono::seconds(2)))) {
 		lastScan = now;
         if (job.Start({projectRoot, root, {}, false, projectFile})) { refreshPending = false; scanStatus = "Working..."; }
 		else scanError = "Cannot start asset worker";
@@ -318,6 +321,16 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 			selectedGuid = asset->guid;
 			if (canOpen && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) sceneToOpen = Engine::Base::PathFromUtf8(asset->absolutePath);
 		}
+		const bool placeable = asset->type == Engine::Assets::AssetType::Model ||
+			asset->type == Engine::Assets::AssetType::Prefab;
+		const bool canPlace = placeable && sharedRegistry && allowMoves && !job.IsBusy() && !readOnly;
+		if (canPlace && ImGui::BeginDragDropSource()) {
+			ImGui::SetDragDropPayload(SceneAssetPayload,asset->guid.data(),asset->guid.size());
+			ImGui::TextUnformatted(asset->relativePath.c_str());
+			ImGui::EndDragDropSource();
+		}
+		if (canPlace && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+			ImGui::SetTooltip("Drag into Scene to place");
 		if (ImGui::BeginPopupContextItem("AssetActions")) {
 			if (asset->type == Engine::Assets::AssetType::Scene && ImGui::MenuItem("Open Scene",nullptr,false,canOpen))
 				sceneToOpen = Engine::Base::PathFromUtf8(asset->absolutePath);

@@ -41,7 +41,7 @@ namespace Engine::Editor {struct ControllerRecordReport;}
 namespace Engine::Scene {
 class AbstractSceneFactory;
 }
-namespace Engine::Editor { struct DebugSceneViewportState; struct DebugEditorMenuConfig; enum class SceneEditAction; class ProjectPreviewCapture; }
+namespace Engine::Editor { struct DebugSceneViewportState; struct DebugEditorMenuConfig; struct EntityCreation; enum class SceneEditAction; class ProjectPreviewCapture; }
 
 /// @brief アプリケーション固有のシーン制御と描画順を定義するクラス
 /// @details Framework を継承し、シーン生成とオフスクリーン描画の流れを構築する。
@@ -76,7 +76,8 @@ public:
 	// Main-thread Editor commands, shared by UI and integration clients.
 	bool CreateEditorEntity(const std::string& name,EntityId parent,EntityId& created,std::string& error);
 	bool SaveEditorPrefab(const std::filesystem::path& path,std::filesystem::path& saved,std::string& error);
-	bool InstantiateEditorPrefab(const std::string& guid,EntityId parent,EntityId& created,std::string& error);
+	bool InstantiateEditorPrefab(const std::string& guid,EntityId parent,EntityId& created,std::string& error,
+		std::optional<Vector3> placement = std::nullopt);
 	bool UnlinkEditorPrefab(EntityId root,std::string& error);
 	bool RevertEditorPrefab(EntityId root,std::string& error);
 	bool RequestEditorPrefabRevert(EntityId root,std::string& error);
@@ -231,6 +232,10 @@ private:
 	void DrawEditorCameraToolbar();
 	void DrawAddComponentMenu(const EntityRecord& entity);
 	void DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewport);
+	bool DrawSceneAssetDropTarget(const Engine::Editor::DebugSceneViewportState& viewport);
+	bool PlaceSceneAsset(const std::string& guid,Vector3 position,std::string& error);
+	bool CreateEditorEntityWithInitial(const std::string& name,EntityId parent,EntityId& created,
+		std::string& error,const Engine::Editor::EntityCreation& initial);
 	void UpdateEditorViewCamera();
 	void FocusEditorSelection();
 	bool DrawEntityGizmo(const Engine::Editor::DebugSceneViewportState& viewport);

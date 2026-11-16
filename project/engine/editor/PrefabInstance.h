@@ -1,13 +1,15 @@
 #pragma once
 #include "PrefabDocument.h"
 #include "EntityHistory.h"
+#include <optional>
 
 namespace Engine::Editor {
 // Candidate-only allocation, link persistence and one-command selection/history.
 // The caller owns project paths, source freshness and Editor mutation guards.
 inline bool InstantiatePrefab(Scene::EntityWorld& world,const PrefabValue& definition,
     const std::string& sourceGuid,Scene::EntityId parent,EntitySelection& selection,
-    EntityHistory& history,Scene::EntityId& createdRoot,std::string& error)
+    EntityHistory& history,Scene::EntityId& createdRoot,std::string& error,
+    std::optional<Vector3> placement = std::nullopt)
 {
     using Id=Scene::EntityId;
     PrefabValue normalized;if(!ValidatePrefabDocument(definition,normalized,error))return false;
@@ -33,7 +35,11 @@ inline bool InstantiatePrefab(Scene::EntityWorld& world,const PrefabValue& defin
     for(const auto& node:nodes) {
         auto copy=node;const auto local=Id(node["id"].get<crude_json::number>()),localParent=Id(node["parent"].get<crude_json::number>());
         copy["id"]=double(mapping.at(local));copy["parent"]=double(local==localRoot?parent:mapping.at(localParent));
-        if(local==localRoot)copy["prefabLink"]=link;
+        if(local==localRoot) {
+            copy["prefabLink"]=link;
+            if (placement) copy["transform"]["position"]=crude_json::array{
+                double(placement->x),double(placement->y),double(placement->z)};
+        }
         document["entities"].push_back(std::move(copy));
     }
     if(document.dump().size()>Scene::SceneDocument::MaxBytes){error="Prefab instance exceeds Scene document budget";return false;}

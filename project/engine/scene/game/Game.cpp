@@ -384,6 +384,8 @@ void Game::DrawDebugEditorShell()
 				if (!genericSceneSelected_) return false;
 				UpdateEditorViewCamera();
 				DrawSceneGuides(viewport);
+				const bool acceptingAsset = DrawSceneAssetDropTarget(viewport);
+				if (acceptingAsset) return true;
 				gizmoVisited = true; return DrawEntityGizmo(viewport);
 			});
 		if (!viewport.drawn || !debugSceneViewOpen_) sceneResizeSchedule_.Cancel();
@@ -703,6 +705,53 @@ void Game::DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewpo
 	draw->PopClipRect();
 #else
 	(void)viewport;
+#endif
+}
+
+bool Game::DrawSceneAssetDropTarget(const Engine::Editor::DebugSceneViewportState& viewport)
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+	const auto* active = ImGui::GetDragDropPayload();
+	if (!active || !active->IsDataType(Engine::Editor::SceneAssetPayload) || !editorViewEnabled_ ||
+		worldPlayback_.GetState() != WorldPlayback::State::Editing || EditorDocumentBusyReason()) return false;
+	const ImRect image({viewport.min.x,viewport.min.y},
+		{viewport.min.x+viewport.size.x,viewport.min.y+viewport.size.y});
+	if (!ImGui::BeginDragDropTargetCustom(image,ImGui::GetID("Scene asset drop"))) return false;
+	std::string guid;
+	if (const auto* payload = ImGui::AcceptDragDropPayload(Engine::Editor::SceneAssetPayload);
+		payload && payload->IsDelivery() && (payload->DataSize == 16 || payload->DataSize == 32)) {
+		guid.assign(static_cast<const char*>(payload->Data),payload->DataSize);
+	}
+	ImGui::EndDragDropTarget();
+	if (guid.empty()) return true;
+	const auto mouse = ImGui::GetMousePos();
+	const float x = 2 * (mouse.x-viewport.min.x)/viewport.size.x - 1;
+	const float y = 1 - 2 * (mouse.y-viewport.min.y)/viewport.size.y;
+	Engine::Editor::ScenePickSegment ray{};
+	std::string error;
+	if (Engine::Editor::MakeScenePickSegment(x,y,editorViewCamera_.GetViewProjectionMatrix(),ray)) {
+		const auto direction = ray.farPoint - ray.nearPoint;
+		// Perspective placement favors the floor. Orthographic placement
+		// favors the world plane facing the view.
+		const float begin[] = {ray.nearPoint.y,ray.nearPoint.z,ray.nearPoint.x};
+		const float delta[] = {direction.y,direction.z,direction.x};
+		const auto strongest = std::max_element(std::begin(delta),std::end(delta),
+			[](float a,float b) {return std::abs(a) < std::abs(b);});
+		const size_t firstPlane = editorCameraState_.orthographic ? size_t(strongest-std::begin(delta)) : 0;
+		for (size_t offset = 0; offset < std::size(begin); ++offset) {
+			const size_t i = (firstPlane + offset) % std::size(begin);
+			if (std::abs(delta[i]) < 1e-5f) continue;
+			const float fraction = -begin[i]/delta[i];
+			if (fraction < 0 || fraction > 1) continue;
+			PlaceSceneAsset(guid,ray.nearPoint + direction * fraction,error);
+			if (!error.empty()) genericWorldStatus_ = "Asset placement rejected: " + error;
+			return true;
+		}
+	}
+	genericWorldStatus_ = "Asset placement needs a visible world-origin plane under the cursor";
+	return true;
+#else
+	(void)viewport; return false;
 #endif
 }
 
@@ -2312,18 +2361,19 @@ bool Game::SaveEditorPrefab(const std::filesystem::path& path,std::filesystem::p
 	}
 	genericWorldStatus_="Saved new Prefab: "+Engine::Base::PathToUtf8(saved)+"; refresh Asset Browser to register GUID";return true;
 }
-bool Game::InstantiateEditorPrefab(const std::string& guid,EntityId parent,EntityId& created,std::string& error)
+bool Game::InstantiateEditorPrefab(const std::string& guid,EntityId parent,EntityId& created,std::string& error,
+	std::optional<Vector3> placement)
 {
 	Engine::Base::ProjectContext project;Engine::Editor::PrefabValue source;
 	if(!CanAuthorPrefab(error) || !OpenPrefabProject(project,error) || !Engine::Editor::ReadProjectPrefab(project,projectAssets_,guid,source,error)) {
 		genericWorldStatus_="Prefab placement rejected: "+error;return false;
 	}
 	editorSelection_.Synchronize(editorWorld_,selectedEditorEntity_);
-	if(!Engine::Editor::InstantiatePrefab(editorWorld_,source,guid,parent,editorSelection_,entityHistory_,created,error)) {
+	if(!Engine::Editor::InstantiatePrefab(editorWorld_,source,guid,parent,editorSelection_,entityHistory_,created,error,placement)) {
 		genericWorldStatus_="Prefab placement rejected: "+error;return false;
 	}
 	selectedEditorEntity_=editorSelection_.Primary();documentState_.Observe(editorWorld_);physicsWorld_.ResetSimulation();
-	genericWorldStatus_="Placed linked Prefab; source local TRS retained";return true;
+	genericWorldStatus_=placement ? "Placed linked Prefab at cursor" : "Placed linked Prefab; source local TRS retained";return true;
 }
 void Game::CancelEditorPrefabRevert() noexcept
 {
@@ -2469,6 +2519,36 @@ bool Game::UnlinkEditorPrefab(EntityId root,std::string& error)
 
 bool Game::CreateEditorEntity(const std::string& name,EntityId parent,EntityId& created,std::string& error)
 {
+	return CreateEditorEntityWithInitial(name,parent,created,error,{});
+}
+
+bool Game::PlaceSceneAsset(const std::string& guid,Vector3 position,std::string& error)
+{
+	if (!genericSceneSelected_ || !Engine::Editor::FinitePoint(position)) {
+		error = "Placement requires a generic Scene and a finite position";
+		return false;
+	}
+	const auto* asset = projectAssets_.FindByGuid(guid);
+	if (!asset) {error = "Asset GUID is no longer registered";return false;}
+	EntityId created{};
+	if (asset->type == Assets::AssetType::Prefab)
+		return InstantiateEditorPrefab(guid,0,created,error,position);
+	const auto source = Assets::ResolveModelReference({{},guid},projectAssets_,GetProjectRoot(),error);
+	if (source.empty()) return false;
+	const auto relative = source.lexically_relative(GetProjectRoot());
+	if (relative.empty() || *relative.begin() == L"..") {
+		error = "Model must be inside the project";
+		return false;
+	}
+	const Engine::Editor::EntityCreation initial{position,{Base::PathToUtf8(relative),guid}};
+	if (!CreateEditorEntityWithInitial(Base::PathToUtf8(source.stem()),0,created,error,initial)) return false;
+	genericWorldStatus_ = "Placed model in Scene";
+	return true;
+}
+
+bool Game::CreateEditorEntityWithInitial(const std::string& name,EntityId parent,EntityId& created,
+	std::string& error,const Engine::Editor::EntityCreation& initial)
+{
 	if(!CheckPrefabRecovery(error)){genericWorldStatus_=error;return false;}
 	if(!editorMode_ || !genericWorldReady_ || gizmoDragActive_ || documentState_.HasPendingAction() ||
 		assetImportJob_.IsBusy() || exportJob_.GetState()==Engine::Services::ExportJob::State::Running ||
@@ -2476,7 +2556,7 @@ bool Game::CreateEditorEntity(const std::string& name,EntityId parent,EntityId& 
 		error="Create requires an editing Scene without a pending document, drag, import or export";genericWorldStatus_=error;return false;
 	}
 	editorSelection_.Synchronize(editorWorld_,selectedEditorEntity_);
-	if(!Engine::Editor::CreateAuthoredEntity(editorWorld_,name,parent,editorSelection_,entityHistory_,created,error)) {
+	if(!Engine::Editor::CreateAuthoredEntity(editorWorld_,name,parent,editorSelection_,entityHistory_,created,error,initial)) {
 		genericWorldStatus_="Create rejected: "+error;return false;
 	}
 	selectedEditorEntity_=editorSelection_.Primary();documentState_.Observe(editorWorld_);physicsWorld_.ResetSimulation();
