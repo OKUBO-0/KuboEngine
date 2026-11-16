@@ -264,7 +264,11 @@ void Game::Draw()
     if (editorMode_ && genericScene && offscreenRenderManager->HasEditorView()) {
         offscreenRenderManager->BeginEditorView();
         genericScene->SetUIOutputExtent(offscreenRenderManager->GetEditorViewExtent());
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+        genericScene->DrawEditorView(selectedEditorEntity_,sharedMaterialInspector_.Preview());
+#else
         genericScene->DrawEditorView();
+#endif
         CaptureHubPreview();
         if (debugSceneViewOpen_ && editorViewEnabled_ && editorGridVisible_)
             offscreenRenderManager->DrawEditorGrid(editorViewCamera_.GetViewProjectionMatrix().m);

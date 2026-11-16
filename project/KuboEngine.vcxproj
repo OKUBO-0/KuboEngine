@@ -336,6 +336,8 @@ exit /B 0</Command>
     <ClInclude Include="engine\audio\AudioComponent.h" />
     <ClInclude Include="engine\animation\AnimatorComponent.h" />
     <ClInclude Include="engine\scene\entity\RenderComponents.h" />
+    <ClInclude Include="engine\assets\MaterialAsset.h" />
+    <ClInclude Include="engine\editor\SharedMaterialInspector.h" />
     <ClInclude Include="engine\scene\entity\UIComponents.h" />
     <ClInclude Include="engine\scene\entity\UITextRaster.h" />
     <ClInclude Include="engine\scene\entity\ParticleComponents.h" />

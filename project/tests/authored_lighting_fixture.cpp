@@ -12,6 +12,7 @@
 #include "CameraManager.h"
 #include "engine/scene/entity/EntityScene.h"
 #include "engine/base/AssetPath.h"
+#include "engine/assets/MaterialAsset.h"
 #include "engine/base/EngineResourcePath.h"
 #include "engine/script/ScriptRuntime.h"
 #include "engine/services/McpCommandBridge.h"
@@ -87,6 +88,50 @@ class AuthoredLightingChecks final : public Engine::Base::Framework {
             Need(world_.SetLight(id,value),"Capacity slot Light refused");}
         const auto last=ScenePixel();Need(scene_->GetLightingResult()==Engine::Scene::RenderLightResult::Success && scene_->GetLightingFrame().gpu.count==64 && last[0]>80 && last[1]<5 && last[2]<5,"64th Light slot did not reach shader");
         std::cout<<"LIGHT_GPU_CAPACITY count=64 last_slot_red="<<int(last[0])<<'\n';Need(world_.Restore(saved,error_),error_.c_str());
+    }
+    void CheckSharedMaterialPixels(){
+        using namespace Engine;
+        const auto before=world_.Capture();
+        const auto source=fixture_/"Assets/shared.material";
+        Scene::MaterialComponent shared;
+        shared.color={0,1,0,1};shared.textureInfluence=0;
+        Need(Assets::WriteMaterialAsset(source,shared,error_,false),error_.c_str());
+        Scene::MaterialComponent first,second;
+        first.color={1,0,0,1};first.textureInfluence=0;
+        second.color={0,0,1,1};second.textureInfluence=0;
+        Need(assets_.RegisterSource(source,first.assetGuid,error_),error_.c_str());
+        second.assetGuid=first.assetGuid;
+        const auto another=world_.CreateEntity("Second user of the same asset");
+        Need(world_.SetModel(another,"Assets/plane.obj") &&
+            world_.SetMaterial(model_,first) && world_.SetMaterial(another,second),"Shared Material assignment failed");
+        world_.Find(another)->active=false;
+        const auto green=ScenePixel();
+        Need(green[1]>220 && green[0]<5 && green[2]<5,"Shared Material did not replace the first local tint");
+        Scene::MaterialValues draft;
+        draft.color={0,0,1,1};draft.textureInfluence=0;
+        const auto preview=Capture([&]{scene_->DrawEditorView(model_,&draft);});
+        Need(preview[2]>220 && preview[0]<5 && preview[1]<5,"Editor draft Material did not reach the Scene view");
+        Need(ScenePixel()==green,"Editor draft Material leaked into the Game view");
+        const auto path=fixture_/"shared.scene";
+        Need(world_.Save(path,error_) && world_.Load(path,error_),error_.c_str());
+        world_.Find(another)->active=true;world_.Find(model_)->active=false;
+        Need(ScenePixel()==green,"Reloading Scene or switching to the second Entity lost the shared tint");
+        shared.color={1,0,1,1};shared.roughness=.125f;
+        Need(Assets::WriteMaterialAsset(source,shared,error_,true),error_.c_str());
+        const auto violet=ScenePixel();
+        Need(violet[0]>220 && violet[1]<5 && violet[2]>220,"Shared Material edit did not reach the second Entity");
+        world_.Find(another)->active=false;world_.Find(model_)->active=true;
+        Need(ScenePixel()==violet,"Shared Material edit did not reach the first Entity");
+        const auto moved=fixture_/"Assets/moved.material";
+        std::filesystem::rename(source,moved);
+        std::filesystem::rename(Assets::AssetRegistry::MetadataPath(source),Assets::AssetRegistry::MetadataPath(moved));
+        Need(assets_.Scan(fixture_/"Assets",error_,Assets::AssetRegistry::MetadataPolicy::ReadOnly),error_.c_str());
+        Need(ScenePixel()==violet,"Renaming a shared Material broke a GUID assignment");
+        std::filesystem::remove(moved);
+        const auto fallback=ScenePixel();
+        Need(fallback[0]>220 && fallback[1]<5 && fallback[2]<5,"Missing shared Material did not use the local tint");
+        Need(world_.Restore(before,error_),error_.c_str());
+        std::cout<<"LIGHT_SHARED_MATERIAL same_tint=1 shared_edit=1 scene_roundtrip=1 moved_guid=1 local_fallback=1\n";
     }
     void CheckEnvironmentPixels(){
         const auto saved=world_.Capture();auto light=world_.Find(light_)->light;light.enabled=false;Need(world_.SetLight(light_,light),"Environment Light disable failed");
@@ -182,6 +227,10 @@ public:
         Need(std::filesystem::create_directory(fixture_),"Refuse existing lighting fixture");std::filesystem::create_directory(fixture_/"Assets");
         {std::ofstream material(fixture_/"Assets/surface.mtl");material<<"newmtl Surface\nKd 1 1 1\nd 1\n";Need(bool(material),"Lighting material fixture write failed");}
         {std::ofstream obj(fixture_/"Assets/plane.obj");obj<<"mtllib surface.mtl\nusemtl Surface\nv -1 -1 0\nv -1 1 0\nv 1 -1 0\nv 1 1 0\nvn 0 0 -1\nf 1//1 2//1 3//1\nf 3//1 2//1 4//1\n";Need(bool(obj),"Lighting fixture write failed");}
+        Microsoft::WRL::ComPtr<ID3D12Debug1> validation;
+        Need(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&validation))),"Lighting validation interface missing");
+        validation->EnableDebugLayer();
+        validation->SetEnableGPUBasedValidation(TRUE);
         SetProjectRoot(fixture_);SetGameOutputExtent({320,320});Framework::Initialize();
         Need(SUCCEEDED(dxCommon->GetDevice()->QueryInterface(IID_PPV_ARGS(&messages_))),"GPU validation queue unavailable");
         std::string error;Need(assets_.Scan(fixture_/"Assets",error,Engine::Assets::AssetRegistry::MetadataPolicy::ReadOnly),error.c_str());
@@ -216,7 +265,7 @@ public:
         const auto retained=scene_->GetLightingFrame().gpu;scene_->SynchronizeModels(0);
         Need(scene_->GetLightingResult()==RenderLightResult::Limit && !std::memcmp(&retained,&scene_->GetLightingFrame().gpu,sizeof(retained)),"Oversized light list published a prefix");
         Need(world_.Restore(Engine::Scene::SceneValue::parse(before),error_),error_.c_str());
-        CheckAuthoringPixels();CheckEnvironmentPixels();CheckUploadAndLegacy();CheckBatches();GpuClean();done_=true;
+        CheckAuthoringPixels();CheckSharedMaterialPixels();CheckEnvironmentPixels();CheckUploadAndLegacy();CheckBatches();GpuClean();done_=true;
     }
     void Finalize() override {if(dxCommon)dxCommon->WaitForAllFrames();if(scene_){scene_->Finalize();scene_.reset();}Framework::Finalize();if(messages_)GpuClean();passed_=done_;if(passed_)std::cout<<"PASS: actual EntityScene + static/skinned instanced Directional/Point/Spot/material pixels, material-key isolation, active ancestry/range/cone/removal, scope/capacity and GPU errors0/owned shutdown\n";}
 private:std::string error_;

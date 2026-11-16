@@ -66,6 +66,8 @@ inline Scene::SceneValue McpComponentPatchSchema(const std::string& component) {
     }
     if(component=="model" || component=="script" || component=="audio" || component=="sprite") {
         schema["properties"]["asset"]["type"]="string";schema["properties"]["asset"]["maxLength"]=4096.0;
+    }
+    if(schema["properties"].contains("asset") || component=="material"){
         Value guid;guid["type"]="string";guid["pattern"]="^([0-9a-f]{16}|[0-9a-f]{32})$";
         Value cleared;cleared["type"]="null";
         schema["properties"]["guid"]["anyOf"]=crude_json::array{guid,cleared};

@@ -3,11 +3,12 @@
 #include "ModelReference.h"
 #include "ExportSpriteDependencies.h"
 #include "ExportParticleDependencies.h"
+#include "ExportMaterialDependencies.h"
 #include "../script/ScriptPrefabAdmission.h"
 #include "../audio/WaveFile.h"
 
 namespace Engine::Assets {
-struct ExportPrefabClosure {size_t prefabs=0,opaqueScripts=0;ExportDependencyClosure models;ExportSpriteClosure sprites;ExportParticleClosure particles;};
+struct ExportPrefabClosure {size_t prefabs=0,opaqueScripts=0,materials=0;ExportDependencyClosure models;ExportSpriteClosure sprites;ExportParticleClosure particles;};
 // Inspect every registered exported template: Lua can choose paths dynamically.
 // Match startup Scene's compatibility contract for path-only native Script keys.
 inline ExportPrefabClosure ValidateExportPrefabDependencies(const std::filesystem::path& projectFile,
@@ -51,6 +52,7 @@ inline ExportPrefabClosure ValidateExportPrefabDependencies(const std::filesyste
         Scene::EntityWorld world;if(!world.Restore(value["world"],error))throw std::runtime_error(error);
         const auto sprites=ValidateExportSpriteDependencies(world,registry,root,copyRoots);
         result.sprites.sprites+=sprites.sprites;result.sprites.textures+=sprites.textures;result.sprites.unassigned+=sprites.unassigned;
+        result.materials+=ValidateExportMaterialDependencies(world,registry,root,copyRoots);
         const auto particles=ValidateExportParticleDependencies(world,registry,root,copyRoots);result.particles.emitters+=particles.emitters;result.particles.textures+=particles.textures;result.particles.unassigned+=particles.unassigned;
         for(const auto& entity:world.GetEntities()){
             if(entity.hasModel){const auto path=sourceRef(entity.model.assetPath,entity.model.assetGuid,AssetType::Model);const auto relativeModel=Base::PathToUtf8(path.lexically_relative(root));if(modelSet.insert(relativeModel).second)models.emplace_back(Base::PathFromUtf8(relativeModel));}

@@ -213,8 +213,10 @@ function Assert-StartupModelAndGuidScriptDependencies {
     $modelSources=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $controllerGuids=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $withUI=$false
+    $withMaterials=$false
     foreach($entity in $entities) {
         if($entity -isnot [pscustomobject]) {throw 'Startup Scene entity must be an object'}
+        if($entity.material -is [pscustomobject] -and $null -ne $entity.material.PSObject.Properties['guid']) {$withMaterials=$true}
         if($null -ne $entity.PSObject.Properties['canvas'] -or $null -ne $entity.PSObject.Properties['sprite'] -or $null -ne $entity.PSObject.Properties['particle']) {$withUI=$true}
         $references=New-Object 'System.Collections.Generic.List[object]'
         if($entity.animator -is [pscustomobject] -and $null -ne $entity.animator.PSObject.Properties['controllerGuid']) {
@@ -267,7 +269,7 @@ function Assert-StartupModelAndGuidScriptDependencies {
         }
     }
     $prefabs=@(Get-ExportPrefabInventory)
-    if($modelSources.Count -gt 0 -or $controllerGuids.Count -gt 0 -or $prefabs.Count -gt 0 -or $withUI) {
+    if($modelSources.Count -gt 0 -or $controllerGuids.Count -gt 0 -or $prefabs.Count -gt 0 -or $withUI -or $withMaterials) {
         # A prebuilt read-only tool reuses the Editor's actual dependency parser.
         # It does not require VS/compiler tools and never creates project metadata.
         $validator=Join-Path $PSScriptRoot 'KuboAssetValidator.exe'
@@ -279,9 +281,9 @@ function Assert-StartupModelAndGuidScriptDependencies {
         $requestValue=@{format='kubo-export-dependencies-1';root=$projectRoot;models=@($modelSources);copyRoots=$copyRoots}
         if($controllerGuids.Count -gt 0) {$requestValue.format='kubo-export-dependencies-2';$requestValue.project=(Join-Path $projectRoot ([IO.Path]::GetFileName($projectPath)));$requestValue.controllers=@($controllerGuids)}
         if($prefabs.Count -gt 0) {$requestValue.format='kubo-export-dependencies-3';$requestValue.project=(Join-Path $projectRoot ([IO.Path]::GetFileName($projectPath)));$requestValue.controllers=@($controllerGuids);$requestValue.prefabs=$prefabs}
-        # Format4 requires matching native UI validation; an older validator must
-        # refuse instead of silently ignoring Scene/Prefab image dependencies.
-        if($withUI -or $prefabs.Count -gt 0) {$requestValue.format='kubo-export-dependencies-4';$requestValue.project=(Join-Path $projectRoot ([IO.Path]::GetFileName($projectPath)));$requestValue.controllers=@($controllerGuids);$requestValue.prefabs=$prefabs}
+        if($withUI) {$requestValue.format='kubo-export-dependencies-4';$requestValue.project=(Join-Path $projectRoot ([IO.Path]::GetFileName($projectPath)));$requestValue.controllers=@($controllerGuids);$requestValue.prefabs=$prefabs}
+        # Format 5 requires a validator that understands shared Material references.
+        if($withMaterials -or $prefabs.Count -gt 0) {$requestValue.format='kubo-export-dependencies-5';$requestValue.project=(Join-Path $projectRoot ([IO.Path]::GetFileName($projectPath)));$requestValue.controllers=@($controllerGuids);$requestValue.prefabs=$prefabs}
         $request=$requestValue | ConvertTo-Json -Depth 5
         $requestPath=Join-Path ([IO.Path]::GetTempPath()) ('kubo-export-dependencies-'+[guid]::NewGuid().ToString('N')+'.json')
         $requestHandle=$null;$requestOwned=$false

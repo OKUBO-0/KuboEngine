@@ -39,6 +39,8 @@ public:
     enum class MetadataPolicy { CreateMissing, ReadOnly };
     bool Scan(const std::filesystem::path& assetRoot, std::string& error,
         MetadataPolicy policy = MetadataPolicy::CreateMissing, const std::function<bool()>& cancelled = {});
+    // Register only this newly authored source, then publish a read-only rescan.
+    bool RegisterSource(const std::filesystem::path& source, std::string& guid, std::string& error);
     bool SaveDatabase(const std::filesystem::path& path, std::string& error) const;
     bool LoadDatabase(const std::filesystem::path& path, std::string& error);
 

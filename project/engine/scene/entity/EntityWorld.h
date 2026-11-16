@@ -37,9 +37,7 @@ struct ModelComponent {
     std::string assetPath;
     std::string assetGuid; // When present, authoritative; assetPath is a display/legacy hint.
     static bool IsValidGuid(const std::string& guid) {
-        if (guid.size() != 16 && guid.size() != 32) return false;
-        for (char c : guid) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
-        return true;
+        return RenderComponentDetail::ValidAssetGuid(guid);
     }
 };
 

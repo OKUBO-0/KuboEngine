@@ -21,6 +21,11 @@ template<class Consumer> void Visit(const crude_json::value& entity,SceneAssetRe
     }
     if(scope==SceneAssetReferenceScope::SpriteOnly)return;
     if(entity.contains("particle")){Scene::ParticleComponent value;if(!Scene::DecodeParticle(entity["particle"],value))throw std::runtime_error("Particle dependency component invalid");consume(Reference{"Particle",value.assetPath,value.assetGuid,AssetType::Texture,false,true,true});}
+    if(entity.contains("material")){
+        const auto& material=entity["material"];
+        if(!material.is_object())throw std::runtime_error("Scene Material reference must be an object");
+        consume(Reference{"Material",{},Text(material,"guid"),AssetType::Material});
+    }
     consume(Reference{"Model",Text(entity,"model"),Text(entity,"modelGuid"),AssetType::Model});
     for(const auto* key:{"script","audio"})if(entity.contains(key)){
         const auto& value=entity[key];if(!value.is_object())throw std::runtime_error("Scene Script/Audio reference must be an object");
@@ -41,6 +46,7 @@ template<class Consumer> void Visit(const Scene::EntityRecord& entity,SceneAsset
     }
     if(scope==SceneAssetReferenceScope::SpriteOnly)return;
     if(entity.hasParticle)consume(Reference{"Particle",entity.particle.assetPath,entity.particle.assetGuid,AssetType::Texture,false,true,true});
+    if(entity.hasMaterial)consume(Reference{"Material",{},entity.material.assetGuid,AssetType::Material});
     if(entity.hasModel)consume(Reference{"Model",entity.model.assetPath,entity.model.assetGuid,AssetType::Model});
     if(entity.hasScript)consume(Reference{"Script",entity.script.assetPath,entity.script.assetGuid,AssetType::Script,true});
     if(entity.hasAudio)consume(Reference{"Audio",entity.audio.assetPath,entity.audio.assetGuid,AssetType::Audio});

@@ -129,7 +129,7 @@ public:
 	std::optional<float> GetAnimationClipDuration(const std::string& clipName) const;
 	std::unique_ptr<Object3D> CreateAnimationPreview() const;
 	bool SampleAnimationPreview(const std::string& clipName,float seconds);
-	void UpdatePreviewAppearance() { ApplyModelSettings(); }
+	void RefreshMaterialAppearance() { ApplyModelSettings(); }
 	std::optional<float> GetControllerBlendProgress(size_t layer) const noexcept;
 	struct AnimationInterval {std::string_view clip;double from,to;bool loop;};
 	std::optional<AnimationInterval> LastAnimationInterval() const noexcept;

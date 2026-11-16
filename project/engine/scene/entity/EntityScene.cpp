@@ -14,12 +14,13 @@
 #include <stdexcept>
 #include <type_traits>
 #include "../../assets/ModelReference.h"
+#include "../../assets/MaterialAsset.h"
 #include "../../base/AssetPath.h"
 #include "../../assets/AnimatorControllerAsset.h"
 #include "../../base/ProjectManifestSelection.h"
 
 namespace {
-void ApplyMaterial(Engine::Graphics3D::Object3D& object,const Engine::Scene::MaterialComponent& material) {
+void ApplyMaterial(Engine::Graphics3D::Object3D& object,const Engine::Scene::MaterialValues& material) {
     object.SetLighting(material.lighting);object.SetColor(material.color);
     object.SetShininess(material.shininess);object.SetEnvironmentRoughness(material.roughness);
     object.SetEnvironmentReflectionStrength(material.reflectionStrength);object.SetTextureInfluence(material.textureInfluence);
@@ -80,6 +81,7 @@ void EntityScene::ResetWorldRenderState()
     texts_.clear();textRasterizer_.reset();retiredTextTextures_=0;
     CancelUIButtons();
     reportedModelErrors_.clear();
+    sharedMaterials_.clear();
     reportedSpriteErrors_.clear();
     lightingFrame_ = {};
     lightingResult_ = RenderLightResult::Success;
@@ -91,8 +93,57 @@ void EntityScene::Update()
 {
     if (auto* camera = CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) camera->Update();
 }
+const MaterialComponent& EntityScene::ResolveMaterial(const EntityRecord& entity)
+{
+    static const MaterialComponent defaultMaterial;
+    if(!entity.hasMaterial || !entity.material.IsValid())return defaultMaterial;
+    const auto& guid=entity.material.assetGuid;
+    if(guid.empty())return entity.material;
+    auto& entry=sharedMaterials_[guid];
+    if(entry.frame!=materialFrame_ || !entry.observed){
+        entry.frame=materialFrame_;
+        const auto* record=assets_.FindByGuid(guid);
+        if(!materialMovePending_.has_value()){
+            std::error_code error;
+            materialMovePending_=!assets_.GetRoot().empty() &&
+                (std::filesystem::exists(assets_.GetRoot()/".kubo/asset-move.pending.json",error) || bool(error));
+        }
+        std::error_code ec;
+        const auto source=record && record->type==Assets::AssetType::Material && !*materialMovePending_
+            ? Base::PathFromUtf8(record->absolutePath) : std::filesystem::path{};
+        const auto size=source.empty()?0:std::filesystem::file_size(source,ec);
+        const auto sourceTime=source.empty() || ec?std::filesystem::file_time_type{}:std::filesystem::last_write_time(source,ec);
+        const auto metadataTime=source.empty() || ec?std::filesystem::file_time_type{}:
+            std::filesystem::last_write_time(Assets::AssetRegistry::MetadataPath(source),ec);
+        const bool missing=source.empty() || bool(ec);
+        const std::string_view pathKey=source.empty()?std::string_view{}:record->absolutePath;
+        if(!entry.observed || entry.missing!=missing || entry.source!=pathKey ||
+            entry.sourceSize!=size || entry.sourceTime!=sourceTime || entry.metadataTime!=metadataTime){
+            entry.observed=true;
+            entry.missing=missing;
+            entry.source=pathKey;
+            entry.sourceSize=size;
+            entry.sourceTime=sourceTime;
+            entry.metadataTime=metadataTime;
+            entry.material.reset();
+            std::string error;
+            const auto path=missing?std::filesystem::path{}:Assets::ResolveMaterialAsset(guid,assets_,error);
+            if(missing)error=*materialMovePending_?"Asset move pending":"Material source or metadata missing";
+            MaterialComponent material;
+            if(!path.empty() && Assets::ReadMaterialAsset(path,material,error))entry.material=std::move(material);
+            else {
+                const auto message="Shared Material "+guid+" uses local fallback: "+error;
+                if(reportedModelErrors_.size()<256 && reportedModelErrors_.insert(message).second)
+                    Base::Logger::Log(message,Base::Logger::Level::Warning);
+            }
+        }
+    }
+    return entry.material?*entry.material:entity.material;
+}
 void EntityScene::SynchronizeModels(float deltaSeconds)
 {
+    ++materialFrame_;
+    materialMovePending_.reset();
     SynchronizeSprites();
     const auto lighting=BuildRenderLightFrame(world_,lightingFrame_);
     if(lighting!=lightingResult_ || (lighting==RenderLightResult::Success && reportedSkippedLights_!=lightingFrame_.skippedInvalidFrames)) {
@@ -196,13 +247,7 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
             }
         }
         const auto& transform = entity.transform;
-        const MaterialComponent material=entity.hasMaterial?entity.material:MaterialComponent{};
-        if(material.IsValid()){
-            ApplyMaterial(*entry.object,material);
-        }else{
-            const auto message="Entity Material settings rejected: "+std::to_string(entity.id);
-            if(reportedModelErrors_.size()<256 && reportedModelErrors_.insert(message).second)Base::Logger::Log(message,Base::Logger::Level::Error);
-        }
+        ApplyMaterial(*entry.object,ResolveMaterial(entity));
         entry.object->SetTransform({transform.scale, transform.rotation, transform.position});
         Matrix4x4 worldMatrix{};
         if (!world_.GetWorldMatrix(entity.id, worldMatrix)) continue;
@@ -220,6 +265,7 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
             }
         }
     }
+    std::erase_if(sharedMaterials_,[&](const auto& item){return item.second.frame!=materialFrame_;});
     Graphics3D::ModelManager::GetInstance()->CollectUnusedModels();
 }
 void EntityScene::SynchronizeCamera()
@@ -255,11 +301,11 @@ void EntityScene::Draw()
 {
     DrawView(false);
 }
-void EntityScene::DrawEditorView()
+void EntityScene::DrawEditorView(EntityId materialPreviewEntity,const MaterialValues* materialPreview)
 {
-    DrawView(true);
+    DrawView(true,materialPreviewEntity,materialPreview);
 }
-void EntityScene::DrawView(bool editorView)
+void EntityScene::DrawView(bool editorView,EntityId materialPreviewEntity,const MaterialValues* materialPreview)
 {
     auto* common=Graphics3D::Object3DCommon::GetInstance();
     struct Restore {Graphics3D::Object3DCommon* owner;Math::AuthoredLightData previous;~Restore(){owner->SetAuthoredLights(previous);}} restore{common,common->GetAuthoredLights()};
@@ -269,10 +315,21 @@ void EntityScene::DrawView(bool editorView)
         if (!entity.active || !entity.hasModel) continue;
         const auto found = models_.find(entity.id);
         if (found == models_.end() || !found->second.object) continue;
+        auto* object=found->second.object.get();
         if(editorView && animationPreview_.entity==entity.id && animationPreview_.object){
-            animationPreview_.object->RefreshViewTransform();
-            animationPreview_.object->DrawAnimated();
-        }else found->second.object->DrawAnimated();
+            object=animationPreview_.object.get();
+            object->RefreshViewTransform();
+        }
+        if(materialPreview && entity.id==materialPreviewEntity){
+            struct RestoreMaterial {
+                Graphics3D::Object3D& object;
+                MaterialValues value;
+                ~RestoreMaterial(){ApplyMaterial(object,value);object.RefreshMaterialAppearance();}
+            } restoreMaterial{*object,ResolveMaterial(entity)};
+            ApplyMaterial(*object,*materialPreview);
+            object->RefreshMaterialAppearance();
+            object->DrawAnimated();
+        }else object->DrawAnimated();
     }
     if(editorView || !IsParticlePreview())DrawParticles();
     DrawSprites(editorView?editorSpriteFrame_:spriteFrame_);
@@ -473,15 +530,14 @@ bool EntityScene::SetAnimationPreview(EntityId id,const std::string& clip,float 
             preview={id,model.asset,model.revision.current,{},-1,std::move(object)};
         }
         const auto* entity=world_.Find(id);
-        const auto material=entity->hasMaterial && entity->material.IsValid()?entity->material:MaterialComponent{};
-        ApplyMaterial(*preview.object,material);
+        ApplyMaterial(*preview.object,ResolveMaterial(*entity));
         preview.object->SetWorldMatrix(worldMatrix);
         if(preview.time!=sampledTime || preview.clip!=clip){
             if(!preview.object->SampleAnimationPreview(clip,sampledTime)){ClearAnimationPreview();return false;}
             preview.time=sampledTime;preview.clip=clip;
         }
         // Commit lighting and color even when the pose is held.
-        preview.object->UpdatePreviewAppearance();
+        preview.object->RefreshMaterialAppearance();
         return true;
     }catch(const std::exception& error){
         ClearAnimationPreview();Base::Logger::Log(std::string("Animation preview refused: ")+error.what());

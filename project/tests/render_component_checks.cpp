@@ -54,6 +54,7 @@ int main(){using namespace Engine::Scene;try{
         auto v=EncodeMaterial(material);v[field]=true;rejectMaterial(v);v[field]=-1e-100;rejectMaterial(v);
         v[field]=std::numeric_limits<double>::quiet_NaN();rejectMaterial(v);
     }
+    {auto v=EncodeMaterial(material);v["guid"]="";rejectMaterial(v);v["guid"]="not-an-asset";rejectMaterial(v);}
     {auto v=EncodeMaterial(material);v["lighting"]=0.0;rejectMaterial(v);v=EncodeMaterial(material);v["color"]=crude_json::array{1.0,1.0,1.0};rejectMaterial(v);v=EncodeMaterial(material);v["roughness"]=1.01;rejectMaterial(v);v=EncodeMaterial(material);v["shininess"]=0.0;rejectMaterial(v);v=EncodeMaterial(material);v["unknown"]=true;rejectMaterial(v);}
     world.RemoveLight(id);world.RemoveMaterial(id);
     Need(world.Capture().dump()==legacy.dump(),"Removal failed to restore omitted legacy shape");

@@ -132,14 +132,16 @@ public:
         if(!structure_.candidate_->SetLight(id,value)){failed_=true;return Result::Invalid;}
         if(self_->id==id){self_->hasLight=true;self_->light=value;}++calls_;return Result::Success;
     }
-    Result SetMaterial(Scene::EntityId id,const Scene::MaterialComponent& value) noexcept {
+    Result SetMaterial(Scene::EntityId id,const Scene::MaterialValues& value) noexcept {
         if(!id || id>Scene::EntityWorld::MaximumEntityId || !value.IsValid())return Result::Invalid;
         if(!Writable() || prepared_)return Result::Unavailable;
         if(!Live(id))return Result::Missing;
         if(calls_==MaxOperations)return Result::Limit;
         const auto promotion=Promote();if(promotion!=Result::Success)return promotion;
-        if(!structure_.candidate_->SetMaterial(id,value)){failed_=true;return Result::Invalid;}
-        if(self_->id==id){self_->hasMaterial=true;self_->material=value;}++calls_;return Result::Success;
+        Scene::MaterialComponent local{value,{}};
+        if(!structure_.candidate_->SetMaterial(id,local)){failed_=true;return Result::Invalid;}
+        if(self_->id==id){self_->material=std::move(local);self_->hasMaterial=true;}
+        ++calls_;return Result::Success;
     }
     Result RemoveLight(Scene::EntityId id) noexcept {
         if(!id || id>Scene::EntityWorld::MaximumEntityId)return Result::Invalid;

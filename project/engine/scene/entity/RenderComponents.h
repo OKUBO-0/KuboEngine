@@ -4,7 +4,9 @@
 #include "Vector4.h"
 #include <cmath>
 #include <initializer_list>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <type_traits>
 
 namespace Engine::Scene {
@@ -21,15 +23,24 @@ struct LightComponent {
     float innerAngle=0.35f,outerAngle=0.6f; // radians, half angles
     bool IsValid() const noexcept;
 };
-struct MaterialComponent {
+struct MaterialValues {
     // Absent component and the default value retain generic legacy unlit output.
     bool lighting=false;
     Vector4 color{1,1,1,1};
     float shininess=60,roughness=0,reflectionStrength=0,textureInfluence=1;
     bool IsValid() const noexcept;
 };
+struct MaterialComponent : MaterialValues {
+    // Local values remain the fallback when a shared asset is unavailable.
+    std::string assetGuid;
+    bool IsValid() const noexcept;
+};
 
 namespace RenderComponentDetail {
+inline bool ValidAssetGuid(std::string_view guid) noexcept {
+    if(guid.size()!=16 && guid.size()!=32)return false;
+    return guid.find_first_not_of("0123456789abcdef")==std::string_view::npos;
+}
 inline bool Range(float v,float lo,float hi) noexcept {return std::isfinite(v) && v>=lo && v<=hi;}
 inline bool Number(const SceneValue& object,const char* key,float& value,float lo,float hi) {
     if(!object.contains(key))return true;
@@ -72,10 +83,13 @@ inline bool LightComponent::IsValid() const noexcept {
         Range(intensity,0,1000000) && Range(range,0.0001f,1000000) && Range(decay,0,16) &&
         Range(innerAngle,0,MaximumLightAngle) && Range(outerAngle,0.0001f,MaximumLightAngle) && innerAngle<=outerAngle;
 }
-inline bool MaterialComponent::IsValid() const noexcept {
+inline bool MaterialValues::IsValid() const noexcept {
     using RenderComponentDetail::Range;
     return Range(color.x,0,1) && Range(color.y,0,1) && Range(color.z,0,1) && Range(color.w,0,1) &&
         Range(shininess,1,1024) && Range(roughness,0,1) && Range(reflectionStrength,0,1) && Range(textureInfluence,0,1);
+}
+inline bool MaterialComponent::IsValid() const noexcept {
+    return (assetGuid.empty() || RenderComponentDetail::ValidAssetGuid(assetGuid)) && MaterialValues::IsValid();
 }
 inline bool DecodeLight(const SceneValue& value,LightComponent& output) noexcept {
     try {
@@ -106,8 +120,13 @@ inline bool DecodeLight(const SceneValue& value,LightComponent& output) noexcept
 inline bool DecodeMaterial(const SceneValue& value,MaterialComponent& output) noexcept {
     try {
         using namespace RenderComponentDetail;
-        if(!Keys(value,{"lighting","color","shininess","roughness","reflectionStrength","textureInfluence"}))return false;
+        if(!Keys(value,{"guid","lighting","color","shininess","roughness","reflectionStrength","textureInfluence"}))return false;
         MaterialComponent candidate;
+        if(value.contains("guid")){
+            if(!value["guid"].is_string())return false;
+            candidate.assetGuid=value["guid"].get<crude_json::string>();
+            if(!ValidAssetGuid(candidate.assetGuid))return false;
+        }
         float color[]{candidate.color.x,candidate.color.y,candidate.color.z,candidate.color.w};
         if(!Color(value,4,color) || !Boolean(value,"lighting",candidate.lighting) ||
             !Number(value,"shininess",candidate.shininess,1,1024) ||
@@ -116,8 +135,8 @@ inline bool DecodeMaterial(const SceneValue& value,MaterialComponent& output) no
             !Number(value,"textureInfluence",candidate.textureInfluence,0,1))return false;
         candidate.color={color[0],color[1],color[2],color[3]};
         if(!candidate.IsValid())return false;
-        static_assert(std::is_nothrow_copy_assignable_v<MaterialComponent>);
-        output=candidate;return true;
+        static_assert(std::is_nothrow_move_assignable_v<MaterialComponent>);
+        output=std::move(candidate);return true;
     }catch(...){return false;}
 }
 inline SceneValue EncodeLight(const LightComponent& light) {
@@ -129,6 +148,7 @@ inline SceneValue EncodeLight(const LightComponent& light) {
 }
 inline SceneValue EncodeMaterial(const MaterialComponent& material) {
     SceneValue value;value["lighting"]=material.lighting;
+    if(!material.assetGuid.empty())value["guid"]=material.assetGuid;
     value["color"]=crude_json::array{double(material.color.x),double(material.color.y),double(material.color.z),double(material.color.w)};
     value["shininess"]=double(material.shininess);value["roughness"]=double(material.roughness);
     value["reflectionStrength"]=double(material.reflectionStrength);value["textureInfluence"]=double(material.textureInfluence);return value;

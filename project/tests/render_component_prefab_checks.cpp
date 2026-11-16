@@ -18,10 +18,11 @@ int main(){using namespace Engine;using namespace Scene;using namespace Editor;s
     EntityWorld source;const auto sourceRoot=source.CreateEntity("Lit model"),sourceChild=source.CreateEntity("Spot",sourceRoot);
     LightComponent directional,spot;spot.kind=LightKind::Spot;spot.enabled=false;spot.color={0.3f,0.7f,1};spot.intensity=5;
     MaterialComponent material;material.lighting=true;material.color={0.2f,0.5f,0.8f,1};material.roughness=0.8f;
+    material.assetGuid=std::string(32,'b');
     Need(source.SetLight(sourceRoot,directional) && source.SetLight(sourceChild,spot) && source.SetMaterial(sourceRoot,material),"Render source setup failed");
     const auto sourceBytes=source.Capture().dump();const auto sourceHigh=source.AllocationHighWatermark();
     EntityId clone=0;std::string error;auto duplicate=source;Need(duplicate.DuplicateSubtree(sourceRoot,0,clone,error),error.c_str());
-    Need(duplicate.Find(clone)->hasLight && duplicate.Find(clone)->hasMaterial && duplicate.Find(clone)->material.lighting,"Subtree clone lost render components");
+    Need(duplicate.Find(clone)->hasLight && duplicate.Find(clone)->hasMaterial && duplicate.Find(clone)->material.lighting && duplicate.Find(clone)->material.assetGuid==material.assetGuid,"Subtree clone lost render components or the shared Material GUID");
     const EntityRecord* clonedChild=nullptr;for(const auto& e:duplicate.GetEntities())if(e.parent==clone)clonedChild=&e;
     Need(clonedChild && clonedChild->hasLight && clonedChild->light.kind==LightKind::Spot && !clonedChild->light.enabled,"Subtree child Light changed");
     PrefabValue definition;Need(CapturePrefabSubtree(source,sourceRoot,definition,error),error.c_str());const auto definitionBytes=definition.dump();
@@ -48,7 +49,7 @@ int main(){using namespace Engine;using namespace Scene;using namespace Editor;s
     Need(reverted.Find(child)->light.intensity==5 && reverted.Find(root)->material.color.w==0.5f && world.Capture().dump()==changed,"Field Revert changed unrelated material/live World");
     EntityWorld runtime;const auto runtimeParent=runtime.CreateEntity("Runtime parent");EntityId runtimeRoot=0;
     Need(Prefab::InstantiateRuntimePrefab(runtime,definition,runtimeParent,runtimeRoot,error),error.c_str());
-    Need(runtime.Find(runtimeRoot)->hasMaterial && runtime.Find(runtimeRoot)->material.lighting && runtime.Find(runtimeRoot)->prefabLink.is_null(),"Runtime Prefab lost material or retained editor link");
+    Need(runtime.Find(runtimeRoot)->hasMaterial && runtime.Find(runtimeRoot)->material.lighting && runtime.Find(runtimeRoot)->material.assetGuid==material.assetGuid && runtime.Find(runtimeRoot)->prefabLink.is_null(),"Runtime Prefab lost material or retained editor link");
     bool runtimeSpot=false;for(const auto& e:runtime.GetEntities())if(e.parent==runtimeRoot)runtimeSpot=e.hasLight && e.light.kind==LightKind::Spot && !e.light.enabled && e.light.intensity==5;
     Need(runtimeSpot,"Runtime Prefab lost child Light");
     auto badDefinition=definition;badDefinition["world"]["entities"][1]["light"]["innerAngle"]=1.2;

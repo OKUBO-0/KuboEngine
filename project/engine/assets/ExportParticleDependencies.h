@@ -1,6 +1,7 @@
 #pragma once
 #include "ExportAssetDependencies.h"
 #include "SpriteReference.h"
+#include "ExportMaterialDependencies.h"
 #include "../base/ProjectContext.h"
 #include <set>
 
@@ -32,8 +33,9 @@ inline ExportParticleClosure ValidateExportParticleDependencies(const Scene::Ent
     }
     result.textures=textures.size();return result;
 }
-inline ExportParticleClosure ValidateExportStartupParticleDependencies(const std::filesystem::path& projectFile,
-    const std::vector<std::filesystem::path>& copyRoots) {
+struct ExportStartupRenderClosure {ExportParticleClosure particles;size_t materials=0;};
+inline ExportStartupRenderClosure ValidateExportStartupRenderDependencies(const std::filesystem::path& projectFile,
+    const std::vector<std::filesystem::path>& copyRoots,bool validateMaterials) {
     Base::ProjectContext project;std::string error;if(!project.Open(projectFile,error))throw std::runtime_error(error);
     const auto root=project.GetRootPath(),source=project.ResolvePath(project.GetSettings().startupScene),assetRoot=project.ResolvePath(project.GetSettings().assetDirectory);
     AssertExportOrdinaryPath(root);AssertExportPortableRelative(source.lexically_relative(root));AssertExportOrdinaryPath(source);
@@ -48,6 +50,13 @@ inline ExportParticleClosure ValidateExportStartupParticleDependencies(const std
         AssertExportOrdinaryPath(it->path());
     }
     AssetRegistry registry;if(!registry.Scan(assetRoot,error,AssetRegistry::MetadataPolicy::ReadOnly))throw std::runtime_error(error);
-    return ValidateExportParticleDependencies(world,registry,root,copyRoots);
+    ExportStartupRenderClosure result;
+    result.particles=ValidateExportParticleDependencies(world,registry,root,copyRoots);
+    if(validateMaterials)result.materials=ValidateExportMaterialDependencies(world,registry,root,copyRoots);
+    return result;
+}
+inline ExportParticleClosure ValidateExportStartupParticleDependencies(const std::filesystem::path& projectFile,
+    const std::vector<std::filesystem::path>& copyRoots) {
+    return ValidateExportStartupRenderDependencies(projectFile,copyRoots,false).particles;
 }
 }

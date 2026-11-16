@@ -31,6 +31,9 @@ namespace Engine::Editor {struct ControllerRecordReport;}
 #include "engine/assets/AssetRegistry.h"
 #include "engine/assets/AssetImportJob.h"
 #include "engine/editor/AssetThumbnailCache.h"
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+#include "engine/editor/SharedMaterialInspector.h"
+#endif
 #include <future>
 #include <memory>
 #include <filesystem>
@@ -340,6 +343,9 @@ private:
 	Engine::Scene::EntityId genericPlayerEntity_ = 0;
 	std::filesystem::path genericWorldPath_ = "UserScenes/editor_world.json";
 	std::string genericWorldStatus_;
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+    Engine::Editor::SharedMaterialInspector sharedMaterialInspector_;
+#endif
     Engine::Editor::AnimatorControllerPanel controllerEditor_;
     bool controllerClosePending_=false;
 	bool sampleClosePending_ = false;

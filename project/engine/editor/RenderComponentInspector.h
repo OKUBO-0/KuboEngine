@@ -47,18 +47,31 @@ inline void DrawLightInspector(Scene::EntityWorld& world,Scene::EntityId id,std:
     if(changed && !world.SetLight(id,value))status="Light settings rejected: finite values/ranges/cone required";
     if(RenderInspectorButton("Remove Light"))world.RemoveLight(id);
 }
-inline void DrawMaterialInspector(Scene::EntityWorld& world,Scene::EntityId id,std::string& status){
-    auto* entity=world.Find(id);if(!entity)return;
-    if(!ImGui::CollapsingHeader("Material",ImGuiTreeNodeFlags_DefaultOpen))return;
-    if(!entity->hasMaterial){if(RenderInspectorButton("Add Material") && !world.SetMaterial(id,{}))status="Material addition rejected";return;}
-    auto value=entity->material;bool changed=RenderInspectorCheckbox("Material Lighting",&value.lighting);
+inline bool DrawMaterialValues(Scene::MaterialComponent& value){
+    bool changed=RenderInspectorCheckbox("Material Lighting",&value.lighting);
     changed|=ImGui::ColorEdit4("Material Tint",&value.color.x);
-    changed|=ImGui::DragFloat("Material Shininess",&value.shininess,1,1,1024);
+    changed|=ImGui::DragFloat("Material Shininess",&value.shininess,1,1,1024,"%.1f",ImGuiSliderFlags_AlwaysClamp);
     changed|=ImGui::SliderFloat("Material Roughness",&value.roughness,0,1);
     changed|=ImGui::SliderFloat("Environment Reflection",&value.reflectionStrength,0,1);
     changed|=ImGui::SliderFloat("Texture Influence",&value.textureInfluence,0,1);
-    ImGui::TextWrapped("Applies to this Entity's Model. Lit material needs enabled Lights. Absent material retains legacy unlit output.");
+    return changed;
+}
+template<class DrawSharing>
+inline void DrawMaterialInspector(Scene::EntityWorld& world,Scene::EntityId id,std::string& status,DrawSharing drawSharing){
+    auto* entity=world.Find(id);if(!entity)return;
+    if(!ImGui::CollapsingHeader("Material",ImGuiTreeNodeFlags_DefaultOpen))return;
+    if(!entity->hasMaterial){if(RenderInspectorButton("Add Material") && !world.SetMaterial(id,{}))status="Material addition rejected";return;}
+    auto value=entity->material;
+    bool changed=drawSharing(value);
+    if(value.assetGuid.empty())changed|=DrawMaterialValues(value);
+    else if(ImGui::TreeNode("Local Fallback")){
+        changed|=DrawMaterialValues(value);
+        ImGui::TreePop();
+    }
     if(changed && !world.SetMaterial(id,value))status="Material settings rejected: finite values/ranges required";
     if(RenderInspectorButton("Remove Material"))world.RemoveMaterial(id);
+}
+inline void DrawMaterialInspector(Scene::EntityWorld& world,Scene::EntityId id,std::string& status){
+    DrawMaterialInspector(world,id,status,[](Scene::MaterialComponent&){return false;});
 }
 }

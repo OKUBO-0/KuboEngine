@@ -35,7 +35,7 @@ int wmain(int argc,wchar_t** argv) {
         if(argc!=3 || std::wstring(argv[1])!=L"--request") throw std::runtime_error("Usage: KuboAssetValidator --request <UTF-8 JSON file>");
         const auto request=crude_json::value::parse(ReadRequest(argv[2]));
         if(!request.is_object() || !request.contains("format") || !request["format"].is_string() ||
-            (request["format"].get<crude_json::string>()!="kubo-export-dependencies-1" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-2" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-3" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-4") ||
+            (request["format"].get<crude_json::string>()!="kubo-export-dependencies-1" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-2" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-3" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-4" && request["format"].get<crude_json::string>()!="kubo-export-dependencies-5") ||
             !request.contains("root") || !request["root"].is_string() ||
             !request.contains("models") || !request["models"].is_array() ||
             !request.contains("copyRoots") || !request["copyRoots"].is_array()) throw std::runtime_error("Invalid validator request schema");
@@ -53,7 +53,8 @@ int wmain(int argc,wchar_t** argv) {
         if(!root.is_absolute() || root.native().size()>32767) throw std::runtime_error("Validator root must be a bounded absolute path");
         const auto copyRoots=paths("copyRoots");
         const auto closure=Engine::Assets::ValidateExportModelDependencies(root,paths("models"),copyRoots);
-        const bool withUI=request["format"].get<crude_json::string>()=="kubo-export-dependencies-4";
+        const bool withMaterials=request["format"].get<crude_json::string>()=="kubo-export-dependencies-5";
+        const bool withUI=withMaterials || request["format"].get<crude_json::string>()=="kubo-export-dependencies-4";
         const bool withPrefabs=withUI || request["format"].get<crude_json::string>()=="kubo-export-dependencies-3";
         if(!withPrefabs && request.contains("prefabs"))throw std::runtime_error("Prefab references require validator format 3");
         if(withPrefabs || request["format"].get<crude_json::string>()=="kubo-export-dependencies-2") {
@@ -75,13 +76,16 @@ int wmain(int argc,wchar_t** argv) {
                 std::cout<<"Prefab dependencies verified: "<<prefab.prefabs<<" templates, "<<prefab.models.files<<" Model files, "<<prefab.models.edges<<" inspected Model edges\n";
                 std::cout<<"Prefab Sprite dependencies verified: "<<prefab.sprites.sprites<<" assigned references, "<<prefab.sprites.textures<<" texture files summed per template, "<<prefab.sprites.unassigned<<" unassigned drafts\n";
                 std::cout<<"Prefab Particle dependencies verified: "<<prefab.particles.emitters<<" assigned references, "<<prefab.particles.textures<<" texture files summed per template, "<<prefab.particles.unassigned<<" unassigned drafts\n";
+                if(withMaterials)std::cout<<"Prefab Material dependencies verified: "<<prefab.materials<<" shared assets summed per template\n";
                 if(prefab.opaqueScripts)std::cout<<"Warning: "<<prefab.opaqueScripts<<" GUID-less Prefab Script keys are opaque native callback names; file resolution/execution is not verified\n";
                 if(prefab.models.uninspectedModels)std::cout<<"Warning: "<<prefab.models.uninspectedModels<<" Prefab Model formats have no external-dependency parser\n";
             }
             if(withUI){
                 const auto sprites=Engine::Assets::ValidateExportStartupSpriteDependencies(project,copyRoots);
                 std::cout<<"Startup Sprite dependencies verified: "<<sprites.sprites<<" assigned references, "<<sprites.textures<<" texture files, "<<sprites.unassigned<<" unassigned drafts\n";
-                const auto particles=Engine::Assets::ValidateExportStartupParticleDependencies(project,copyRoots);
+                const auto render=Engine::Assets::ValidateExportStartupRenderDependencies(project,copyRoots,withMaterials);
+                const auto& particles=render.particles;
+                if(withMaterials)std::cout<<"Startup Material dependencies verified: "<<render.materials<<" shared assets\n";
                 std::cout<<"Startup Particle dependencies verified: "<<particles.emitters<<" assigned references, "<<particles.textures<<" texture files, "<<particles.unassigned<<" unassigned drafts\n";
             }
         } else if(request.contains("controllers"))throw std::runtime_error("Controller references require validator format 2");

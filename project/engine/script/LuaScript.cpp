@@ -337,7 +337,7 @@ private:
     }
     // Only trivial component values/views cross Lua calls: allocation errors
     // longjmp. Never build an owning JSON/string/vector in these C callbacks.
-    static_assert(std::is_trivially_destructible_v<Scene::LightComponent> && std::is_trivially_destructible_v<Scene::MaterialComponent>);
+    static_assert(std::is_trivially_destructible_v<Scene::LightComponent> && std::is_trivially_destructible_v<Scene::MaterialValues>);
     static void RenderKeys(lua_State* state,int table,std::initializer_list<std::string_view> fields){
         table=lua_absindex(state,table);luaL_checktype(state,table,LUA_TTABLE);lua_pushnil(state);
         while(lua_next(state,table)){
@@ -388,7 +388,7 @@ private:
         SceneWorld(state);if(lua_gettop(state)!=1)return luaL_error(state,"scene.material expects one Entity ID");
         const auto* settings=Self(state).sceneCommands_.Material(SceneId(state));if(!settings){lua_pushnil(state);return 1;}
         if(!settings->IsValid())return luaL_error(state,"Invalid authored Material settings");
-        const auto value=*settings;lua_createtable(state,0,6);lua_pushboolean(state,value.lighting);lua_setfield(state,-2,"lighting");
+        const Scene::MaterialValues value=*settings;lua_createtable(state,0,6);lua_pushboolean(state,value.lighting);lua_setfield(state,-2,"lighting");
         PushRenderColor(state,{value.color.x,value.color.y,value.color.z,value.color.w});PushRenderScalar(state,"shininess",value.shininess);
         PushRenderScalar(state,"roughness",value.roughness);PushRenderScalar(state,"reflectionStrength",value.reflectionStrength);PushRenderScalar(state,"textureInfluence",value.textureInfluence);return 1;
     }
@@ -498,7 +498,7 @@ private:
     }
     static int SceneSetMaterial(lua_State* state){
         SceneWorld(state);if(lua_gettop(state)!=2)return luaL_error(state,"scene.set_material expects an ID and settings table");
-        const auto id=SceneId(state);RenderKeys(state,2,{"lighting","color","shininess","roughness","reflectionStrength","textureInfluence"});Scene::MaterialComponent value;
+        const auto id=SceneId(state);RenderKeys(state,2,{"lighting","color","shininess","roughness","reflectionStrength","textureInfluence"});Scene::MaterialValues value;
         RenderBoolean(state,2,"lighting",value.lighting);float color[]{1,1,1,1};RenderColor(state,2,color,4);value.color={color[0],color[1],color[2],color[3]};
         RenderScalar(state,2,"shininess",value.shininess,1,1024);RenderScalar(state,2,"roughness",value.roughness,0,1);RenderScalar(state,2,"reflectionStrength",value.reflectionStrength,0,1);RenderScalar(state,2,"textureInfluence",value.textureInfluence,0,1);
         const auto result=Self(state).sceneCommands_.SetMaterial(id,value);SceneStructuralError(state,result);lua_pushboolean(state,result==ScriptSceneCommands::Result::Success);return 1;

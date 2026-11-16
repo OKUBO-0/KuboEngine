@@ -560,7 +560,12 @@ void EntityWorld::RemoveLight(EntityId id) {if(auto* entity=FindMutable(id))enti
 bool EntityWorld::SetMaterial(EntityId id,const MaterialComponent& material)
 {
     auto* entity=FindMutable(id);if(!entity || !material.IsValid())return false;
-    entity->material=material;entity->hasMaterial=true;return true;
+    try {
+        MaterialComponent candidate=material;
+        entity->material=std::move(candidate);
+        entity->hasMaterial=true;
+        return true;
+    } catch(...) {return false;}
 }
 void EntityWorld::RemoveMaterial(EntityId id) {if(auto* entity=FindMutable(id))entity->hasMaterial=false;}
 bool EntityWorld::SetCanvas(EntityId id,const CanvasComponent& canvas)

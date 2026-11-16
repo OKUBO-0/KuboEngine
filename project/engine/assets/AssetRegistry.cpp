@@ -421,6 +421,23 @@ bool AssetRegistry::SetImportFingerprint(const std::string& guid, const std::str
     return false;
 }
 
+bool AssetRegistry::RegisterSource(const std::filesystem::path& source,std::string& guid,std::string& error)
+{
+    try {
+        const auto path=std::filesystem::canonical(source);
+        if(root_.empty() || !Within(path,root_) || !std::filesystem::is_regular_file(path) ||
+            std::filesystem::is_symlink(std::filesystem::symlink_status(source)) ||
+            std::filesystem::exists(root_/".kubo/asset-move.pending.json"))
+            throw std::runtime_error("New asset must be a regular file inside the active asset root with no pending move");
+        auto identity=EnsureIdentity(path,{},MetadataPolicy::CreateMissing);
+        if(!Scan(root_,error,MetadataPolicy::ReadOnly))return false;
+        const auto* record=FindByGuid(identity);
+        if(!record || FindByPath(path)!=record)throw std::runtime_error("New asset identity was not registered");
+        guid.swap(identity);
+        return true;
+    } catch(const std::exception& exception) {error=exception.what();return false;}
+}
+
 const AssetRecord* AssetRegistry::FindByGuid(const std::string& guid) const
 {
     const auto found = std::find_if(assets_.begin(), assets_.end(),

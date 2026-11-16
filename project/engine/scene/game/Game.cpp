@@ -356,6 +356,7 @@ void Game::Update()
 void Game::DrawDebugEditorShell()
 {
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+    sharedMaterialInspector_.BeginFrame();
 	DrawPrefabRecoveryWindow();
     DrawControllerRecoveryWindow();
 	DrawPrefabOverridesWindow();
@@ -1869,7 +1870,7 @@ void Game::DrawInspectorAssetDropTarget(const EntityRecord& entity)
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
 	const auto* blocked = SceneEditUnavailableReason(Engine::Editor::SceneEditAction::Duplicate);
 	ImGui::BeginDisabled(blocked != nullptr);
-	ImGui::Button("Drop Model or Sprite Image",{-1,0});
+	ImGui::Button("Drop Model, Sprite Image, or Material",{-1,0});
 #if defined(KUBO_APPLICATION_CHECKS)
 	Engine::Editor::ObserveRenderInspectorChecks("Inspector asset drop");
 #endif
@@ -1877,7 +1878,7 @@ void Game::DrawInspectorAssetDropTarget(const EntityRecord& entity)
 	if (blocked) return;
 	const auto guid = GetAssetPayloadGuid(ImGui::GetDragDropPayload());
 	const auto* asset = guid.empty() ? nullptr : projectAssets_.FindByGuid(guid);
-	if (!asset || (asset->type != Assets::AssetType::Model && asset->type != Assets::AssetType::Texture) ||
+	if (!asset || (asset->type != Assets::AssetType::Model && asset->type != Assets::AssetType::Texture && asset->type != Assets::AssetType::Material) ||
 		!ImGui::BeginDragDropTarget()) return;
 	const auto* payload = ImGui::AcceptDragDropPayload(Engine::Editor::AssetGuidPayload);
 	const bool deliver = payload && payload->IsDelivery();
@@ -1893,6 +1894,15 @@ void Game::DrawInspectorAssetDropTarget(const EntityRecord& entity)
 	const auto hint = Base::PathToUtf8(relative);
 	if (asset->type == Assets::AssetType::Model) {
 		if (!editorWorld_.SetModel(entity.id,hint,guid)) genericWorldStatus_ = "Model assignment rejected";
+	} else if (asset->type == Assets::AssetType::Material) {
+        Scene::MaterialComponent assetValues;
+        if(!Assets::ReadMaterialAsset(source,assetValues,error)){
+            genericWorldStatus_="Cannot assign Material: "+error;
+            return;
+        }
+        auto material=entity.hasMaterial?entity.material:MaterialComponent{};
+        material.assetGuid=guid;
+        if(!editorWorld_.SetMaterial(entity.id,material))genericWorldStatus_="Material assignment rejected";
 	} else {
 		auto sprite = entity.sprite;
 		sprite.assetPath = hint;
@@ -2453,7 +2463,12 @@ void Game::DrawGenericEntityEditor()
 				}
                 ImGui::BeginDisabled(assetImportJob_.IsBusy() || exportJob_.GetState()==Engine::Services::ExportJob::State::Running);
                 Engine::Editor::DrawLightInspector(editorWorld_,entity->id,genericWorldStatus_);
-                Engine::Editor::DrawMaterialInspector(editorWorld_,entity->id,genericWorldStatus_);
+                Engine::Editor::DrawMaterialInspector(editorWorld_,entity->id,genericWorldStatus_,
+                    [&](MaterialComponent& value){
+                        return sharedMaterialInspector_.Draw(value,projectAssets_,genericWorldStatus_,
+                            SceneEditUnavailableReason(Action::Duplicate)==nullptr && !assetImportJob_.IsBusy() &&
+                            exportJob_.GetState()!=Engine::Services::ExportJob::State::Running);
+                    });
                 Engine::Editor::DrawCanvasInspector(editorWorld_,entity->id,genericWorldStatus_);
                 Engine::Editor::DrawSpriteInspector(editorWorld_,entity->id,projectAssets_,GetProjectRoot(),genericWorldStatus_);
                 Engine::Editor::DrawParticleInspector(editorWorld_,entity->id,projectAssets_,GetProjectRoot(),genericWorldStatus_);

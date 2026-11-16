@@ -39,7 +39,7 @@ public:
     void Finalize() override;
     void Update() override;
     void Draw() override;
-    void DrawEditorView();
+    void DrawEditorView(EntityId materialPreviewEntity=0,const MaterialValues* materialPreview=nullptr);
     void DrawGameView(float aspect = 16.0f/9.0f);
     void SetSceneAspectRatio(float aspect);
     void SetUIOutputExtent(Base::ViewExtent extent);
@@ -99,13 +99,25 @@ private:
     std::unique_ptr<ParticleSceneState,ParticleStateDeleter> particles_;
     void DrawParticles();
     void FinalizeParticles() noexcept;
-    void DrawView(bool editorView);
+    void DrawView(bool editorView,EntityId materialPreviewEntity=0,const MaterialValues* materialPreview=nullptr);
     bool IsParticlePreview() const noexcept;
     void SynchronizeSprites();
     void SynchronizeUIText(const RenderSpriteFrame& frame);
     void ReportSpriteError(const std::string& message);
     void DrawSprites(RenderSpriteFrame& frame);
     void SynchronizeCamera();
+    const MaterialComponent& ResolveMaterial(const EntityRecord& entity);
+    struct MaterialAssetEntry {
+        std::string source;
+        std::filesystem::file_time_type sourceTime{},metadataTime{};
+        std::uintmax_t sourceSize=0;
+        std::optional<MaterialComponent> material;
+        size_t frame=0;
+        bool observed=false,missing=false;
+    };
+    std::unordered_map<std::string,MaterialAssetEntry> sharedMaterials_;
+    size_t materialFrame_=0;
+    std::optional<bool> materialMovePending_;
     Graphics3D::Object3D* ReadyController(EntityId id) const noexcept;
     struct RenderEntry {
         std::string asset;
