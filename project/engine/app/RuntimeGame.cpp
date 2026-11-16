@@ -87,7 +87,7 @@ void RuntimeGame::Update()
             const auto rect=Base::GamePresentationRect({Base::WinApp::kClientWidth,Base::WinApp::kClientHeight},extent);
             const auto point=Base::GameOutputPoint({input.mouseX,input.mouseY},{float(rect.left),float(rect.top)},
                 {float(rect.width),float(rect.height)},extent);
-            if(auto request=scene->UpdateUIButtons(input,point))scripts_.QueueSceneTransition(std::move(*request));
+            if(auto request=scene->UpdateUIButtons(input,point,extent))scripts_.QueueSceneTransition(std::move(*request));
         }
         scripts_.SetInputFrame(std::move(input));
         std::string error;

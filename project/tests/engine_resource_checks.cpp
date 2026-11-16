@@ -96,6 +96,7 @@ public:
     static bool McpRunning(const Game& game){return game.mcpSession_.IsRunning();}
     static bool ImportBusy(const Game& game){return game.assetImportJob_.IsBusy();}
     static void HideAssetBrowser(Game& game){game.debugAssetBrowserOpen_=false;}
+    static void HideSceneView(Game& game){game.debugSceneViewOpen_=false;}
     static void ShowAssetBrowser(Game& game) { game.debugAssetBrowserOpen_ = true; }
     static void SetSceneOverlays(Game& game, bool grid, bool gizmo) {
         game.editorGridVisible_ = grid;
@@ -2689,6 +2690,8 @@ public:
         authored_=Access::World(*this);
         Require(PlayEditorScene(error),error);
         if(button_){
+            Access::HideSceneView(*this);
+            offscreenRenderManager->ResizeEditorView({640,360});
             Engine::InputSystem::captureInputChecksOverride=[](Engine::InputSystem::InputFrame& input,bool enabled) {
                 RuntimeSceneTransitionFixture::ButtonInput(input,enabled,frames_);
             };

@@ -264,7 +264,7 @@ void Game::Draw()
     if (editorMode_ && genericScene && offscreenRenderManager->HasEditorView()) {
         offscreenRenderManager->BeginEditorView();
         genericScene->SetUIOutputExtent(offscreenRenderManager->GetEditorViewExtent());
-        genericScene->Draw();
+        genericScene->DrawEditorView();
         CaptureHubPreview();
         if (debugSceneViewOpen_ && editorViewEnabled_ && editorGridVisible_)
             offscreenRenderManager->DrawEditorGrid(editorViewCamera_.GetViewProjectionMatrix().m);

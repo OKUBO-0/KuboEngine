@@ -258,7 +258,7 @@ void Game::Update()
 				point=Base::GameOutputPoint({inputFrame.mouseX,inputFrame.mouseY},{float(rect.left),float(rect.top)},
 					{float(rect.width),float(rect.height)},extent);
 			}
-			if (auto request=scene->UpdateUIButtons(inputFrame,point)) scriptRuntime_.QueueSceneTransition(std::move(*request));
+			if (auto request=scene->UpdateUIButtons(inputFrame,point,GetGameOutputExtent())) scriptRuntime_.QueueSceneTransition(std::move(*request));
 		}
 		scriptRuntime_.SetInputFrame(std::move(inputFrame));
 		std::string scriptError;
@@ -331,9 +331,17 @@ void Game::Update()
 		const auto animatorRequests=scriptRuntime_.TakeAnimatorRequests();
 		if(animatorRequests.count){scene->SynchronizeModels(0);scene->ApplyAnimatorRequests(animatorRequests);}
 		scene->SynchronizeModels(editorMode_ ? (prefabRecoveryBlocked_?0.0f:worldPlayback_.SimulationDelta(frameDeltaTime_)) : frameDeltaTime_);
-        scene->UpdateParticles(editorMode_?worldPlayback_.SimulationDelta(frameDeltaTime_):frameDeltaTime_,
-            genericWorldReady_&&(!editorMode_||worldPlayback_.GetState()!=WorldPlayback::State::Editing),
-            prefabRecoveryBlocked_||(editorMode_&&worldPlayback_.GetState()==WorldPlayback::State::Paused));
+        const bool editing=editorMode_ && worldPlayback_.GetState()==WorldPlayback::State::Editing;
+        const auto* preview=editorWorld_.Find(particlePreviewEntity_);
+        if(!editing || prefabRecoveryBlocked_ || documentState_.HasPendingAction() || !preview || !preview->hasParticle ||
+            preview->id!=selectedEditorEntity_)particlePreviewEntity_=0;
+        if(particlePreviewRestart_)scene->UpdateParticles(0,false);
+        particlePreviewRestart_=false;
+        scene->UpdateParticles(particlePreviewEntity_?frameDeltaTime_:
+            editorMode_?worldPlayback_.SimulationDelta(frameDeltaTime_):frameDeltaTime_,
+            genericWorldReady_&&(!editing||particlePreviewEntity_),
+            prefabRecoveryBlocked_||(particlePreviewEntity_?particlePreviewPaused_:
+                (editorMode_&&worldPlayback_.GetState()==WorldPlayback::State::Paused)),particlePreviewEntity_);
 		if (editorPickPending_ && editorMode_ && editorViewEnabled_) {
 			Engine::Editor::ScenePickSegment segment;
 			if (Engine::Editor::MakeScenePickSegment(editorPickX_, editorPickY_, editorViewCamera_.GetViewProjectionMatrix(), segment)) {
@@ -2317,6 +2325,23 @@ void Game::DrawGenericEntityEditor()
                 Engine::Editor::DrawCanvasInspector(editorWorld_,entity->id,genericWorldStatus_);
                 Engine::Editor::DrawSpriteInspector(editorWorld_,entity->id,projectAssets_,GetProjectRoot(),genericWorldStatus_);
                 Engine::Editor::DrawParticleInspector(editorWorld_,entity->id,projectAssets_,GetProjectRoot(),genericWorldStatus_);
+                if(entity->hasParticle && worldPlayback_.GetState()==WorldPlayback::State::Editing){
+                    const bool previewing=particlePreviewEntity_==entity->id;
+                    ImGui::BeginDisabled(!entity->particle.enabled ||
+                        (entity->particle.assetGuid.empty() && entity->particle.assetPath.empty()));
+                    if(Engine::Editor::RenderInspectorButton(previewing && !particlePreviewPaused_?"Pause Effect Preview":"Play Effect Preview")){
+                        particlePreviewPaused_=previewing && !particlePreviewPaused_;
+                        particlePreviewEntity_=entity->id;
+                    }
+                    ImGui::EndDisabled();
+                    if(previewing){
+                        if(Engine::Editor::RenderInspectorButton("Restart Effect Preview")){
+                            particlePreviewPaused_=false;particlePreviewRestart_=true;
+                        }
+                        ImGui::SameLine();
+                        if(Engine::Editor::RenderInspectorButton("Stop Effect Preview"))particlePreviewEntity_=0;
+                    }
+                }
                 ImGui::EndDisabled();
                 if(auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene())){
                     ImGui::Text("Light frame: %u / 64; excluded invalid branches: %zu",scene->GetLightingFrame().gpu.count,scene->GetLightingFrame().skippedInvalidFrames);
@@ -3036,6 +3061,7 @@ bool Game::OpenGenericDocument(const std::filesystem::path& path,std::string& er
 
 void Game::CommitGenericDocument(EntityWorld candidate,const std::filesystem::path& path)
 {
+	particlePreviewEntity_=0;
 	const bool differentDocument = genericWorldPath_!=path;
 	mcpSession_.Stop();mcpStatus_="MCP disabled after Scene change; enable again for the new document";
 	scriptRuntime_.Shutdown(editorWorld_);scriptAudio_.Clear();entityAudio_.Clear();editorWorld_=std::move(candidate);genericWorldPath_=path;
@@ -3642,6 +3668,7 @@ bool Game::PlayEditorScene(std::string& error)
 		auto settled=entityHistory_;settled.Commit();
 		if(!worldPlayback_.Play(editorWorld_))throw std::runtime_error("Editor playback could not start");
 		entityHistory_.Swap(settled);if(starting)authoredSelection_=selectedEditorEntity_;
+		if(starting)particlePreviewEntity_=0;
 		error.clear();return true;
 	}catch(const std::exception& exception){error=exception.what();genericWorldStatus_="Play rejected: "+error;return false;}
 }

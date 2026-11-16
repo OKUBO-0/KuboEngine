@@ -14,8 +14,21 @@ using namespace Engine;void Need(bool ok,const char* message){if(!ok)throw std::
 }
 int main(){try{
  Scene::ParticleComponent settings;settings.enabled=false;settings.assetPath="Assets/粒子.dds";settings.assetGuid=std::string(32,'a');settings.capacity=256;settings.burst=128;settings.seed=(std::numeric_limits<uint32_t>::max)();settings.geometry=Scene::ParticleGeometry::Cylinder;
+ const auto legacyCodec=Scene::EncodeParticle(settings);
+ Scene::ParticleComponent legacyCurves;
+ Need(Scene::DecodeParticle(legacyCodec,legacyCurves)&&legacyCurves.SizeAt(.5f)==settings.size&&
+     legacyCurves.ColorAt(.5f).w==.5f,"Existing lifetime interpolation changed");
+ settings.size=1;settings.endSize=0.f;settings.sizeKeys={{.5f,3}};
+ settings.startColor={1,0,0,1};settings.endColor={0,0,1,0};
+ settings.colorKeys={{.5f,{0,1,0,1}}};
+ const auto color=settings.ColorAt(.75f);
+ Need(settings.SizeAt(.25f)==2 && settings.SizeAt(.75f)==1.5f && color.x==0 && color.y==.5f && color.z==.5f,
+     "Lifetime curves did not interpolate neighboring keys");
  Need(settings.IsValid(),"Valid Particle settings rejected");const auto encoded=Scene::EncodeParticle(settings);Scene::ParticleComponent decoded;Need(Scene::DecodeParticle(encoded,decoded)&&decoded==settings,"Particle codec lost fields");
  const auto bad=[&](Scene::SceneValue value){auto retained=settings;retained.capacity=17;const auto before=Scene::EncodeParticle(retained).dump();Need(!Scene::DecodeParticle(value,retained)&&Scene::EncodeParticle(retained).dump()==before,"Invalid Particle settings admitted/changed output");};
+ auto badKeys=encoded;
+ badKeys["sizeKeys"]=crude_json::array{crude_json::array{.5,1.},crude_json::array{.5,2.}};bad(badKeys);
+ badKeys=encoded;badKeys["colorKeys"]=crude_json::array{crude_json::array{1.,0.,1.,0.,1.}};bad(badKeys);
  for(const auto* name:{"capacity","burst","seed"}){auto value=encoded;value[name]=-1.0;bad(value);value[name]=1.5;bad(value);value[name]=4294967296.0;bad(value);}
  for(const auto* name:{"rate","lifetime","size"}){auto value=encoded;value[name]=(std::numeric_limits<double>::quiet_NaN)();bad(value);value[name]=-std::numeric_limits<double>::denorm_min();bad(value);}
  auto value=encoded;value["unknown"]=true;bad(value);value=encoded;value["geometry"]="sphere";bad(value);value=encoded;value["enabled"]=1.0;bad(value);value=encoded;value["burst"]=257.0;bad(value);value=encoded;value["asset"]="../outside.dds";bad(value);value=encoded;value["guid"]="invalid";bad(value);value=encoded;value["spread"]=crude_json::array{-1.,0.,0.};bad(value);value=encoded;value["startColor"]=crude_json::array{1.,1.,1.,2.};bad(value);

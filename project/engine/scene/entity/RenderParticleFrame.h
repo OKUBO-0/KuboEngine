@@ -10,5 +10,5 @@ struct RenderParticleFrame {
 };
 // Settings/pose snapshot only, no GPU work. Publication is whole-frame and
 // local-space affine poses retain nonuniform scale, shear and mirroring.
-RenderParticleResult BuildRenderParticleFrame(const EntityWorld& world,RenderParticleFrame& output) noexcept;
+RenderParticleResult BuildRenderParticleFrame(const EntityWorld& world,RenderParticleFrame& output,EntityId previewEntity=0) noexcept;
 }

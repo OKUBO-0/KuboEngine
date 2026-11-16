@@ -315,6 +315,8 @@ private:
 	Engine::Editor::EntityDocumentState documentState_;
 	Engine::Scene::EntityId authoredSelection_ = 0;
 	Engine::Scene::EntityId selectedEditorEntity_ = 0;
+	EntityId particlePreviewEntity_=0;
+	bool particlePreviewPaused_=false,particlePreviewRestart_=false;
 	Engine::Editor::EntitySelection editorSelection_;
 	char hierarchySearch_[128]{};
 	HierarchyType hierarchyType_ = HierarchyType::All;

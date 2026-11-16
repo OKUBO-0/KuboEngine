@@ -19,8 +19,8 @@ void EntityScene::CancelUIButtons() noexcept {
     pressedButtonScene_.clear();
 }
 std::optional<Scripting::ScriptSceneTransition> EntityScene::UpdateUIButtons(const InputSystem::InputFrame& input,
-    std::optional<Vector2> point) {
-    if(!input.available || !point || spriteResult_!=RenderSpriteResult::Success || uiOutputExtent_!=spriteFrame_.extent){
+    std::optional<Vector2> point,Base::ViewExtent gameOutput) {
+    if(!input.available || !point || spriteResult_!=RenderSpriteResult::Success || gameOutput!=spriteFrame_.extent){
         CancelUIButtons();
         return std::nullopt;
     }
@@ -142,16 +142,17 @@ void EntityScene::SynchronizeUIText(const RenderSpriteFrame& frame) {
         }
     }
 }
-void EntityScene::DrawSprites() {
-    const auto result=BuildRenderSpriteFrame(world_,uiOutputExtent_,spriteFrame_);
+void EntityScene::DrawSprites(RenderSpriteFrame& frame) {
+    const auto result=BuildRenderSpriteFrame(world_,uiOutputExtent_,frame);
     if(result!=RenderSpriteResult::Success){
+        frame.items.clear();
         if(spriteResult_!=result)Base::Logger::Log("Entity Sprite draw frame refused; no stale/prefix UI drawn",Base::Logger::Level::Error);
         spriteResult_=result;return;
     }
     spriteResult_=result;
-    if(spriteFrame_.items.empty())return;
+    if(frame.items.empty())return;
     Graphics2D::SpriteCommon::GetInstance()->CommonDraw(true);
-    for(const auto& item:spriteFrame_.items){
+    for(const auto& item:frame.items){
         const auto* entity=world_.Find(item.entity);
         if(!entity)continue;
         const auto& settings=entity->sprite;
@@ -162,7 +163,7 @@ void EntityScene::DrawSprites() {
             sprite.SetAnchorPoint(item.pivot);
             sprite.SetColor({item.color.x*shade,item.color.y*shade,item.color.z*shade,item.color.w});
             sprite.SetIsFlipX(item.flipX);sprite.SetIsFlipY(item.flipY);
-            sprite.Update(item.world,spriteFrame_.projection);sprite.Draw();
+            sprite.Update(item.world,frame.projection);sprite.Draw();
         }
         if(const auto text=texts_.find(item.entity);text!=texts_.end() && settings.HasVisibleText() && text->second.Matches(settings)){
             auto& sprite=*text->second.object;
@@ -170,7 +171,7 @@ void EntityScene::DrawSprites() {
             sprite.SetAnchorPoint({item.flipX?1-item.pivot.x:item.pivot.x,item.flipY?1-item.pivot.y:item.pivot.y});
             const auto& tint=settings.textColor;
             sprite.SetColor({tint.x*shade,tint.y*shade,tint.z*shade,tint.w*item.color.w});
-            sprite.Update(item.world,spriteFrame_.projection);sprite.Draw();
+            sprite.Update(item.world,frame.projection);sprite.Draw();
         }
     }
 }

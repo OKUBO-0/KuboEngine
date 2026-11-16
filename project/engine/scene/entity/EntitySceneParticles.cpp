@@ -23,8 +23,11 @@ public:
     }
     void Update(Particle::Particle& value,float dt,Math::Material*) override {
         value.currentTime=(std::min)(value.lifetime,value.currentTime+dt);value.transform.translate.x+=value.Velocity.x*dt;value.transform.translate.y+=value.Velocity.y*dt;value.transform.translate.z+=value.Velocity.z*dt;
-        const auto t=std::clamp(value.currentTime/value.lifetime,0.f,1.f);const auto mix=[&](float a,float b){return a+(b-a)*t;};
-        value.color={mix(settings_.startColor.x,settings_.endColor.x),mix(settings_.startColor.y,settings_.endColor.y),mix(settings_.startColor.z,settings_.endColor.z),mix(settings_.startColor.w,settings_.endColor.w)};if(value.currentTime>=value.lifetime)value.color.w=0;
+        const auto age=value.currentTime/value.lifetime;
+        const auto size=settings_.SizeAt(age);
+        value.transform.scale={size,size,size};
+        value.color=settings_.ColorAt(age);
+        if(value.currentTime>=value.lifetime)value.color.w=0;
     }
 };
 Particle::VerticesType Geometry(ParticleGeometry value){return value==ParticleGeometry::Quad?Particle::VerticesType::Quad:value==ParticleGeometry::Ring?Particle::VerticesType::Ring:Particle::VerticesType::Cylinder;}
@@ -33,18 +36,24 @@ std::filesystem::path ResolveParticle(const ParticleComponent& value,const Asset
 struct EntityScene::ParticleSceneState {
     struct Entry {std::string signature,name;Particle::ParticleGroupOwner owner;double remainder=0;uint32_t burst=0;};
     std::unordered_map<EntityId,Entry> entries;RenderParticleFrame frame;ParticleRenderStatus status;double accumulator=0;uint64_t generation=0,scope=0;bool drawFailure=false;
+    EntityId preview=0;
     ParticleSceneState(){static std::atomic<uint64_t> next{1};auto value=next.load();for(;;){if(value==(std::numeric_limits<uint64_t>::max)())throw std::overflow_error("Particle Scene scope exhausted");if(next.compare_exchange_weak(value,value+1)){scope=value;break;}}}
 };
 void EntityScene::ParticleStateDeleter::operator()(ParticleSceneState* state) const noexcept {delete state;}
 void EntityScene::FinalizeParticles() noexcept {particles_.reset();}
 EntityScene::ParticleRenderStatus EntityScene::GetParticleRenderStatus() const noexcept {return particles_?particles_->status:ParticleRenderStatus{};}
-void EntityScene::UpdateParticles(float deltaSeconds,bool running,bool paused){
+bool EntityScene::IsParticlePreview() const noexcept {return particles_ && particles_->preview;}
+void EntityScene::UpdateParticles(float deltaSeconds,bool running,bool paused,EntityId previewEntity){
     if(!running){FinalizeParticles();return;}
     try {
-        if(!particles_)particles_.reset(new ParticleSceneState);
+        if(particles_ && particles_->preview!=previewEntity)FinalizeParticles();
+        if(!particles_){
+            particles_.reset(new ParticleSceneState);
+            particles_->preview=previewEntity;
+        }
         auto& state=*particles_;state.status={};state.drawFailure=false;
         if(!std::isfinite(deltaSeconds)||deltaSeconds<0){state.entries.clear();state.frame.items.clear();state.accumulator=0;state.status.result=RenderParticleResult::InvalidComponent;return;}
-        const auto built=BuildRenderParticleFrame(world_,state.frame);state.status.result=built;
+        const auto built=BuildRenderParticleFrame(world_,state.frame,previewEntity);state.status.result=built;
         if(built!=RenderParticleResult::Success){state.entries.clear();state.frame.items.clear();state.accumulator=0;return;}
         std::unordered_set<EntityId> live;for(const auto& item:state.frame.items)live.insert(item.id);
         std::erase_if(state.entries,[&](const auto& entry){return !live.contains(entry.first);});

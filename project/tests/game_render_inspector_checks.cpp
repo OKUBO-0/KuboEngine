@@ -22,11 +22,13 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,37> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,46> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
     {"Button On Click"},{"Button Scene Choice"},{"UI Text"},
     {"Add Particle"},{"Remove Particle"},{"Particle Enabled"},{"Clear Particle Image"},{"Registered Particle Image"},{"Particle Texture Choice"},
+    {"Lifetime Curves"},{"Size Curve"},{"Color Curve"},{"Add Size Key"},{"Add Color Key"},
+    {"Play Effect Preview"},{"Pause Effect Preview"},{"Restart Effect Preview"},{"Stop Effect Preview"},
     {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
     {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"},
     {"Add Component..."},{"Collider"}}};
@@ -222,6 +224,17 @@ public:
             game.prefabRecoveryBlocked_=true;click("Remove Particle",true);Need(game.editorWorld_.Capture().dump()==authored,"Particle recovery lock bypass");game.prefabRecoveryBlocked_=false;
             click("Clear Particle Image");Need(game.editorWorld_.Find(id)->particle.assetPath.empty()&&game.editorWorld_.Find(id)->particle.assetGuid.empty()&&game.IsSceneDirty(),"Particle clear");Need(game.ApplyEditorHistory(false,error)&&game.editorWorld_.Capture().dump()==authored&&!game.IsSceneDirty(),"Particle clear Undo");
             click("Remove Particle");Need(!game.editorWorld_.Find(id)->hasParticle&&game.editorWorld_.Capture()["version"].get<double>()==1,"Particle removal version");Need(game.ApplyEditorHistory(false,error)&&game.editorWorld_.Capture().dump()==authored&&!game.IsSceneDirty()&&Read(root/"entry.scene")==original,"Particle Remove Undo/source preservation");
+            click("Lifetime Curves");click("Size Curve");click("Add Size Key");click("Color Curve");click("Add Color Key");
+            const auto& curves=game.editorWorld_.Find(id)->particle;
+            Need(curves.sizeKeys.size()==1 && curves.colorKeys.size()==1 && game.IsSceneDirty(),"Particle key controls did not author both curves");
+            click("Particle Enabled");
+            const auto beforePreview=game.editorWorld_.Capture().dump();
+            const auto beforeHistory=game.entityHistory_;
+            click("Play Effect Preview");Need(game.particlePreviewEntity_==id&&!game.particlePreviewPaused_,"Particle preview Play");
+            click("Pause Effect Preview");Need(game.particlePreviewPaused_,"Particle preview Pause");
+            click("Restart Effect Preview");Need(game.particlePreviewRestart_&&!game.particlePreviewPaused_,"Particle preview Restart");
+            click("Stop Effect Preview");Need(!game.particlePreviewEntity_,"Particle preview Stop");
+            Need(game.editorWorld_.Capture().dump()==beforePreview&&game.entityHistory_.HasSameState(beforeHistory),"Particle preview changed the document or history");
             std::cout<<"PASS: actual Game Particle Inspector mouse Add/Remove/enable/Unicode GUID picker/clear, grouped history+Undo/Redo, World2 Save As, Play/Stop restoration and pending/recovery locks (identity image only, not GPU)\n";
         }catch(...){std::cerr<<"GAME_PARTICLE_INSPECTOR_RETAINED="<<root<<'\n';throw;}
         std::error_code error;std::filesystem::remove_all(root,error);

@@ -69,7 +69,7 @@ void EntityScene::ResetWorldRenderState()
     FinalizeParticles();
     if (!models_.empty() || !sprites_.empty() || !texts_.empty()) graphics_.WaitForAllFrames();
     models_.clear();
-    sprites_.clear();spriteFrame_.items.clear();
+    sprites_.clear();spriteFrame_.items.clear();editorSpriteFrame_.items.clear();
     texts_.clear();textRasterizer_.reset();retiredTextTextures_=0;
     CancelUIButtons();
     reportedModelErrors_.clear();
@@ -239,6 +239,14 @@ void EntityScene::SynchronizeCamera()
 }
 void EntityScene::Draw()
 {
+    DrawView(false);
+}
+void EntityScene::DrawEditorView()
+{
+    DrawView(true);
+}
+void EntityScene::DrawView(bool editorView)
+{
     auto* common=Graphics3D::Object3DCommon::GetInstance();
     struct Restore {Graphics3D::Object3DCommon* owner;Math::AuthoredLightData previous;~Restore(){owner->SetAuthoredLights(previous);}} restore{common,common->GetAuthoredLights()};
     if(!common->SetAuthoredLights(lightingFrame_.gpu))throw std::logic_error("Invalid prepared Light GPU frame");
@@ -249,7 +257,8 @@ void EntityScene::Draw()
         if (found == models_.end() || !found->second.object) continue;
         found->second.object->DrawAnimated();
     }
-    DrawParticles();DrawSprites();
+    if(editorView || !IsParticlePreview())DrawParticles();
+    DrawSprites(editorView?editorSpriteFrame_:spriteFrame_);
 }
 void EntityScene::DrawGameView(float aspect)
 {

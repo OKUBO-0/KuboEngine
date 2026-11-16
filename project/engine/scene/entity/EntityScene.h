@@ -39,17 +39,19 @@ public:
     void Finalize() override;
     void Update() override;
     void Draw() override;
+    void DrawEditorView();
     void DrawGameView(float aspect = 16.0f/9.0f);
     void SetSceneAspectRatio(float aspect);
     void SetUIOutputExtent(Base::ViewExtent extent);
     RenderSpriteResult GetSpriteResult() const noexcept {return spriteResult_;}
     const RenderSpriteFrame& GetSpriteFrame() const noexcept {return spriteFrame_;}
-    std::optional<Scripting::ScriptSceneTransition> UpdateUIButtons(const InputSystem::InputFrame& input,std::optional<Vector2> point);
+    std::optional<Scripting::ScriptSceneTransition> UpdateUIButtons(const InputSystem::InputFrame& input,
+        std::optional<Vector2> point,Base::ViewExtent gameOutput);
     void CancelUIButtons() noexcept;
     void SynchronizeModels(float deltaSeconds);
     // Explicit host intent. Zero delta does not mean Editing/Stop; one call per
     // host frame advances fixed Particle ticks, independently of view draws.
-    void UpdateParticles(float deltaSeconds,bool running,bool paused=false);
+    void UpdateParticles(float deltaSeconds,bool running,bool paused=false,EntityId previewEntity=0);
     struct ParticleRenderStatus {RenderParticleResult result=RenderParticleResult::Success;size_t emitters=0,particles=0,dropped=0,steps=0;};
     ParticleRenderStatus GetParticleRenderStatus() const noexcept;
     RenderLightResult GetLightingResult() const noexcept {return lightingResult_;}
@@ -90,10 +92,12 @@ private:
     std::unique_ptr<ParticleSceneState,ParticleStateDeleter> particles_;
     void DrawParticles();
     void FinalizeParticles() noexcept;
+    void DrawView(bool editorView);
+    bool IsParticlePreview() const noexcept;
     void SynchronizeSprites();
     void SynchronizeUIText(const RenderSpriteFrame& frame);
     void ReportSpriteError(const std::string& message);
-    void DrawSprites();
+    void DrawSprites(RenderSpriteFrame& frame);
     void SynchronizeCamera();
     Graphics3D::Object3D* ReadyController(EntityId id) const noexcept;
     struct RenderEntry {
@@ -138,6 +142,7 @@ private:
     std::unordered_set<std::string> reportedSpriteErrors_;
     Base::ViewExtent uiOutputExtent_{};
     RenderSpriteFrame spriteFrame_;
+    RenderSpriteFrame editorSpriteFrame_;
     RenderSpriteResult spriteResult_=RenderSpriteResult::Success;
     EntityId hoveredButton_=0,pressedButton_=0;
     std::string pressedButtonScene_;
