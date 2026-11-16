@@ -433,7 +433,13 @@ void ScriptRuntime::StopInstance(Scene::EntityWorld& world, Scene::EntityId id)
 
 void ScriptRuntime::RecordFault(Scene::EntityId id,const std::string& error)
 {
-    if(errors_.size()<256 || errors_.contains(id)) errors_[id]=error.substr(0,2048);
+    if(errors_.size()<256 || errors_.contains(id)){
+        auto& recorded=errors_[id];
+        recorded=error.substr(0,2048);
+        if(faultObserver_){
+            try{faultObserver_(id,recorded);}catch(...){}
+        }
+    }
 }
 size_t ScriptRuntime::GetRunningCount() const
 {

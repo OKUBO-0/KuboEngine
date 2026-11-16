@@ -2,6 +2,7 @@
 #include "engine/editor/ControllerPendingTransactions.h"
 namespace Engine::Editor {struct ControllerRecordReport;}
 #include "Framework.h"
+#include "engine/base/utility/Logger.h"
 #include "engine/scene/entity/EntityWorld.h"
 #include "engine/physics/PhysicsWorld.h"
 #include "engine/script/ScriptRuntime.h"
@@ -63,7 +64,15 @@ public:
 	void SetEditorMode(bool enabled) { editorMode_ = enabled; editorToolsEnabled_ = enabled; }
 	void SetHubReadyEvent(void* handle) noexcept { hubReadyEvent_ = handle; hubLaunched_ = handle != nullptr; }
 	bool IsEditorMode() const { return editorMode_; }
-	void SetProjectFile(std::filesystem::path path) { projectFile_ = path.empty()?std::filesystem::path{}:std::filesystem::absolute(path).lexically_normal(); }
+	void SetProjectFile(std::filesystem::path path) {
+        auto absolute=path.empty()?std::filesystem::path{}:std::filesystem::absolute(path).lexically_normal();
+        if(absolute!=projectFile_){
+            diagnosticProject_=Base::Logger::NewScope();
+            diagnosticScene_=Base::Logger::NewScope();
+            diagnosticAssetReveal_.clear();
+        }
+        projectFile_=std::move(absolute);
+    }
 	void SetProjectAssetRoot(std::filesystem::path path) { projectAssetRoot_ = std::move(path); }
 	bool ConfigureLuaResourceLimits(Engine::Scripting::LuaResourceLimits limits,std::string& error) { return scriptRuntime_.ConfigureLuaResourceLimits(limits,error); }
 	Engine::Scripting::LuaResourceLimits GetLuaResourceLimits() const noexcept { return scriptRuntime_.GetLuaResourceLimits(); }
@@ -251,6 +260,15 @@ private:
 	void FocusEditorSelection();
 	bool DrawEntityGizmo(const Engine::Editor::DebugSceneViewportState& viewport);
 	void DrawExportWindow();
+    Base::Logger::Target DiagnosticTarget(EntityId id,std::string guid={}) const;
+    bool OpenDiagnosticEntity(const Base::Logger::Target& target,std::string& error);
+    bool OpenDiagnosticAsset(const Base::Logger::Target& target);
+    void DrawDiagnosticActions(const Base::Logger::Entry& entry);
+    void CheckSceneReferences();
+    uint64_t diagnosticProject_=Base::Logger::NewScope(),diagnosticScene_=Base::Logger::NewScope();
+    EntityId firstRuntimeDiagnosticId_=0;
+    uint64_t exportAttempt_=0;
+    std::string diagnosticAssetReveal_;
 	void DrawProjectSettingsWindow();
 	void DrawProjectInputSettings();
 	void ReloadProjectSettings();
@@ -432,7 +450,7 @@ private:
 	char exportDirectory_[1024] = "Builds/Export";
 	bool exportNative_ = false, exportNativeDebug_ = false;
 	char exportSdkDirectory_[4097]{}, exportNativeProject_[4097]{};
-	std::string exportStatus_, exportLog_;
+	std::string exportStatus_, exportLog_, exportReferenceStatus_;
 	Engine::Editor::NativeBuildSettingsSnapshot exportSettingsSnapshot_;
 	bool gitWindowOpen_ = false, gitHasResult_ = false;
 	Engine::Services::GitStatus gitStatus_;

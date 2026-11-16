@@ -22,7 +22,7 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,49> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,55> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
     {"Button On Click"},{"Button Scene Choice"},{"UI Text"},
@@ -31,7 +31,8 @@ std::array<Item,49> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Rem
     {"Play Effect Preview"},{"Pause Effect Preview"},{"Restart Effect Preview"},{"Stop Effect Preview"},
     {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
     {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"},
-    {"Add Component..."},{"Collider"},{"Day"},{"Night"},{"Reset"}}};
+    {"Add Component..."},{"Collider"},{"Day"},{"Night"},{"Reset"},{"Diagnostic Console entry"},{"Select Entity"},{"Check scene references"},{"Export saved project"},
+    {"Open Export log"},{"Retry export"}}};
 void Observe(const char* label,ImVec2 a,ImVec2 b,bool disabled){for(auto& item:items)if(!std::strcmp(item.label,label)){item.center={(a.x+b.x)/2,(a.y+b.y)/2};item.seen=true;item.disabled=disabled;item.mixed=(ImGui::GetItemFlags()&ImGuiItemFlags_MixedValue)!=0;}}
 struct GuiScope {
     ImGuiContext* previous=ImGui::GetCurrentContext();ImGuiContext* owned=ImGui::CreateContext();
@@ -258,7 +259,15 @@ public:
                     for(const char* label:{"Transform","Model","Animator","Camera","Script","Audio Source","Collider","RigidBody","Canvas","Sprite"})window->StateStorage.SetInt(window->GetID(label),0);
                 }
                 if(ImGui::FindWindowByName("Scene Environment"))ImGui::SetWindowPos("Scene Environment",{1000,10});
-                game.DrawGenericEntityEditor();ImGui::Render();
+                game.DrawGenericEntityEditor();
+                if(ImGui::FindWindowByName("Export Game"))ImGui::SetWindowPos("Export Game",{1000,765});
+                game.DrawExportWindow();
+                if(game.debugConsoleOpen_ && !Base::Logger::GetEntries().empty()){
+                    if(ImGui::FindWindowByName("Console"))ImGui::SetWindowPos("Console",{1000,400});
+                    Editor::DebugEditorManager::DrawConsole(&game.debugConsoleOpen_,
+                        [&](const Base::Logger::Entry& entry){game.DrawDiagnosticActions(entry);});
+                }
+                ImGui::Render();
             };
             const auto click=[&](const char* label,bool disabled=false){
                 frame();frame();const Item* selected=nullptr;for(const auto& item:items)if(!std::strcmp(item.label,label))selected=&item;
@@ -306,6 +315,76 @@ public:
             click("Reset");
             Need(game.IsSceneDirty() && game.editorWorld_.GetEnvironment().IsDefault(),"Environment Reset did not restore the legacy defaults and dirty the Scene");
             std::cout<<"PASS: Scene Environment Day/Night selection, Undo/Redo, Save As and playback lock\n";
+
+            Base::Logger::Clear();
+            game.sceneEnvironmentOpen_=false;
+            const auto broken=game.editorWorld_.CreateEntity("Missing Model");
+            Need(game.editorWorld_.SetModel(broken,"Assets/missing.obj"),"Broken reference fixture");
+            game.exportWindowOpen_=true;
+            click("Check scene references");
+            const auto issues=Base::Logger::GetEntries();
+            const auto issue=std::find_if(issues.rbegin(),issues.rend(),[&](const auto& entry){return entry.target.entity==broken;});
+            Need(issue!=issues.rend() && issue->message.find("missing.obj")!=std::string::npos &&
+                issue->sourceFile==root/"Assets/missing.obj","Reference check did not identify the model Entity/source");
+            game.hierarchyType_=Game::HierarchyType::Light;
+            game.genericHierarchyOpen_=game.genericInspectorOpen_=false;
+            click("Diagnostic Console entry");
+            click("Select Entity");
+            Need(game.selectedEditorEntity_==broken &&
+                game.hierarchyType_==Game::HierarchyType::All && game.genericHierarchyOpen_ && game.genericInspectorOpen_,
+                "Diagnostic navigation did not reveal the Entity through the normal selection route");
+            Need(game.SaveSceneAs(root/"entry.scene",error,true),error.c_str());
+            strcpy_s(game.exportDirectory_,"Builds/Repair");
+            using ExportState=Services::ExportJob::State;
+            const auto finishExport=[&]{
+                const auto deadline=GetTickCount64()+20000;
+                while(game.exportJob_.GetState()==ExportState::Running && GetTickCount64()<deadline){
+                    Sleep(15);
+                    frame();
+                }
+                Need(game.exportJob_.GetState()!=ExportState::Running,"Editor export exceeded the fixture deadline");
+            };
+            click("Export saved project");
+            finishExport();
+            Need(game.exportJob_.GetState()==ExportState::Failed &&
+                game.exportLog_.find("missing.obj")!=std::string::npos &&
+                !std::filesystem::exists(root/"Builds/Repair/package.json"),"Export did not refuse the missing model");
+            const auto exportEntries=Base::Logger::GetEntries();
+            Need(exportEntries.back().target.exportAttempt==game.exportAttempt_ &&
+                exportEntries.back().sourceFile==game.exportJob_.GetLogPath(),"Export failure did not publish the log target");
+            game.exportWindowOpen_=false;
+            click("Diagnostic Console entry");
+            click("Open Export log");
+            Need(game.exportWindowOpen_,"Console did not reopen Export Game");
+
+            const auto repaired=root/"Assets/repaired.obj";
+            {std::ofstream out(repaired);out<<"v 0 0 0\nv 0 1 0\nv 1 0 0\nf 1 2 3\n";}
+            Need(game.projectAssets_.Scan(root/"Assets",error),error.c_str());
+            const auto guid=game.projectAssets_.FindByPath(repaired)->guid;
+            const auto assetTarget=game.DiagnosticTarget(broken,guid);
+            Need(game.OpenDiagnosticAsset(assetTarget) && game.diagnosticAssetReveal_==guid,
+                "Diagnostic Asset did not enter the browser reveal route");
+            Need(game.editorWorld_.SetModel(broken,"Assets/repaired.obj",guid),"Repair failed");
+            click("Check scene references");
+            Need(game.exportReferenceStatus_.starts_with("Open Scene references resolved"),"Repaired reference did not pass recheck");
+            Need(game.SaveGenericDocument(),"Repaired reference did not save");
+            click("Retry export");
+            finishExport();
+            Need(game.exportJob_.GetState()==ExportState::Succeeded &&
+                std::filesystem::is_regular_file(root/"Builds/Repair/KuboPlayer.exe"),game.exportLog_.c_str());
+            Need(game.PlayEditorScene(error),error.c_str());
+            Need(!game.OpenDiagnosticEntity(issue->target,error),"Console selected an Entity during Play");
+            const auto spawned=game.editorWorld_.CreateEntity("Transient");
+            Need(!game.DiagnosticTarget(spawned).entity && game.DiagnosticTarget(broken).entity==broken,
+                "Play diagnostics did not distinguish authored and transient Entities");
+            Need(game.StopEditorPlayback(error),error.c_str());
+            Need(game.OpenDiagnosticEntity(issue->target,error),"Authored playback diagnostic became unusable after Stop");
+            EntityWorld another;another.CreateEntity("Other");const auto reused=another.CreateEntity("Reused ID");
+            Need(reused==broken,"Stale diagnostic fixture no longer reuses an ID");
+            game.CommitGenericDocument(std::move(another),root/"other.scene");
+            Need(!game.OpenDiagnosticEntity(issue->target,error) && game.OpenDiagnosticAsset(assetTarget),
+                "Old Scene diagnostic lost project Asset navigation or selected a reused Entity ID");
+            std::cout<<"PASS: missing reference diagnostic, selection and asset reveal, repair, failed export and retry, Play/Stop, stale Scene identity and reused ID\n";
             passed=true;std::cout<<"PASS: actual Game headless Inspector mouse Add/Remove/checkbox, focused Ctrl+Z/Y and grouped history/dirty/Save As, runtime preview+document Stop restoration, pending-document/constructed recovery guards, source+selection preservation (not Win32/GPU/physical UI QA)\n";
         }catch(...){std::cerr<<"GAME_RENDER_INSPECTOR_FIXTURE_RETAINED="<<root<<'\n';throw;}
         if(passed){std::error_code ignored;std::filesystem::remove_all(root,ignored);}
@@ -345,7 +424,15 @@ public:
                     for(const char* label:{"Canvas","Sprite"})window->StateStorage.SetInt(window->GetID(label),1);
                 }
                 if(ImGui::FindWindowByName("Scene Environment"))ImGui::SetWindowPos("Scene Environment",{1000,10});
-                game.DrawGenericEntityEditor();ImGui::Render();
+                game.DrawGenericEntityEditor();
+                if(ImGui::FindWindowByName("Export Game"))ImGui::SetWindowPos("Export Game",{1000,765});
+                game.DrawExportWindow();
+                if(game.debugConsoleOpen_ && !Base::Logger::GetEntries().empty()){
+                    if(ImGui::FindWindowByName("Console"))ImGui::SetWindowPos("Console",{1000,400});
+                    Editor::DebugEditorManager::DrawConsole(&game.debugConsoleOpen_,
+                        [&](const Base::Logger::Entry& entry){game.DrawDiagnosticActions(entry);});
+                }
+                ImGui::Render();
             };
             const auto click=[&](const char* label,bool disabled=false){
                 frame();frame();const Item* selected=nullptr;for(const auto& item:items)if(!std::strcmp(item.label,label))selected=&item;

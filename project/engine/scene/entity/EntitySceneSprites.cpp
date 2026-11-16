@@ -53,9 +53,9 @@ std::optional<Scripting::ScriptSceneTransition> EntityScene::UpdateUIButtons(con
     if(clicked)return Scripting::ScriptSceneTransition{"guid:"+selected->buttonSceneGuid,0};
     return std::nullopt;
 }
-void EntityScene::ReportSpriteError(const std::string& message) {
-    if(reportedSpriteErrors_.size()<256 && reportedSpriteErrors_.insert(message).second)
-        Base::Logger::Log("Entity Sprite: "+message,Base::Logger::Level::Error);
+void EntityScene::ReportSpriteError(EntityId id,const std::string& guid,const std::string& message) {
+    if(reportedSpriteErrors_.size()<256 && reportedSpriteErrors_.insert(std::to_string(id)+":"+message).second)
+        LogEntityDiagnostic(id,guid,"Entity Sprite: "+message);
 }
 void EntityScene::SynchronizeSprites() {
     RenderSpriteFrame frame;
@@ -76,7 +76,7 @@ void EntityScene::SynchronizeSprites() {
         std::string error;
         const auto path=Assets::ResolveSpriteReference(entity->sprite,assets_,projectPaths_.Root(),error);
         if(path.empty()){
-            sprites_.erase(item.entity);ReportSpriteError(error);continue;
+            sprites_.erase(item.entity);ReportSpriteError(item.entity,entity->sprite.assetGuid,error);continue;
         }
         const auto asset=Base::PathToUtf8(path);auto found=sprites_.find(item.entity);
         if(found!=sprites_.end() && found->second.asset==asset && found->second.guid==entity->sprite.assetGuid)continue;
@@ -87,7 +87,7 @@ void EntityScene::SynchronizeSprites() {
             sprites_.insert_or_assign(item.entity,std::move(candidate));
         }catch(const std::exception& exception){
             // A failed new identity must not display the old image.
-            sprites_.erase(item.entity);ReportSpriteError(exception.what());
+            sprites_.erase(item.entity);ReportSpriteError(item.entity,entity->sprite.assetGuid,exception.what());
         }
     }
     SynchronizeUIText(frame);
@@ -119,7 +119,7 @@ void EntityScene::SynchronizeUIText(const RenderSpriteFrame& frame) {
         auto found=texts_.find(item.entity);
         if(area>maxTextPixels-usedPixels){
             if(found!=texts_.end()){texts_.erase(found);++retiredTextTextures_;}
-            ReportSpriteError("UI text texture budget exceeded");
+            ReportSpriteError(item.entity,{},"UI text texture budget exceeded");
             continue;
         }
         usedPixels+=area;
@@ -138,7 +138,7 @@ void EntityScene::SynchronizeUIText(const RenderSpriteFrame& frame) {
             texts_.emplace(item.entity,std::move(entry));
         }catch(const std::exception& error){
             ++retiredTextTextures_;
-            ReportSpriteError(error.what());
+            ReportSpriteError(item.entity,{},error.what());
         }
     }
 }

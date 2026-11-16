@@ -1,5 +1,6 @@
 #include "AssetSceneDependencies.h"
 #include "SpriteReference.h"
+#include "MaterialAsset.h"
 #include "../base/BoundedJson.h"
 #include "../base/ProjectContext.h"
 #include <set>
@@ -165,6 +166,33 @@ void AppendProjectAssetDependencies(AssetDependencies& graph,const AssetRegistry
         check();
     }catch(const std::exception& error){check();graph.issues.push_back({"project-asset-inventory",error.what()});}
 }
+std::vector<WorldAssetIssue> InspectWorldAssetReferences(const Scene::EntityWorld& world,const AssetRegistry& registry,
+    const std::filesystem::path& projectRoot)
+{
+    std::vector<WorldAssetIssue> issues;
+    for(const auto& entity:world.GetEntities()){
+        SceneDependencyDetail::Visit(entity,SceneAssetReferenceScope::All,[&](const SceneDependencyDetail::Reference& ref){
+            if(issues.size()>=MaximumWorldAssetIssues || (ref.hint.empty() && ref.guid.empty()))return;
+            const AssetRecord* asset=nullptr;
+            std::filesystem::path source;
+            std::string error;
+            try {
+                if(!SceneDependencyDetail::Resolve(ref,registry,projectRoot,source,asset))return;
+                if(!std::filesystem::is_regular_file(source))error="Asset source is missing";
+                else if(ref.type==AssetType::Material){
+                    Scene::MaterialComponent material;
+                    if(ReadMaterialAsset(source,material,error))return;
+                }else return;
+            } catch(const std::exception& exception){error=exception.what();}
+            const std::string reference(ref.guid.empty()?ref.hint:ref.guid);
+            issues.push_back({entity.id,std::string(ref.guid),std::string(ref.label)+" reference on Entity "+
+                std::to_string(entity.id)+" ("+reference+"): "+error,std::move(source)});
+        });
+        if(issues.size()>=MaximumWorldAssetIssues)break;
+    }
+    return issues;
+}
+
 std::string OpenWorldAssetMoveRisk(const Scene::EntityWorld& world,const AssetRegistry& registry,
     const std::filesystem::path& projectRoot,const std::string& guid,SceneAssetReferenceScope scope){
     if(scope!=SceneAssetReferenceScope::All && scope!=SceneAssetReferenceScope::SpriteOnly)return "Unknown Scene reference scope";

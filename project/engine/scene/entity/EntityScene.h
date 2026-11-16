@@ -7,6 +7,7 @@
 #include "RenderSpriteFrame.h"
 #include "RenderParticleFrame.h"
 #include "../../assets/AssetRegistry.h"
+#include "../../base/utility/Logger.h"
 #include "../../assets/AssetRevision.h"
 #include "../../editor/ScenePicking.h"
 #include "../../base/ProjectPaths.h"
@@ -51,6 +52,7 @@ public:
         std::optional<Vector2> point,Base::ViewExtent gameOutput);
     void CancelUIButtons() noexcept;
     void SynchronizeModels(float deltaSeconds);
+    void SetDiagnosticScope(uint64_t project,uint64_t scene,EntityId firstTransientEntity) noexcept;
     // Explicit host intent. Zero delta does not mean Editing/Stop; one call per
     // host frame advances fixed Particle ticks, independently of view draws.
     void UpdateParticles(float deltaSeconds,bool running,bool paused=false,EntityId previewEntity=0,unsigned previewBurst=0);
@@ -105,7 +107,11 @@ private:
     bool IsParticlePreview() const noexcept;
     void SynchronizeSprites();
     void SynchronizeUIText(const RenderSpriteFrame& frame);
-    void ReportSpriteError(const std::string& message);
+    void ReportSpriteError(EntityId id,const std::string& guid,const std::string& message);
+    void LogEntityDiagnostic(EntityId id,const std::string& guid,const std::string& message,
+        Base::Logger::Level level=Base::Logger::Level::Error) const;
+    uint64_t diagnosticProject_=0,diagnosticScene_=0;
+    EntityId firstTransientEntity_=0;
     void DrawSprites(RenderSpriteFrame& frame);
     void SynchronizeCamera();
     const MaterialComponent& ResolveMaterial(const EntityRecord& entity);

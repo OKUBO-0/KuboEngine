@@ -100,6 +100,7 @@ public:
     size_t GetRegisteredCount() const { return scripts_.size(); }
     size_t GetRunningCount() const;
     std::string GetLastError(Scene::EntityId id) const;
+    void SetFaultObserver(std::function<void(Scene::EntityId,const std::string&)> observer){faultObserver_=std::move(observer);}
     // Last source-load attempt, not a live reference validation or hook fault.
     std::string GetAssetLoadError(const std::string& registrationKey) const;
     static std::string DescribeLoadFailure(Scene::EntityId id,const std::string& reference,const std::string& error);
@@ -134,6 +135,7 @@ private:
     std::unordered_map<std::string, RegisteredScript> scripts_;
     std::unordered_map<Scene::EntityId, Instance> instances_;
     std::unordered_map<Scene::EntityId, std::string> errors_;
+    std::function<void(Scene::EntityId,const std::string&)> faultObserver_;
     std::unordered_map<std::string, FailedLoad> failedLoads_;
     uint64_t nextRevision_ = 1;
     Scene::EntityId nextLuaStart_ = 0;

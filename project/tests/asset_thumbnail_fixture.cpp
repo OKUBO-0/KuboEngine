@@ -55,6 +55,9 @@ public:
     static void Refresh(Game& game,const fs::path& root){game.assetImportJob_.CancelAndWait();std::string error;Need(game.projectAssets_.Scan(root/"Assets",error),error);}
     static Assets::AssetRecord Asset(const Game& game,const std::string& guid){const auto* asset=game.projectAssets_.FindByGuid(guid);Need(asset,"Browser fixture lost GUID");return *asset;}
     static Editor::AssetThumbnailView View(Game& game,const std::string& guid){return game.assetThumbnails_.Request(Asset(game,guid));}
+    static bool RevealFromDiagnostic(Game& game,const std::string& guid){
+        return game.OpenDiagnosticAsset(game.DiagnosticTarget(0,guid));
+    }
     static size_t Cached(const Game& game){return game.assetThumbnails_.CachedCount();}
     static size_t AssetCount(const Game& game) { return game.projectAssets_.GetAssets().size(); }
     static std::string GuidAt(const Game& game, const fs::path& path) {
@@ -68,7 +71,7 @@ public:
 namespace {
 class Checks final:public Scene::Game {
     static constexpr unsigned bulkAssetCount_ = 512;
-    static constexpr unsigned finishedPhase_ = 10;
+    static constexpr unsigned finishedPhase_ = 11;
     fs::path root_,image_,model_;std::string imageGuid_,modelGuid_,badGuid_,world_,sceneFile_,modelFile_;
     std::string lastBulkGuid_;
     unsigned frames_=0,phase_=0,click_=0,wait_=0,indices_=0;bool passed_=false,retired_=false,sawPending_=false;
@@ -111,6 +114,7 @@ class Checks final:public Scene::Game {
         } else {
             Need(rows.contains(lastBulkGuid_) && !rows.contains(imageGuid_), "Asset Browser could not reach the last row");
         }
+        if(phase_==10)Need(rows.at(lastBulkGuid_).selected,"Diagnostic reveal did not select the nested Asset");
         std::cout << "BROWSER_LARGE_LIST phase=" << phase_ << " total=" << total
             << " submitted=" << rows.size() << " visible_budget=" << visibleBudget << '\n';
         ++phase_;
@@ -185,6 +189,7 @@ public:
             auto* list = AssetList();
             ImGui::SetScrollY(list, phase_ == 8 ? list->ScrollMax.y : 0.0f);
         }
+        if(phase_==10)Need(Access::RevealFromDiagnostic(*this,lastBulkGuid_),"Diagnostic did not request the nested Asset");
         rows.clear();Game::Update();Need(Access::World(*this)==world_&&Access::History(*this)==0&&!IsSceneDirty(),"Browser changed authored World/history/document");
         if(phase_>=3&&phase_<=6&&wait_==0)sawPending_=!rows.contains(imageGuid_)||!rows.at(imageGuid_).texture;
         ++wait_;

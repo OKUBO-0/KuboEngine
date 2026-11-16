@@ -23,6 +23,17 @@ int main()
     Require(Logger::GetEntries().back().sourceFile.empty(), "Relative source path accepted");
     Logger::Clear();
     Require(Logger::GetEntries().empty() && snapshot.size() == 3, "Clear must not invalidate snapshots");
+    const auto project=Logger::NewScope(),scene=Logger::NewScope();
+    const std::string guid(32,'a');
+    Logger::LogDiagnostic("asset problem",Logger::Level::Error,{project,scene,7,guid},source);
+    const auto stamped=Logger::GetEntries().back();
+    Require(project && scene && project!=scene && stamped.target.project==project &&
+        stamped.target.scene==scene && stamped.target.entity==7 && stamped.target.assetGuid==guid &&
+        stamped.sourceFile==source,"Diagnostic target or source location was not preserved");
+    Logger::LogDiagnostic("malformed",Logger::Level::Warning,{project,0,7,"untrusted"});
+    const auto sanitized=Logger::GetEntries().back().target;
+    Require(sanitized.project==project && !sanitized.scene && !sanitized.entity &&
+        sanitized.assetGuid.empty(),"Unscoped Entity or malformed GUID accepted");
     std::vector<std::thread> writers;
     for (int i = 0; i < 4; ++i) {
         writers.emplace_back([] { for (int n = 0; n < 400; ++n) { Logger::Log("parallel"); } });

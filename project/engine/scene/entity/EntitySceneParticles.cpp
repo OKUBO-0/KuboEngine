@@ -73,7 +73,7 @@ void EntityScene::UpdateParticles(float deltaSeconds,bool running,bool paused,En
                 ParticleSceneState::Entry prepared;prepared.signature=signature;prepared.name="__entity_particles/"+std::to_string(state.scope)+"/"+std::to_string(++state.generation)+"/"+std::to_string(item.id);prepared.burst=state.eventPreview?0:item.settings.burst;
                 prepared.owner=manager->CreateOwnedParticleGroup(prepared.name,Base::PathToUtf8(resolved),Geometry(item.settings.geometry),std::make_unique<AuthoredParticleBehavior>(item.settings),item.settings.capacity);prepared.owner.SetLifetimeFade(false);
                 static_assert(std::is_nothrow_move_assignable_v<ParticleSceneState::Entry>);entry=std::move(prepared);
-            }catch(const std::exception& failure){entry.signature=signature;state.status.result=RenderParticleResult::AssetFailure;Base::Logger::Log("Particle Entity "+std::to_string(item.id)+": "+failure.what(),Base::Logger::Level::Error);}
+            }catch(const std::exception& failure){entry.signature=signature;state.status.result=RenderParticleResult::AssetFailure;LogEntityDiagnostic(item.id,item.settings.assetGuid,"Particle Entity "+std::to_string(item.id)+": "+failure.what());}
         }
         if(previewEntity){
             if(auto it=state.entries.find(previewEntity);it!=state.entries.end() && it->second.owner)

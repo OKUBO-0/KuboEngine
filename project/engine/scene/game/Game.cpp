@@ -130,6 +130,11 @@ void Game::Initialize()
 	}
 
 	scriptRuntime_.SetAssetOwner(projectAssets_,GetProjectRoot());
+    if(editorMode_)scriptRuntime_.SetFaultObserver([this](EntityId id,const std::string& error){
+        const auto* entity=editorWorld_.Find(id);
+        Base::Logger::LogDiagnostic("Lua fault on Entity "+std::to_string(id)+": "+error,Base::Logger::Level::Error,
+            DiagnosticTarget(id,entity && entity->hasScript?entity->script.assetGuid:std::string{}));
+    });
 	// シーンの変更
 	// "TITLE"
 	// "GAMEPLAY"
@@ -319,11 +324,19 @@ void Game::Update()
 #endif // _DEBUG
 	scriptAudio_.Synchronize(scriptRuntime_,genericWorldReady_ && (!editorMode_ || (!prefabRecoveryBlocked_ && worldPlayback_.GetState()!=WorldPlayback::State::Editing)),
 		editorMode_ && worldPlayback_.GetState()==WorldPlayback::State::Paused,
-		[](uint64_t id,const std::string& error) {Engine::Base::Logger::Log("Editor audio Entity "+std::to_string(id)+": "+error,Engine::Base::Logger::Level::Error);});
+        [this](uint64_t id,const std::string& error){
+            Base::Logger::LogDiagnostic("Script audio on Entity "+std::to_string(id)+": "+error,
+                Base::Logger::Level::Error,DiagnosticTarget(id));
+        });
 	if (auto* scene = dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene())) {
 		entityAudio_.Synchronize(editorWorld_,projectAssets_,GetProjectRoot(),genericWorldReady_ && (!editorMode_ || (!prefabRecoveryBlocked_ && worldPlayback_.GetState()!=WorldPlayback::State::Editing)),
 			editorMode_ && worldPlayback_.GetState()==WorldPlayback::State::Paused,
-			[](uint64_t id,const std::string& error) {Engine::Base::Logger::Log("Editor AudioSource Entity "+std::to_string(id)+": "+error,Engine::Base::Logger::Level::Error);});
+            [this](uint64_t id,const std::string& error){
+                const auto* entity=editorWorld_.Find(id);
+                Base::Logger::LogDiagnostic("AudioSource on Entity "+std::to_string(id)+": "+error,
+                    Base::Logger::Level::Error,DiagnosticTarget(id,entity && entity->hasAudio?entity->audio.assetGuid:std::string{}));
+            });
+        scene->SetDiagnosticScope(diagnosticProject_,runtimeSceneChanged_?0:diagnosticScene_,firstRuntimeDiagnosticId_);
 		scene->SetSceneAspectRatio(editorMode_ && offscreenRenderManager->HasEditorView() ? offscreenRenderManager->GetEditorViewExtent().Aspect() : GetGameOutputExtent().Aspect());
 		scene->SetUIOutputExtent(GetGameOutputExtent());
 		UpdateEditorViewCamera();
@@ -470,7 +483,8 @@ void Game::DrawDebugEditorShell()
 	}
 	else sceneResizeSchedule_.Cancel();
 	if (!gizmoVisited && gizmoDragActive_) { entityHistory_.Commit(); gizmoDragActive_ = false;groupGizmoPivotValid_=false; }
-	Engine::Editor::DebugEditorManager::DrawConsole(&debugConsoleOpen_);
+    Engine::Editor::DebugEditorManager::DrawConsole(&debugConsoleOpen_,
+        [this](const Base::Logger::Entry& entry){DrawDiagnosticActions(entry);});
 	if (genericSceneSelected_ && debugGameViewOpen_) {
 		const auto gameViewport = Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugGameViewOpen_, [this] { const auto output=GetGameOutputExtent();ImGui::Text("Output: %u x %u",output.width,output.height);ImGui::TextUnformatted("Authored game camera; simulation follows Play/Pause. Hover image for script input."); },
 			"Game", offscreenRenderManager->GetImGuiSceneTextureHandle().ptr);
@@ -495,7 +509,7 @@ void Game::DrawDebugEditorShell()
 	Engine::Editor::DebugEditorManager::DrawAssetBrowser(&debugAssetBrowserOpen_, projectAssetRoot_, &projectAssets_, &assetImportJob_,
 		assetRefreshBlockedReason,
         worldPlayback_.GetState() == WorldPlayback::State::Editing && !documentState_.HasPendingAction(), GetProjectRoot(), projectFile_,
-        [this](const std::string& guid){return CheckAssetMove(guid);}, &assetThumbnails_, std::move(openAssetScene));
+        [this](const std::string& guid){return CheckAssetMove(guid);}, &assetThumbnails_, std::move(openAssetScene),&diagnosticAssetReveal_);
 
 	if (debugStatsOpen_) {
 		ImGui::Begin("統計", &debugStatsOpen_);
@@ -1557,6 +1571,84 @@ bool Game::SaveExportSettings()
 	exportStatus_ = "Saved UserSettings/native-build.json (local authoring only)"; return true;
 }
 
+Base::Logger::Target Game::DiagnosticTarget(EntityId id,std::string guid) const
+{
+    const bool authored=!runtimeSceneChanged_ && (!firstRuntimeDiagnosticId_ || id<firstRuntimeDiagnosticId_);
+    return {diagnosticProject_,diagnosticScene_,authored?id:0,std::move(guid)};
+}
+
+bool Game::OpenDiagnosticEntity(const Base::Logger::Target& target,std::string& error)
+{
+    if(target.project!=diagnosticProject_ || target.scene!=diagnosticScene_ || !target.entity ||
+        !genericSceneSelected_ || !editorWorld_.Find(target.entity)){
+        error="The diagnostic Entity is unavailable in the current Scene";
+        return false;
+    }
+    if(!SelectEditorEntity(target.entity,false,false,error))return false;
+    hierarchySearch_[0]='\0';
+    hierarchyType_=HierarchyType::All;
+    genericHierarchyOpen_=genericInspectorOpen_=true;
+    return true;
+}
+
+bool Game::OpenDiagnosticAsset(const Base::Logger::Target& target)
+{
+    if(target.project!=diagnosticProject_ || target.assetGuid.empty() || !projectAssets_.FindByGuid(target.assetGuid))return false;
+    diagnosticAssetReveal_=target.assetGuid;
+    debugAssetBrowserOpen_=true;
+    return true;
+}
+
+void Game::DrawDiagnosticActions(const Base::Logger::Entry& entry)
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+    const auto& target=entry.target;
+    if(target.project!=diagnosticProject_)return;
+    if(target.entity && target.scene==diagnosticScene_ && genericSceneSelected_){
+        const bool present=editorWorld_.Find(target.entity)!=nullptr && !runtimeSceneChanged_;
+        ImGui::BeginDisabled(!present || worldPlayback_.GetState()!=WorldPlayback::State::Editing || gizmoDragActive_ ||
+            documentState_.HasPendingAction() || assetImportJob_.IsMovePending());
+        if(Engine::Editor::RenderInspectorButton("Select Entity")){
+            std::string error;
+            if(OpenDiagnosticEntity(target,error))ImGui::SetWindowFocus("Entity Inspector");
+            else genericWorldStatus_=std::move(error);
+        }
+        ImGui::EndDisabled();
+        if(ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))ImGui::SetTooltip(
+            present?"Select Entity %llu in the open Scene. Stop playback to edit.":"Entity %llu is unavailable.",
+            static_cast<unsigned long long>(target.entity));
+    }
+    if(!target.assetGuid.empty()){
+        ImGui::BeginDisabled(!projectAssets_.FindByGuid(target.assetGuid));
+        if(Engine::Editor::RenderInspectorButton("Reveal Asset"))OpenDiagnosticAsset(target);
+        ImGui::EndDisabled();
+        if(ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))ImGui::SetTooltip("Asset GUID %s",target.assetGuid.c_str());
+    }
+    if(target.exportAttempt && target.exportAttempt==exportAttempt_ &&
+        Engine::Editor::RenderInspectorButton("Open Export log"))exportWindowOpen_=true;
+#else
+    (void)entry;
+#endif
+}
+
+void Game::CheckSceneReferences()
+{
+    try {
+        const auto issues=Assets::InspectWorldAssetReferences(editorWorld_,projectAssets_,GetProjectRoot());
+        for(const auto& issue:issues){
+            Base::Logger::LogDiagnostic(issue.message,Base::Logger::Level::Error,
+                DiagnosticTarget(issue.entity,issue.guid),issue.source);
+        }
+        exportReferenceStatus_=issues.empty()?"Open Scene references resolved. Export also checks the saved project and its dependencies.":
+            std::to_string(issues.size())+(issues.size()>=Assets::MaximumWorldAssetIssues?"+":"")+
+            " reference issues in the open Scene. Select a Console entry to locate its Entity.";
+        debugConsoleOpen_=!issues.empty() || debugConsoleOpen_;
+    }catch(const std::exception& error){
+        exportReferenceStatus_="Reference check failed: "+std::string(error.what());
+        Base::Logger::Log(exportReferenceStatus_,Base::Logger::Level::Error);
+    }
+}
+
 void Game::DrawExportWindow()
 {
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
@@ -1568,6 +1660,12 @@ void Game::DrawExportWindow()
 			state == Engine::Services::ExportJob::State::Cancelled ? "Export cancelled; inspect any partial output and retained temporary build stage" :
 			"Export failed (exit " + std::to_string(exportJob_.GetExitCode()) + ")";
 		exportLog_ = exportJob_.ReadLog();
+        if(state==Services::ExportJob::State::Failed){
+            auto target=DiagnosticTarget(0);
+            target.exportAttempt=exportAttempt_;
+            Base::Logger::LogDiagnostic(exportStatus_+". Open the Export log for details.",
+                Base::Logger::Level::Error,std::move(target),exportJob_.GetLogPath());
+        }
 	}
 	if (!exportWindowOpen_) return;
 	ImGui::SetNextWindowSize({620.0f, 420.0f}, ImGuiCond_FirstUseEver);
@@ -1603,8 +1701,17 @@ void Game::DrawExportWindow()
 			else if (exportNative_ && (!exportSdkDirectory_[0] || !exportNativeProject_[0]))
 				unavailable = "Choose the Runtime SDK and native .vcxproj paths.";
 		}
+        if(genericSceneSelected_ && genericWorldReady_){
+            ImGui::BeginDisabled(playing || EditorDocumentBusyReason()!=nullptr);
+            if(Engine::Editor::RenderInspectorButton("Check scene references"))CheckSceneReferences();
+            ImGui::EndDisabled();
+            if(!exportReferenceStatus_.empty())ImGui::TextWrapped("%s",exportReferenceStatus_.c_str());
+        }
 		ImGui::BeginDisabled(unavailable != nullptr);
-		if (ImGui::Button(exportNative_ ? "Build and export native game" : "Export saved project")) {
+        const bool retry=state==Engine::Services::ExportJob::State::Failed;
+        const char* exportLabel=exportNative_?(retry?"Retry native build and export":"Build and export native game"):
+            (retry?"Retry export":"Export saved project");
+		if (Engine::Editor::RenderInspectorButton(exportLabel)) {
 			try {
 				if(!CheckPrefabRecovery(exportStatus_))throw std::runtime_error(exportStatus_);
 				const auto projectPath = [&](const char* text) {
@@ -1628,6 +1735,8 @@ void Game::DrawExportWindow()
 					started = exportJob_.Start(projectFile_, output, installation / "tools/package_project.ps1", player, exportStatus_);
 				}
 				if (started) {
+                    exportAttempt_=Base::Logger::NewScope();
+                    exportReferenceStatus_.clear();
 					exportStatus_ = exportNative_ ? "Building and exporting native game..." : "Exporting...";
 					exportLog_.clear();
 				}
@@ -1662,6 +1771,8 @@ void Game::InitializeGenericEditorWorld()
 {
 	entityHistory_.Clear();
 	editorWorld_.Clear();
+    diagnosticScene_=Base::Logger::NewScope();
+    exportReferenceStatus_.clear();
 	const auto root = editorWorld_.CreateEntity("Gameplay World");
 	const auto player = editorWorld_.CreateEntity("Player", root);
 	genericPlayerEntity_ = player;
@@ -3244,6 +3355,8 @@ void Game::CommitGenericDocument(EntityWorld candidate,const std::filesystem::pa
 	const bool differentDocument = genericWorldPath_!=path;
 	mcpSession_.Stop();mcpStatus_="MCP disabled after Scene change; enable again for the new document";
 	scriptRuntime_.Shutdown(editorWorld_);scriptAudio_.Clear();entityAudio_.Clear();editorWorld_=std::move(candidate);genericWorldPath_=path;
+    diagnosticScene_=Base::Logger::NewScope();
+    exportReferenceStatus_.clear();
 	entityHistory_.Clear();documentState_.Opened(editorWorld_,path);physicsWorld_.ResetSimulation();
 	if (differentDocument) {
 		ResetEditorGridDefault();
@@ -3330,6 +3443,7 @@ void Game::ReloadGenericDocument()
 	std::string error;
 	if(!CheckPrefabRecovery(error)){genericWorldStatus_=error;return;}
 	if (!editorWorld_.Load(genericWorldPath_, error)) { genericWorldStatus_ = "Load failed: " + error; return; }
+	diagnosticScene_=Base::Logger::NewScope();
 	entityHistory_.Clear();
 	documentState_.Opened(editorWorld_, genericWorldPath_);
 	physicsWorld_.ResetSimulation();
@@ -3824,6 +3938,8 @@ bool Game::ApplyEditorHistory(bool redo,std::string& error)
 		: entityHistory_.Undo(editorWorld_, editorSelection_, error,&documentState_);
 	std::string diagnostic;const bool scanned=RefreshHistoryRecovery(diagnostic);
 	if (!applied) { genericWorldStatus_ = error;if(prefabRecoveryBlocked_)genericWorldStatus_+="; Prefab Recovery blocks further authoring";return false; }
+    diagnosticScene_=Base::Logger::NewScope();
+    exportReferenceStatus_.clear();
 	selectedEditorEntity_=editorSelection_.Primary();
 	physicsWorld_.ResetSimulation();
 	genericPlayerEntity_ = 0;
@@ -3848,6 +3964,7 @@ bool Game::PlayEditorScene(std::string& error)
 		if(!worldPlayback_.Play(editorWorld_))throw std::runtime_error("Editor playback could not start");
 		entityHistory_.Swap(settled);
 		if(starting){
+            firstRuntimeDiagnosticId_=editorWorld_.AllocationHighWatermark();
 			authoredSelection_=selectedEditorEntity_;
 			particlePreviewEntity_=0;
 			clipPreview_={};
@@ -3860,6 +3977,7 @@ bool Game::PlayEditorScene(std::string& error)
 bool Game::StopEditorPlayback(std::string& error)
 {
 	if (!worldPlayback_.Stop(editorWorld_,scriptRuntime_,physicsWorld_,error)) return false;
+    firstRuntimeDiagnosticId_=0;
 	if (runtimeSceneChanged_) {
 		if (auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))
 			scene->ResetWorldRenderState();

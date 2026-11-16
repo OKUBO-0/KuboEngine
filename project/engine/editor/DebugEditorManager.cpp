@@ -32,7 +32,7 @@
 
 namespace Engine::Editor {
 
-void DebugEditorManager::DrawConsole(bool* open)
+void DebugEditorManager::DrawConsole(bool* open,const std::function<void(const Base::Logger::Entry&)>& actions)
 {
 	if (open && !*open) {
 		return;
@@ -81,7 +81,8 @@ void DebugEditorManager::DrawConsole(bool* open)
 	if (copy) for (const auto* entry : matches) {
 		copiedText += "[" + std::string(Logger::GetLevelName(entry->level)) + "] " + entry->message + '\n';
 	}
-	const float detailHeight = selected ? (std::min)(110.0f,ImGui::GetContentRegionAvail().y * 0.45f) : 0.0f;
+    const bool actionable=selected && selected->target.project;
+	const float detailHeight = selected ? (std::min)(actionable?150.0f:110.0f,ImGui::GetContentRegionAvail().y * 0.5f) : 0.0f;
 	if (ImGui::BeginChild("ConsoleEntries", {0,-detailHeight}, 0, ImGuiWindowFlags_HorizontalScrollbar)) {
 		const bool follow = jumpToLatest || (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 1.0f);
 		if (matches.empty()) ImGui::TextDisabled(entries.empty() ? "No log entries." : "No matching log entries.");
@@ -100,6 +101,9 @@ void DebugEditorManager::DrawConsole(bool* open)
 			if (ImGui::Selectable("##LogEntry",entry.sequence == selectedSequence,0,{ImGui::CalcTextSize(line.c_str(),nullptr,false).x,0})) {
 				selectedSequence = entry.sequence;
 			}
+#if defined(KUBO_APPLICATION_CHECKS)
+            if(entry.target.project)ObserveRenderInspectorChecks("Diagnostic Console entry");
+#endif
 			ImGui::GetWindowDrawList()->AddText(start,ImGui::GetColorU32(ImGuiCol_Text),line.c_str());
 			ImGui::PopStyleColor();
 			ImGui::PopID();
@@ -125,6 +129,7 @@ void DebugEditorManager::DrawConsole(bool* open)
 				ImGui::TextWrapped("%s",Engine::Base::PathToUtf8(selected->sourceFile).c_str());
 				if (folderErrorSequence == selected->sequence) ImGui::TextDisabled("The source folder could not be opened.");
 			}
+            if(actionable && actions)actions(*selected);
 			ImGui::TextWrapped("%s",selected->message.c_str());
 		}
 		ImGui::EndChild();
@@ -164,7 +169,7 @@ static std::vector<std::filesystem::path> PickImportFiles(const std::filesystem:
 void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::path& projectAssetRoot, Engine::Assets::AssetRegistry* sharedRegistry,
     Engine::Assets::AssetImportJob* sharedJob, const char* refreshBlockedReason, bool allowMoves, const std::filesystem::path& owningProjectRoot,
     const std::filesystem::path& projectFile, std::function<std::string(const std::string&)> moveGuard, AssetThumbnailCache* thumbnails,
-    std::function<void(const std::filesystem::path&)> openScene)
+    std::function<void(const std::filesystem::path&)> openScene,std::string* requestedReveal)
 {
 	const bool allowRefresh = !refreshBlockedReason;
 	static char search[128] = {};
@@ -227,8 +232,19 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 	}
 	// Consume completion even when hidden, but do not schedule new hidden-window work.
 	if (open && !*open) return;
+    if(requestedReveal && !requestedReveal->empty())ImGui::SetNextWindowFocus();
 	ImGui::SetNextWindowSize({620.0f, 420.0f}, ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Asset Browser", open)) { ImGui::End(); return; }
+    if(requestedReveal && !requestedReveal->empty()){
+        if(const auto* asset=registry.FindByGuid(*requestedReveal)){
+            selectedGuid=revealGuid=asset->guid;
+            const auto slash=asset->relativePath.find_last_of('/');
+            folder=slash==std::string::npos?std::string{}:asset->relativePath.substr(0,slash);
+            type=0;
+            search[0]='\0';
+        }
+        requestedReveal->clear();
+    }
 	ImGui::SetNextItemWidth((std::min)(250.0f,ImGui::GetContentRegionAvail().x * 0.65f));
 	ImGui::InputTextWithHint("##AssetSearch","Search in this folder",search,sizeof(search));
 	ImGui::SameLine(); ImGui::SetNextItemWidth((std::min)(140.0f,ImGui::GetContentRegionAvail().x));

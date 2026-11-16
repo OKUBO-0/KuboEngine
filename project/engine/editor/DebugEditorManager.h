@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector2.h"
+#include "../base/utility/Logger.h"
 #include <cstddef>
 #include <functional>
 #include <filesystem>
@@ -93,12 +94,12 @@ public:
 	static void SaveWindowItems(const DebugEditorMenuItem* items, size_t itemCount);
 	static DebugSceneViewportState DrawSceneViewport(bool* open, std::function<void()> toolbar = {}, const char* title = "Scene", uint64_t textureHandle = 0,
 		std::function<void(Vector2)> onAvailable = {}, std::function<bool(const DebugSceneViewportState&)> overlay = {});
-	static void DrawConsole(bool* open);
+    static void DrawConsole(bool* open,const std::function<void(const Base::Logger::Entry&)>& actions={});
 	static void DrawAssetBrowser(bool* open, const std::filesystem::path& projectAssetRoot = {}, Engine::Assets::AssetRegistry* sharedRegistry = nullptr,
 		Engine::Assets::AssetImportJob* sharedJob = nullptr, const char* refreshBlockedReason = nullptr, bool allowMoves = true,
         const std::filesystem::path& owningProjectRoot = {}, const std::filesystem::path& projectFile = {},
         std::function<std::string(const std::string&)> moveGuard = {}, AssetThumbnailCache* thumbnails = nullptr,
-        std::function<void(const std::filesystem::path&)> openScene = {});
+        std::function<void(const std::filesystem::path&)> openScene = {},std::string* requestedReveal=nullptr);
 };
 
 } // namespace Engine::Editor

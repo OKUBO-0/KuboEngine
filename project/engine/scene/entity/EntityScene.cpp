@@ -93,6 +93,24 @@ void EntityScene::ResetWorldRenderState()
     reportedSkippedLights_ = 0;
     Graphics3D::ModelManager::GetInstance()->CollectUnusedModels();
 }
+void EntityScene::SetDiagnosticScope(uint64_t project,uint64_t scene,EntityId firstTransientEntity) noexcept
+{
+    if(diagnosticProject_!=project || diagnosticScene_!=scene || firstTransientEntity_!=firstTransientEntity){
+        reportedModelErrors_.clear();
+        reportedSpriteErrors_.clear();
+        sharedMaterials_.clear();
+    }
+    diagnosticProject_=project;
+    diagnosticScene_=scene;
+    firstTransientEntity_=firstTransientEntity;
+}
+
+void EntityScene::LogEntityDiagnostic(EntityId id,const std::string& guid,const std::string& message,Base::Logger::Level level) const
+{
+    const bool authored=diagnosticScene_ && (!firstTransientEntity_ || id<firstTransientEntity_);
+    Base::Logger::LogDiagnostic(message,level,{diagnosticProject_,diagnosticScene_,authored?id:0,guid});
+}
+
 void EntityScene::Update()
 {
     if (auto* camera = CameraSystem::CameraManager::GetInstance()->GetActiveCamera()) camera->Update();
@@ -137,8 +155,8 @@ const MaterialComponent& EntityScene::ResolveMaterial(const EntityRecord& entity
             if(!path.empty() && Assets::ReadMaterialAsset(path,material,error))entry.material=std::move(material);
             else {
                 const auto message="Shared Material "+guid+" uses local fallback: "+error;
-                if(reportedModelErrors_.size()<256 && reportedModelErrors_.insert(message).second)
-                    Base::Logger::Log(message,Base::Logger::Level::Warning);
+                if(reportedModelErrors_.size()<256 && reportedModelErrors_.insert(std::to_string(entity.id)+":"+message).second)
+                    LogEntityDiagnostic(entity.id,guid,message,Base::Logger::Level::Warning);
             }
         }
     }
@@ -163,26 +181,28 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
     lightingResult_=lighting;reportedSkippedLights_=lightingFrame_.skippedInvalidFrames;
     // Run after simulation/Inspector changes and before uploading model constants.
     SynchronizeCamera();
-    const auto resolve = [&](const ModelComponent& model) {
+    const auto resolve = [&](const EntityRecord& entity) {
+        const auto& model=entity.model;
         std::string error;
         const auto path = Assets::ResolveModelReference(model, assets_, projectPaths_.Root(), error);
         std::string resolved;
         try { resolved = Base::PathToUtf8(path); }
         catch (const std::exception& exception) { error = exception.what(); }
-        if (!error.empty() && reportedModelErrors_.size() < 256 && reportedModelErrors_.insert(error).second)
-            Base::Logger::Log("Entity model reference failed: " + error);
+        if (!error.empty() && reportedModelErrors_.size() < 256 &&
+            reportedModelErrors_.insert(std::to_string(entity.id)+":"+error).second)
+            LogEntityDiagnostic(entity.id,model.assetGuid,"Entity model reference failed: "+error);
         return resolved;
     };
     for (auto it = models_.begin(); it != models_.end();) {
         const auto* entity = world_.Find(it->first);
-        if (!entity || !entity->hasModel || it->second.guid != entity->model.assetGuid || it->second.asset != resolve(entity->model)) {
+        if (!entity || !entity->hasModel || it->second.guid != entity->model.assetGuid || it->second.asset != resolve(*entity)) {
             graphics_.WaitForAllFrames();
             it = models_.erase(it);
         } else ++it;
     }
     for (const auto& entity : world_.GetEntities()) {
         if (!entity.active || !entity.hasModel) continue;
-        const auto resolved = resolve(entity.model);
+        const auto resolved = resolve(entity);
         if (resolved.empty()) continue;
         auto& entry = models_[entity.id];
         const auto* record = assets_.FindByPath(Base::PathFromUtf8(resolved));
@@ -218,7 +238,7 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
             } catch (const std::exception& error) {
                 entry.asset = resolved; entry.guid = entity.model.assetGuid;
                 entry.revision.Reject(revision);
-                Base::Logger::Log(std::string("Entity model load failed: ") + error.what());
+                LogEntityDiagnostic(entity.id,entity.model.assetGuid,std::string("Entity model load failed: ")+error.what());
             }
         }
         if (!entry.object) continue;
@@ -232,7 +252,8 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
             if (!entry.animator.Prepare(requested, available, false, prepared)) {
                 entry.animatorReady = false;
                 const auto message = std::string("Entity Animator admission failed: ") + std::to_string(entity.id);
-                if (reportedModelErrors_.size() < 256 && reportedModelErrors_.insert(message).second) Base::Logger::Log(message);
+                if (reportedModelErrors_.size() < 256 && reportedModelErrors_.insert(std::to_string(entity.id)+":"+message).second)
+                    LogEntityDiagnostic(entity.id,entity.animator.controllerGuid,message);
             } else {
                 try {
                     if (entry.animator.NeedsNewOwner(requested)) {
@@ -252,7 +273,8 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
                 } catch (const std::exception& error) {
                     entry.animatorReady = false;
                     const auto message = std::string("Entity Animator apply failed: ") + error.what();
-                    if (reportedModelErrors_.size() < 256 && reportedModelErrors_.insert(message).second) Base::Logger::Log(message);
+                    if (reportedModelErrors_.size() < 256 && reportedModelErrors_.insert(std::to_string(entity.id)+":"+message).second)
+                    LogEntityDiagnostic(entity.id,entity.animator.controllerGuid,message);
                 }
             }
         }
@@ -562,7 +584,7 @@ bool EntityScene::SetAnimationPreview(EntityId id,const std::string& clip,float 
         preview.object->RefreshMaterialAppearance();
         return true;
     }catch(const std::exception& error){
-        ClearAnimationPreview();Base::Logger::Log(std::string("Animation preview refused: ")+error.what());
+        ClearAnimationPreview();LogEntityDiagnostic(id,{},std::string("Animation preview refused: ")+error.what());
         return false;
     }
 }
