@@ -223,7 +223,9 @@ private:
 	const char* SceneEditUnavailableReason(Engine::Editor::SceneEditAction action) const;
 	bool RunSceneEditAction(Engine::Editor::SceneEditAction action);
 	bool SelectEditorEntityFromRows(EntityId id,bool additive,bool range,std::string& error,std::span<const EntityId> rows);
-	bool MatchesHierarchySearch(std::string_view name) const;
+	enum class HierarchyType { All, Model, Camera, Light, Canvas, Sprite, Particle, Audio, Script, Physics, Prefab };
+	bool HasHierarchyFilter() const;
+	bool MatchesHierarchyFilter(const EntityRecord& entity) const;
 	bool HasHierarchyHiddenSelection() const;
 	bool DrawHierarchyTree();
 	void DrawEditorCameraToolbar();
@@ -297,6 +299,7 @@ private:
 	Engine::Scene::EntityId selectedEditorEntity_ = 0;
 	Engine::Editor::EntitySelection editorSelection_;
 	char hierarchySearch_[128]{};
+	HierarchyType hierarchyType_ = HierarchyType::All;
 	EntityId hierarchyPressedEntity_ = 0;
 	bool genericHierarchyOpen_ = true;
 	bool genericInspectorOpen_ = true;

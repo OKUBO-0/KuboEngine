@@ -1275,14 +1275,48 @@ bool Game::DrawHierarchyTree()
 #if defined(KUBO_APPLICATION_CHECKS)
 	Engine::Editor::ObserveRenderInspectorChecks("Hierarchy search");
 #endif
+	static constexpr std::pair<HierarchyType, const char*> types[] = {
+		{HierarchyType::All,"All types"}, {HierarchyType::Model,"Model"}, {HierarchyType::Camera,"Camera"},
+		{HierarchyType::Light,"Light"}, {HierarchyType::Canvas,"Canvas"}, {HierarchyType::Sprite,"Sprite"},
+		{HierarchyType::Particle,"Particle"}, {HierarchyType::Audio,"Audio"}, {HierarchyType::Script,"Script"},
+		{HierarchyType::Physics,"Physics"}, {HierarchyType::Prefab,"Prefab"},
+	};
+	const auto selectedType = std::find_if(std::begin(types),std::end(types),[&](const auto& type) {
+		return type.first == hierarchyType_;
+	});
+	ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
+	const bool typeMenuOpen = ImGui::BeginCombo("##HierarchyType",selectedType->second);
+#if defined(KUBO_APPLICATION_CHECKS)
+	if (!typeMenuOpen) Engine::Editor::ObserveRenderInspectorChecks("Hierarchy type filter");
+#endif
+	if (typeMenuOpen) {
+		for (const auto& [type,label] : types) {
+			if (ImGui::Selectable(label,type == hierarchyType_)) hierarchyType_ = type;
+#if defined(KUBO_APPLICATION_CHECKS)
+			Engine::Editor::ObserveRenderInspectorChecks(label);
+#endif
+			if (type == hierarchyType_) ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!HasHierarchyFilter());
+	if (ImGui::Button("Clear filters")) {
+		hierarchySearch_[0] = '\0';
+		hierarchyType_ = HierarchyType::All;
+	}
+#if defined(KUBO_APPLICATION_CHECKS)
+	Engine::Editor::ObserveRenderInspectorChecks("Clear hierarchy filters");
+#endif
+	ImGui::EndDisabled();
 	const auto& entities = editorWorld_.GetEntities();
-	const bool filtering = hierarchySearch_[0] != '\0';
+	const bool filtering = HasHierarchyFilter();
 	std::unordered_map<EntityId,const EntityRecord*> records;
 	for (const auto& entity : entities) records.emplace(entity.id,&entity);
 	std::unordered_set<EntityId> matches, included;
 	if (filtering) {
 		for (const auto& entity : entities) {
-			if (!MatchesHierarchySearch(entity.name)) continue;
+			if (!MatchesHierarchyFilter(entity)) continue;
 			matches.insert(entity.id);
 			for (auto* node = &entity; node && included.insert(node->id).second;) {
 				const auto parent = records.find(node->parent);
@@ -1291,7 +1325,7 @@ bool Game::DrawHierarchyTree()
 		}
 	}
 	ImGui::Text("%zu / %zu Entities, %zu selected",filtering ? matches.size() : entities.size(),entities.size(),editorSelection_.Ids().size());
-	if (HasHierarchyHiddenSelection()) ImGui::TextWrapped("Some selected Entities are hidden by the search. Select a result or clear the search to edit.");
+	if (HasHierarchyHiddenSelection()) ImGui::TextWrapped("Some selected Entities are hidden by the filters. Select a result or clear the filters to edit.");
 	if (filtering && matches.empty()) { ImGui::TextDisabled("No matching Entities."); return false; }
 	if (entities.empty()) { ImGui::TextDisabled("The Scene has no Entities."); return false; }
 
@@ -1597,7 +1631,7 @@ void Game::DrawGenericEntityEditor()
 			const bool multi = genericSceneSelected_ && inspectorSelection.size() > 1;
 			if (multi) ImGui::Text("%zu selected. Name, Transform and components edit the primary Entity.",inspectorSelection.size());
 			const bool hiddenSelection = HasHierarchyHiddenSelection();
-			if (hiddenSelection) ImGui::TextWrapped("Clear Hierarchy search or select visible Entities to edit.");
+			if (hiddenSelection) ImGui::TextWrapped("Clear Hierarchy filters or select visible Entities to edit.");
 			ImGui::BeginDisabled(prefabRecoveryBlocked_ || documentState_.HasPendingAction() || hiddenSelection);
 			EntityRecord* entity = editorWorld_.Find(selectedEditorEntity_);
 			if (!entity) {
@@ -2509,7 +2543,11 @@ void Game::CommitGenericDocument(EntityWorld candidate,const std::filesystem::pa
 	mcpSession_.Stop();mcpStatus_="MCP disabled after Scene change; enable again for the new document";
 	scriptRuntime_.Shutdown(editorWorld_);scriptAudio_.Clear();entityAudio_.Clear();editorWorld_=std::move(candidate);genericWorldPath_=path;
 	entityHistory_.Clear();documentState_.Opened(editorWorld_,path);physicsWorld_.ResetSimulation();
-	if (differentDocument) { ResetEditorGridDefault(); hierarchySearch_[0] = '\0'; }
+	if (differentDocument) {
+		ResetEditorGridDefault();
+		hierarchySearch_[0] = '\0';
+		hierarchyType_ = HierarchyType::All;
+	}
 	selectedEditorEntity_=editorWorld_.GetEntities().empty() ? 0 : editorWorld_.GetEntities().front().id;
 	editorSelection_.Replace(selectedEditorEntity_);
 	authoredSelection_=selectedEditorEntity_;genericPlayerEntity_=0;

@@ -3,6 +3,7 @@
 #endif
 #include "game_render_inspector_checks.h"
 #include "engine/scene/game/Game.h"
+#include "engine/editor/DebugEditorManager.h"
 #include "engine/editor/RenderComponentInspector.h"
 #include "engine/editor/UIComponentInspector.h"
 #include <imgui_internal.h>
@@ -20,11 +21,12 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,27> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,32> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
     {"Add Particle"},{"Remove Particle"},{"Particle Enabled"},{"Clear Particle Image"},{"Registered Particle Image"},{"Particle Texture Choice"},
-    {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"}}};
+    {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
+    {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"}}};
 void Observe(const char* label,ImVec2 a,ImVec2 b,bool disabled){for(auto& item:items)if(!std::strcmp(item.label,label)){item.center={(a.x+b.x)/2,(a.y+b.y)/2};item.seen=true;item.disabled=disabled;item.mixed=(ImGui::GetItemFlags()&ImGuiItemFlags_MixedValue)!=0;}}
 struct GuiScope {
     ImGuiContext* previous=ImGui::GetCurrentContext();ImGuiContext* owned=ImGui::CreateContext();
@@ -49,6 +51,9 @@ public:
             const auto middle = game.editorWorld_.CreateEntity("Range Middle");
             const auto last = game.editorWorld_.CreateEntity("Range Last");
             const auto outside = game.editorWorld_.CreateEntity("Unselected");
+            const auto child = game.editorWorld_.CreateEntity("Child camera", outside);
+            Need(game.editorWorld_.SetCamera(last, {}) && game.editorWorld_.SetCamera(child, {}),
+                "Selection fixture camera assignment failed");
             for (const auto id : {middle, last, outside}) game.editorWorld_.Find(id)->active = false;
             game.genericWorldPath_ = root / "entry.scene";
             std::string error;
@@ -126,8 +131,36 @@ public:
             undoOrRedo(nullptr, ImGuiKey_Z);
             Need(active(middle) && active(last) && game.entityHistory_.UndoCount() == 1,
                 "Ctrl+Z in the search field escaped into Scene history");
+            click("Clear hierarchy filters");
+            click("Hierarchy type filter");
+            frame();
+            frame();
+            click("Camera");
+            frame();
+            const auto drawn = [](const char* label) {
+                for (const auto& candidate : items)
+                    if (!std::strcmp(label, candidate.label)) return candidate.seen;
+                return false;
+            };
+            Need(game.hierarchyType_ == Game::HierarchyType::Camera && game.hierarchySearch_[0] == '\0',
+                "Camera filter was not selected with an empty search");
+            Need(!drawn("Range First") && drawn("Range Last") && drawn("Unselected") && drawn("Child camera"),
+                "Camera filter did not keep matching rows and their ancestors");
+            Need(game.HasHierarchyHiddenSelection() && item("Active (selection)").disabled &&
+                !game.RunSceneEditAction(Editor::SceneEditAction::Delete) && game.GetEditorSelection() == range,
+                "Hierarchy type filter allowed edits on hidden selection");
+            click("Hierarchy search");
+            ImGui::GetIO().AddInputCharactersUTF8("child");
+            frame();
+            Need(!drawn("Range Last") && drawn("Unselected") && drawn("Child camera"),
+                "Name search did not combine with the type filter");
+            click("Clear hierarchy filters");
+            frame();
+            Need(drawn("Range First") && drawn("Range Last") && !game.HasHierarchyHiddenSelection() &&
+                !item("Active (selection)").disabled && game.entityHistory_.UndoCount() == 1,
+                "Clearing filters did not restore selection editing without changing history");
             Need(Read(game.genericWorldPath_) == baseline, "Inspector modified the saved Scene without saving");
-            std::cout << "PASS: actual Hierarchy Shift-click, mixed Active checkbox, grouped Undo/Redo, hidden-selection protection and search focus\n";
+            std::cout << "PASS: actual Hierarchy Shift-click, mixed Active, Undo/Redo, name/type filters, ancestor context, hidden-selection lock and search focus\n";
         } catch (...) {
             std::cerr << "GAME_SELECTION_INSPECTOR_FIXTURE_RETAINED=" << root << '\n';
             throw;

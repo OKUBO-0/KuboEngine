@@ -122,14 +122,37 @@ const char* Game::SceneEditUnavailableReason(Editor::SceneEditAction action) con
     if (action == Action::Undo && !entityHistory_.CanUndo()) return "No Scene edit to undo.";
     if (action == Action::Redo && !entityHistory_.CanRedo()) return "No Scene edit to redo.";
     if (selectionAction && !editorWorld_.Find(selectedEditorEntity_)) return "Select an Entity in the Scene.";
-    if (selectionAction && HasHierarchyHiddenSelection()) return "The selection includes Entities hidden by Hierarchy search. Clear the search or select visible Entities.";
+    if (selectionAction && HasHierarchyHiddenSelection()) return "The selection includes Entities hidden by Hierarchy filters. Clear the filters or select visible Entities.";
     return nullptr;
 }
 
-bool Game::MatchesHierarchySearch(std::string_view name) const
+bool Game::HasHierarchyFilter() const
 {
+    return hierarchyType_ != HierarchyType::All || hierarchySearch_[0] != '\0';
+}
+
+bool Game::MatchesHierarchyFilter(const EntityRecord& entity) const
+{
+    const bool matchesType = [&] {
+        switch (hierarchyType_) {
+        case HierarchyType::All: return true;
+        case HierarchyType::Model: return entity.hasModel;
+        case HierarchyType::Camera: return entity.hasCamera;
+        case HierarchyType::Light: return entity.hasLight;
+        case HierarchyType::Canvas: return entity.hasCanvas;
+        case HierarchyType::Sprite: return entity.hasSprite;
+        case HierarchyType::Particle: return entity.hasParticle;
+        case HierarchyType::Audio: return entity.hasAudio;
+        case HierarchyType::Script: return entity.hasScript;
+        case HierarchyType::Physics: return entity.hasCollider || entity.hasRigidBody;
+        case HierarchyType::Prefab: return !entity.prefabLink.is_null();
+        }
+        return false;
+    }();
+    if (!matchesType) return false;
     const std::string_view query(hierarchySearch_);
     if (query.empty()) return true;
+    const std::string_view name(entity.name);
     const auto foldAscii = [](unsigned char value) {
         return value >= 'A' && value <= 'Z' ? value + ('a' - 'A') : int(value);
     };
@@ -140,9 +163,9 @@ bool Game::MatchesHierarchySearch(std::string_view name) const
 
 bool Game::HasHierarchyHiddenSelection() const
 {
-    if (!genericHierarchyOpen_ || !hierarchySearch_[0] || editorSelection_.Ids().empty()) return false;
+    if (!genericHierarchyOpen_ || !HasHierarchyFilter() || editorSelection_.Ids().empty()) return false;
     for (const auto& entity : editorWorld_.GetEntities()) {
-        if (editorSelection_.Contains(entity.id) && !MatchesHierarchySearch(entity.name)) return true;
+        if (editorSelection_.Contains(entity.id) && !MatchesHierarchyFilter(entity)) return true;
     }
     return false;
 }
