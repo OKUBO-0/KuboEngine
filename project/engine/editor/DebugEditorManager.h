@@ -10,7 +10,7 @@
 namespace Engine::Assets { class AssetRegistry; class AssetImportJob; }
 namespace Engine::Editor {
 class AssetThumbnailCache;
-inline constexpr char SceneAssetPayload[] = "KUBO_SCENE_ASSET";
+inline constexpr char AssetGuidPayload[] = "KUBO_ASSET_GUID";
 #if defined(KUBO_APPLICATION_CHECKS)
 inline void (*assetBrowserChecksObserver)(const char*,uint64_t,Vector2,Vector2,bool)=nullptr;
 inline void (*gameInputAdmissionChecksObserver)(bool, float)=nullptr;

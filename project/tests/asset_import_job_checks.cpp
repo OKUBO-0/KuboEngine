@@ -93,8 +93,45 @@ int main() {
         Require(!result.success && !fs::exists(AssetRegistry::MetadataPath(badProject / "Assets/new.obj")), "Invalid database was hidden by bootstrap scan");
         Require(job.Start({externalProject, external}), "Shutdown start failed"); job.CancelAndWait();
         Require(!job.IsBusy(), "Shutdown left worker alive");
+        const auto importProject = fixture / "ImportProject";
+        const auto importRoot = importProject / "Assets";
+        const auto newFolder = importRoot / L"素材";
+        const auto externalModel = external / L"新規.obj";
+        const auto externalTexture = external / L"色.png";
+        fs::create_directories(newFolder);
+        Write(externalModel, "source model bytes");
+        Write(externalTexture, "source texture bytes");
+        AssetImportJob::Request request{importProject,importRoot};
+        request.sourceFiles = {externalModel,externalTexture};
+        request.targetFolder = "素材";
+        Require(job.Start(request), "External file import start failed");
+        result = Wait(job);
+        Require(result.success && result.copied == 2 &&
+            result.registry.FindByPath(newFolder / externalModel.filename()) &&
+            result.registry.FindByPath(newFolder / externalTexture.filename()), result.error.c_str());
+        Require(fs::file_size(newFolder / externalModel.filename()) == fs::file_size(externalModel) &&
+            !fs::exists(AssetRegistry::MetadataPath(externalModel)) &&
+            fs::is_empty(importRoot / ".kubo"), "Import changed a source or left staging data");
+        const auto untouched = external / "untouched.obj";
+        Write(untouched,"other source");
+        request.sourceFiles = {untouched,externalModel};
+        Require(job.Start(request), "Collision probe start failed");
+        result = Wait(job);
+        Require(!result.success && result.copied == 0 && !fs::exists(newFolder / untouched.filename()),
+            "Destination conflict accepted a partial selection");
+        request.sourceFiles = {untouched};
+        request.targetFolder = "../Escape";
+        Require(job.Start(request), "Traversal probe start failed");
+        result = Wait(job);
+        Require(!result.success && result.copied == 0 && !fs::exists(importProject / "Escape"),
+            "Import accepted an escaping folder");
+        request.targetFolder = "素材";
+        request.assetRoot = external;
+        Require(job.Start(request), "External destination probe start failed");
+        result = Wait(job);
+        Require(!result.success && result.copied == 0, "Import copied into a read-only root");
         fs::remove_all(fixture);
-        std::cout << "PASS: async asset scan/import, incremental cache, cancellation, failure isolation, external roots and shutdown\n";
+        std::cout << "PASS: async asset scan/import, incremental cache, cancellation, failure isolation, external roots, Japanese file intake and collision/traversal refusal\n";
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n'; std::error_code error; fs::remove_all(fixture, error); return 1;

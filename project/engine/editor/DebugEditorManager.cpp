@@ -15,6 +15,7 @@
 #include <imgui_internal.h>
 #include <Windows.h>
 #include <shellapi.h>
+#include <commdlg.h>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -23,8 +24,11 @@
 #include <unordered_set>
 #include <algorithm>
 #include <chrono>
+#include <cwchar>
 #include <optional>
 #include <set>
+
+#pragma comment(lib,"comdlg32.lib")
 
 namespace Engine::Editor {
 
@@ -129,6 +133,34 @@ void DebugEditorManager::DrawConsole(bool* open)
 	ImGui::End();
 }
 
+static std::vector<std::filesystem::path> PickImportFiles(const std::filesystem::path& initialFolder,std::string& error)
+{
+	std::vector<wchar_t> paths(32768);
+	OPENFILENAMEW dialog{};
+	dialog.lStructSize = sizeof(dialog);
+	dialog.hwndOwner = GetActiveWindow();
+	dialog.lpstrFilter = L"Asset files\0*.*\0";
+	dialog.lpstrFile = paths.data();
+	dialog.nMaxFile = static_cast<DWORD>(paths.size());
+	dialog.lpstrInitialDir = initialFolder.c_str();
+	dialog.lpstrTitle = L"Import files into the project";
+	dialog.Flags = OFN_EXPLORER | OFN_ALLOWMULTISELECT | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+	if (!GetOpenFileNameW(&dialog)) {
+		if (const auto failure = CommDlgExtendedError())
+			error = "Cannot select import files (dialog error " + std::to_string(failure) + ")";
+		return {};
+	}
+	const auto* next = paths.data() + std::wcslen(paths.data()) + 1;
+	std::filesystem::path first(paths.data());
+	if (!*next) return {std::move(first)};
+	std::vector<std::filesystem::path> result;
+	while (*next) {
+		result.push_back(first / next);
+		next += std::wcslen(next) + 1;
+	}
+	return result;
+}
+
 void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::path& projectAssetRoot, Engine::Assets::AssetRegistry* sharedRegistry,
     Engine::Assets::AssetImportJob* sharedJob, const char* refreshBlockedReason, bool allowMoves, const std::filesystem::path& owningProjectRoot,
     const std::filesystem::path& projectFile, std::function<std::string(const std::string&)> moveGuard, AssetThumbnailCache* thumbnails,
@@ -145,6 +177,7 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
     static std::filesystem::path scannedRoot, scannedProject, scannedProjectFile;
 	static Engine::Assets::AssetImportJob* lastJob = nullptr;
 	static std::string selectedGuid;
+	static std::string revealGuid;
 	static std::string folder;
 	static bool includeSubfolders = true;
 	static Engine::Assets::AssetMoveRequest pendingMove;
@@ -165,7 +198,7 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 		if (!changedOwner) job.Cancel();
 		// Preserve Game's startup snapshot on first use; a root switch invalidates it.
 		if (!changedOwner) registry = {};
-		selectedGuid.clear(); scanError.clear(); scanStatus.clear(); readOnly = false;
+		selectedGuid.clear(); revealGuid.clear(); scanError.clear(); scanStatus.clear(); readOnly = false;
 		folder.clear(); search[0] = '\0';
 		pendingMove = {};
 		dependencies = {};
@@ -179,6 +212,10 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
         if (result.ApplyTo(registry, {projectRoot, root, {}, false, projectFile}, &dependencies)) {
 			scanError.clear(); readOnly = result.readOnly;
 			scanStatus = "Imported: " + std::to_string(result.imported) + ", unchanged/read-only: " + std::to_string(result.skipped);
+			if (result.copied) scanStatus = "Copied " + std::to_string(result.copied) + " file(s). " + scanStatus;
+		} else if (result.copied) {
+			scanError = "Copied " + std::to_string(result.copied) + " file(s); refresh to load them. " + result.error;
+			autoRefresh = false;
 		} else if (result.moveCommitted || result.moveRollbackFailed || result.recoveryCommitted) {
 			if (result.moveRollbackFailed) { registry = {}; dependencies = {}; }
 			scanError = result.error;
@@ -229,6 +266,22 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 	if (rowSpace() > 155.0f) ImGui::SameLine();
 	ImGui::Checkbox("Include subfolders",&includeSubfolders);
 	if (nextFolder) folder = std::move(*nextFolder);
+	const bool canImport = sharedRegistry && allowRefresh && allowMoves && !readOnly && !job.IsBusy() &&
+		!recoveryDialog && pendingMove.guid.empty();
+	ImGui::BeginDisabled(!canImport);
+	if (ImGui::Button("Import Files...")) {
+		scanError.clear();
+		auto files = PickImportFiles(root / Engine::Base::PathFromUtf8(folder),scanError);
+		if (!files.empty()) {
+			if (job.Start({projectRoot,root,{},false,projectFile,std::move(files),folder})) {
+				refreshPending = false;
+				scanStatus = "Copying selected files...";
+			} else scanError = "Cannot start file import worker";
+		}
+	}
+	ImGui::EndDisabled();
+	if (ImGui::IsItemHovered()) ImGui::SetTooltip("Copy selected files into the current asset folder and register them.");
+	if (rowSpace() > 155.0f) ImGui::SameLine();
 	const bool importDetails = ImGui::CollapsingHeader("Import and recovery");
 	const auto now = std::chrono::steady_clock::now();
 	if (importDetails) {
@@ -261,7 +314,7 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 	}
 	if (refreshBlockedReason) ImGui::TextWrapped("%s", refreshBlockedReason);
 	const auto* drag = ImGui::GetDragDropPayload();
-	const bool placingAsset = drag && drag->IsDataType(SceneAssetPayload);
+	const bool placingAsset = drag && drag->IsDataType(AssetGuidPayload);
 	if (allowRefresh && !placingAsset && !recoveryDialog && pendingMove.guid.empty() && !job.IsBusy() &&
 		(refreshPending || (autoRefresh && now - lastScan > std::chrono::seconds(2)))) {
 		lastScan = now;
@@ -271,7 +324,7 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 	if (job.IsBusy()) {
 		ImGui::SameLine(); if (ImGui::Button("Cancel")) { job.Cancel(); refreshPending = false; autoRefresh = false; }
 		const auto progress = job.GetProgress();
-		static const char* stages[] = {"Validating paths", "Scanning assets", "Inspecting dependencies", "Moving/recovering asset", "Hashing content/dependencies", "Importing metadata", "Saving registry", "Finished"};
+		static const char* stages[] = {"Validating paths", "Scanning assets", "Inspecting dependencies", "Moving/recovering asset", "Hashing content/dependencies", "Importing metadata", "Saving registry", "Staging import files", "Finished"};
 		ImGui::Text("%s: %llu / %llu", stages[static_cast<int>(progress.stage)],
 			static_cast<unsigned long long>(progress.completed), static_cast<unsigned long long>(progress.total));
 	}
@@ -300,6 +353,7 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 			(!includeSubfolders && asset->relativePath.find('/',scope.size()) != std::string::npos);
 	});
 	std::optional<std::filesystem::path> sceneToOpen;
+	const Engine::Assets::AssetRecord* revealAsset = nullptr;
 	const auto* selectedAsset = registry.FindByGuid(selectedGuid);
 	static bool showAssetDetails = false;
 	if (selectedAsset) {
@@ -312,6 +366,10 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 	if (nextFolder) ImGui::SetScrollY(0);
 	if (matches.empty()) ImGui::TextDisabled(job.IsBusy() ? "Scanning assets..." : "No matching assets in this folder.");
 	ImGuiListClipper clipper;clipper.Begin(static_cast<int>(matches.size()),68.0f+ImGui::GetStyle().ItemSpacing.y);
+	if (!revealGuid.empty()) {
+		const auto row = std::find_if(matches.begin(),matches.end(),[&](const auto* asset) {return asset->guid==revealGuid;});
+		if (row!=matches.end()) clipper.IncludeItemByIndex(static_cast<int>(row-matches.begin()));
+	}
 	while(clipper.Step())for(int row=clipper.DisplayStart;row<clipper.DisplayEnd;++row){
 		const auto* asset=matches[size_t(row)];
 		const std::string label = asset->relativePath + " [" + Engine::Assets::AssetRegistry::GetTypeName(asset->type) + "]";
@@ -321,16 +379,19 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 			selectedGuid = asset->guid;
 			if (canOpen && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) sceneToOpen = Engine::Base::PathFromUtf8(asset->absolutePath);
 		}
-		const bool placeable = asset->type == Engine::Assets::AssetType::Model ||
-			asset->type == Engine::Assets::AssetType::Prefab;
-		const bool canPlace = placeable && sharedRegistry && allowMoves && !job.IsBusy() && !readOnly;
-		if (canPlace && ImGui::BeginDragDropSource()) {
-			ImGui::SetDragDropPayload(SceneAssetPayload,asset->guid.data(),asset->guid.size());
+		if (asset->guid==revealGuid) ImGui::SetScrollHereY();
+		using Type = Engine::Assets::AssetType;
+		const auto* dragHint = asset->type == Type::Model ? "Drag into Scene to place, or onto the Inspector to assign" :
+			asset->type == Type::Prefab ? "Drag into Scene to place" :
+			asset->type == Type::Texture ? "Drag onto the Inspector to assign a Sprite image" : nullptr;
+		const bool canDrag = dragHint && sharedRegistry && allowMoves && !job.IsBusy() && !readOnly;
+		if (canDrag && ImGui::BeginDragDropSource()) {
+			ImGui::SetDragDropPayload(AssetGuidPayload,asset->guid.data(),asset->guid.size());
 			ImGui::TextUnformatted(asset->relativePath.c_str());
 			ImGui::EndDragDropSource();
 		}
-		if (canPlace && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
-			ImGui::SetTooltip("Drag into Scene to place");
+		if (canDrag && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
+			ImGui::SetTooltip("%s",dragHint);
 		if (ImGui::BeginPopupContextItem("AssetActions")) {
 			if (asset->type == Engine::Assets::AssetType::Scene && ImGui::MenuItem("Open Scene",nullptr,false,canOpen))
 				sceneToOpen = Engine::Base::PathFromUtf8(asset->absolutePath);
@@ -362,6 +423,7 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 		if(preview.status==AssetThumbnailView::Status::Failed)draw->AddText({start.x+74,start.y+34},ImGui::GetColorU32(ImGuiCol_TextDisabled),"Preview unavailable");
 		ImGui::PopID();
 	}
+	revealGuid.clear();
 	ImGui::EndChild();
 	if (openMoveDialog) ImGui::OpenPopup("Rename / Move Asset");
 	if (ImGui::BeginPopupModal("Rename / Move Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -395,16 +457,39 @@ void DebugEditorManager::DrawAssetBrowser(bool* open, const std::filesystem::pat
 		ImGui::Text("Size: %llu bytes", static_cast<unsigned long long>(selected->size));
 		const auto outgoing = dependencies.DependenciesOf(selected->guid), incoming = dependencies.DependentsOf(selected->guid);
 		ImGui::Text("Dependencies: %llu / Dependents: %llu", static_cast<unsigned long long>(outgoing.size()), static_cast<unsigned long long>(incoming.size()));
-		for (size_t i = 0; i < outgoing.size() && i < 12; ++i) ImGui::TextWrapped("%s%s", outgoing[i]->missing ? "Missing: " : "Uses: ", outgoing[i]->targetRelative.c_str());
+		const auto relationship = [&](const char* label,const std::string& path,const Engine::Assets::AssetRecord* target) {
+			if (target) {
+				if (ImGui::SmallButton("Locate")) revealAsset = target;
+				ImGui::SameLine();
+			}
+			ImGui::TextWrapped("%s%s",label,path.c_str());
+		};
+		for (size_t i = 0; i < outgoing.size() && i < 12; ++i) {
+			ImGui::PushID(outgoing[i]);
+			relationship(outgoing[i]->missing ? "Missing: " : "Uses: ",outgoing[i]->targetRelative,
+				outgoing[i]->missing ? nullptr : registry.FindByGuid(outgoing[i]->targetGuid));
+			ImGui::PopID();
+		}
 		for (size_t i = 0; i < incoming.size() && i < 12; ++i) {
 			const auto* owner = registry.FindByGuid(incoming[i]->ownerGuid);
-            ImGui::TextWrapped("Used by: %s (%s)",owner?owner->relativePath.c_str():incoming[i]->ownerGuid.c_str(),incoming[i]->kind==Engine::Assets::AssetReferenceKind::Guid?"GUID":"path");
+			ImGui::PushID(incoming[i]);
+			relationship(incoming[i]->kind==Engine::Assets::AssetReferenceKind::Guid ? "Used by GUID: " : "Used by path: ",
+				owner ? owner->relativePath : incoming[i]->ownerGuid,owner);
+			ImGui::PopID();
 		}
+		if (outgoing.size()>12 || incoming.size()>12) ImGui::TextDisabled("Showing the first 12 entries in each direction.");
 		for (const auto& issue : dependencies.issues) if (issue.ownerGuid == selected->guid) ImGui::TextWrapped("Inspection: %s", issue.message.c_str());
 		}
 		ImGui::EndChild();
 	}
 	ImGui::End();
+	if (revealAsset) {
+		const auto slash = revealAsset->relativePath.rfind('/');
+		folder = slash == std::string::npos ? "" : revealAsset->relativePath.substr(0,slash);
+		selectedGuid = revealGuid = revealAsset->guid;
+		search[0] = '\0';
+		type = 0;
+	}
 	if (sceneToOpen) openScene(*sceneToOpen);
 }
 

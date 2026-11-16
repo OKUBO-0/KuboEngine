@@ -708,22 +708,30 @@ void Game::DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewpo
 #endif
 }
 
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+static std::string GetAssetPayloadGuid(const ImGuiPayload* payload)
+{
+	if (!payload || !payload->IsDataType(Engine::Editor::AssetGuidPayload) ||
+		(payload->DataSize != 16 && payload->DataSize != 32)) return {};
+	return {static_cast<const char*>(payload->Data),static_cast<size_t>(payload->DataSize)};
+}
+#endif
+
 bool Game::DrawSceneAssetDropTarget(const Engine::Editor::DebugSceneViewportState& viewport)
 {
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
-	const auto* active = ImGui::GetDragDropPayload();
-	if (!active || !active->IsDataType(Engine::Editor::SceneAssetPayload) || !editorViewEnabled_ ||
+	const auto guid = GetAssetPayloadGuid(ImGui::GetDragDropPayload());
+	if (guid.empty() || !editorViewEnabled_ ||
 		worldPlayback_.GetState() != WorldPlayback::State::Editing || EditorDocumentBusyReason()) return false;
+	const auto* active = projectAssets_.FindByGuid(guid);
+	if (!active || (active->type != Assets::AssetType::Model && active->type != Assets::AssetType::Prefab)) return false;
 	const ImRect image({viewport.min.x,viewport.min.y},
 		{viewport.min.x+viewport.size.x,viewport.min.y+viewport.size.y});
 	if (!ImGui::BeginDragDropTargetCustom(image,ImGui::GetID("Scene asset drop"))) return false;
-	std::string guid;
-	if (const auto* payload = ImGui::AcceptDragDropPayload(Engine::Editor::SceneAssetPayload);
-		payload && payload->IsDelivery() && (payload->DataSize == 16 || payload->DataSize == 32)) {
-		guid.assign(static_cast<const char*>(payload->Data),payload->DataSize);
-	}
+	const auto* payload = ImGui::AcceptDragDropPayload(Engine::Editor::AssetGuidPayload);
+	const bool deliver = payload && payload->IsDelivery();
 	ImGui::EndDragDropTarget();
-	if (guid.empty()) return true;
+	if (!deliver) return true;
 	const auto mouse = ImGui::GetMousePos();
 	const float x = 2 * (mouse.x-viewport.min.x)/viewport.size.x - 1;
 	const float y = 1 - 2 * (mouse.y-viewport.min.y)/viewport.size.y;
@@ -1556,6 +1564,46 @@ bool Game::DrawHierarchyTree()
 	return false;
 }
 
+void Game::DrawInspectorAssetDropTarget(const EntityRecord& entity)
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+	const auto* blocked = SceneEditUnavailableReason(Engine::Editor::SceneEditAction::Duplicate);
+	ImGui::BeginDisabled(blocked != nullptr);
+	ImGui::Button("Drop Model or Sprite Image",{-1,0});
+#if defined(KUBO_APPLICATION_CHECKS)
+	Engine::Editor::ObserveRenderInspectorChecks("Inspector asset drop");
+#endif
+	ImGui::EndDisabled();
+	if (blocked) return;
+	const auto guid = GetAssetPayloadGuid(ImGui::GetDragDropPayload());
+	const auto* asset = guid.empty() ? nullptr : projectAssets_.FindByGuid(guid);
+	if (!asset || (asset->type != Assets::AssetType::Model && asset->type != Assets::AssetType::Texture) ||
+		!ImGui::BeginDragDropTarget()) return;
+	const auto* payload = ImGui::AcceptDragDropPayload(Engine::Editor::AssetGuidPayload);
+	const bool deliver = payload && payload->IsDelivery();
+	ImGui::EndDragDropTarget();
+	if (!deliver) return;
+	std::string error;
+	const auto source = Assets::ResolveAssetReference({},guid,asset->type,projectAssets_,GetProjectRoot(),error);
+	const auto relative = source.lexically_relative(GetProjectRoot());
+	if (source.empty() || relative.empty() || *relative.begin() == L"..") {
+		genericWorldStatus_ = error.empty() ? "Asset must be inside the project" : error;
+		return;
+	}
+	const auto hint = Base::PathToUtf8(relative);
+	if (asset->type == Assets::AssetType::Model) {
+		if (!editorWorld_.SetModel(entity.id,hint,guid)) genericWorldStatus_ = "Model assignment rejected";
+	} else {
+		auto sprite = entity.sprite;
+		sprite.assetPath = hint;
+		sprite.assetGuid = guid;
+		if (!editorWorld_.SetSprite(entity.id,sprite)) genericWorldStatus_ = "Sprite image assignment rejected";
+	}
+#else
+	(void)entity;
+#endif
+}
+
 void Game::DrawAddComponentMenu(const EntityRecord& entity)
 {
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
@@ -1813,6 +1861,7 @@ void Game::DrawGenericEntityEditor()
 				ImGui::TextUnformatted("Select an entity from the hierarchy.");
 			} else {
 				DrawAddComponentMenu(*entity);
+				DrawInspectorAssetDropTarget(*entity);
 				char name[128]{};
 				if(!entity->prefabLink.is_null())ImGui::TextWrapped("Linked Prefab source GUID: %s",entity->prefabLink["sourceGuid"].get<crude_json::string>().c_str());
 				strncpy_s(name, entity->name.c_str(), _TRUNCATE);

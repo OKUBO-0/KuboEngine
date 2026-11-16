@@ -290,6 +290,9 @@
     <ClInclude Include="engine\assets\AssetImportJob.h">
       <Filter>engine\base</Filter>
     </ClInclude>
+    <ClInclude Include="engine\assets\AssetFileIntake.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
     <ClInclude Include="engine\assets\AssetMove.h">
       <Filter>engine\base</Filter>
     </ClInclude>

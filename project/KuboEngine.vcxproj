@@ -429,6 +429,7 @@ exit /B 0</Command>
     <ClInclude Include="engine\assets\AssetSpriteDependencies.h" />
     <ClInclude Include="engine\assets\AssetSceneDependencies.h" />
     <ClInclude Include="engine\assets\AssetImportJob.h" />
+    <ClInclude Include="engine\assets\AssetFileIntake.h" />
     <ClInclude Include="engine\assets\AssetMove.h" />
     <ClInclude Include="engine\assets\AssetDependencies.h" />
     <ClInclude Include="engine\assets\AssetImportFingerprint.h" />

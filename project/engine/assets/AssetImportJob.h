@@ -1,6 +1,7 @@
 #pragma once
 #include "AssetRegistry.h"
 #include "AssetMove.h"
+#include "AssetFileIntake.h"
 #include "AssetDependencies.h"
 #include "AssetImportFingerprint.h"
 #include "AssetSceneDependencies.h"
@@ -19,8 +20,15 @@ namespace Engine::Assets {
 // Main-thread owner; worker owns all registry/filesystem work, never live UI/world objects.
 class AssetImportJob final {
 public:
-    enum class Stage { Validate, Scan, Dependencies, Move, Hash, Import, Save, Finished };
-    struct Request { std::filesystem::path projectRoot, assetRoot; AssetMoveRequest move; bool recoverMove = false; std::filesystem::path projectFile; };
+    enum class Stage { Validate, Scan, Dependencies, Move, Hash, Import, Save, Copy, Finished };
+    struct Request {
+        std::filesystem::path projectRoot, assetRoot;
+        AssetMoveRequest move;
+        bool recoverMove = false;
+        std::filesystem::path projectFile;
+        std::vector<std::filesystem::path> sourceFiles;
+        std::string targetFolder;
+    };
     struct Result {
         Request request;
         AssetRegistry registry;
@@ -29,7 +37,7 @@ public:
         bool success = false, cancelled = false, readOnly = false;
         bool moveCommitted = false, moveRollbackFailed = false;
         bool recoveryCommitted = false;
-        size_t imported = 0, skipped = 0;
+        size_t imported = 0, skipped = 0, copied = 0;
         bool Matches(const Request& expected) const {
             return request.projectRoot == expected.projectRoot && request.assetRoot == expected.assetRoot && request.projectFile == expected.projectFile;
         }
@@ -107,6 +115,8 @@ private:
                 throw std::runtime_error("Asset database/cache resolves outside the project");
             result.readOnly = !Inside(request.assetRoot, project);
             const bool moving = !request.move.sourceRelative.empty() || !request.move.destinationRelative.empty() || !request.move.guid.empty();
+            if (!request.sourceFiles.empty() && (result.readOnly || moving || request.recoverMove))
+                throw std::runtime_error("Copy requires a project-local asset root and a separate import request");
             if (request.recoverMove) {
                 if (result.readOnly || moving) throw std::runtime_error("Recovery requires a project-local root and no new move request");
                 check(); state->stage.store(Stage::Move);
@@ -123,6 +133,13 @@ private:
             const auto existing = std::filesystem::is_regular_file(database) ? database : legacy;
             if (std::filesystem::is_regular_file(existing) && !result.registry.LoadDatabase(existing, result.error))
                 throw std::runtime_error(result.error);
+            if (!request.sourceFiles.empty()) {
+                state->total.store(request.sourceFiles.size());
+                state->stage.store(Stage::Copy);
+                CopyAssetFiles(request.assetRoot,request.targetFolder,request.sourceFiles,state->cancelled,result.copied,state->completed);
+                state->completed.store(0);
+                state->total.store(0);
+            }
             check(); state->stage.store(Stage::Scan);
             if (!result.registry.Scan(request.assetRoot, result.error, (result.readOnly || moving) ? AssetRegistry::MetadataPolicy::ReadOnly
                 : AssetRegistry::MetadataPolicy::CreateMissing, [&]() { return state->cancelled.load(); })) throw std::runtime_error(result.error);

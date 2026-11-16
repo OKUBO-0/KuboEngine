@@ -113,6 +113,11 @@ public:
     static Vector3 SceneCameraPosition(const Game& game) { return game.editorCameraState_.position; }
     static bool GameViewportReceivesInput(const Game& game) { return game.gameScriptInputAllowed_; }
     static bool StartShutdownImport(Game& game,const std::filesystem::path& root){Assets::AssetImportJob::Request request;request.projectRoot=root;request.assetRoot=root/"Assets";return game.assetImportJob_.Start(std::move(request));}
+    static bool StartFileImport(Game& game,const std::filesystem::path& source) {
+        Assets::AssetImportJob::Request request{game.GetProjectRoot(),game.projectAssetRoot_,{},false,game.projectFile_};
+        request.sourceFiles.push_back(source);
+        return game.assetImportJob_.Start(std::move(request));
+    }
     static bool RecordSourceOnly(Game& game,std::shared_ptr<Editor::EntityHistoryEffect> effect,std::string& error){
         game.editorSelection_.Synchronize(game.editorWorld_,game.selectedEditorEntity_);
         const auto selected=game.editorSelection_.Capture();
@@ -920,6 +925,11 @@ public:
             const ImVec2 center{(min.x+max.x)*0.5f,(min.y+max.y)*0.5f};
             if (current_->modelGuid_==guid) current_->modelRow_=center;
             if (current_->prefabGuid_==guid) current_->prefabRow_=center;
+            if (current_->imageGuid_==guid) current_->imageRow_=center;
+        };
+        Engine::Editor::renderInspectorChecksObserver=[](const char* name,ImVec2 min,ImVec2 max,bool disabled) {
+            if (!disabled && std::string_view(name)=="Inspector asset drop")
+                current_->dropPoint_={(min.x+max.x)*0.5f,(min.y+max.y)*0.5f};
         };
         ImGuiContextHook hook{};
         hook.Type=ImGuiContextHookType_NewFramePre;
@@ -932,21 +942,15 @@ public:
 
     ~SceneAssetPlacementChecks() override {
         Engine::Editor::assetBrowserChecksObserver=nullptr;
+        Engine::Editor::renderInspectorChecksObserver=nullptr;
         current_=nullptr;
     }
 
     void Update() override {
         std::string error;
         if (frame_ == 3) {
-            const auto arrange = [](const char* title,ImVec2 position,ImVec2 size) {
-                auto* window=ImGui::FindWindowByName(title);
-                Require(window!=nullptr,"Could not arrange Scene placement fixture windows");
-                ImGui::DockContextProcessUndockWindow(ImGui::GetCurrentContext(),window,true);
-                ImGui::SetWindowPos(window,position,ImGuiCond_Always);
-                ImGui::SetWindowSize(window,size,ImGuiCond_Always);
-            };
-            arrange("Asset Browser",{20,65},{390,560});
-            arrange("Scene",{420,65},{650,560});
+            Arrange("Asset Browser",{20,65},{390,560});
+            Arrange("Scene",{420,65},{650,560});
             ImGui::SetWindowFocus("Asset Browser");
             ImGui::SetWindowFocus("Scene");
             Access::FocusSceneSelection(*this);
@@ -978,6 +982,27 @@ public:
             Require(ApplyEditorHistory(false,error) && Access::World(*this)==modelWorld_,
                 "Prefab placement did not Undo in one operation");
             std::cout<<"PASS: Asset Browser drag for model and Prefab, Japanese name/GUID, perspective/XY placement, link and single-step Undo/Redo\n";
+            const auto source=GetProjectRoot()/L"割り当て.png";
+            std::filesystem::copy_file("Resources/textures/common/white.png",source);
+            Require(Access::StartFileImport(*this,source),"Could not start browser texture import");
+            Arrange("Entity Inspector",{420,65},{650,560});
+            ImGui::SetWindowFocus("Entity Inspector");
+        }
+        if (frame_ > 39 && !spriteStart_) {
+            const auto* image=Access::ControllerAssets(*this).FindByPath(GetProjectRoot()/L"Assets/割り当て.png");
+            if (image && !Access::ImportBusy(*this)) {
+                imageGuid_=image->guid;
+                spriteStart_=frame_+6;
+            } else Require(frame_<180,"Browser did not publish imported texture");
+        }
+        if (spriteStart_ && frame_==spriteStart_+13) {
+            const auto ids=GetEditorSelection();
+            const auto* assigned=ids.size()==1 ? Access::Entities(*this).Find(ids.front()) : nullptr;
+            Require(assigned && assigned->hasSprite && assigned->sprite.assetGuid==imageGuid_ &&
+                assigned->model.assetGuid==modelGuid_, "Inspector drop did not assign the imported Sprite image");
+            Require(ApplyEditorHistory(false,error) && Access::World(*this)==modelWorld_,
+                "Inspector drop did not Undo in one operation");
+            std::cout<<"PASS: Browser published imported Japanese texture and Inspector drop assigned it with single-step Undo\n";
             endRequest_=true;
         }
         Game::Update();
@@ -986,12 +1011,22 @@ public:
     void Draw() override {Game::Draw();++frame_;}
 
 private:
+    static void Arrange(const char* title,ImVec2 position,ImVec2 size) {
+        auto* window=ImGui::FindWindowByName(title);
+        Require(window!=nullptr,"Could not arrange asset fixture windows");
+        ImGui::DockContextProcessUndockWindow(ImGui::GetCurrentContext(),window,true);
+        ImGui::SetWindowPos(window,position,ImGuiCond_Always);
+        ImGui::SetWindowSize(window,size,ImGuiCond_Always);
+    }
+
     void SendInput() {
         auto& io=ImGui::GetIO();
         const bool modelSource=frame_>=7 && frame_<=9;
         const bool prefabSource=frame_>=25 && frame_<=27;
-        if (modelSource || prefabSource) {
-            const auto row=modelSource ? modelRow_ : prefabRow_;
+        const int spriteFrame = spriteStart_ ? frame_-spriteStart_ : -1;
+        const bool imageSource = spriteFrame>=0 && spriteFrame<=2;
+        if (modelSource || prefabSource || imageSource) {
+            const auto row=imageSource ? imageRow_ : modelSource ? modelRow_ : prefabRow_;
             Require(row.x>0 && row.y>0,"Asset Browser did not draw the drag source");
             io.AddMousePosEvent(row.x,row.y);
         }
@@ -1001,13 +1036,18 @@ private:
             const auto point=scene->InnerRect.GetCenter();
             io.AddMousePosEvent(point.x+20,point.y+20);
         }
-        io.AddMouseButtonEvent(ImGuiMouseButton_Left,(frame_>=8 && frame_<=15) || (frame_>=26 && frame_<=33));
+        if (spriteFrame>=3 && spriteFrame<=10) {
+            Require(dropPoint_.x>0 && dropPoint_.y>0,"Inspector asset drop target was not drawn");
+            io.AddMousePosEvent(dropPoint_.x,dropPoint_.y);
+        }
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left,(frame_>=8 && frame_<=15) ||
+            (frame_>=26 && frame_<=33) || (spriteFrame>=1 && spriteFrame<=8));
     }
 
     static inline SceneAssetPlacementChecks* current_{};
-    ImVec2 modelRow_{},prefabRow_{};
-    std::string modelGuid_,prefabGuid_,original_,modelWorld_;
-    int frame_{};
+    ImVec2 modelRow_{},prefabRow_{},imageRow_{},dropPoint_{};
+    std::string modelGuid_,prefabGuid_,imageGuid_,original_,modelWorld_;
+    int frame_{},spriteStart_{};
 };
 
 class EditorInputFocusChecks final : public EditorViewportFixture {
