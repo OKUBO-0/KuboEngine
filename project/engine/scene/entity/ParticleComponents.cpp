@@ -122,6 +122,7 @@ SceneValue EncodeParticle(const ParticleComponent& value){
     return result;
 }
 double RequiredEntityDocumentVersion(const SceneValue& world){
+    if(world.is_object() && world.contains("environment"))return 3;
     if(world.is_object()&&world.contains("entities")&&world["entities"].is_array())for(const auto& node:world["entities"].get<crude_json::array>())if(node.is_object()&&node.contains("particle"))return 2;
     return 1;
 }

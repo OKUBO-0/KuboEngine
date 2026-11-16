@@ -21,6 +21,7 @@
 #include <functional>
 #include <iostream>
 #include <array>
+#include <chrono>
 #include <cstring>
 
 class AuthoredLightingChecks final : public Engine::Base::Framework {
@@ -34,9 +35,12 @@ class AuthoredLightingChecks final : public Engine::Base::Framework {
     std::array<uint64_t,3> pixelSum_{};
     using Pixels=std::array<unsigned char,4>;
     static void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
-    template<class Draw> Pixels Capture(Draw draw){
-        dxCommon->PrepareForFrame();offscreenRenderManager->Begin();srvManager->PreDraw();draw();offscreenRenderManager->End();
-        auto* color=offscreenRenderManager->GetViewRenderTarget(false);const auto desc=color->GetDesc();
+        template<class Draw> Pixels Capture(Draw draw,std::vector<unsigned char>* fullFrame=nullptr,bool editorView=false){
+        dxCommon->PrepareForFrame();
+        if(editorView)offscreenRenderManager->BeginEditorView();else offscreenRenderManager->Begin();
+        srvManager->PreDraw();draw();
+        if(editorView)offscreenRenderManager->EndEditorView();else offscreenRenderManager->End();
+        auto* color=offscreenRenderManager->GetViewRenderTarget(editorView);const auto desc=color->GetDesc();
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};UINT rows=0;UINT64 rowBytes=0,total=0;
         dxCommon->GetDevice()->GetCopyableFootprints(&desc,0,1,0,&footprint,&rows,&rowBytes,&total);
         D3D12_RESOURCE_DESC buffer{};buffer.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;buffer.Width=total;buffer.Height=1;
@@ -50,6 +54,12 @@ class AuthoredLightingChecks final : public Engine::Base::Framework {
         void* mapped=nullptr;D3D12_RANGE range{0,size_t(total)};Need(SUCCEEDED(readback->Map(0,&range,&mapped)),"Lighting readback map failed");
         Pixels result{};pixelSum_={};const auto* bytes=static_cast<const unsigned char*>(mapped)+footprint.Offset;
         for(UINT y=0;y<desc.Height;++y)for(UINT64 x=0;x<desc.Width;++x)for(size_t channel=0;channel<3;++channel)pixelSum_[channel]+=bytes[size_t(y)*footprint.Footprint.RowPitch+size_t(x)*4+channel];
+        if(fullFrame){
+            const auto width=static_cast<size_t>(desc.Width)*4;
+            fullFrame->resize(width*desc.Height);
+            for(UINT y=0;y<desc.Height;++y)
+                std::copy_n(bytes+size_t(y)*footprint.Footprint.RowPitch,width,fullFrame->data()+size_t(y)*width);
+        }
         const auto* pixel=bytes+size_t(desc.Height/2)*footprint.Footprint.RowPitch+size_t(desc.Width/2)*4;
         std::copy_n(pixel,4,result.begin());D3D12_RANGE written{0,0};readback->Unmap(0,&written);return result;
     }
@@ -132,6 +142,97 @@ class AuthoredLightingChecks final : public Engine::Base::Framework {
         Need(fallback[0]>220 && fallback[1]<5 && fallback[2]<5,"Missing shared Material did not use the local tint");
         Need(world_.Restore(before,error_),error_.c_str());
         std::cout<<"LIGHT_SHARED_MATERIAL same_tint=1 shared_edit=1 scene_roundtrip=1 moved_guid=1 local_fallback=1\n";
+    }
+    void CheckSceneEnvironment(){
+        using namespace Engine;
+        using Clock=std::chrono::steady_clock;
+        const auto saved=world_.Capture();
+        Scene::MaterialComponent material;material.color={.6f,.35f,.2f,1};material.textureInfluence=0;
+        Need(world_.SetMaterial(model_,material),"Environment fixture material");
+        D3D12_QUERY_HEAP_DESC desc{};desc.Type=D3D12_QUERY_HEAP_TYPE_TIMESTAMP;desc.Count=2;
+        Microsoft::WRL::ComPtr<ID3D12QueryHeap> timestamps;
+        Need(SUCCEEDED(dxCommon->GetDevice()->CreateQueryHeap(&desc,IID_PPV_ARGS(&timestamps))),"Environment timestamp heap");
+        D3D12_RESOURCE_DESC buffer{};buffer.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;buffer.Width=16;
+        buffer.Height=1;buffer.DepthOrArraySize=1;buffer.MipLevels=1;buffer.SampleDesc.Count=1;buffer.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+        D3D12_HEAP_PROPERTIES heap{};heap.Type=D3D12_HEAP_TYPE_READBACK;
+        Microsoft::WRL::ComPtr<ID3D12Resource> readback;
+        Need(SUCCEEDED(dxCommon->GetDevice()->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&buffer,
+            D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&readback))),"Environment timestamp readback");
+        UINT64 frequency=0;
+        Need(SUCCEEDED(dxCommon->GetCommandQueue()->GetTimestampFrequency(&frequency)) && frequency,"Environment timestamp frequency");
+        const auto config=[&](Scene::SceneEnvironment environment){
+            Need(world_.SetEnvironment(environment),"Environment profile rejected");
+            scene_->SynchronizeModels(0);
+            offscreenRenderManager->SetViewAppearance(scene_->GetViewAppearance());
+        };
+        const auto measure=[&](const char* label,std::vector<unsigned char>& pixels){
+            std::array<double,24> cpu{},gpu{};
+            for(size_t frame=0;frame<cpu.size()+4;++frame){
+                dxCommon->PrepareForFrame();
+                auto* commands=dxCommon->GetCommandList();
+                commands->EndQuery(timestamps.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0);
+                const auto start=Clock::now();
+                scene_->SynchronizeModels(0);
+                offscreenRenderManager->Begin();
+                srvManager->PreDraw();
+                scene_->Draw();
+                offscreenRenderManager->End();
+                const auto elapsed=std::chrono::duration<double,std::milli>(Clock::now()-start).count();
+                commands->EndQuery(timestamps.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1);
+                commands->ResolveQueryData(timestamps.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0,2,readback.Get(),0);
+                dxCommon->CommandKick();
+                if(frame>=4){
+                    D3D12_RANGE range{0,16};
+                    void* values=nullptr;
+                    Need(SUCCEEDED(readback->Map(0,&range,&values)),"Environment timestamp map");
+                    UINT64 counts[2]{};
+                    std::memcpy(counts,values,sizeof(counts));
+                    const D3D12_RANGE noWrite{0,0};
+                    readback->Unmap(0,&noWrite);
+                    Need(counts[1]>counts[0],"Missing environment GPU timestamp interval");
+                    cpu[frame-4]=elapsed;
+                    gpu[frame-4]=double(counts[1]-counts[0])*1000/double(frequency);
+                }
+            }
+            const auto avg=[](const auto& values){double total=0;for(const auto value:values)total+=value;return total/values.size();};
+            std::cout<<"SCENE_ENVIRONMENT width=320 height=320 preset="<<label<<" samples="<<cpu.size()
+                <<" cpu_record_ms="<<avg(cpu)<<" gpu_ms="<<avg(gpu)<<'\n';
+            return Capture([&]{scene_->Draw();},&pixels);
+        };
+        std::vector<unsigned char> day,night,reloaded;
+        config(Scene::SceneEnvironment::Day());
+        const auto bright=measure("day",day);
+        config(Scene::SceneEnvironment::Night());
+        const auto dark=measure("night",night);
+        Need(bright[0]>dark[0]+35 && bright[1]>dark[1]+25 && bright[2]>dark[2]+20,"Night exposure did not dim geometry");
+        Need(day.size()==320*320*4 && night.size()==day.size(),"Environment comparison size mismatch");
+        size_t changed=0;uint64_t absoluteRgb=0;
+        for(size_t at=0;at<day.size();at+=4){
+            unsigned delta=0;
+            for(size_t channel=0;channel<3;++channel)delta+=unsigned(std::abs(int(day[at+channel])-int(night[at+channel])));
+            changed+=delta!=0;absoluteRgb+=delta;
+        }
+        Need(changed>320*320/2 && absoluteRgb>1000000 && day[0]!=night[0],"Day and night sky and geometry were too similar");
+        const auto path=fixture_/"night.scene";
+        Need(world_.Save(path,error_) && world_.Load(path,error_),error_.c_str());
+        config(world_.GetEnvironment());
+        Capture([&]{scene_->Draw();},&reloaded);
+        Need(reloaded==night,"Reloaded Night scene changed rendered pixels");
+        offscreenRenderManager->ResizeEditorView({320,320});
+        std::vector<unsigned char> editor;
+        Capture([&]{scene_->DrawEditorView();},&editor,true);
+        Need(editor==night,"At equal camera and resolution the Scene and Game views disagree on the environment");
+        auto post=Scene::SceneEnvironment::Day();
+        post.postEffect=PostEffectType::Grayscale;
+        config(post);
+        const auto gray=Capture([&]{scene_->Draw();});
+        Need(gray!=bright && gray[0]>gray[1] && gray[1]>gray[2],"Saved effect did not reach the Game target");
+        Need(world_.Restore(saved,error_),error_.c_str());
+        config(world_.GetEnvironment());
+        std::cout<<"SCENE_ENVIRONMENT_DIFF pixels="<<changed<<" total_pixels=102400 absolute_rgb="<<absoluteRgb
+            <<" day_center="<<int(bright[0])<<','<<int(bright[1])<<','<<int(bright[2])
+            <<" night_center="<<int(dark[0])<<','<<int(dark[1])<<','<<int(dark[2])
+            <<" reload_equal=1 dual_view_equal=1 post_effect=1\n";
     }
     void CheckEnvironmentPixels(){
         const auto saved=world_.Capture();auto light=world_.Find(light_)->light;light.enabled=false;Need(world_.SetLight(light_,light),"Environment Light disable failed");
@@ -265,7 +366,7 @@ public:
         const auto retained=scene_->GetLightingFrame().gpu;scene_->SynchronizeModels(0);
         Need(scene_->GetLightingResult()==RenderLightResult::Limit && !std::memcmp(&retained,&scene_->GetLightingFrame().gpu,sizeof(retained)),"Oversized light list published a prefix");
         Need(world_.Restore(Engine::Scene::SceneValue::parse(before),error_),error_.c_str());
-        CheckAuthoringPixels();CheckSharedMaterialPixels();CheckEnvironmentPixels();CheckUploadAndLegacy();CheckBatches();GpuClean();done_=true;
+        CheckAuthoringPixels();CheckSharedMaterialPixels();CheckEnvironmentPixels();CheckSceneEnvironment();CheckUploadAndLegacy();CheckBatches();GpuClean();done_=true;
     }
     void Finalize() override {if(dxCommon)dxCommon->WaitForAllFrames();if(scene_){scene_->Finalize();scene_.reset();}Framework::Finalize();if(messages_)GpuClean();passed_=done_;if(passed_)std::cout<<"PASS: actual EntityScene + static/skinned instanced Directional/Point/Spot/material pixels, material-key isolation, active ancestry/range/cone/removal, scope/capacity and GPU errors0/owned shutdown\n";}
 private:std::string error_;

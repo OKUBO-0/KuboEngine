@@ -58,5 +58,22 @@ int main(){using namespace Engine::Scene;try{
     {auto v=EncodeMaterial(material);v["lighting"]=0.0;rejectMaterial(v);v=EncodeMaterial(material);v["color"]=crude_json::array{1.0,1.0,1.0};rejectMaterial(v);v=EncodeMaterial(material);v["roughness"]=1.01;rejectMaterial(v);v=EncodeMaterial(material);v["shininess"]=0.0;rejectMaterial(v);v=EncodeMaterial(material);v["unknown"]=true;rejectMaterial(v);}
     world.RemoveLight(id);world.RemoveMaterial(id);
     Need(world.Capture().dump()==legacy.dump(),"Removal failed to restore omitted legacy shape");
+    auto environment=SceneEnvironment::Night();
+    environment.postEffect=PostEffectType::Vignette;
+    Need(world.SetEnvironment(environment),"Night profile rejected");
+    const auto night=world.Capture();
+    Need(night["version"].get<double>()==3 && restored.Restore(night,error) &&
+        restored.Capture().dump()==night.dump(),"Scene environment roundtrip missed version or settings");
+    auto rejected=night;
+    rejected["environment"]["exposure"]=9.0;
+    Need(!restored.Restore(rejected,error) && restored.Capture().dump()==night.dump(),"Malformed environment replaced World");
+    rejected=night;
+    rejected["environment"]["postEffect"]="unsupported";
+    Need(!restored.Restore(rejected,error) && restored.Capture().dump()==night.dump(),"Unknown effect replaced World");
+    Need(restored.Restore(legacy,error) && restored.GetEnvironment().IsDefault(),"Legacy Scene retained environment from the previous Scene");
+    world.Swap(restored);
+    Need(world.GetEnvironment().IsDefault() && restored.Capture().dump()==night.dump(),"World Swap dropped scene-wide settings");
+    restored.Clear();
+    Need(restored.GetEnvironment().IsDefault() && !restored.Capture().contains("environment"),"New World retained environment");
     std::cout<<"PASS: authored Directional/Point/Spot and Material roundtrip/default-unlit/removal, strict type/finite/range/cone/color/schema validation and refusal preserving World/IDs/output (not rendering)\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

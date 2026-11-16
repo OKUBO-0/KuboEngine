@@ -1,5 +1,7 @@
 #include "Fullscreen.hlsli"
 
+#include "Exposure.hlsli"
+
 Texture2D<float4> gTexture : register(t0);
 SamplerState gSampler : register(s0);
 
@@ -32,5 +34,6 @@ PixelShaderOutput main(VertexShaderOutput input)
 
     PixelShaderOutput output;
     output.color = float4(outputColor, 1.0f);
+    output.color.rgb *= exposureScale;
     return output;
 }

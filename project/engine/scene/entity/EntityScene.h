@@ -21,7 +21,8 @@
 namespace Engine::Graphics3D { class Object3D; }
 namespace Engine::Graphics2D { class Sprite; }
 namespace Engine::Assets { struct AnimatorControllerRevision; }
-namespace Engine::Base { class DirectXCommon; }
+namespace Engine::Skybox { class SkyBox; }
+namespace Engine::Base { class DirectXCommon; struct ViewAppearance; }
 namespace Engine::CameraSystem { class Camera; }
 namespace Engine::InputSystem { struct InputFrame; }
 namespace Engine::Scene {
@@ -39,6 +40,7 @@ public:
     void Finalize() override;
     void Update() override;
     void Draw() override;
+    Base::ViewAppearance GetViewAppearance() const noexcept;
     void DrawEditorView(EntityId materialPreviewEntity=0,const MaterialValues* materialPreview=nullptr);
     void DrawGameView(float aspect = 16.0f/9.0f);
     void SetSceneAspectRatio(float aspect);
@@ -135,6 +137,7 @@ private:
     const std::filesystem::path projectFile_;
     std::unordered_set<std::string> reportedModelErrors_;
     std::string environmentPath_;
+    std::unique_ptr<Skybox::SkyBox> skybox_;
     std::unordered_map<EntityId, RenderEntry> models_;
     std::unordered_map<EntityId,unsigned> animationParticleBursts_;
     struct AnimationPreview {

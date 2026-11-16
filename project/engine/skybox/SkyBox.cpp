@@ -117,8 +117,9 @@ void SkyBox::InitializeMaterial()
 
 void SkyBox::Update()
 {
-	worldMatrix = MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-	Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
+	auto* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
+    const auto position=activeCamera && followCamera_?activeCamera->GetWorldPosition():transform.translate;
+	worldMatrix = MyMath::MakeAffineMatrix(transform.scale, transform.rotate, position);
 
 	if (activeCamera) {
 

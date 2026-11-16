@@ -1,5 +1,7 @@
 #include "LuminanceBasedOutline.hlsli"
 
+#include "../../post/fullscreen/Exposure.hlsli"
+
 Texture2D<float4> gTexture : register(t0);
 SamplerState gSampler : register(s0);
 
@@ -76,5 +78,6 @@ PixelShaderOutput main(VertexShaderOutput input)
     output.color.a = 1.0f; // アルファ値は1.0に設定
     
     
+    output.color.rgb *= exposureScale;
     return output;
 }

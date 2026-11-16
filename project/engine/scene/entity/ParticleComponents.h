@@ -28,7 +28,7 @@ struct ParticleComponent {
 };
 bool DecodeParticle(const SceneValue& value,ParticleComponent& output) noexcept;
 SceneValue EncodeParticle(const ParticleComponent& value);
-// Only live components select version2; saved Prefab baselines are not live.
+// Scene-level environment requires version 3. Live Particle components require at least version 2.
 double RequiredEntityDocumentVersion(const SceneValue& world);
 // For internally assembled candidates after adding/removing Entity fields.
 void RetagEntityDocument(SceneValue& world);

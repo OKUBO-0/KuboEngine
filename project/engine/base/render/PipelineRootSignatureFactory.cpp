@@ -238,11 +238,16 @@ std::array<D3D12_ROOT_PARAMETER, 3> CreateSkyboxRootParameters(D3D12_DESCRIPTOR_
 	};
 }
 
-std::array<D3D12_ROOT_PARAMETER, 1> CreateCopyImageRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
+std::array<D3D12_ROOT_PARAMETER, 2> CreateCopyImageRootParameters(D3D12_DESCRIPTOR_RANGE& descriptorRange)
 {
 	descriptorRange = CreateSrvDescriptorRange(0);
+    D3D12_ROOT_PARAMETER exposure{};
+    exposure.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    exposure.Constants.Num32BitValues = 1;
+    exposure.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 	return {
 		CreateDescriptorTableRootParameter(&descriptorRange, 1, D3D12_SHADER_VISIBILITY_PIXEL),
+        exposure,
 	};
 }
 

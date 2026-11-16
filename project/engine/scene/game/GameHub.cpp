@@ -227,10 +227,8 @@ void Game::CaptureHubPreview()
     }
     if (hubPreviewCloseFrame_ || (hubPreviewRequested_ && now >= hubPreviewNextAt_)) {
         hubPreviewNextAt_ = now + 15000;
-        offscreenRenderManager->EndEditorView();
         if (hubPreview_->Record(*dxCommon,*offscreenRenderManager,GetProjectRoot()))
             hubPreviewRequested_ = false;
-        offscreenRenderManager->BindEditorView();
     }
 }
 
@@ -253,9 +251,10 @@ void Game::Draw()
     dxCommon->PrepareForFrame();
     dxCommon->BeginGpuFrameTiming();
     if (editorMode_) assetThumbnails_.DrawPrepared();
+    auto* genericScene = dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene());
+    offscreenRenderManager->SetViewAppearance(genericScene?genericScene->GetViewAppearance():Base::ViewAppearance{});
     offscreenRenderManager->Begin();
     srvManager->PreDraw();
-    auto* genericScene = dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene());
     if (genericScene) genericScene->SetUIOutputExtent(GetGameOutputExtent());
     if (editorMode_ && genericScene && offscreenRenderManager->HasEditorView())
         genericScene->DrawGameView(GetGameOutputExtent().Aspect());
@@ -269,10 +268,13 @@ void Game::Draw()
 #else
         genericScene->DrawEditorView();
 #endif
-        CaptureHubPreview();
-        if (debugSceneViewOpen_ && editorViewEnabled_ && editorGridVisible_)
-            offscreenRenderManager->DrawEditorGrid(editorViewCamera_.GetViewProjectionMatrix().m);
         offscreenRenderManager->EndEditorView();
+        CaptureHubPreview();
+        if (debugSceneViewOpen_ && editorViewEnabled_ && editorGridVisible_) {
+            offscreenRenderManager->BindEditorView();
+            offscreenRenderManager->DrawEditorGrid(editorViewCamera_.GetViewProjectionMatrix().m);
+            offscreenRenderManager->EndEditorView(false);
+        }
     }
     dxCommon->Begin();
     offscreenRenderManager->Draw();

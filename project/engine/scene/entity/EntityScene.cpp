@@ -1,6 +1,8 @@
 #include "EntityScene.h"
 #include "Object3D.h"
 #include "Object3DCommon.h"
+#include "OffscreenRenderManager.h"
+#include "SkyBox.h"
 #include "ModelManager.h"
 #include "CameraManager.h"
 #include "Logger.h"
@@ -20,10 +22,10 @@
 #include "../../base/ProjectManifestSelection.h"
 
 namespace {
-void ApplyMaterial(Engine::Graphics3D::Object3D& object,const Engine::Scene::MaterialValues& material) {
+void ApplyMaterial(Engine::Graphics3D::Object3D& object,const Engine::Scene::MaterialValues& material,float environmentIntensity) {
     object.SetLighting(material.lighting);object.SetColor(material.color);
     object.SetShininess(material.shininess);object.SetEnvironmentRoughness(material.roughness);
-    object.SetEnvironmentReflectionStrength(material.reflectionStrength);object.SetTextureInfluence(material.textureInfluence);
+    object.SetEnvironmentReflectionStrength(material.reflectionStrength*environmentIntensity);object.SetTextureInfluence(material.textureInfluence);
 }
 bool ApplyAnimatorSettings(Engine::Graphics3D::Object3D& object,const Engine::AnimationSystem::AnimatorBinding& binding) {
     if(!binding.settings.controllerGuid.empty()) {
@@ -69,6 +71,8 @@ void EntityScene::Finalize()
     manager->DetachCamera("__entity_scene_camera", authoredCamera_.get(), previousCameraName_);
     authoredCamera_.reset();
     ResetWorldRenderState();
+    if(skybox_)graphics_.WaitForAllFrames();
+    skybox_.reset();
 }
 void EntityScene::ResetWorldRenderState()
 {
@@ -144,6 +148,12 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
 {
     ++materialFrame_;
     materialMovePending_.reset();
+    if(world_.GetEnvironment().showSkybox && !skybox_){
+        auto candidate=std::make_unique<Skybox::SkyBox>();
+        candidate->Initialize(environmentPath_);
+        candidate->SetFollowCamera(true);
+        skybox_=std::move(candidate);
+    }
     SynchronizeSprites();
     const auto lighting=BuildRenderLightFrame(world_,lightingFrame_);
     if(lighting!=lightingResult_ || (lighting==RenderLightResult::Success && reportedSkippedLights_!=lightingFrame_.skippedInvalidFrames)) {
@@ -247,7 +257,7 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
             }
         }
         const auto& transform = entity.transform;
-        ApplyMaterial(*entry.object,ResolveMaterial(entity));
+        ApplyMaterial(*entry.object,ResolveMaterial(entity),world_.GetEnvironment().reflectionIntensity);
         entry.object->SetTransform({transform.scale, transform.rotation, transform.position});
         Matrix4x4 worldMatrix{};
         if (!world_.GetWorldMatrix(entity.id, worldMatrix)) continue;
@@ -297,6 +307,12 @@ void EntityScene::SynchronizeCamera()
         if (auto* camera = manager->GetActiveCamera()) { camera->SetAspectRatio(sceneAspect_); camera->Update(); }
     }
 }
+Base::ViewAppearance EntityScene::GetViewAppearance() const noexcept
+{
+    const auto& settings=world_.GetEnvironment();
+    return {{settings.background.x,settings.background.y,settings.background.z,1},settings.exposure,settings.postEffect};
+}
+
 void EntityScene::Draw()
 {
     DrawView(false);
@@ -310,6 +326,11 @@ void EntityScene::DrawView(bool editorView,EntityId materialPreviewEntity,const 
     auto* common=Graphics3D::Object3DCommon::GetInstance();
     struct Restore {Graphics3D::Object3DCommon* owner;Math::AuthoredLightData previous;~Restore(){owner->SetAuthoredLights(previous);}} restore{common,common->GetAuthoredLights()};
     if(!common->SetAuthoredLights(lightingFrame_.gpu))throw std::logic_error("Invalid prepared Light GPU frame");
+    const auto& environment=world_.GetEnvironment();
+    if(environment.showSkybox && skybox_){
+        skybox_->Update();
+        skybox_->Draw();
+    }
     common->CommonDraw();
     for (const auto& entity : world_.GetEntities()) {
         if (!entity.active || !entity.hasModel) continue;
@@ -324,9 +345,10 @@ void EntityScene::DrawView(bool editorView,EntityId materialPreviewEntity,const 
             struct RestoreMaterial {
                 Graphics3D::Object3D& object;
                 MaterialValues value;
-                ~RestoreMaterial(){ApplyMaterial(object,value);object.RefreshMaterialAppearance();}
-            } restoreMaterial{*object,ResolveMaterial(entity)};
-            ApplyMaterial(*object,*materialPreview);
+                float environmentIntensity;
+                ~RestoreMaterial(){ApplyMaterial(object,value,environmentIntensity);object.RefreshMaterialAppearance();}
+            } restoreMaterial{*object,ResolveMaterial(entity),environment.reflectionIntensity};
+            ApplyMaterial(*object,*materialPreview,environment.reflectionIntensity);
             object->RefreshMaterialAppearance();
             object->DrawAnimated();
         }else object->DrawAnimated();
@@ -530,7 +552,7 @@ bool EntityScene::SetAnimationPreview(EntityId id,const std::string& clip,float 
             preview={id,model.asset,model.revision.current,{},-1,std::move(object)};
         }
         const auto* entity=world_.Find(id);
-        ApplyMaterial(*preview.object,ResolveMaterial(*entity));
+        ApplyMaterial(*preview.object,ResolveMaterial(*entity),world_.GetEnvironment().reflectionIntensity);
         preview.object->SetWorldMatrix(worldMatrix);
         if(preview.time!=sampledTime || preview.clip!=clip){
             if(!preview.object->SampleAnimationPreview(clip,sampledTime)){ClearAnimationPreview();return false;}

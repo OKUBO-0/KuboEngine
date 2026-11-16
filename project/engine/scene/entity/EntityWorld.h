@@ -8,6 +8,7 @@
 #include "../../audio/AudioComponent.h"
 #include "../../animation/AnimatorComponent.h"
 #include "RenderComponents.h"
+#include "SceneEnvironment.h"
 #include "UIComponents.h"
 #include "ParticleComponents.h"
 
@@ -104,6 +105,7 @@ public:
     // owning EntityRecord fields. Both Worlds' record pointers are invalidated.
     void Swap(EntityWorld& other) noexcept {
         entities_.swap(other.entities_);
+        std::swap(environment_,other.environment_);
         const auto previous=nextId_;nextId_=other.nextId_;other.nextId_=previous;
     }
     // Returns 0 without mutation on identity exhaustion/invalid allocation data.
@@ -165,6 +167,13 @@ public:
     bool SetScriptProperty(EntityId id, std::string name, Scripting::ScriptProperty value);
     bool RemoveScriptProperty(EntityId id, const std::string& name);
 
+    const SceneEnvironment& GetEnvironment() const noexcept {return environment_;}
+    bool SetEnvironment(const SceneEnvironment& settings) noexcept {
+        if(!settings.IsValid())return false;
+        environment_=settings;
+        return true;
+    }
+
     SceneValue Capture() const;
     bool Restore(const SceneValue& value, std::string& error);
     bool Save(const std::filesystem::path& path, std::string& error, bool replaceExisting=true) const;
@@ -175,6 +184,7 @@ private:
     EntityRecord* FindMutable(EntityId id);
     bool IsDescendant(EntityId candidate, EntityId ancestor) const;
 
+    SceneEnvironment environment_;
     std::vector<EntityRecord> entities_;
     EntityId nextId_ = 1;
 };

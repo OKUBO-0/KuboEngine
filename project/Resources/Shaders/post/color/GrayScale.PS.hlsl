@@ -1,5 +1,7 @@
 #include "GrayScale.hlsli"
 
+#include "../fullscreen/Exposure.hlsli"
+
 Texture2D <float4>gTexture: register(t0);
 SamplerState gSampler : register(s0);
 
@@ -15,5 +17,6 @@ PixelShaderOutput main(VertexShaderOutput input)
     //グレースケール
     float value = dot(output.color.rgb, float3(0.299, 0.587, 0.114));
     output.color.rgb = value * float3(1.0f, 74.0f / 107.0f, 43.0f / 107.0f);
+    output.color.rgb *= exposureScale;
     return output;
 }

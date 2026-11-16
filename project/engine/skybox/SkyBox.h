@@ -42,6 +42,7 @@ public:
 	std::string GetTextureFilePath() const { return textureFilePath_; }
 	const Vector3& GetScale() const { return transform.scale; }
 	void SetScale(const Vector3& scale) { transform.scale = scale; }
+    void SetFollowCamera(bool follow) noexcept {followCamera_=follow;}
 
 private:
 	void InitializeGeometry();
@@ -74,6 +75,7 @@ private:
 	Material materialData_{};
 	std::string textureFilePath_;
 	int textureIndex_ = 0;
+    bool followCamera_=false;
 
 	//SRT
 	EulerTransform transform;

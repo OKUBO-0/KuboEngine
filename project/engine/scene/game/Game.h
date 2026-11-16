@@ -337,6 +337,7 @@ private:
 	EntityId hierarchyPressedEntity_ = 0;
 	bool genericHierarchyOpen_ = true;
 	bool genericInspectorOpen_ = true;
+    bool sceneEnvironmentOpen_=false;
 	bool keepWorldOnReparent_ = false; // Transient preference; legacy default retains local TRS.
 	bool genericWorldReady_ = false;
 	bool genericSceneSelected_ = false;

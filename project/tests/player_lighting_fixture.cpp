@@ -79,6 +79,7 @@ function on_destroy(e) assert(scene.remove_material(e:id()));assert(scene.set_li
         const auto source=root_/"Assets/shared.material";
         Need(Engine::Assets::WriteMaterialAsset(source,shared,error,false) &&
             assets.RegisterSource(source,local.assetGuid,error) && world.SetMaterial(model,local),error.c_str());
+        Need(world.SetEnvironment(Engine::Scene::SceneEnvironment::Night()),"Player Night profile refused");
         Need(world.Save(root_/"entry.scene",error),error.c_str());
     }
     void Initialize() override {
@@ -96,8 +97,8 @@ function on_destroy(e) assert(scene.remove_material(e:id()));assert(scene.set_li
         const auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());Need(scene && scene->GetModelRenderStatus(1).loaded && scene->GetLightingResult()==Engine::Scene::RenderLightResult::Success && scene->GetLightingFrame().gpu.count==1,"Player render scene/light frame missing");
         const auto kind=unsigned(GetWorld().Find(3)->light.kind);Need(kind<3,"Player Lua Light kind invalid");const auto pixel=ReadPixel();
         if(updates_==1){
-            Need(pixel[0]>220 && pixel[1]<5 && pixel[2]>220,"Actual Player did not render the saved shared Material");
-            std::cout<<"PLAYER_SHARED_MATERIAL rgb="<<int(pixel[0])<<','<<int(pixel[1])<<','<<int(pixel[2])<<'\n';
+            Need(pixel[0]>140 && pixel[0]<151 && pixel[1]<5 && pixel[2]>140 && pixel[2]<151,"Actual Player did not render the saved shared Material");
+            std::cout<<"PLAYER_NIGHT_ENVIRONMENT shared_material_rgb="<<int(pixel[0])<<','<<int(pixel[1])<<','<<int(pixel[2])<<'\n';
             ++draws_;
             return;
         }

@@ -7,9 +7,9 @@
 #ifndef KUBO_RUNTIME_ONLY
 #include "PipelineRootSignatureFactory.h"
 #include <DirectXMath.h>
-#include <cmath>
 #include <cstring>
 #endif
+#include <cmath>
 #include <cassert>
 #include <imgui.h>
 #include <string>
@@ -79,7 +79,7 @@ void OffscreenRenderManager::Initialize(std::shared_ptr<Engine::Base::DirectXCom
 		gameOutputExtent_.width,
 		gameOutputExtent_.height,
 		DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-		kClearColor
+		ViewAppearance{}.background,false
 	);
 	GetDirectXCommon()->TrackResourceState(
 		renderTargetTextureResource.Get(),
@@ -108,6 +108,8 @@ void OffscreenRenderManager::Initialize(std::shared_ptr<Engine::Base::DirectXCom
 
 void OffscreenRenderManager::Finalize()
 {
+    ResetPostTarget(gamePost_);
+    ResetPostTarget(editorPost_);
 	if (srvManager_ && editorViewSrv_ != UINT32_MAX) srvManager_->Free(editorViewSrv_);
 	editorViewSrv_ = UINT32_MAX; editorViewGpu_ = {};
 	imGuiEditorViewCpu_ = {}; imGuiEditorViewGpu_ = {};
@@ -142,7 +144,7 @@ void OffscreenRenderManager::Begin()
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = gameDsv_->GetCPUDescriptorHandleForHeapStart();
 	GetDirectXCommon()->GetCommandList()->OMSetRenderTargets(1, &renderTargetTextureHandle, false, &dsvHandle);
 	//指定した色で画面全体をクリアする
-	float clearColor[] = { kClearColor.x,kClearColor.y,kClearColor.z,kClearColor.w };
+	const float clearColor[] = { appearance_.background.x,appearance_.background.y,appearance_.background.z,appearance_.background.w };
 	GetDirectXCommon()->GetCommandList()->ClearRenderTargetView(renderTargetTextureHandle, clearColor, 0, nullptr);
 	GetDirectXCommon()->GetCommandList()->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
@@ -169,7 +171,7 @@ void OffscreenRenderManager::ResizeEditorView(ViewExtent extent)
 		throw std::invalid_argument("Editor view extent must be within 1..2048");
 	if (HasEditorView() && extent == editorViewExtent_) return;
 	auto graphics = GetDirectXCommon();
-	auto color = CreateRenderTargetTextureResource(extent.width,extent.height,DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,kClearColor);
+	auto color = CreateRenderTargetTextureResource(extent.width,extent.height,DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,ViewAppearance{}.background,false);
 	auto rtv = graphics->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV,1,false);
 	auto dsv = graphics->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV,1,false);
 	graphics->GetDevice()->CreateRenderTargetView(color.Get(),&graphics->GetRTVDesc(),rtv->GetCPUDescriptorHandleForHeapStart());
@@ -185,6 +187,7 @@ void OffscreenRenderManager::ResizeEditorView(ViewExtent extent)
 	// Allocate candidates before changing live descriptors. Pending uploads/draws
 	// must be submitted too: waiting only for prior frames is not sufficient.
 	if (HasEditorView()) { graphics->CommandKick(); graphics->WaitForAllFrames(); }
+    ResetPostTarget(editorPost_);
 	const bool replacing = HasEditorView();
 	const auto index = replacing ? editorViewSrv_ : srvManager_->Allocate();
 	try { srvManager_->CreateSRVforTexture2D(index,color.Get(),DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,1,renderTargetMetadata_); }
@@ -215,7 +218,7 @@ void OffscreenRenderManager::BeginEditorView()
     auto* commands = GetDirectXCommon()->GetCommandList();
     const auto rtv = editorViewRtv_->GetCPUDescriptorHandleForHeapStart();
     const auto dsv = editorViewDsv_->GetCPUDescriptorHandleForHeapStart();
-    const float clear[]{kClearColor.x,kClearColor.y,kClearColor.z,kClearColor.w};
+    const float clear[]{appearance_.background.x,appearance_.background.y,appearance_.background.z,appearance_.background.w};
     commands->ClearRenderTargetView(rtv,clear,0,nullptr);
     commands->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,1,0,0,nullptr);
 }
@@ -235,9 +238,10 @@ void OffscreenRenderManager::BindEditorView()
     commands->RSSetScissorRects(1,&scissor);
 }
 
-void OffscreenRenderManager::EndEditorView()
+void OffscreenRenderManager::EndEditorView(bool applyPost)
 {
-	GetDirectXCommon()->TransitionResource(editorViewColor_.Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    if(applyPost)FinishView(editorViewColor_.Get(),editorViewSrv_,editorViewExtent_,editorPost_);
+    else GetDirectXCommon()->TransitionResource(editorViewColor_.Get(),D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
 #ifndef KUBO_RUNTIME_ONLY
@@ -289,12 +293,8 @@ void OffscreenRenderManager::DrawEditorPreview(D3D12_CPU_DESCRIPTOR_HANDLE targe
     commands->OMSetRenderTargets(1, &target, FALSE, nullptr);
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);
-    commands->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateCopyImageHandle(PostEffectType::Fullscreen).Get());
-    commands->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureHandle("PostEffect.0").Get());
-    commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     srvManager_->PreDraw();
-    srvManager_->SetGraphicsRootDescriptorTable(0, editorViewSrv_);
-    commands->DrawInstanced(3, 1, 0, 0);
+    DrawPostEffect(editorViewSrv_,PostEffectType::Fullscreen,1);
 }
 #endif
 
@@ -312,9 +312,57 @@ void OffscreenRenderManager::BindRenderTarget()
 
 void OffscreenRenderManager::End()
 {
-	GetDirectXCommon()->TransitionResource(
-		renderTargetTextureResource.Get(),
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    FinishView(renderTargetTextureResource.Get(),srvIndex,gameOutputExtent_,gamePost_);
+}
+
+void OffscreenRenderManager::ResetPostTarget(PostTarget& target)
+{
+    if(target.color)if(const auto graphics=dxCommon_.lock())graphics->UntrackResourceState(target.color.Get());
+    target={};
+}
+
+void OffscreenRenderManager::FinishView(ID3D12Resource* source,uint32_t sourceSrv,ViewExtent extent,PostTarget& target)
+{
+    auto graphics=GetDirectXCommon();
+    graphics->TransitionResource(source,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    if(appearance_.effect==PostEffectType::Fullscreen && appearance_.exposure==0)return;
+    if(!target.color){
+        PostTarget prepared;
+        prepared.color=CreateRenderTargetTextureResource(extent.width,extent.height,DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+            ViewAppearance{}.background,false);
+        prepared.rtv=graphics->CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV,1,false);
+        graphics->GetDevice()->CreateRenderTargetView(prepared.color.Get(),&graphics->GetRTVDesc(),
+            prepared.rtv->GetCPUDescriptorHandleForHeapStart());
+        graphics->TrackResourceState(prepared.color.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET);
+        target=std::move(prepared);
+    }
+    graphics->TransitionResource(target.color.Get(),D3D12_RESOURCE_STATE_RENDER_TARGET);
+    auto* commands=graphics->GetCommandList();
+    const auto rtv=target.rtv->GetCPUDescriptorHandleForHeapStart();
+    const auto viewport=GameViewport(extent);
+    const auto scissor=GameScissor(extent);
+    commands->OMSetRenderTargets(1,&rtv,FALSE,nullptr);
+    commands->RSSetViewports(1,&viewport);
+    commands->RSSetScissorRects(1,&scissor);
+    srvManager_->PreDraw();
+    DrawPostEffect(sourceSrv,appearance_.effect,std::exp2(appearance_.exposure));
+
+    // Publish through the original texture and stable ImGui/engine SRV.
+    graphics->TransitionResource(target.color.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE);
+    graphics->TransitionResource(source,D3D12_RESOURCE_STATE_COPY_DEST);
+    commands->CopyResource(source,target.color.Get());
+    graphics->TransitionResource(source,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+}
+
+void OffscreenRenderManager::DrawPostEffect(uint32_t sourceSrv,PostEffectType effect,float exposureScale)
+{
+    auto* commands=GetDirectXCommon()->GetCommandList();
+    commands->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateCopyImageHandle(effect).Get());
+    commands->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureHandle("PostEffect."+std::to_string(static_cast<int>(effect))).Get());
+    commands->SetGraphicsRoot32BitConstants(1,1,&exposureScale,0);
+    commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    srvManager_->SetGraphicsRootDescriptorTable(0,sourceSrv);
+    commands->DrawInstanced(3,1,0,0);
 }
 
 void OffscreenRenderManager::Draw()
@@ -325,19 +373,7 @@ void OffscreenRenderManager::Draw()
     const D3D12_RECT scissor{static_cast<LONG>(rect.left),static_cast<LONG>(rect.top),static_cast<LONG>(rect.left+rect.width),static_cast<LONG>(rect.top+rect.height)};
     GetDirectXCommon()->GetCommandList()->RSSetViewports(1,&viewport);
     GetDirectXCommon()->GetCommandList()->RSSetScissorRects(1,&scissor);
-	const Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState =
-		graphicsPipeline_->GetGraphicsPipelineStateCopyImageHandle(currentEffectType_);
-	const Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature =
-		graphicsPipeline_->GetRootSignatureHandle("PostEffect." + std::to_string(static_cast<int>(currentEffectType_)));
-	GetDirectXCommon()->GetCommandList()->SetPipelineState(pipelineState.Get());
-	GetDirectXCommon()->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
-	GetDirectXCommon()->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	//heapの設定
-	srvManager_->SetGraphicsRootDescriptorTable(0, srvIndex);
-
-	//描画	
-	GetDirectXCommon()->GetCommandList()->DrawInstanced(3, 1, 0, 0);
+    DrawPostEffect(srvIndex,currentEffectType_,1);
 
 
 
@@ -373,7 +409,7 @@ void OffscreenRenderManager::CreateImGuiSceneTextureSrv(
 
 
 
-Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& clearColor)
+Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& clearColor, bool optimizeClear)
 {
 	D3D12_RESOURCE_DESC resourceDesc{ };
 	resourceDesc.Width = width;//Textureの幅
@@ -405,7 +441,7 @@ Microsoft::WRL::ComPtr<ID3D12Resource> OffscreenRenderManager::CreateRenderTarge
 		D3D12_HEAP_FLAG_NONE,//Heapの特殊設定。特になし
 		&resourceDesc,//Resourceの設定
 		D3D12_RESOURCE_STATE_RENDER_TARGET,//RenderTargetとして使う状態にしておく
-		&clearValue,//Clear最適値
+		optimizeClear?&clearValue:nullptr,
 		IID_PPV_ARGS(&resource)//作成するResourceポインタへのポインタ
 	);
 	ThrowIfFailed(

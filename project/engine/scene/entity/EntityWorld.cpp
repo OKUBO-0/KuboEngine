@@ -294,6 +294,7 @@ bool EntityWorld::DuplicateSubtree(EntityId source, EntityId destinationParent, 
 void EntityWorld::Clear()
 {
     entities_.clear();
+    environment_={};
     nextId_ = 1;
 }
 
@@ -658,6 +659,7 @@ SceneValue EntityWorld::Capture() const
         if(!entity.prefabLink.is_null())value["prefabLink"]=entity.prefabLink;
         root["entities"].push_back(std::move(value));
     }
+    if(!environment_.IsDefault())root["environment"]=EncodeSceneEnvironment(environment_);
     RetagEntityDocument(root);return root;
 }
 
@@ -669,6 +671,9 @@ bool EntityWorld::Restore(const SceneValue& value, std::string& error)
             !value["entities"].is_array()) {
             throw std::runtime_error("Invalid EntityWorld scene document");
         }
+        SceneEnvironment environment;
+        if(value.contains("environment") && !DecodeSceneEnvironment(value["environment"],environment))
+            throw std::runtime_error("Invalid Scene environment settings");
         std::vector<EntityRecord> restored;
         EntityId maximumId = 0;
         for (const auto& valueEntity : value["entities"].get<crude_json::array>()) {
@@ -877,6 +882,7 @@ bool EntityWorld::Restore(const SceneValue& value, std::string& error)
         }
         maximumId=(std::max)(maximumId,CheckPrefabLinks(restored));
         entities_ = std::move(restored);
+        environment_=environment;
         nextId_ = maximumId + 1; // Max exact ID + 1 is a non-wrapping exhausted sentinel.
         error.clear();
         return true;

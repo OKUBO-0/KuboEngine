@@ -22,7 +22,7 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,46> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,49> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
     {"Button On Click"},{"Button Scene Choice"},{"UI Text"},
@@ -31,7 +31,7 @@ std::array<Item,46> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Rem
     {"Play Effect Preview"},{"Pause Effect Preview"},{"Restart Effect Preview"},{"Stop Effect Preview"},
     {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
     {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"},
-    {"Add Component..."},{"Collider"}}};
+    {"Add Component..."},{"Collider"},{"Day"},{"Night"},{"Reset"}}};
 void Observe(const char* label,ImVec2 a,ImVec2 b,bool disabled){for(auto& item:items)if(!std::strcmp(item.label,label)){item.center={(a.x+b.x)/2,(a.y+b.y)/2};item.seen=true;item.disabled=disabled;item.mixed=(ImGui::GetItemFlags()&ImGuiItemFlags_MixedValue)!=0;}}
 struct GuiScope {
     ImGuiContext* previous=ImGui::GetCurrentContext();ImGuiContext* owned=ImGui::CreateContext();
@@ -257,6 +257,7 @@ public:
                     ImGui::SetWindowPos("Entity Inspector",{10,10});ImGui::SetWindowSize("Entity Inspector",{900,1700});
                     for(const char* label:{"Transform","Model","Animator","Camera","Script","Audio Source","Collider","RigidBody","Canvas","Sprite"})window->StateStorage.SetInt(window->GetID(label),0);
                 }
+                if(ImGui::FindWindowByName("Scene Environment"))ImGui::SetWindowPos("Scene Environment",{1000,10});
                 game.DrawGenericEntityEditor();ImGui::Render();
             };
             const auto click=[&](const char* label,bool disabled=false){
@@ -288,6 +289,23 @@ public:
             click("Remove Light");click("Remove Material");Need(!game.editorWorld_.Find(id)->hasLight && !game.editorWorld_.Find(id)->hasMaterial && game.IsSceneDirty(),"Game render removals did not dirty document");
             Need(game.ApplyEditorHistory(false,error) && game.editorWorld_.Find(id)->hasMaterial && game.ApplyEditorHistory(false,error) && game.editorWorld_.Capture().dump()==savedWorld && !game.IsSceneDirty(),"Game render removal Undo did not restore saved baseline");
             Need(game.GetEditorSelection()==std::vector<EntityId>{id} && Read(root/"entry.scene")==original && Read(root/"entry.kubo")==manifest,"Inspector changed source/manifest/selection");
+            game.sceneEnvironmentOpen_=true;
+            click("Day");
+            Need(game.IsSceneDirty() && game.editorWorld_.GetEnvironment().showSkybox,"Day presets did not enter authored history");
+            click("Night");
+            Need(game.editorWorld_.GetEnvironment().exposure==SceneEnvironment::Night().exposure,"Night preset did not reach Scene");
+            Need(game.ApplyEditorHistory(false,error) && game.editorWorld_.GetEnvironment().exposure==0 &&
+                game.ApplyEditorHistory(true,error) && game.editorWorld_.GetEnvironment().exposure<0,"Environment Undo/Redo lost authored settings");
+            Need(game.SaveSceneAs(root/"night.scene",error),error.c_str());
+            EntityWorld dark;
+            Need(dark.Load(root/"night.scene",error) && dark.Capture().dump()==game.editorWorld_.Capture().dump(),"Environment Save As lost authored settings");
+            Need(game.PlayEditorScene(error),error.c_str());
+            click("Reset",true);
+            Need(game.editorWorld_.GetEnvironment().exposure<0,"Playback permitted a Scene environment edit");
+            Need(game.StopEditorPlayback(error),error.c_str());
+            click("Reset");
+            Need(game.IsSceneDirty() && game.editorWorld_.GetEnvironment().IsDefault(),"Environment Reset did not restore the legacy defaults and dirty the Scene");
+            std::cout<<"PASS: Scene Environment Day/Night selection, Undo/Redo, Save As and playback lock\n";
             passed=true;std::cout<<"PASS: actual Game headless Inspector mouse Add/Remove/checkbox, focused Ctrl+Z/Y and grouped history/dirty/Save As, runtime preview+document Stop restoration, pending-document/constructed recovery guards, source+selection preservation (not Win32/GPU/physical UI QA)\n";
         }catch(...){std::cerr<<"GAME_RENDER_INSPECTOR_FIXTURE_RETAINED="<<root<<'\n';throw;}
         if(passed){std::error_code ignored;std::filesystem::remove_all(root,ignored);}
@@ -326,6 +344,7 @@ public:
                     for(const char* label:{"Transform","Model","Animator","Camera","Script","Audio Source","Collider","RigidBody","Light","Material"})window->StateStorage.SetInt(window->GetID(label),0);
                     for(const char* label:{"Canvas","Sprite"})window->StateStorage.SetInt(window->GetID(label),1);
                 }
+                if(ImGui::FindWindowByName("Scene Environment"))ImGui::SetWindowPos("Scene Environment",{1000,10});
                 game.DrawGenericEntityEditor();ImGui::Render();
             };
             const auto click=[&](const char* label,bool disabled=false){

@@ -7,15 +7,7 @@
 #include <memory>
 #include "ViewExtent.h"
 
-enum class PostEffectType {
-	Fullscreen,
-	Grayscale,
-	Vignette,
-	BoxFilter,
-	LuminanceOutline,
-	RadialBlur,
-
-};
+#include "PostEffectType.h"
 
 /// @brief シーン描画をオフスクリーンに集約し、ポストエフェクト付きで合成するクラス
 /// @details レンダーターゲットの生成、状態遷移、フルスクリーン描画を担当する。
@@ -24,6 +16,12 @@ namespace Engine::Base {
 class DirectXCommon;
 class GraphicsPipeline;
 class SrvManager;
+
+struct ViewAppearance {
+    Vector4 background{.55f,.68f,.92f,1};
+    float exposure=0;
+    PostEffectType effect=PostEffectType::Fullscreen;
+};
 
 class OffscreenRenderManager
 {
@@ -37,6 +35,7 @@ public:
 	/// @param srvManager SRV管理
 	/// @return なし
 	void Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager, ViewExtent gameExtent = {});
+    void SetViewAppearance(const ViewAppearance& appearance) noexcept {appearance_=appearance;}
 	ViewExtent GetGameOutputExtent() const { return gameOutputExtent_; }
 	void Finalize();
 	/// @brief オフスクリーン描画の開始処理を行う
@@ -60,7 +59,7 @@ public:
 	/// @param format テクスチャフォーマット
 	/// @param clearColor クリアカラー
 	/// @return 生成したリソース
-	Microsoft::WRL::ComPtr<ID3D12Resource> CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& clearColor);
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateRenderTargetTextureResource(uint32_t width, uint32_t height, DXGI_FORMAT format, const Vector4& clearColor, bool optimizeClear = true);
 
 	void SetPostEffectType(PostEffectType type) {
 		currentEffectType_ = type;
@@ -78,7 +77,7 @@ public:
 	ViewExtent GetEditorViewExtent() const { return editorViewExtent_; }
 	void BeginEditorView();
 	void BindEditorView();
-	void EndEditorView();
+	void EndEditorView(bool applyPost=true);
 #ifndef KUBO_RUNTIME_ONLY
 	void DrawEditorGrid(const float (&viewProjection)[4][4]);
 	void DrawEditorPreview(D3D12_CPU_DESCRIPTOR_HANDLE target, ViewExtent extent);
@@ -105,7 +104,15 @@ private:
 	Microsoft::WRL::ComPtr<ID3D12Resource> gameDepth_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> gameDsv_;
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargetTextureHandle;//レンダーテクスチャのハンドル
-	inline static const Vector4 kClearColor = { 0.55f,0.68f,0.92f,1.0f };
+    struct PostTarget {
+        Microsoft::WRL::ComPtr<ID3D12Resource> color;
+        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtv;
+    };
+    void FinishView(ID3D12Resource* source,uint32_t sourceSrv,ViewExtent extent,PostTarget& target);
+    void ResetPostTarget(PostTarget& target);
+    void DrawPostEffect(uint32_t sourceSrv,PostEffectType effect,float exposureScale);
+    PostTarget gamePost_,editorPost_;
+    ViewAppearance appearance_;
 	uint32_t srvIndex = UINT32_MAX;
 	D3D12_CPU_DESCRIPTOR_HANDLE imGuiSceneTextureCpuHandle{};
 	D3D12_GPU_DESCRIPTOR_HANDLE imGuiSceneTextureGpuHandle_{};

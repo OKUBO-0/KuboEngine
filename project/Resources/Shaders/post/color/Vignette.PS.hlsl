@@ -1,5 +1,7 @@
 #include "Vignette.hlsli"
 
+#include "../fullscreen/Exposure.hlsli"
+
 Texture2D <float4>gTexture: register(t0);
 SamplerState gSampler : register(s0);
 
@@ -22,5 +24,6 @@ PixelShaderOutput main(VertexShaderOutput input)
     //係数として乗算
     output.color.rgb *= vignette;
     
+    output.color.rgb *= exposureScale;
     return output;
 }

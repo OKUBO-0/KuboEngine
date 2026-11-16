@@ -135,8 +135,11 @@ void RuntimeGame::Update()
 void RuntimeGame::Draw()
 {
     dxCommon->PrepareForFrame(); dxCommon->BeginGpuFrameTiming();
+    auto* manager=Scene::SceneManager::GetInstance();
+    const auto* scene=dynamic_cast<const Scene::EntityScene*>(manager->GetCurrentScene());
+    offscreenRenderManager->SetViewAppearance(scene?scene->GetViewAppearance():Base::ViewAppearance{});
     offscreenRenderManager->Begin(); srvManager->PreDraw();
-    Scene::SceneManager::GetInstance()->Draw(); offscreenRenderManager->End();
+    manager->Draw(); offscreenRenderManager->End();
     dxCommon->Begin(); offscreenRenderManager->Draw(); dxCommon->End();
 }
 

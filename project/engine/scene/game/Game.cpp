@@ -377,6 +377,7 @@ void Game::DrawDebugEditorShell()
 	Engine::Editor::DebugEditorMenuItem toolItems[] = {
 		{ "Statistics", &debugStatsOpen_, "", "diagnostics.stats", "統計" },
 		{ "Input Monitor", &debugKeyInputOpen_, "", "diagnostics.input", "キー操作デバッグ" },
+        { "Scene Environment", &sceneEnvironmentOpen_, "", "tool.scene-environment" },
 		{ "Render Diagnostics", &debugOffscreenOpen_, "", "diagnostics.render", "オフスクリーン設定" },
 		{ "Audio Monitor", &debugAudioOpen_, "", "diagnostics.audio", "オーディオ" },
 		{ "Git", &gitWindowOpen_, "", "tool.git" },
@@ -2571,6 +2572,36 @@ void Game::DrawGenericEntityEditor()
 		}
 		ImGui::End();
 	}
+    if(sceneEnvironmentOpen_ && genericSceneSelected_){
+        ImGui::SetNextWindowSize({390,260},ImGuiCond_FirstUseEver);
+        if(ImGui::Begin("Scene Environment",&sceneEnvironmentOpen_)){
+            const auto* busy=EditorDocumentBusyReason();
+            const bool editable=worldPlayback_.GetState()==WorldPlayback::State::Editing && !busy;
+            ImGui::BeginDisabled(!editable);
+            auto environment=editorWorld_.GetEnvironment();
+            bool changed=false;
+            if(Engine::Editor::RenderInspectorButton("Day")){environment=SceneEnvironment::Day();changed=true;}
+            ImGui::SameLine();
+            if(Engine::Editor::RenderInspectorButton("Night")){environment=SceneEnvironment::Night();changed=true;}
+            ImGui::SameLine();
+            if(Engine::Editor::RenderInspectorButton("Reset")){environment={};changed=true;}
+            changed|=ImGui::Checkbox("Show Skybox",&environment.showSkybox);
+            ImGui::BeginDisabled(environment.showSkybox);
+            changed|=ImGui::ColorEdit3("Background",&environment.background.x,ImGuiColorEditFlags_Float);
+            ImGui::EndDisabled();
+            changed|=ImGui::SliderFloat("Reflection Intensity",&environment.reflectionIntensity,0,1,"%.2f",
+                ImGuiSliderFlags_AlwaysClamp);
+            changed|=ImGui::SliderFloat("Exposure",&environment.exposure,-8,8,"%+.2f EV",ImGuiSliderFlags_AlwaysClamp);
+            int effect=static_cast<int>(environment.postEffect);
+            if(ImGui::Combo("Post Effect",&effect,"None\0Grayscale\0Vignette\0Box Blur\0Luminance Outline\0Radial Blur\0")){
+                environment.postEffect=static_cast<PostEffectType>(effect);changed=true;
+            }
+            if(changed && !editorWorld_.SetEnvironment(environment))genericWorldStatus_="Invalid Scene environment";
+            ImGui::EndDisabled();
+            if(!editable)ImGui::TextUnformatted(busy?busy:"Stop playback to edit the environment.");
+        }
+        ImGui::End();
+    }
 	if (!prefabRecoveryBlocked_ && worldPlayback_.GetState() == WorldPlayback::State::Editing) {
 		std::string error;
 		editorSelection_.Synchronize(editorWorld_,selectedEditorEntity_);
