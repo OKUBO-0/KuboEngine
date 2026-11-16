@@ -32,6 +32,34 @@ struct ParticleGroupHandle {
 	explicit operator bool() const { return index != UINT32_MAX; }
 };
 
+class ParticleManager;
+// Exclusive lifetime for an authored consumer. Calls stay on the render thread;
+// behavior callbacks must not reenter group mutation. Expired owners are inert,
+// including Reset after Framework retirement, and never rebind to a new group.
+class ParticleGroupOwner final {
+public:
+	ParticleGroupOwner() = default;
+	~ParticleGroupOwner();
+	ParticleGroupOwner(const ParticleGroupOwner&) = delete;
+	ParticleGroupOwner& operator=(const ParticleGroupOwner&) = delete;
+	ParticleGroupOwner(ParticleGroupOwner&& other) noexcept;
+	ParticleGroupOwner& operator=(ParticleGroupOwner&& other) noexcept;
+	explicit operator bool() const noexcept;
+	ParticleGroupHandle GetHandle() const noexcept { return handle_; }
+	void Reset() noexcept;
+	void Emit(const Vector3& position, uint32_t count);
+	bool Update(float deltaTime);
+	bool Draw(const Matrix4x4& view, const Matrix4x4& projection);
+    bool Draw(const Matrix4x4& view, const Matrix4x4& projection, const Matrix4x4& model);
+    // Default retains legacy fade. Authored behavior can own its complete RGBA.
+    void SetLifetimeFade(bool enabled) noexcept;
+private:
+	friend class ParticleManager;
+	ParticleGroupOwner(ParticleManager* manager, ParticleGroupHandle handle) noexcept : manager_(manager), handle_(handle) {}
+	ParticleManager* manager_ = nullptr;
+	ParticleGroupHandle handle_{};
+};
+
 enum class VerticesType
 {
 	Ring,
@@ -62,8 +90,6 @@ struct ParticleForGPU
 /// @details グループ生成、挙動の差し替え、インスタンシング描画を担当する。
 class ParticleManager
 {
-	static constexpr uint32_t kBufferedFrameCount = 2;
-
 	struct ParticleGroup
 	{
 		ParticleGroupHandle handle{};
@@ -72,14 +98,11 @@ class ParticleManager
 		//particleの配列。Update 時に生存粒子を前詰めして compact する
 		std::vector<Particle> particles;
 		std::unique_ptr<IParticleBehavior> behavior;
-
-		// GPU使用中のdescriptorを上書きしないようframeごとにSRVを持つ
-		std::array<uint32_t, kBufferedFrameCount> srvIndices{
-			UINT32_MAX,
-			UINT32_MAX,
-		};
+		std::string key;
+		bool owned = false;
+		bool lifetimeFade = true;
 		// インスタンス数
-		uint32_t instanceCount;
+		uint32_t instanceCount = 0;
 		uint32_t maxInstanceCount = 0;
 		uint32_t maxEmitsPerFrame = UINT32_MAX;
 		uint32_t emittedThisFrame = 0;
@@ -130,6 +153,7 @@ public:
 	/// @param deltaTime 外部から渡されるフレーム経過秒
 	/// @return なし
 	void Update(float deltaTime);
+	void ClearParticles(const std::string& groupName);
 	/// @brief すべてのパーティクルを描画する
 	/// @param なし
 	/// @return なし
@@ -148,6 +172,14 @@ public:
 		VerticesType verticesType = VerticesType::Quad,
 		std::unique_ptr<IParticleBehavior> behavior = nullptr,
 		uint32_t maxInstanceCount = kDefaultMaxParticleInstanceCount);
+	// Does not join an existing name. Owned groups are updated/drawn explicitly,
+	// and excluded from legacy Update()/Draw(). Reset retires just this group.
+	ParticleGroupOwner CreateOwnedParticleGroup(const std::string& name,
+		const std::string& textureFilePath, VerticesType verticesType = VerticesType::Quad,
+		std::unique_ptr<IParticleBehavior> behavior = nullptr,
+		uint32_t maxInstanceCount = kDefaultMaxParticleInstanceCount);
+	void CollectRetiredGroups() noexcept;
+	size_t GetRetiredParticleResourceCount() const noexcept { return retiredVertices_.size(); }
 
 	/// @brief 指定グループへパーティクルを発生させる
 	/// @param name 発生先グループ名
@@ -299,6 +331,12 @@ public:
 	uint32_t GetLastDrawnInstanceCount() const { return lastDrawnInstanceCount_; }
 
 private:
+	friend class ParticleGroupOwner;
+	ParticleGroupHandle CreateGroup(const std::string& name, const std::string& texture,
+		VerticesType type, std::unique_ptr<IParticleBehavior> behavior, uint32_t capacity, bool owned);
+	void ReleaseOwnedGroup(ParticleGroupHandle handle) noexcept;
+	void RetireVertex(ParticleGroup& group) noexcept;
+	void DrawParticleGroup(ParticleGroup& group, const Matrix4x4* view = nullptr, const Matrix4x4* projection = nullptr, const Matrix4x4* model = nullptr);
 	static constexpr float kFixedParticleDeltaTime = 1.0f / 60.0f;
 	static constexpr float kMaxParticleDeltaTime = 1.0f / 15.0f;
 
@@ -322,7 +360,8 @@ private:
 
 	Engine::Graphics3D::Model* model_ = nullptr;
 	bool useFixedDeltaTime_ = false;
-	uint32_t particleGroupGeneration_ = 1;
+	// Never reset/wrap across Finalize; a stale owner cannot affect a new session.
+	uint64_t particleGroupGeneration_ = 1;
 	float lastAppliedDeltaTime_ = kFixedParticleDeltaTime;
 	uint32_t lastDrawCallCount_ = 0;
 	uint32_t lastDrawnInstanceCount_ = 0;
@@ -335,6 +374,9 @@ private:
 
 	std::unordered_map<std::string, ParticleGroup> particleGroups;
 	std::vector<ParticleGroup*> particleGroupsByIndex_;
+	struct RetiredVertex { uint64_t fence; Microsoft::WRL::ComPtr<ID3D12Resource> resource; };
+	// Creation reserves room for every live candidate. Reset cannot allocate.
+	std::vector<RetiredVertex> retiredVertices_;
 };
 
 }

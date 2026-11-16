@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+ <PropertyGroup Label="Globals"><ProjectGuid>{AB879C7D-57A8-4976-BC7F-642090D3740E}</ProjectGuid><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+ <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v143</PlatformToolset><UseDebugLibraries>true</UseDebugLibraries><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+ <PropertyGroup><TargetName>McpDescriptorPreflightCandidateChecks</TargetName></PropertyGroup>
+ <ItemDefinitionGroup><ClCompile><LanguageStandard>stdcpp20</LanguageStandard><AdditionalIncludeDirectories>$(McpUniqueKeysDirectory);$(MSBuildProjectDirectory)\..\engine\services;$(MSBuildProjectDirectory)\..;$(MSBuildProjectDirectory)\..\engine\math\types;$(MSBuildProjectDirectory)\..\engine\scene\core;$(MSBuildProjectDirectory)\..\externals\imgui_node_editor;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><PreprocessorDefinitions>NOMINMAX;MCP_UNIQUE_KEYS_CANDIDATE;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions><WarningLevel>Level3</WarningLevel><TreatWarningAsError>true</TreatWarningAsError></ClCompile><Link><SubSystem>Console</SubSystem></Link></ItemDefinitionGroup>
+ <ItemGroup>
+  <ClCompile Include="mcp_descriptor_unique_keys_candidate_checks.cpp" Condition="'$(McpPreflightMode)'=='Keys'" />
+  <ClCompile Include="mcp_duplicate_descriptor_probe.cpp" Condition="'$(McpPreflightMode)'=='Archive'" />
+  <ClCompile Include="$(McpUniqueKeysDirectory)\candidate_recovery_checks.cpp" Condition="'$(McpPreflightMode)'=='Recovery'" />
+  <ClCompile Include="$(McpUniqueKeysDirectory)\candidate_ipc_checks.cpp" Condition="'$(McpPreflightMode)'=='IPC'" />
+  <ClCompile Include="..\engine\services\McpCommandBridge.cpp" Condition="'$(McpPreflightMode)'=='IPC'" />
+  <ClCompile Include="..\engine\assets\AssetRegistry.cpp" Condition="'$(McpPreflightMode)'=='IPC'" />
+  <ClCompile Include="..\engine\scene\entity\EntityWorld.cpp" Condition="'$(McpPreflightMode)'=='IPC'" />
+  <ClCompile Include="..\engine\scene\core\SceneDocument.cpp" Condition="'$(McpPreflightMode)'=='IPC'" />
+  <ClCompile Include="..\externals\imgui_node_editor\crude_json.cpp" />
+ </ItemGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

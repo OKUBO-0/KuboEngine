@@ -16,5 +16,8 @@ void CreateShadowMapRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature**
 void CreateSpriteRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature);
 void CreateCopyImageRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature);
 void CreateSkyboxRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature);
+#ifndef KUBO_RUNTIME_ONLY
+void CreateEditorGridRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature);
+#endif
 
 }

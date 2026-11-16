@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 
 namespace {
 
@@ -53,9 +54,13 @@ std::shared_ptr<Engine::Base::DirectXCommon> Object3DCommon::GetDirectXCommon() 
 
 void Object3DCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
-
+	if (srvManager_ || !dxCommon_.expired())
+		throw std::logic_error("Finalize Object3DCommon before reinitializing it");
+	if (!dxCommon || !srvManager)
+		throw std::invalid_argument("Object3DCommon requires graphics and descriptor owners");
 	dxCommon_ = dxCommon;
 	srvManager_ = srvManager;
+	authoredLights_={};authoredLightAddress_=0;authoredLightDirty_=true;
 	//パイプラインの生成
 	graphicsPipeline_ = std::make_unique<Engine::Base::GraphicsPipeline>();
 	graphicsPipeline_->Initialize(dxCommon);
@@ -150,7 +155,9 @@ void Object3DCommon::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxC
 
 void Object3DCommon::Finalize()
 {
-	if (srvManager_ && skinningInstanceSrvInitialized_) {
+	// Ready gates drawing, not ownership. A failed Initialize may own only a
+	// prefix of these slots; every successful Allocate is recorded immediately.
+	if (srvManager_) {
 		for (auto& frameIndices : skinningInstanceSrvIndices_) {
 			for (uint32_t& srvIndex : frameIndices) {
 				if (srvIndex != UINT32_MAX) {
@@ -159,8 +166,13 @@ void Object3DCommon::Finalize()
 				}
 			}
 		}
-		skinningInstanceSrvInitialized_ = false;
 	}
+	skinningInstanceSrvInitialized_ = false;
+	authoredLights_={};authoredLightAddress_=0;authoredLightDirty_=true;
+	skinningInstanceSrvCursor_.fill(0);
+	skinningInstanceSrvFrameSerials_.fill(0);
+	shadowPassActive_ = false;
+	shadowMapDataGpuAddress_ = 0;
 	if (srvManager_ && shadowSrvIndex_ != UINT32_MAX) {
 		srvManager_->Free(shadowSrvIndex_);
 		shadowSrvIndex_ = UINT32_MAX;
@@ -361,7 +373,13 @@ void Object3DCommon::ResetInstanceBatchStatistics()
 	instanceBatchStats_ = {};
 }
 
-void Object3DCommon::BindSceneLighting(bool skinning)
+bool Object3DCommon::SetAuthoredLights(const Math::AuthoredLightData& value) noexcept
+{
+    if(!value.IsValid())return false;
+    if(std::memcmp(&authoredLights_,&value,sizeof(value))!=0){authoredLights_=value;authoredLightDirty_=true;}
+    return true;
+}
+void Object3DCommon::BindSceneLighting(bool skinning,bool instancing)
 {
 	const auto dxCommon = GetDirectXCommon();
 	const Engine::Base::DirectXCommon::FrameUploadAllocation lightAllocation =
@@ -384,6 +402,17 @@ void Object3DCommon::BindSceneLighting(bool skinning)
 	srvManager_->SetGraphicsRootDescriptorTable(shadowTextureRoot, shadowSrvIndex_);
 	dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(
 		shadowDataRoot, shadowAllocation.gpuAddress);
+    // The upload arenas reset only after fenced submission; both the pending
+    // fence and frame index identify their lifetime. Reset on owner reinitialize.
+    const auto fence=dxCommon->GetPendingSubmissionFenceValue();
+    const auto frame=dxCommon->GetCurrentFrameIndex();
+    if(!authoredLightAddress_ || authoredLightDirty_ || authoredLightFence_!=fence || authoredLightFrame_!=frame){
+        const auto allocation=dxCommon->AllocateFrameUpload(sizeof(authoredLights_),256);
+        std::memcpy(allocation.cpuAddress,&authoredLights_,sizeof(authoredLights_));
+        authoredLightAddress_=allocation.gpuAddress;authoredLightFence_=fence;authoredLightFrame_=frame;authoredLightDirty_=false;
+    }
+    const UINT authoredRoot=skinning?(instancing?11u:10u):(instancing?10u:9u);
+    dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(authoredRoot,authoredLightAddress_);
 }
 
 uint32_t Object3DCommon::BindSkinningInstanceTransforms(

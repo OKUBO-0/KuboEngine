@@ -1,119 +1,13 @@
 #include "Audio.h"
 #include "HResult.h"
+#include "../base/AssetPath.h"
 #include <Windows.h>
 #include <algorithm>
-#include <cstdlib>
-#include <cstring>
-#include <sstream>
+#include <cmath>
 #include <string>
 #include <wrl.h>
 
 namespace Engine::AudioSystem {
-
-namespace {
-constexpr char kRiffChunkId[] = "RIFF";
-constexpr char kWaveChunkId[] = "WAVE";
-constexpr char kFormatChunkId[] = "fmt ";
-constexpr char kDataChunkId[] = "data";
-constexpr size_t kChunkIdLength = 4;
-
-std::string ChunkIdToString(const char* id)
-{
-    return std::string(id, id + kChunkIdLength);
-}
-
-void FailWaveLoad(const std::string& filename, const std::string& reason)
-{
-    std::ostringstream message;
-    message << "[Audio::SoundLoadWave] " << reason
-        << " filePath=\"" << filename << "\"\n";
-    OutputDebugStringA(message.str().c_str());
-    assert(false && "Audio::SoundLoadWave failed; see OutputDebugString for file path and chunk details");
-    std::abort();
-}
-
-RiffHeader ReadRiffHeader(std::ifstream& file, const std::string& filename)
-{
-    RiffHeader riff{};
-    file.read(reinterpret_cast<char*>(&riff), sizeof(riff));
-    if (!file) {
-        FailWaveLoad(filename, "failed to read RIFF header");
-    }
-    if (strncmp(riff.chunk.id, kRiffChunkId, kChunkIdLength) != 0) {
-        FailWaveLoad(filename, "invalid RIFF chunk id: actual=\"" + ChunkIdToString(riff.chunk.id) + "\" expected=\"RIFF\"");
-    }
-    if (strncmp(riff.type, kWaveChunkId, kChunkIdLength) != 0) {
-        FailWaveLoad(filename, "invalid WAVE type id: actual=\"" + ChunkIdToString(riff.type) + "\" expected=\"WAVE\"");
-    }
-    return riff;
-}
-
-void SkipChunk(std::ifstream& file, int32_t size)
-{
-    file.seekg(size, std::ios_base::cur);
-    if ((size & 1) != 0) {
-        file.seekg(1, std::ios_base::cur);
-    }
-}
-
-FormatChunk ReadFormatChunkPayload(std::ifstream& file, const ChunkHeader& header)
-{
-    FormatChunk format{};
-    format.chunk = header;
-    const std::streamsize readSize = (std::min)(
-        static_cast<std::streamsize>(header.size),
-        static_cast<std::streamsize>(sizeof(format.fmt)));
-    file.read(reinterpret_cast<char*>(&format.fmt), readSize);
-    if (header.size > readSize) {
-        SkipChunk(file, header.size - static_cast<int32_t>(readSize));
-    } else if ((header.size & 1) != 0) {
-        file.seekg(1, std::ios_base::cur);
-    }
-    return format;
-}
-
-FormatChunk FindFormatChunk(std::ifstream& file, const std::string& filename)
-{
-    ChunkHeader chunk{};
-    while (file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))) {
-        if (strncmp(chunk.id, kFormatChunkId, kChunkIdLength) == 0) {
-            return ReadFormatChunkPayload(file, chunk);
-        }
-        SkipChunk(file, chunk.size);
-    }
-
-    FailWaveLoad(filename, "fmt chunk not found: expected chunk id=\"fmt \"");
-    return {};
-}
-
-ChunkHeader ReadDataChunk(std::ifstream& file, const std::string& filename)
-{
-    ChunkHeader data{};
-    while (file.read(reinterpret_cast<char*>(&data), sizeof(data))) {
-        if (strncmp(data.id, kDataChunkId, kChunkIdLength) == 0) {
-            return data;
-        }
-        SkipChunk(file, data.size);
-    }
-
-    FailWaveLoad(filename, "data chunk not found: expected chunk id=\"data\"");
-    return {};
-}
-
-SoundData ReadSoundData(std::ifstream& file, const FormatChunk& format, const ChunkHeader& data, const std::string& filename)
-{
-    SoundData soundData{};
-    soundData.buffer.resize(data.size);
-    file.read(reinterpret_cast<char*>(soundData.buffer.data()), data.size);
-    if (!file) {
-        FailWaveLoad(filename, "failed to read data chunk payload: chunk id=\"" + ChunkIdToString(data.id) +
-            "\" size=" + std::to_string(data.size));
-    }
-    soundData.wfex = format.fmt;
-    soundData.bufferSize = data.size;
-    return soundData;
-}
-}
 
 Audio* Audio::GetInstance()
 {
@@ -121,14 +15,16 @@ Audio* Audio::GetInstance()
     return &instance;
 }
 
-void Audio::Initialize()
+void Audio::Initialize(const std::filesystem::path& projectRoot)
 {
+    const auto ownedRoot = Engine::Base::ProjectPaths(projectRoot).Root();
     // XAudio2 本体とマスターボイスを先に生成して、以降の SourceVoice 作成先を確保する
     HRESULT hr = XAudio2Create(&xAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR);
     Engine::Base::ThrowIfFailed(hr, "XAudio2Create");
 
     hr = xAudio2->CreateMasteringVoice(&masterVoice);
     Engine::Base::ThrowIfFailed(hr, "IXAudio2::CreateMasteringVoice");
+    projectRoot_ = ownedRoot;
 }
 
 void Audio::Finalize()
@@ -145,30 +41,30 @@ void Audio::Finalize()
     }
     activeVoices.clear();
 
-    xAudio2.Reset();
+    if(masterVoice) masterVoice->DestroyVoice();
     masterVoice = nullptr;
+    xAudio2.Reset();
+    projectRoot_.clear();
 }
 
 SoundData Audio::SoundLoadWave(const char* filename)
 {
-    const std::string path = filename != nullptr ? filename : "<null>";
-    if (filename == nullptr) {
-        FailWaveLoad(path, "filename is null");
-    }
+    if(!filename) throw std::invalid_argument("Wave filename must not be null");
+    SoundData sound;std::string error;
+    if(!TrySoundLoadWave(Engine::Base::PathFromUtf8(filename),sound,error))
+        throw std::runtime_error("Audio::SoundLoadWave: "+error);
+    return sound;
+}
 
-    std::ifstream file(filename, std::ios_base::binary);
-    if (!file.is_open()) {
-        FailWaveLoad(path, "failed to open wave file");
-    }
-
-    // RIFF 内のチャンクは fmt/data の間に JUNK/LIST/fact などが入ることがあるため、ID で探す
-    ReadRiffHeader(file, path);
-    FormatChunk format = FindFormatChunk(file, path);
-    ChunkHeader data = ReadDataChunk(file, path);
-    SoundData soundData = ReadSoundData(file, format, data, path);
-    file.close();
-
-    return soundData;
+bool Audio::TrySoundLoadWave(const std::filesystem::path& filename,SoundData& output,std::string& error) const
+{
+    try {
+        if(projectRoot_.empty()) throw std::logic_error("Audio must be initialized before loading project sound");
+        if(activeVoices.contains(&output)) throw std::logic_error("Stop sound voices before replacing their buffer");
+        if(filename.empty() || filename.native().find(L'\0')!=std::wstring::npos) throw std::invalid_argument("Invalid Wave filename");
+        const auto path=(filename.is_absolute()?filename:projectRoot_/filename).lexically_normal();
+        return WaveFile::Load(path,output,error);
+    } catch(const std::exception& exception) {error=exception.what();return false;}
 }
 
 void Audio::SoundUnload(SoundData* soundData)
@@ -184,6 +80,9 @@ void Audio::SoundPlayWave(
 	bool loop,
 	float volume)
 {
+    if(!xAudio2 || !masterVoice || soundData.buffer.empty() || soundData.bufferSize!=soundData.buffer.size() ||
+        soundData.wfex.cbSize!=0 || (soundData.wfex.wFormatTag!=WAVE_FORMAT_PCM && soundData.wfex.wFormatTag!=WAVE_FORMAT_IEEE_FLOAT) || !std::isfinite(volume))
+        throw std::invalid_argument("Audio playback requires initialized device, supported complete buffer and finite volume");
     HRESULT hr;
     PruneFinishedVoices();
 
@@ -413,6 +312,25 @@ void Audio::SetVolume(float volume)
     }
 }
 
+size_t Audio::GetQueuedVoiceCount(const SoundData* soundData) const
+{
+    const auto found=activeVoices.find(soundData);
+    if(found==activeVoices.end()) return 0;
+    size_t count=0;
+    for(auto* voice:found->second) if(voice) {
+        XAUDIO2_VOICE_STATE state{};voice->GetState(&state);
+        if(state.BuffersQueued) ++count;
+    }
+    return count;
+}
+uint64_t Audio::GetPlayedSampleCount(const SoundData* soundData) const
+{
+    const auto found=activeVoices.find(soundData);if(found==activeVoices.end()) return 0;
+    uint64_t count=0;
+    for(auto* voice:found->second) if(voice) {XAUDIO2_VOICE_STATE state{};voice->GetState(&state);count+=state.SamplesPlayed;}
+    return count;
+}
+
 void Audio::SetVolume(SoundData* soundData, float volume)
 {
     auto it = activeVoices.find(soundData);
@@ -425,6 +343,18 @@ void Audio::SetVolume(SoundData* soundData, float volume)
             }
         }
     }
+}
+
+bool Audio::QueuedVoicesHaveVolume(const SoundData* soundData,float volume) const
+{
+    if(!std::isfinite(volume)) return false;
+    const auto found=activeVoices.find(soundData);if(found==activeVoices.end()) return false;
+    size_t queued=0;
+    for(auto* voice:found->second) if(voice) {
+        XAUDIO2_VOICE_STATE state{};voice->GetState(&state);if(!state.BuffersQueued) continue;
+        float actual=0;voice->GetVolume(&actual);if(std::abs(actual-volume)>0.00001f) return false;++queued;
+    }
+    return queued>0;
 }
 
 }

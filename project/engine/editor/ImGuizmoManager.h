@@ -22,7 +22,7 @@ public:
 		const float* projectionMatrix,
 		float* objectMatrix,
 		Operation operation,
-		Mode mode);
+		Mode mode, const float* snap = nullptr);
 	static void DecomposeMatrixToComponents(
 		const float* matrix,
 		float* translation,
@@ -34,6 +34,10 @@ public:
 		const float* scale,
 		float* matrix);
 	static bool IsUsing();
+	static bool IsOver();
+	static void SetDrawlist();
+	static void SetOrthographic(bool enabled);
+	static void Enable(bool enabled);
 };
 
 } // namespace Engine::Editor

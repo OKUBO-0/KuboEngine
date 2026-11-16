@@ -167,7 +167,7 @@ void SkyBox::Draw()
 
 void SkyBox::DrawImGuiDebug()
 {
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(KUBO_RUNTIME_ONLY)
 
 	// ImGuiのデバッグウィンドウを表示
 	if (ImGui::Begin("SkyBox Debug")) {

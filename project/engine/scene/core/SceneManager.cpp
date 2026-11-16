@@ -2,6 +2,8 @@
 #include "AbstractSceneFactory.h"
 #include "BaseScene.h"
 #include <cassert>
+#include <cmath>
+#include <stdexcept>
 
 namespace Engine::Scene {
 
@@ -16,11 +18,30 @@ SceneManager* SceneManager::GetInstance()
 
 void SceneManager::SetNextScene(std::unique_ptr<BaseScene> nextScene)
 {
+	if (finalizing_) throw std::logic_error("Cannot queue a Scene during shutdown");
 	this->nextScene = std::move(nextScene);
+}
+
+void SceneManager::SetSceneFactory(AbstractSceneFactory* sceneFactory)
+{
+	if (finalizing_) throw std::logic_error("Cannot replace the Scene factory during shutdown");
+	this->sceneFactory = sceneFactory;
 }
 
 void SceneManager::Update()
 {
+	Update(1.0f / 60.0f);
+}
+
+float SceneManager::SimulationDeltaTime(float realDeltaTime) const
+{
+    return currentScene ? currentScene->SimulationDeltaTime(realDeltaTime) : realDeltaTime;
+}
+
+void SceneManager::Update(float deltaTime)
+{
+	if (finalizing_) return;
+	frameDeltaTime_ = std::isfinite(deltaTime) && deltaTime >= 0.0f ? deltaTime : 0.0f;
 
 	//シーンの切り替え
 	if (nextScene) {
@@ -46,6 +67,7 @@ void SceneManager::Update()
 
 void SceneManager::Draw()
 {
+	if (finalizing_) return;
 	//現在のシーンの描画
 	if (currentScene) {
 		currentScene->Draw();
@@ -54,16 +76,25 @@ void SceneManager::Draw()
 
 void SceneManager::Finalize()
 {
-	if (currentScene) {
-		currentScene->Finalize();
-		currentScene.reset();
-	}
-	nextScene.reset();
+	if (finalizing_) return;
+	finalizing_ = true;
+	struct FinalizingScope {
+		bool& active;
+		~FinalizingScope() { active = false; }
+	} scope{finalizing_};
+	// Unpublish before callbacks. Both owners are destroyed before the guard exits,
+	// even if Finalize throws; a later host/static shutdown cannot retain them.
+	// Derived Scene destructors must remain non-throwing.
+	auto retiring = std::move(currentScene);
+	auto pending = std::move(nextScene);
 	sceneFactory = nullptr;
+	frameDeltaTime_ = 1.0f / 60.0f;
+	if (retiring) retiring->Finalize();
 }
 
 void SceneManager::ChangeScene(const std::string& sceneName)
 {
+	if (finalizing_) throw std::logic_error("Cannot change Scene during shutdown");
 	assert(sceneFactory);
 	assert(nextScene==nullptr);
 

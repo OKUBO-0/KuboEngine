@@ -1,0 +1,6 @@
+{
+  "name": "KuboEngine",
+  "engineVersion": "0.1.0",
+  "startupScene": "UserScenes/gameplay.json",
+  "assetDirectory": "Resources"
+}

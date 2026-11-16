@@ -14,9 +14,11 @@ constexpr float kStickDeadZone = 0.001f;
 
 std::unique_ptr<PlayerControlState> CreateStateFromInput(Engine::InputSystem::Input& input)
 {
+	const Vector3 keyMove = input.EvaluateAction("move");
 	const float stickX = input.GetGamePadStickX();
 	const float stickY = input.GetGamePadStickY();
-	if (std::abs(stickX) > kStickDeadZone || std::abs(stickY) > kStickDeadZone) {
+	if (std::abs(stickX) > kStickDeadZone || std::abs(stickY) > kStickDeadZone ||
+		std::abs(keyMove.x) > kStickDeadZone || std::abs(keyMove.z) > kStickDeadZone) {
 		return std::make_unique<MovePlayerControlState>();
 	}
 
@@ -48,10 +50,13 @@ const char* IdlePlayerControlState::GetName() const
 std::unique_ptr<PlayerControlState> MovePlayerControlState::Update(GamePlayScene& scene, Engine::InputSystem::Input& input)
 {
 	scene.UpdateToggleFlag(input);
-	scene.ApplyMoveInput(input.GetGamePadStickX() * kMoveVelocity, input.GetGamePadStickY() * kMoveVelocity);
+	const Vector3 keyMove = input.EvaluateAction("move");
+	const float moveX = input.GetGamePadStickX() + keyMove.x;
+	const float moveZ = input.GetGamePadStickY() + keyMove.z;
+	scene.ApplyMoveInput(moveX * kMoveVelocity, moveZ * kMoveVelocity);
 
-	if (std::abs(input.GetGamePadStickX()) <= kStickDeadZone &&
-		std::abs(input.GetGamePadStickY()) <= kStickDeadZone) {
+	if (std::abs(moveX) <= kStickDeadZone &&
+		std::abs(moveZ) <= kStickDeadZone) {
 		return CreateStateFromInput(input);
 	}
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "RenderingData.h"
+#include "../../math/data/AuthoredLightData.h"
 #include <d3d12.h>
 #include <array>
 #include <memory>
@@ -92,7 +93,9 @@ public:
 		UINT structureByteStride);
 	bool BeginShadowPass(const Vector3& focusPosition);
 	void EndShadowPass();
-	void BindSceneLighting(bool skinning = false);
+	void BindSceneLighting(bool skinning = false,bool instancing=false);
+	bool SetAuthoredLights(const Math::AuthoredLightData& value) noexcept;
+	const Math::AuthoredLightData& GetAuthoredLights() const noexcept {return authoredLights_;}
 	bool IsShadowPassActive() const { return shadowPassActive_; }
 	bool IsInsideShadowFrustum(const Vector3& worldCenter, float boundingRadius) const;
 	void RecordShadowCandidate(bool submitted);
@@ -167,6 +170,11 @@ private:
 	std::unique_ptr<Engine::Base::GraphicsPipeline> skinningGraphicsPipeline_;
 	std::unique_ptr<Engine::Base::GraphicsPipeline> shadowGraphicsPipeline_;
 	SceneLightData sceneLightData_{};
+	Math::AuthoredLightData authoredLights_{};
+	D3D12_GPU_VIRTUAL_ADDRESS authoredLightAddress_=0;
+	uint64_t authoredLightFence_=0;
+	uint32_t authoredLightFrame_=0;
+	bool authoredLightDirty_=true;
 	Microsoft::WRL::ComPtr<ID3D12Resource> shadowMapResource_;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> shadowDsvHeap_;
 	ShadowMapData shadowMapData_{};
@@ -181,8 +189,12 @@ private:
 	InstanceBatchStats instanceBatchStats_{};
 	static constexpr uint32_t kBufferedFrameCount = 2;
 	static constexpr uint32_t kSkinningInstanceSrvCountPerFrame = 192;
-	std::array<std::array<uint32_t, kSkinningInstanceSrvCountPerFrame>, kBufferedFrameCount>
-		skinningInstanceSrvIndices_{};
+	using SkinningSrvSlots = std::array<std::array<uint32_t, kSkinningInstanceSrvCountPerFrame>, kBufferedFrameCount>;
+	SkinningSrvSlots skinningInstanceSrvIndices_ = [] {
+		SkinningSrvSlots slots{};
+		for (auto& frame : slots) frame.fill(UINT32_MAX);
+		return slots;
+	}();
 	std::array<uint32_t, kBufferedFrameCount> skinningInstanceSrvCursor_{};
 	std::array<uint64_t, kBufferedFrameCount> skinningInstanceSrvFrameSerials_{};
 	bool skinningInstanceSrvInitialized_ = false;

@@ -3,7 +3,11 @@
 #include "BaseScene.h"
 #include "Vector3.h"
 #include "Vector4.h"
+#include "RenderingData.h"
 #include <memory>
+#include "SceneDocument.h"
+#include "SceneHistory.h"
+#include "engine/base/ProjectPaths.h"
 
 namespace Engine::InputSystem {
 class Input;
@@ -50,6 +54,8 @@ class GamePlayScene : public BaseScene
 
 public:
     GamePlayScene();
+	void SetScenePath(std::filesystem::path path) { scenePath_ = std::filesystem::absolute(path).lexically_normal(); }
+	const std::filesystem::path& GetScenePath() const { return scenePath_; }
     ~GamePlayScene() override;
 
     /// @brief ゲームプレイシーンを初期化する
@@ -77,7 +83,53 @@ public:
     /// @return なし
     void LoadModel();
 
+    SceneValue CaptureScene() const;
+    bool RestoreScene(const SceneValue& state, std::string& error);
+    bool SaveScene(const std::filesystem::path& path);
+    bool SaveCurrentScene() { return SaveScene(scenePath_); }
+    bool HasUnsavedScene() const { return playback_ == Playback::Editing ? sceneDirty_ : authoredDirty_; }
+    const std::string& GetSceneFileStatus() const { return sceneFileStatus_; }
+    bool LoadScene(const std::filesystem::path& path);
+    bool UndoEdit();
+    bool RedoEdit();
+    void RecordEdit(const SceneValue& before, const SceneValue& after, bool finish = true);
+    enum class Playback { Editing, Playing, Paused };
+    Playback GetPlayback() const { return playback_; }
+    bool Play();
+    void Pause();
+    bool Stop();
+    void Step() { if (playback_ == Playback::Paused) { stepPending_ = true; } }
+    float SimulationDeltaTime(float realDeltaTime) const override;
+    EulerTransform GetPlayerTransform() const;
+    void SetPlayerTransform(const EulerTransform& transform);
+
 private:
+    void ApplyScene(const SceneValue& state);
+    void DrawSceneDocumentUi();
+    void DrawHierarchyUi();
+    void DrawInspectorUi();
+    void UpdateAutosave(float deltaTime);
+    bool ValidateScene(const SceneValue& state, std::string& error) const;
+    SceneValue sceneSchema_;
+    std::string sceneFileStatus_;
+    std::filesystem::path scenePath_ = Engine::Base::ProjectPaths().LegacyScene();
+    bool sceneDirty_ = false;
+    bool recoveryAvailable_ = false;
+    float autosaveTimer_ = 0.0f;
+    Engine::Editor::SceneHistory history_;
+    bool historyAction_ = false;
+#if defined(_DEBUG) && !defined(KUBO_RUNTIME_ONLY)
+    Playback playback_ = Playback::Editing;
+#else
+    Playback playback_ = Playback::Playing;
+#endif
+    SceneValue playSnapshot_;
+    bool stepPending_ = false;
+    bool authoredDirty_ = false;
+    bool numberBeforePlay_ = false;
+    float simulationDeltaTime_ = 0.0f;
+    enum class Selection { Player, Terrain, MainCamera, SubCamera, Sprite, AttackEmitter, CircleEmitter };
+    Selection selection_ = Selection::Player;
     /// @brief シーン用カメラを初期化する
     /// @param なし
     /// @return なし

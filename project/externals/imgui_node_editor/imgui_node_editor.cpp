@@ -2196,6 +2196,12 @@ void ed::EditorContext::LoadSettings()
 
 void ed::EditorContext::SaveSettings()
 {
+    // A transient editor with no persistence sink or session callbacks has
+    // nowhere to publish serialized settings. Avoid fallible work entirely.
+    if (!m_Config.SettingsFile && !m_Config.SaveSettings && !m_Config.SaveNodeSettings &&
+        !m_Config.BeginSaveSession && !m_Config.EndSaveSession)
+        return;
+
     m_Config.BeginSave();
 
     for (auto& node : m_Nodes)

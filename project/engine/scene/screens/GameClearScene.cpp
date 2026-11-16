@@ -20,7 +20,7 @@ void GameClearScene::Update()
 {
 	Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()->Update();
 
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(KUBO_RUNTIME_ONLY)
 	if (ImGui::CollapsingHeader("Model", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		ImGui::Text("gameClearScene");

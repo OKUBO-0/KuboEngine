@@ -90,6 +90,36 @@
     <ClCompile Include="engine\base\core\Framework.cpp">
       <Filter>engine\base\core</Filter>
     </ClCompile>
+    <ClCompile Include="engine\base\ProjectContext.cpp">
+      <Filter>engine\base</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\app\Application.cpp">
+      <Filter>engine\base</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\assets\AssetRegistry.cpp">
+      <Filter>engine\base</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\assets\AssetSpriteDependencies.cpp">
+      <Filter>engine\base</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\assets\AssetSceneDependencies.cpp">
+      <Filter>engine\base</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\physics\PhysicsWorld.cpp">
+      <Filter>engine\physics</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\script\ScriptRuntime.cpp">
+      <Filter>engine\script</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\services\GitWorkspace.cpp">
+      <Filter>engine\services</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\services\UpdateService.cpp">
+      <Filter>engine\services</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\services\McpCommandBridge.cpp">
+      <Filter>engine\services</Filter>
+    </ClCompile>
     <ClCompile Include="engine\base\render\GraphicsPipeline.cpp">
       <Filter>engine\base\render</Filter>
     </ClCompile>
@@ -153,6 +183,21 @@
     <ClCompile Include="engine\scene\game\GamePlayScene.cpp">
       <Filter>engine\scene\game</Filter>
     </ClCompile>
+    <ClCompile Include="engine\scene\game\GamePlaySceneDocument.cpp">
+      <Filter>engine\scene\game</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\core\SceneDocument.cpp">
+      <Filter>engine\scene\core</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\entity\ParticleComponents.cpp"><Filter>engine\scene</Filter></ClCompile>
+    <ClCompile Include="engine\scene\entity\RenderParticleFrame.cpp"><Filter>engine\scene</Filter></ClCompile>
+    <ClCompile Include="engine\scene\entity\EntitySceneParticles.cpp"><Filter>engine\scene</Filter></ClCompile>
+    <ClCompile Include="engine\scene\entity\EntityWorld.cpp">
+      <Filter>engine\scene\core</Filter>
+    </ClCompile>
+    <ClCompile Include="engine\scene\entity\EntityScene.cpp">
+      <Filter>engine\scene\core</Filter>
+    </ClCompile>
     <ClCompile Include="engine\scene\screens\GameOverScene.cpp">
       <Filter>engine\scene\screens</Filter>
     </ClCompile>
@@ -201,6 +246,9 @@
     <ClCompile Include="engine\input\Input.cpp">
       <Filter>engine\input</Filter>
     </ClCompile>
+    <ClCompile Include="engine\input\ActionMap.cpp">
+      <Filter>engine\input</Filter>
+    </ClCompile>
     <ClCompile Include="engine\camera\CameraManager.cpp">
       <Filter>engine\camera</Filter>
     </ClCompile>
@@ -224,6 +272,90 @@
     <ClInclude Include="engine\base\core\Framework.h">
       <Filter>engine\base\core</Filter>
     </ClInclude>
+    <ClInclude Include="engine\base\ProjectContext.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\app\Application.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetRegistry.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetSpriteDependencies.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetSceneDependencies.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetImportJob.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetMove.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetDependencies.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetImportFingerprint.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AssetRevision.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\LeasedCache.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\ModelReference.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\directx\TextureAssetResolver.h">
+      <Filter>engine\base</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\physics\PhysicsComponents.h">
+      <Filter>engine\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\physics\BoundsBroadPhase.h">
+      <Filter>engine\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\physics\PhysicsWorld.h">
+      <Filter>engine\physics</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\script\ScriptComponent.h">
+      <Filter>engine\script</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\script\ScriptReference.h">
+      <Filter>engine\script</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\script\ScriptRuntime.h">
+      <Filter>engine\script</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\script\LuaResourceBudget.h">
+      <Filter>engine\script</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\script\ScriptAudioRequests.h">
+      <Filter>engine\script</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\GitWorkspace.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\UpdateService.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\McpCommandBridge.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\McpEntityArguments.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\McpComponentArguments.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\ExportJob.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\services\EditorMcpSession.h">
+      <Filter>engine\services</Filter>
+    </ClInclude>
     <ClInclude Include="engine\base\render\GraphicsPipeline.h">
       <Filter>engine\base\render</Filter>
     </ClInclude>
@@ -233,6 +365,27 @@
     <ClInclude Include="engine\editor\DebugEditorManager.h">
       <Filter>engine\editor</Filter>
     </ClInclude>
+    <ClInclude Include="engine\editor\EntityHistory.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\EditorCameraState.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\EntityGizmoTransform.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\GizmoSnapSettings.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\ScenePicking.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\editor\EntityDocumentState.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\core\CloseRequestGate.h">
+      <Filter>engine\base\core</Filter>
+    </ClInclude>
     <ClInclude Include="engine\editor\ImGuizmoManager.h">
       <Filter>engine\editor</Filter>
     </ClInclude>
@@ -240,6 +393,12 @@
       <Filter>engine\base\utility</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\render\OffscreenRenderManager.h">
+      <Filter>engine\base\render</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\render\ViewExtent.h">
+      <Filter>engine\base\render</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\base\render\ViewResizeSchedule.h">
       <Filter>engine\base\render</Filter>
     </ClInclude>
     <ClInclude Include="engine\base\utility\StringUtility.h">
@@ -259,6 +418,28 @@
     </ClInclude>
     <ClInclude Include="engine\audio\Audio.h">
       <Filter>engine\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\audio\WaveFile.h">
+      <Filter>engine\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\audio\OwnedSoundBank.h">
+      <Filter>engine\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\audio\ScriptAudioHost.h">
+      <Filter>engine\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\animation\AnimatorComponent.h" />
+    <ClInclude Include="engine\animation\AnimatorBinding.h" />
+    <ClInclude Include="engine\script\ScriptAnimatorRequests.h" />
+    <ClInclude Include="engine\animation\AnimatorStateReader.h" />
+    <ClInclude Include="engine\audio\AudioComponent.h">
+      <Filter>engine\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\audio\EntityAudioHost.h">
+      <Filter>engine\audio</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\assets\AudioReference.h">
+      <Filter>engine\assets</Filter>
     </ClInclude>
     <ClInclude Include="engine\scene\core\BaseScene.h">
       <Filter>engine\scene\core</Filter>
@@ -283,6 +464,21 @@
     </ClInclude>
     <ClInclude Include="engine\input\Input.h">
       <Filter>engine\input</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\input\ActionMap.h">
+      <Filter>engine\input</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\core\SceneDocument.h">
+      <Filter>engine\scene\core</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\entity\EntityWorld.h">
+      <Filter>engine\scene\core</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\entity\TransformConversion.h">
+      <Filter>engine\scene\core</Filter>
+    </ClInclude>
+    <ClInclude Include="engine\scene\entity\EntityScene.h">
+      <Filter>engine\scene\core</Filter>
     </ClInclude>
     <ClInclude Include="engine\particle\core\IParticleBehavior.h">
       <Filter>engine\particle\core</Filter>
@@ -558,6 +754,13 @@
     <ClInclude Include="engine\base\render\PipelineRootSignatureFactory.h" />
     <ClInclude Include="engine\base\render\PipelineStateBuilder.h" />
     <ClInclude Include="engine\3d\model\ModelAssetResolver.h" />
+    <ClInclude Include="engine\base\AssetPath.h" />
+    <ClInclude Include="engine\base\ProjectPaths.h" />
+    <ClInclude Include="engine\base\AtomicFile.h" />
+    <ClInclude Include="engine\editor\EditorSettingsFile.h" />
+    <ClInclude Include="engine\editor\NativeBuildSettings.h" />
+    <ClInclude Include="engine\base\directx\TextureLoadOptions.h" />
+    <ClInclude Include="engine\3d\model\AnimationTime.h" />
     <ClInclude Include="engine\3d\model\ModelMeshConverter.h" />
     <None Include="Resources\Shaders\object\ObjectInstanced3d.VS.hlsl" />
     <None Include="Resources\Shaders\object\ObjectInstancedShadowMap.VS.hlsl" />
@@ -565,5 +768,22 @@
     <None Include="Resources\Shaders\object\SkinningInstancedObject3d.VS.hlsl" />
     <None Include="Resources\Shaders\object\SkinningInstancedShadowMap.VS.hlsl" />
     <None Include="Resources\Shaders\object\SkinningShadowMap.VS.hlsl" />
+    <ClCompile Include="engine\editor\AnimatorControllerDetails.cpp" />
+    <ClCompile Include="engine\editor\AnimatorControllerPanel.cpp" />
+    <ClCompile Include="engine\scene\game\GameControllerReload.cpp" />
+    <ClInclude Include="engine\editor\AnimatorControllerDetails.h" />
+    <ClCompile Include="engine\editor\ParticleComponentInspector.cpp" />
+    <ClInclude Include="engine\editor\ParticleComponentInspector.h" />
+    <ClCompile Include="engine\editor\AssetThumbnailImage.cpp" />
+    <ClCompile Include="engine\editor\AssetModelThumbnail.cpp" />
+    <ClCompile Include="engine\editor\AssetThumbnailCache.cpp" />
+    <ClCompile Include="engine\scene\game\GameThumbnails.cpp" />
+    <ClCompile Include="engine\scene\game\GameHub.cpp" />
+    <ClCompile Include="engine\editor\ProjectPreviewCapture.cpp" />
+    <ClInclude Include="engine\editor\AssetThumbnailImage.h" />
+    <ClInclude Include="engine\editor\AssetModelThumbnail.h" />
+    <ClInclude Include="engine\editor\AssetThumbnailCache.h" />
+    <ClInclude Include="engine\scene\entity\ParticleComponents.h"><Filter>engine\scene</Filter></ClInclude>
+    <ClInclude Include="engine\scene\entity\RenderParticleFrame.h"><Filter>engine\scene</Filter></ClInclude>
   </ItemGroup>
 </Project>

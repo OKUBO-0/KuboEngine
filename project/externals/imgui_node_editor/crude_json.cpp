@@ -186,17 +186,27 @@ void value::swap(value& other)
     }
     else
     {
+        // Moving MSVC std::map can allocate its sentinel. If reconstruction
+        // throws, restore a live null value instead of leaving a dead tagged
+        // object that will be destructed again during stack unwinding.
+        // Mixed-type swap provides the basic, not the strong, exception guarantee.
+        const auto replace = [](value* target, value&& source)
+        {
+            target->~value();
+            try { new (target) value(std::move(source)); }
+            catch (...) { new (target) value(); throw; }
+        };
         value tmp(std::move(other));
-        other.~value();
-        new (&other) value(std::move(*this));
-        this->~value();
-        new (this) value(std::move(tmp));
+        replace(&other, std::move(*this));
+        replace(this, std::move(tmp));
     }
 }
 
 string value::dump(const int indent, const char indent_char) const
 {
     dump_context_t context(indent, indent_char);
+    // Do not return truncated JSON when the stream swallows allocation failure.
+    context.out.exceptions(std::ios::badbit | std::ios::failbit);
 
     context.out.precision(std::numeric_limits<double>::max_digits10 + 1);
     context.out << std::defaultfloat;
@@ -515,10 +525,30 @@ private:
     bool accept_characters(string& result)
     {
         int c;
-        while (accept_character(c))
+        while (peek() >= 0 && !expect('"'))
         {
-            CRUDE_ASSERT(c < 128); // #todo: convert characters > 127 to UTF-8
-            result.push_back(static_cast<char>(c));
+            const bool escaped = expect('\\');
+            if (!accept_character(c)) return false;
+            if (!escaped || c < 128) {
+                result.push_back(static_cast<char>(c));
+                continue;
+            }
+            if (c >= 0xD800 && c <= 0xDBFF) {
+                int low;
+                if (!accept('\\') || !accept_escape(low) || low < 0xDC00 || low > 0xDFFF) return false;
+                c = 0x10000 + ((c - 0xD800) << 10) + (low - 0xDC00);
+            } else if (c >= 0xDC00 && c <= 0xDFFF) return false;
+            if (c < 0x800) {
+                result.push_back(static_cast<char>(0xC0 | (c >> 6)));
+            } else if (c < 0x10000) {
+                result.push_back(static_cast<char>(0xE0 | (c >> 12)));
+                result.push_back(static_cast<char>(0x80 | ((c >> 6) & 0x3F)));
+            } else {
+                result.push_back(static_cast<char>(0xF0 | (c >> 18)));
+                result.push_back(static_cast<char>(0x80 | ((c >> 12) & 0x3F)));
+                result.push_back(static_cast<char>(0x80 | ((c >> 6) & 0x3F)));
+            }
+            result.push_back(static_cast<char>(0x80 | (c & 0x3F)));
         }
 
         return true;
@@ -535,8 +565,8 @@ private:
         else if (expect('\"'))
             return false;
 
-        // #todo: Handle UTF-8 sequences.
-        return s((c = peek()) >= 0) && advance();
+        // Preserve UTF-8 input bytes; JSON control characters must be escaped.
+        return s((c = peek()) >= 32) && advance();
     }
 
     bool accept_escape(int& c)
@@ -791,7 +821,7 @@ private:
     int peek() const
     {
         if (!eof())
-            return *m_Cursor;
+            return static_cast<unsigned char>(*m_Cursor);
         else
             return -1;
     }

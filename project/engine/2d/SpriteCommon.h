@@ -37,7 +37,7 @@ public:
     /// @brief Sprite 描画の共通ステートを設定する
     /// @param なし
     /// @return なし
-    void CommonDraw();
+    void CommonDraw(bool overlay=false);
     void RecordSpriteDraw(uint32_t uploadedBytes);
     const DrawStats& GetLastDrawStats() const { return lastDrawStats_; }
     const DrawStats& GetCurrentDrawStats() const { return currentDrawStats_; }

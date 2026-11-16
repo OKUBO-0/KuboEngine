@@ -9,6 +9,9 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <memory>
+
+namespace Engine::Base { struct TextureLease; }
 
 struct aiAnimation;
 struct aiMesh;
@@ -64,7 +67,7 @@ public:
         ModelCommon* modelCommon,
         const std::string& directorypath,
         const std::string& filename,
-        bool loadMaterialTexture = true);
+        bool loadMaterialTexture = true, const std::string& revision = {});
     void Finalize();
     static ModelLoadDiagnostics GetLoadDiagnostics();
 
@@ -109,6 +112,7 @@ public:
     Animation& GetAnimation() { return animation; }
     const Animation* FindAnimationClip(const std::string& clipName) const;
     bool HasAnimationClip(const std::string& clipName) const;
+    std::vector<std::string> GetAnimationClipNames() const;
     bool LoadAnimationClip(const std::string& clipName, const std::string& directoryPath, const std::string& filename);
     Skeleton& GetSkeleton() { return skeleton; }
     SkinCluster& GetSkinCluster() { return skinCluster; }
@@ -151,6 +155,7 @@ private:
     /// @param filename モデルファイル名
     /// @return なし
     void LoadRuntimeAssets(const std::string& directorypath, const std::string& filename);
+    std::string assetRevision_;
 
     /// @brief 頂点バッファを生成して頂点データを転送する
     /// @param なし
@@ -263,6 +268,7 @@ private:
     ModelCommon* modelCommon_ = nullptr; // 共通部
 
     ModelData modelData;   // モデルデータ
+    std::vector<std::shared_ptr<const Base::TextureLease>> textureLeases_;
     Animation animation;   // アニメーションデータ
     std::unordered_map<std::string, Animation> animationClips_;
     Skeleton skeleton;     // スケルトン

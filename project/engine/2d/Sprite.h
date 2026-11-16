@@ -1,4 +1,5 @@
 #pragma once
+#include "TextureLoadOptions.h"
 #include "Vector2.h"
 #include "Vector3.h"
 #include "Vector4.h"
@@ -19,11 +20,14 @@ class Sprite
 {
 public:
     /// 初期化処理（共通設定とテクスチャ読み込み）
-    void Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath);
-    void SetTexture(const std::string& textureFilePath);
+    void Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath, Engine::Base::TextureLoadOptions options = {});
+    void SetTexture(const std::string& textureFilePath, Engine::Base::TextureLoadOptions options = {});
 
     /// 毎フレーム更新（座標・回転・UVなど）
     void Update();
+    // Explicit unit-quad -> pixel affine and output projection. Preserves shear
+    // and parent transforms; does not use legacy size/position/rotation fields.
+    void Update(const Matrix4x4& world,const Matrix4x4& projection);
 
     /// 描画処理（バッファ設定と描画コマンド発行）
     void Draw();
@@ -74,6 +78,7 @@ public:
 
 private:
     std::string textureFilePath_;
+    Engine::Base::TextureLoadOptions textureOptions_{};
     std::string debugName_;
 
     /// テクスチャサイズを画像に合わせる

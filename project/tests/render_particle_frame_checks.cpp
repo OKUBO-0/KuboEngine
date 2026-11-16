@@ -1,0 +1,12 @@
+#include "engine/scene/entity/RenderParticleFrame.h"
+#include <iostream>
+#include <limits>
+namespace {void Need(bool v,const char* text){if(!v)throw std::runtime_error(text);}}
+int main(){try{using namespace Engine::Scene;EntityWorld world;auto parent=world.CreateEntity("Parent"),child=world.CreateEntity("Emitter",parent);ParticleComponent value;value.assetPath="Assets/image.dds";value.burst=1;Need(world.SetParticle(child,value),"Particle setup");world.Find(parent)->transform.scale={-2,3,1};world.Find(parent)->transform.rotation.z=.7f;world.Find(parent)->transform.position={5,6,7};world.Find(child)->transform.rotation.x=.4f;
+ RenderParticleFrame frame;Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::Success&&frame.items.size()==1,"Frame creation");Matrix4x4 expected;Need(world.GetWorldMatrix(child,expected),"World pose");for(int r=0;r<4;++r)for(int c=0;c<4;++c)Need(frame.items[0].model.m[r][c]==expected.m[r][c],"Particle lost affine parent/shear/mirror");
+ world.Find(parent)->active=false;Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::Success&&frame.items.empty(),"Inactive ancestor emitted");world.Find(parent)->active=true;world.Find(child)->parent=child;Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::Success&&frame.items.empty()&&frame.skippedInvalidFrames==1,"Cycle not excluded");world.Find(child)->parent=parent;
+ Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::Success,"Frame restoration");const auto keep=frame.items[0].model.m[3][0];world.Find(child)->particle.rate=(std::numeric_limits<float>::quiet_NaN)();Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::InvalidComponent&&frame.items.size()==1&&frame.items[0].model.m[3][0]==keep,"Invalid frame published a prefix");world.Find(child)->particle=value;
+ for(int i=0;i<64;++i){auto id=world.CreateEntity("Over capacity");Need(world.SetParticle(id,value),"Capacity setup");}Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::Limit&&frame.items.size()==1,"Emitter budget missing/changed output");
+ auto duplicate=world.GetEntities().back();duplicate.id=parent;world.GetEntities().push_back(duplicate);Need(BuildRenderParticleFrame(world,frame)==RenderParticleResult::InvalidWorld,"Duplicate World ID admitted");
+ std::cout<<"PASS: Particle frame local affine hierarchy/shear/mirror, active ancestors/cycle, strict settings/duplicate IDs and whole-frame emitter limit refusal\n";return 0;
+}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}

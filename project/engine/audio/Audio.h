@@ -1,4 +1,7 @@
 #pragma once
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <xaudio2.h>
 #pragma comment(lib,"xaudio2.lib")
 #include <wrl.h>
@@ -6,6 +9,8 @@
 #include <cassert>
 #include <unordered_map>
 #include <vector>
+#include "WaveFile.h"
+#include "../base/ProjectPaths.h"
 
 namespace Engine::AudioSystem {
 
@@ -22,12 +27,6 @@ struct RiffHeader {
 struct FormatChunk {
     ChunkHeader chunk;
     WAVEFORMATEX fmt;
-};
-
-struct SoundData {
-    WAVEFORMATEX wfex; // 波形フォーマット
-    std::vector<BYTE> buffer; // 波形データ本体
-    unsigned int bufferSize; // バッファのサイズ
 };
 
 /// @brief XAudio2 を用いた音声再生を管理するクラス
@@ -47,7 +46,7 @@ public:
     /// @brief オーディオデバイスとマスターボイスを初期化する
     /// @param なし
     /// @return なし
-    void Initialize();
+    void Initialize(const std::filesystem::path& projectRoot = {});
     /// @brief 保持中の音声再生資源を解放する
     /// @param なし
     /// @return なし
@@ -57,6 +56,8 @@ public:
     /// @param filename 読み込む wave ファイルパス
     /// @return 読み込んだ音声データ
     SoundData SoundLoadWave(const char* filename);
+    // Native paths, fixed project ownership; failure leaves output unchanged.
+    bool TrySoundLoadWave(const std::filesystem::path& filename, SoundData& output, std::string& error) const;
     /// @brief 読み込み済み音声データを解放する
     /// @param soundData 解放対象の音声データ
     /// @return なし
@@ -123,9 +124,13 @@ public:
     /// @param soundData 判定対象の音声データ
     /// @return 再生中なら true
     bool IsSoundPlaying(SoundData* soundData) const; // 指定音が鳴っているか
+    size_t GetQueuedVoiceCount(const SoundData* soundData) const;
+    uint64_t GetPlayedSampleCount(const SoundData* soundData) const;
+    bool QueuedVoicesHaveVolume(const SoundData* soundData,float volume) const;
 
 private:
     void PruneFinishedVoices();
+    std::filesystem::path projectRoot_;
 
     ComPtr<IXAudio2> xAudio2 = nullptr;
     IXAudio2MasteringVoice* masterVoice = nullptr;

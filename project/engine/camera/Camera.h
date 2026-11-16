@@ -32,6 +32,8 @@ public:
 	/// @param fovy 設定する視野角
 	/// @return なし
 	void SetFovY(float fovy) { this->fovY = fovy; }
+	void SetOrthographic(bool enabled, float verticalHeight = 10.0f) { orthographic_ = enabled; orthographicHeight_ = verticalHeight; }
+	bool IsOrthographic() const { return orthographic_; }
 	/// @brief アスペクト比を設定する
 	/// @param aspectRation 設定するアスペクト比
 	/// @return なし
@@ -44,6 +46,11 @@ public:
 	/// @param farClip 設定するファークリップ距離
 	/// @return なし
 	void SetFarClip(float farClip) { this->farClip = farClip; }
+
+	// Optional composed, rigid world transform for entity-authored cameras.
+	void SetWorldMatrix(const Matrix4x4& matrix) { authoredWorldMatrix_ = matrix; hasAuthoredWorldMatrix_ = true; }
+	void ClearWorldMatrix() { hasAuthoredWorldMatrix_ = false; }
+	Vector3 GetWorldPosition() const { return {worldMatrix.m[3][0], worldMatrix.m[3][1], worldMatrix.m[3][2]}; }
 
 	const Matrix4x4& GetWorldMatrix()const { return worldMatrix; }
 	const Matrix4x4& GetViewMatrix()const { return viewMatrix; }
@@ -59,12 +66,16 @@ private:
 	Matrix4x4 viewMatrix;
 	Matrix4x4 projectionMatrix;
 	Matrix4x4 viewProjectionMatrix;
+	Matrix4x4 authoredWorldMatrix_{};
+	bool hasAuthoredWorldMatrix_ = false;
 
 
 	float fovY=0.45f;
 	float aspectRatio= float(Engine::Base::WinApp::kClientWidth) / float(Engine::Base::WinApp::kClientHeight);
 	float nearClip_ = 0.1f;
 	float farClip=100.0f;
+	bool orthographic_ = false;
+	float orthographicHeight_ = 10.0f;
 
 	
 };

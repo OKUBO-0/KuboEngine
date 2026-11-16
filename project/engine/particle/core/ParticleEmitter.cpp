@@ -1,5 +1,6 @@
 #include "ParticleEmitter.h"
 #include "ParticleManager.h"
+#include <cmath>
 
 namespace {
 constexpr float kFixedEmitterDeltaTime = 1.0f / 60.0f;
@@ -20,8 +21,14 @@ ParticleEmitter::ParticleEmitter(const Vector3& position, float lifetime, float 
 
 void ParticleEmitter::Update()
 {
+	Update(kFixedEmitterDeltaTime);
+}
+
+void ParticleEmitter::Update(float deltaTime)
+{
+	if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) { return; }
 	// 時間を進める
-	frequencyTime += kFixedEmitterDeltaTime;
+	frequencyTime += deltaTime;
 
 	// 寿命（frequency）を超えたら発生
 	if (frequencyTime >= frequency) {

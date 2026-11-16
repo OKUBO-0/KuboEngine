@@ -678,6 +678,7 @@ Vector3 MyMath::GetTranslate(const Matrix4x4& matrix)
 
 }
 
+#ifndef KUBO_RUNTIME_ONLY
 void MyMath::MatrixImGuiText(const Matrix4x4& matrix, const char* label)
 {
 
@@ -719,6 +720,7 @@ void MyMath::Vector3ImGuiText(const Vector3& vector, const char* label)
 	ImGui::Text("z: %.02f", vector.z);
 
 }
+#endif
 
 
 

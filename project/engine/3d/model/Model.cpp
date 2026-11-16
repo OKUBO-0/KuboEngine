@@ -1,4 +1,5 @@
 #include "Model.h"
+#include "engine/animation/AnimationClipCatalog.h"
 #include "DirectXCommon.h"
 #include "ModelAssetResolver.h"
 #include "ModelMeshConverter.h"
@@ -16,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include "../../base/AssetPath.h"
 #include <memory>
 #include <fstream>
 #include <limits>
@@ -23,6 +25,7 @@
 #include <vector>
 #include <assert.h>
 #include "TextureManager.h"
+#include "../../assets/AssetRevision.h"
 #include "SrvManager.h"
 
 namespace {
@@ -97,14 +100,13 @@ std::string ResolveAnimationAlias(const std::string& animationName)
     return {};
 }
 
-void FailModelLoad(const std::string& operation, const std::string& path, const std::string& detail)
+[[noreturn]] void FailModelLoad(const std::string& operation, const std::string& path, const std::string& detail)
 {
     std::ostringstream message;
     message << "[Model::" << operation << "] " << detail
         << " path=\"" << path << "\"\n";
     OutputDebugStringA(message.str().c_str());
-    assert(false && "Model load failed; see OutputDebugString for path and Assimp details");
-    std::abort();
+    throw std::runtime_error(message.str());
 }
 
 void LogSkippedNonTriangleFace(const char* meshName, uint32_t faceIndex, uint32_t indexCount)
@@ -233,33 +235,35 @@ std::string EmbeddedTextureKey(
     const std::string& filename,
     const std::string& texturePath)
 {
-    std::filesystem::path keyPath(directoryPath);
-    keyPath /= filename;
-    return keyPath.generic_string() + "#embedded_texture_" + texturePath.substr(1);
+    auto keyPath = Engine::Base::PathFromUtf8(directoryPath);
+    keyPath /= Engine::Base::PathFromUtf8(filename);
+    return Engine::Base::PathToUtf8(keyPath) + "#embedded_texture_" + texturePath.substr(1);
 }
 
-void LoadEmbeddedTexture(
+std::shared_ptr<const Engine::Base::TextureLease> LoadEmbeddedTexture(
     const aiScene* scene,
     uint32_t textureIndex,
-    const std::string& textureKey)
+    const std::string& textureKey,
+    bool leased)
 {
     if (!scene || textureIndex >= scene->mNumTextures) {
-        return;
+        return {};
     }
 
     const aiTexture* texture = scene->mTextures[textureIndex];
     if (!texture) {
-        return;
+        return {};
     }
 
     Engine::Base::TextureManager* textureManager =
         Engine::Base::TextureManager::GetInstance();
     if (texture->mHeight == 0) {
+        if (leased) return textureManager->AcquireTextureFromMemory(textureKey, texture->pcData, static_cast<size_t>(texture->mWidth));
         textureManager->LoadTextureFromMemory(
             textureKey,
             texture->pcData,
             static_cast<size_t>(texture->mWidth));
-        return;
+        return {};
     }
 
     std::vector<uint8_t> rgbaPixels(
@@ -277,12 +281,15 @@ void LoadEmbeddedTexture(
             destination[3] = source.a;
         }
     }
+    if (leased) return textureManager->AcquireTextureFromRGBA(textureKey, texture->mWidth, texture->mHeight,
+        rgbaPixels.data(), static_cast<size_t>(texture->mWidth) * 4ull);
     textureManager->LoadTextureFromRGBA(
         textureKey,
         texture->mWidth,
         texture->mHeight,
         rgbaPixels.data(),
         static_cast<size_t>(texture->mWidth) * 4ull);
+    return {};
 }
 
 }
@@ -298,9 +305,11 @@ void Model::Initialize(
 	ModelCommon* modelCommon,
 	const std::string& directorypath,
 	const std::string& filename,
-	bool loadMaterialTexture)
+	bool loadMaterialTexture, const std::string& revision)
 {
 	modelCommon_ = modelCommon;
+	Assets::RevisionIdentity({}, revision); // Validate before creating resources.
+	assetRevision_ = revision;
 	LoadRuntimeAssets(directorypath, filename);
 	CreateVertexBuffer();
 	CreateIndexBuffer();
@@ -321,6 +330,7 @@ void Model::Finalize()
 	vertexResource.Reset();
 	indexResource.Reset();
 	skinCluster.influenceResource.Reset();
+	textureLeases_.clear();
 }
 
 void Model::LoadRuntimeAssets(const std::string& directorypath, const std::string& filename)
@@ -376,15 +386,20 @@ void Model::LoadMaterialTexture()
 	// テクスチャ読み込みとインデックス取得
 	Engine::Base::TextureManager* textureManager =
 		Engine::Base::TextureManager::GetInstance();
-	for (MaterialData& material : modelData.materials) {
-		textureManager->LoadTexture(material.textureFilePath);
-		material.textureIndex =
-			textureManager->GetTextureIndexByFilePath(material.textureFilePath);
-	}
+	const auto load = [&](MaterialData& material) {
+		if (!assetRevision_.empty()) {
+			auto lease = textureManager->AcquireTextureRevision(material.textureFilePath, assetRevision_);
+			material.textureFilePath = lease->key;
+			material.textureIndex = lease->srvIndex;
+			textureLeases_.push_back(std::move(lease));
+		} else {
+			textureManager->LoadTexture(material.textureFilePath);
+			material.textureIndex = textureManager->GetTextureIndexByFilePath(material.textureFilePath);
+		}
+	};
+	for (MaterialData& material : modelData.materials) load(material);
 	if (modelData.materials.empty()) {
-		textureManager->LoadTexture(modelData.material.textureFilePath);
-		modelData.material.textureIndex =
-			textureManager->GetTextureIndexByFilePath(modelData.material.textureFilePath);
+		load(modelData.material);
 		return;
 	}
 	modelData.material = modelData.materials.front();
@@ -456,8 +471,7 @@ void Model::DrawInstanced(
 				submeshMaterialAllocation.gpuAddress);
 			modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(
 				2,
-				Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
-					submeshMaterial.textureFilePath));
+				submeshMaterial.textureIndex);
 			commandList->DrawIndexedInstanced(
 				submesh.indexCount,
 				instanceCount,
@@ -469,7 +483,7 @@ void Model::DrawInstanced(
 	}
 
 	// テクスチャSRV設定
-	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(modelData.material.textureFilePath));
+	modelCommon_->GetSRVManager()->SetGraphicsRootDescriptorTable(2, modelData.material.textureIndex);
 
 	// インデックス付き描画（インスタンス数 = 1）
 	commandList->DrawIndexedInstanced(
@@ -580,7 +594,7 @@ MaterialData Model::LoadMaterialTemplateFile(const std::string& directorypath, c
 {
     MaterialData materialData; // 構築するマテリアルデータ
     std::string line;          // ファイルから読み込む1行
-    std::ifstream file(directorypath + "/" + filename); // ファイルを開く
+    std::ifstream file(Base::PathFromUtf8(directorypath) / Base::PathFromUtf8(filename)); // ファイルを開く
     assert(file.is_open());    // 開けなかった場合は停止
 
     while (std::getline(file, line)) {
@@ -765,6 +779,11 @@ const Animation* Model::FindAnimationClip(const std::string& clipName) const
     return nullptr;
 }
 
+std::vector<std::string> Model::GetAnimationClipNames() const
+{
+    return Engine::AnimationSystem::CollectAnimationClipNames(animationClips_,animation);
+}
+
 bool Model::HasAnimationClip(const std::string& clipName) const
 {
     return FindAnimationClip(clipName) != nullptr;
@@ -874,20 +893,21 @@ void Model::LoadMaterialFromScene(
 			uint32_t embeddedTextureIndex = 0;
 			if (TryParseEmbeddedTextureIndex(texturePathString, embeddedTextureIndex)) {
 				materialData.textureFilePath =
-					EmbeddedTextureKey(directoryPath, filename, texturePathString);
-				LoadEmbeddedTexture(
+					Assets::RevisionIdentity(EmbeddedTextureKey(directoryPath, filename, texturePathString), assetRevision_);
+				auto embeddedLease = LoadEmbeddedTexture(
 					scene,
 					embeddedTextureIndex,
-					materialData.textureFilePath);
+					materialData.textureFilePath, !assetRevision_.empty());
+				if (embeddedLease) textureLeases_.push_back(std::move(embeddedLease));
 			} else if (!texturePathString.empty()) {
 				const std::filesystem::path modelDirectory =
-					std::filesystem::path(ResolveModelAssetPath(directoryPath, filename)).parent_path();
+					Base::PathFromUtf8(ResolveModelAssetPath(directoryPath, filename)).parent_path();
 				std::string resolvedTexture =
-					ResolveModelResourcePath(modelDirectory.generic_string(), texturePathString);
-				if (!std::filesystem::exists(resolvedTexture)) {
+					ResolveModelResourcePath(Base::PathToUtf8(modelDirectory), texturePathString);
+				if (!std::filesystem::exists(Base::PathFromUtf8(resolvedTexture))) {
 					resolvedTexture = ResolveModelResourcePath(directoryPath, texturePathString);
 				}
-				if (std::filesystem::exists(resolvedTexture)) {
+				if (std::filesystem::exists(Base::PathFromUtf8(resolvedTexture))) {
 					materialData.textureFilePath = resolvedTexture;
 				} else {
 					OutputDebugStringA(("[Model] Missing material texture: " + texturePathString +

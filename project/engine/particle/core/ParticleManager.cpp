@@ -11,6 +11,9 @@
 #include <cmath>
 #include <cstring>
 #include <numbers>
+#include <stdexcept>
+#include <type_traits>
+#include <utility>
 #include <imgui.h>
 
 namespace {
@@ -47,7 +50,6 @@ std::shared_ptr<Engine::Base::DirectXCommon> ParticleManager::GetDirectXCommon()
 
 void ParticleManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCommon, Engine::Base::SrvManager* srvManager)
 {
-	static_assert(kBufferedFrameCount == Engine::Base::DirectXCommon::kFrameCount);
 
 	//引数で受け取ったポインタをメンバ変数に代入
 	dxCommon_ = dxCommon;
@@ -66,30 +68,88 @@ void ParticleManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dx
 
 void ParticleManager::Finalize()
 {
+	// Framework drains/discards commands before retiring shared services.
 	graphicsPipeline_.reset();
-	if (srvManager_) {
-		for (const auto& [name, particleGroup] : particleGroups) {
-			static_cast<void>(name);
-			if (const auto dxCommon = dxCommon_.lock()) {
-				dxCommon->UntrackResourceState(
-					particleGroup.vertexResource.Get());
-			}
-			for (uint32_t srvIndex : particleGroup.srvIndices) {
-				if (srvIndex != UINT32_MAX) {
-					srvManager_->Free(srvIndex);
-				}
-			}
+	if (const auto dx = dxCommon_.lock()) {
+		for (const auto& [name, group] : particleGroups) {
+			static_cast<void>(name); dx->UntrackResourceState(group.vertexResource.Get());
 		}
+		for (const auto& retired : retiredVertices_) dx->UntrackResourceState(retired.resource.Get());
 	}
-	particleGroups.clear();
-	particleGroupsByIndex_.clear();
-	++particleGroupGeneration_;
-	if (particleGroupGeneration_ == 0) {
-		particleGroupGeneration_ = 1;
-	}
-	model_ = nullptr;
-	dxCommon_.reset();
-	srvManager_ = nullptr;
+	particleGroups.clear(); particleGroupsByIndex_.clear(); retiredVertices_.clear();
+	model_ = nullptr; dxCommon_.reset(); srvManager_ = nullptr;
+}
+
+void ParticleManager::RetireVertex(ParticleGroup& group) noexcept
+{
+	if (!group.vertexResource) return;
+	if (const auto dx = dxCommon_.lock()) {
+		assert(retiredVertices_.size() < retiredVertices_.capacity());
+		retiredVertices_.push_back({dx->GetPendingSubmissionFenceValue(), std::move(group.vertexResource)});
+	} else group.vertexResource.Reset();
+}
+
+void ParticleManager::CollectRetiredGroups() noexcept
+{
+	const auto dx = dxCommon_.lock(); if (!dx) return;
+	const auto completed = dx->GetCompletedFenceValue();
+	std::erase_if(retiredVertices_, [&](const RetiredVertex& retired) {
+		if (retired.fence > completed) return false;
+		dx->UntrackResourceState(retired.resource.Get()); return true;
+	});
+}
+
+void ParticleManager::ReleaseOwnedGroup(ParticleGroupHandle handle) noexcept
+{
+	auto* group = ResolveParticleGroup(handle); if (!group || !group->owned) return;
+	const auto found = particleGroups.find(group->key);
+	RetireVertex(*group); particleGroupsByIndex_[handle.index] = nullptr;
+	particleGroups.erase(found);
+}
+
+ParticleGroupOwner::~ParticleGroupOwner() { Reset(); }
+ParticleGroupOwner::ParticleGroupOwner(ParticleGroupOwner&& other) noexcept
+	: manager_(std::exchange(other.manager_, nullptr)), handle_(std::exchange(other.handle_, {})) {}
+ParticleGroupOwner& ParticleGroupOwner::operator=(ParticleGroupOwner&& other) noexcept
+{
+	if (this != &other) { Reset(); manager_ = std::exchange(other.manager_, nullptr); handle_ = std::exchange(other.handle_, {}); }
+	return *this;
+}
+ParticleGroupOwner::operator bool() const noexcept { return manager_ && manager_->ResolveParticleGroup(handle_); }
+void ParticleGroupOwner::Reset() noexcept
+{
+	if (manager_) manager_->ReleaseOwnedGroup(handle_);
+	manager_ = nullptr; handle_ = {};
+}
+void ParticleGroupOwner::Emit(const Vector3& position, uint32_t count)
+{
+	if (manager_) manager_->Emit(handle_, position, count);
+}
+bool ParticleGroupOwner::Update(float deltaTime)
+{
+	if (!manager_ || !std::isfinite(deltaTime) || deltaTime < 0) return false;
+	auto* group = manager_->ResolveParticleGroup(handle_); if (!group) return false;
+	manager_->CollectRetiredGroups(); group->droppedLastFrame = group->droppedThisFrame;
+	group->droppedThisFrame = 0; group->emittedThisFrame = 0;
+	const Matrix4x4 identity = Matrix4x4{}.MakeIdentity4x4();
+	manager_->UpdateParticleGroup(*group, manager_->ResolveDeltaTime(deltaTime), identity, identity);
+	return true;
+}
+bool ParticleGroupOwner::Draw(const Matrix4x4& view, const Matrix4x4& projection)
+{
+	if (!manager_) return false;
+	auto* group = manager_->ResolveParticleGroup(handle_); if (!group) return false;
+	manager_->lastDrawCallCount_ = manager_->lastDrawnInstanceCount_ = 0;
+	manager_->DrawParticleGroup(*group, &view, &projection); return true;
+}
+bool ParticleGroupOwner::Draw(const Matrix4x4& view,const Matrix4x4& projection,const Matrix4x4& model)
+{
+    if(!manager_)return false;auto* group=manager_->ResolveParticleGroup(handle_);if(!group)return false;
+    manager_->lastDrawCallCount_=manager_->lastDrawnInstanceCount_=0;manager_->DrawParticleGroup(*group,&view,&projection,&model);return true;
+}
+void ParticleGroupOwner::SetLifetimeFade(bool enabled) noexcept
+{
+    if(manager_)if(auto* group=manager_->ResolveParticleGroup(handle_))group->lifetimeFade=enabled;
 }
 
 void ParticleManager::Update()
@@ -99,6 +159,7 @@ void ParticleManager::Update()
 
 void ParticleManager::Update(float deltaTime)
 {
+	CollectRetiredGroups();
 	Engine::CameraSystem::Camera* activeCamera = Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera();
 	if (!activeCamera) {
 		return;
@@ -113,6 +174,7 @@ void ParticleManager::Update(float deltaTime)
 
 	for (auto& particleGroupEntry : particleGroups) {
 		ParticleGroup& particleGroup = particleGroupEntry.second;
+		if (particleGroup.owned) continue;
 		particleGroup.droppedLastFrame = particleGroup.droppedThisFrame;
 		particleGroup.droppedThisFrame = 0;
 		particleGroup.emittedThisFrame = 0;
@@ -122,10 +184,20 @@ void ParticleManager::Update(float deltaTime)
 
 float ParticleManager::ResolveDeltaTime(float deltaTime) const
 {
+	if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) { return 0.0f; }
 	if (useFixedDeltaTime_) {
 		return kFixedParticleDeltaTime;
 	}
 	return std::clamp(deltaTime, 0.0f, kMaxParticleDeltaTime);
+}
+
+void ParticleManager::ClearParticles(const std::string& groupName)
+{
+    auto found = particleGroups.find(groupName);
+    if (found == particleGroups.end()) { return; }
+    auto& group = found->second;
+    group.particles.clear(); group.instanceCount = 0;
+    group.emittedThisFrame = 0;
 }
 
 void ParticleManager::UpdateParticleGroup(ParticleGroup& particleGroup, float deltaTime, const Matrix4x4& viewMatrix, const Matrix4x4& projectionMatrix)
@@ -171,104 +243,112 @@ void ParticleManager::UpdateAliveParticle(Particle& particle, ParticleGroup& par
 		particleGroup.instanceData[counter].WVP = worldViewProjectionMatrix;
 		particleGroup.instanceData[counter].World = worldMatrix;
 		particleGroup.instanceData[counter].color = particle.color;
-		particleGroup.instanceData[counter].color.w *= lifetimeAlpha;
+		if(particleGroup.lifetimeFade)particleGroup.instanceData[counter].color.w *= lifetimeAlpha;
 		++counter;
 	}
 }
 
 void ParticleManager::Draw()
 {
-	const auto dxCommon = GetDirectXCommon();
-	lastDrawCallCount_ = 0;
-	lastDrawnInstanceCount_ = 0;
-
-	// パーティクルグループが設定されていない場合は描画しない
-	if (particleGroups.empty()) {
-		return;
-	}
-
-	//ルートシグネチャを設定
-	const auto rootSignature = graphicsPipeline_->GetRootSignatureParticleHandle();
-	const auto pipelineState = graphicsPipeline_->GetGraphicsPipelineStateParticleHandle();
-	dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
-	//psoを設定
-	dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
-	// primitive topology を設定
-	dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	// グループごとに頂点バッファ、material、instance SRV、texture SRV を切り替えて描画する
-	for (const auto& particleGroupEntry : particleGroups) {
-		const auto& particleGroup = particleGroupEntry.second;
-		if (particleGroup.instanceCount == 0) {
-			continue;
-		}
-
-		const Engine::Base::DirectXCommon::FrameUploadAllocation materialAllocation =
-			dxCommon->AllocateFrameUpload(sizeof(Material), 256);
-		std::memcpy(
-			materialAllocation.cpuAddress,
-			&particleGroup.materialData,
-			sizeof(particleGroup.materialData));
-		const size_t instanceBytes =
-			sizeof(ParticleForGPU) * particleGroup.instanceCount;
-		const Engine::Base::DirectXCommon::FrameUploadAllocation instanceAllocation =
-			dxCommon->AllocateFrameUpload(instanceBytes, sizeof(ParticleForGPU));
-		std::memcpy(
-			instanceAllocation.cpuAddress,
-			particleGroup.instanceData.data(),
-			instanceBytes);
-		const uint32_t frameIndex = dxCommon->GetCurrentFrameIndex();
-		const uint32_t srvIndex = particleGroup.srvIndices[frameIndex];
-		srvManager_->CreateSRVforStructuredBuffer(
-			srvIndex,
-			instanceAllocation.resource,
-			particleGroup.instanceCount,
-			sizeof(ParticleForGPU),
-			instanceAllocation.offset / sizeof(ParticleForGPU));
-
-		dxCommon->GetCommandList()->IASetVertexBuffers(0, 1, &particleGroup.vertexBufferView);
-		dxCommon->GetCommandList()->SetGraphicsRootConstantBufferView(0, materialAllocation.gpuAddress);
-		srvManager_->SetGraphicsRootDescriptorTable(2, particleGroup.materialdata.textureIndex);
-		srvManager_->SetGraphicsRootDescriptorTable(1, srvIndex);
-		dxCommon->GetCommandList()->DrawInstanced(UINT(particleGroup.vertexCount), particleGroup.instanceCount, 0, 0);
-		++lastDrawCallCount_;
-		lastDrawnInstanceCount_ += particleGroup.instanceCount;
+	lastDrawCallCount_ = lastDrawnInstanceCount_ = 0;
+	for (auto& [name, group] : particleGroups) {
+		static_cast<void>(name); if (!group.owned) DrawParticleGroup(group);
 	}
 }
 
-ParticleGroupHandle ParticleManager::CreateParticleGroup(
-	const std::string& name,
-	const std::string& textureFilePath,
-	VerticesType verticesType,
-	std::unique_ptr<IParticleBehavior> behavior,
-	uint32_t maxInstanceCount)
+void ParticleManager::DrawParticleGroup(ParticleGroup& group, const Matrix4x4* view, const Matrix4x4* projection, const Matrix4x4* model)
 {
-	//登録済みなら早期リターン
-	if (const auto it = particleGroups.find(name);
-		it != particleGroups.end()) {
-		return it->second.handle;
-	}
-
-	// 先に空グループを登録して以後の初期化を at(name) で揃える
-	ParticleGroup particleGroup;
-	particleGroup.handle = {
-		static_cast<uint32_t>(particleGroupsByIndex_.size()),
-		particleGroupGeneration_,
+	if (!group.instanceCount) return;
+	const auto finite = [](const Matrix4x4& matrix) {
+		for (const auto& row : matrix.m) for (const auto value : row) if (!std::isfinite(value)) return false;
+		return true;
 	};
-	particleGroup.debugName = name;
-	particleGroup.maxInstanceCount = (std::max)(1u, maxInstanceCount);
-	particleGroups.insert(std::make_pair(name, std::move(particleGroup)));
+	if (view && (!projection || !finite(*view) || !finite(*projection)))
+		throw std::invalid_argument("Invalid Particle view/projection");
+    if(model&&(!view||!finite(*model)||model->m[0][3]!=0||model->m[1][3]!=0||model->m[2][3]!=0||model->m[3][3]!=1))throw std::invalid_argument("Invalid Particle model matrix");
+	const auto dx = GetDirectXCommon();
+	const auto material = dx->AllocateFrameUpload(sizeof(Material), 256);
+	std::memcpy(material.cpuAddress, &group.materialData, sizeof(Material));
+	const auto instances = dx->AllocateFrameUpload(sizeof(ParticleForGPU) * group.instanceCount, sizeof(ParticleForGPU));
+	auto* output = static_cast<ParticleForGPU*>(instances.cpuAddress);
+	for (uint32_t i = 0; i < group.instanceCount; ++i) {
+		output[i] = group.instanceData[i];
+		if (view) {
+			if(model)output[i].World=output[i].World * *model;
+			output[i].WVP = output[i].World * *view * *projection;
+			if (!finite(output[i].WVP)) throw std::invalid_argument("Particle view transform overflow");
+		}
+	}
+	// A descriptor is immutable until its pending submission fence completes.
+	// Each draw/view gets a fresh allocation; upload memory is frame-owned.
+	struct Descriptor {
+		Base::SrvManager* manager; uint32_t index;
+		~Descriptor() { manager->Free(index); }
+	} descriptor{srvManager_, srvManager_->Allocate()};
+	srvManager_->LabelUsage(descriptor.index, "ParticleViewInstances");
+	srvManager_->CreateSRVforStructuredBuffer(descriptor.index, instances.resource,
+		group.instanceCount, sizeof(ParticleForGPU), instances.offset / sizeof(ParticleForGPU));
+	auto* commands = dx->GetCommandList();
+	commands->SetGraphicsRootSignature(graphicsPipeline_->GetRootSignatureParticleHandle().Get());
+	commands->SetPipelineState(graphicsPipeline_->GetGraphicsPipelineStateParticleHandle().Get());
+	commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	commands->IASetVertexBuffers(0, 1, &group.vertexBufferView);
+	commands->SetGraphicsRootConstantBufferView(0, material.gpuAddress);
+	srvManager_->SetGraphicsRootDescriptorTable(2, group.materialdata.textureIndex);
+	srvManager_->SetGraphicsRootDescriptorTable(1, descriptor.index);
+	commands->DrawInstanced(group.vertexCount, group.instanceCount, 0, 0);
+	++lastDrawCallCount_; lastDrawnInstanceCount_ += group.instanceCount;
+}
 
-	ParticleGroup& targetGroup = particleGroups.at(name);
-	particleGroupsByIndex_.push_back(&targetGroup);
-	InitializeParticleGroupMaterial(targetGroup);
-	InitializeParticleGroupVertices(targetGroup, verticesType);
-	InitializeParticleGroupTexture(targetGroup, textureFilePath);
-	InitializeParticleGroupInstances(targetGroup);
+ParticleGroupHandle ParticleManager::CreateParticleGroup(const std::string& name,
+	const std::string& texture, VerticesType type, std::unique_ptr<IParticleBehavior> behavior, uint32_t capacity)
+{
+	if (const auto found = particleGroups.find(name); found != particleGroups.end()) {
+		if (found->second.owned) throw std::invalid_argument("Particle name belongs to an owned group");
+		return found->second.handle;
+	}
+	return CreateGroup(name, texture, type, std::move(behavior), (std::max)(1u, capacity), false);
+}
 
-	// Strategy として振る舞いを保持し、Emit/Update 時に差し替えて使う
-	targetGroup.behavior = std::move(behavior);
-	return targetGroup.handle;
+ParticleGroupOwner ParticleManager::CreateOwnedParticleGroup(const std::string& name,
+	const std::string& texture, VerticesType type, std::unique_ptr<IParticleBehavior> behavior, uint32_t capacity)
+{
+	if (name.empty() || name.size() > 256 || name.find('\0') != std::string::npos || !capacity || capacity > 65536)
+		throw std::invalid_argument("Invalid owned Particle name/capacity");
+	return ParticleGroupOwner(this, CreateGroup(name, texture, type, std::move(behavior), capacity, true));
+}
+
+ParticleGroupHandle ParticleManager::CreateGroup(const std::string& name, const std::string& texture,
+	VerticesType type, std::unique_ptr<IParticleBehavior> behavior, uint32_t capacity, bool owned)
+{
+	static_assert(std::is_nothrow_move_assignable_v<ParticleGroup>);
+	if (!srvManager_ || !graphicsPipeline_ || dxCommon_.expired()) throw std::logic_error("Particle manager is not initialized");
+	if (particleGroups.contains(name)) throw std::invalid_argument("Particle group name already exists");
+	if (type != VerticesType::Quad && type != VerticesType::Ring && type != VerticesType::Cylinder)
+		throw std::invalid_argument("Invalid Particle vertices type");
+	if (particleGroupGeneration_ > UINT32_MAX) throw std::overflow_error("Particle handle generations exhausted");
+	CollectRetiredGroups();
+	// Also reserves the failure candidate's retirement before any GPU resource.
+	retiredVertices_.reserve(retiredVertices_.size() + particleGroups.size() + 1);
+	const auto free = std::find(particleGroupsByIndex_.begin(), particleGroupsByIndex_.end(), nullptr);
+	const auto slot = static_cast<size_t>(free - particleGroupsByIndex_.begin());
+	if (slot >= UINT32_MAX) throw std::overflow_error("Particle handle slots exhausted");
+	particleGroupsByIndex_.reserve(particleGroupsByIndex_.size() + 1);
+	ParticleGroup candidate{};
+	try {
+		candidate.key = name; candidate.debugName = name; candidate.owned = owned;
+		candidate.handle = {static_cast<uint32_t>(slot), static_cast<uint32_t>(particleGroupGeneration_)};
+		candidate.maxInstanceCount = capacity; candidate.behavior = std::move(behavior);
+		InitializeParticleGroupMaterial(candidate); InitializeParticleGroupVertices(candidate, type);
+		InitializeParticleGroupTexture(candidate, texture); InitializeParticleGroupInstances(candidate);
+		auto [entry, inserted] = particleGroups.try_emplace(name);
+		if (!inserted) throw std::logic_error("Particle group changed during creation");
+		entry->second = std::move(candidate);
+		if (slot == particleGroupsByIndex_.size()) particleGroupsByIndex_.push_back(&entry->second);
+		else particleGroupsByIndex_[slot] = &entry->second;
+		++particleGroupGeneration_;
+		return entry->second.handle;
+	} catch (...) { RetireVertex(candidate); throw; }
 }
 
 void ParticleManager::InitializeParticleGroupMaterial(ParticleGroup& particleGroup)
@@ -326,11 +406,7 @@ void ParticleManager::InitializeParticleGroupInstances(ParticleGroup& particleGr
 		particleGroup.instanceData[index] = particleForGPU;
 	}
 
-	particleGroup.srvIndices.fill(UINT32_MAX);
-	for (uint32_t& srvIndex : particleGroup.srvIndices) {
-		srvIndex = srvManager_->Allocate();
-		srvManager_->LabelUsage(srvIndex, "ParticleInstanceBuffer");
-	}
+
 }
 
 void ParticleManager::Emit(const std::string& name, const Vector3& position, uint32_t count)
@@ -697,8 +773,8 @@ ParticleManager::GetParticleGroupHandle(
 ParticleManager::ParticleGroup* ParticleManager::ResolveParticleGroup(
 	ParticleGroupHandle handle)
 {
-	if (handle.generation != particleGroupGeneration_ ||
-		handle.index >= particleGroupsByIndex_.size()) {
+	if (handle.index >= particleGroupsByIndex_.size() || !particleGroupsByIndex_[handle.index] ||
+		particleGroupsByIndex_[handle.index]->handle.generation != handle.generation) {
 		return nullptr;
 	}
 	return particleGroupsByIndex_[handle.index];
@@ -707,8 +783,8 @@ ParticleManager::ParticleGroup* ParticleManager::ResolveParticleGroup(
 const ParticleManager::ParticleGroup* ParticleManager::ResolveParticleGroup(
 	ParticleGroupHandle handle) const
 {
-	if (handle.generation != particleGroupGeneration_ ||
-		handle.index >= particleGroupsByIndex_.size()) {
+	if (handle.index >= particleGroupsByIndex_.size() || !particleGroupsByIndex_[handle.index] ||
+		particleGroupsByIndex_[handle.index]->handle.generation != handle.generation) {
 		return nullptr;
 	}
 	return particleGroupsByIndex_[handle.index];

@@ -1,0 +1,21 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <PropertyGroup Condition="'$(KuboCoordinatorRoot)' != ''">
+  <OutDir>$(KuboCoordinatorRoot)bin\</OutDir>
+  <IntDir>$(KuboCoordinatorRoot)obj\$(MSBuildProjectName)\$(Configuration)\</IntDir>
+ </PropertyGroup>
+ <ItemDefinitionGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine'">
+  <ClCompile>
+   <PreprocessorDefinitions>KUBO_APPLICATION_CHECKS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+   <AdditionalIncludeDirectories>$(KuboCoordinatorRoot)pinned;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+  </ClCompile>
+ </ItemDefinitionGroup>
+ <ItemGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine'">
+  <ClCompile Remove="main.cpp;engine\base\core\Framework.cpp" />
+  <ClCompile Include="$(KuboCoordinatorRoot)pinned\editor_run_coordinator_checks.cpp" />
+  <ClCompile Include="$(KuboCoordinatorRoot)pinned\Framework.cpp" />
+ </ItemGroup>
+ <ItemGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine' and Exists('$(KuboCoordinatorRoot)pinned\ImGuiManager.cpp')">
+  <ClCompile Remove="engine\base\render\ImGuiManager.cpp" />
+  <ClCompile Include="$(KuboCoordinatorRoot)pinned\ImGuiManager.cpp" />
+ </ItemGroup>
+</Project>

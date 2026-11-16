@@ -5,14 +5,27 @@ VisualStudioVersion = 17.5.33530.505
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboEngine", "KuboEngine.vcxproj", "{EF98AFF0-4209-4567-86B0-8169A3FB1938}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboPlayer", "KuboPlayer.vcxproj", "{ABF70A22-E510-4C9F-A087-843863090B75}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboRuntime", "KuboRuntime.vcxproj", "{66D4017C-616E-440C-AD4E-F931C8C36B23}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboLauncher", "launcher\KuboLauncher.vcxproj", "{F1F8E1D4-2F9D-4A9A-9E5B-4A7EEFE04E4C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboMcpServer", "mcp\KuboMcpServer.vcxproj", "{8A0B424F-4D8B-4B75-A531-15D59B3D56C4}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ソリューション項目", "ソリューション項目", "{1E8CA32F-87F8-4248-BD33-B51A13508B72}"
 	ProjectSection(SolutionItems) = preProject
 		.editorconfig = .editorconfig
+		KuboEngine.kubo = KuboEngine.kubo
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DirectXTex", "externals\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj", "{371B9FA9-4C90-4AC6-A123-ACED756D6C77}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "imgui", "externals\imgui\imgui.vcxproj", "{19CDD5D0-F891-4650-88F7-7C868EEFFEA5}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboLua", "externals\lua-5.4.9\KuboLua.vcxproj", "{58F61EA2-8A70-46ED-9B43-A8CD891ABF52}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "KuboAssetValidator", "asset-validator\KuboAssetValidator.vcxproj", "{A6E69BCB-A891-4F39-8C41-00B96D3891A4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,10 +33,34 @@ Global
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A6E69BCB-A891-4F39-8C41-00B96D3891A4}.Debug|x64.ActiveCfg = Debug|x64
+		{A6E69BCB-A891-4F39-8C41-00B96D3891A4}.Debug|x64.Build.0 = Debug|x64
+		{A6E69BCB-A891-4F39-8C41-00B96D3891A4}.Release|x64.ActiveCfg = Release|x64
+		{A6E69BCB-A891-4F39-8C41-00B96D3891A4}.Release|x64.Build.0 = Release|x64
+		{66D4017C-616E-440C-AD4E-F931C8C36B23}.Debug|x64.ActiveCfg = Debug|x64
+		{66D4017C-616E-440C-AD4E-F931C8C36B23}.Debug|x64.Build.0 = Debug|x64
+		{66D4017C-616E-440C-AD4E-F931C8C36B23}.Release|x64.ActiveCfg = Release|x64
+		{66D4017C-616E-440C-AD4E-F931C8C36B23}.Release|x64.Build.0 = Release|x64
+		{58F61EA2-8A70-46ED-9B43-A8CD891ABF52}.Debug|x64.ActiveCfg = Debug|x64
+		{58F61EA2-8A70-46ED-9B43-A8CD891ABF52}.Debug|x64.Build.0 = Debug|x64
+		{58F61EA2-8A70-46ED-9B43-A8CD891ABF52}.Release|x64.ActiveCfg = Release|x64
+		{58F61EA2-8A70-46ED-9B43-A8CD891ABF52}.Release|x64.Build.0 = Release|x64
+		{ABF70A22-E510-4C9F-A087-843863090B75}.Debug|x64.ActiveCfg = Debug|x64
+		{ABF70A22-E510-4C9F-A087-843863090B75}.Debug|x64.Build.0 = Debug|x64
+		{ABF70A22-E510-4C9F-A087-843863090B75}.Release|x64.ActiveCfg = Release|x64
+		{ABF70A22-E510-4C9F-A087-843863090B75}.Release|x64.Build.0 = Release|x64
 		{EF98AFF0-4209-4567-86B0-8169A3FB1938}.Debug|x64.ActiveCfg = Debug|x64
 		{EF98AFF0-4209-4567-86B0-8169A3FB1938}.Debug|x64.Build.0 = Debug|x64
 		{EF98AFF0-4209-4567-86B0-8169A3FB1938}.Release|x64.ActiveCfg = Release|x64
 		{EF98AFF0-4209-4567-86B0-8169A3FB1938}.Release|x64.Build.0 = Release|x64
+		{F1F8E1D4-2F9D-4A9A-9E5B-4A7EEFE04E4C}.Debug|x64.ActiveCfg = Debug|x64
+		{F1F8E1D4-2F9D-4A9A-9E5B-4A7EEFE04E4C}.Debug|x64.Build.0 = Debug|x64
+		{F1F8E1D4-2F9D-4A9A-9E5B-4A7EEFE04E4C}.Release|x64.ActiveCfg = Release|x64
+		{F1F8E1D4-2F9D-4A9A-9E5B-4A7EEFE04E4C}.Release|x64.Build.0 = Release|x64
+		{8A0B424F-4D8B-4B75-A531-15D59B3D56C4}.Debug|x64.ActiveCfg = Debug|x64
+		{8A0B424F-4D8B-4B75-A531-15D59B3D56C4}.Debug|x64.Build.0 = Debug|x64
+		{8A0B424F-4D8B-4B75-A531-15D59B3D56C4}.Release|x64.ActiveCfg = Release|x64
+		{8A0B424F-4D8B-4B75-A531-15D59B3D56C4}.Release|x64.Build.0 = Release|x64
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77}.Debug|x64.ActiveCfg = Debug|x64
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77}.Debug|x64.Build.0 = Debug|x64
 		{371B9FA9-4C90-4AC6-A123-ACED756D6C77}.Release|x64.ActiveCfg = Release|x64

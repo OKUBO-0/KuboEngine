@@ -8,26 +8,31 @@
 #include <MyMath.h>
 #include <cstring>
 #include <memory>
+#include <cmath>
+#include <stdexcept>
 
 namespace Engine::Graphics2D {
 
-void Sprite::Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath)
+void Sprite::Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath, Engine::Base::TextureLoadOptions options)
 {
     textureFilePath_ = textureFilePath;
+    textureOptions_ = options;
     spriteCommon_ = spriteCommon;
-    Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_);
-    textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_);
+    Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_, textureOptions_);
+    textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_, textureOptions_);
     InitializeMaterialData();
     InitializeTransformationData();
     AdjustTextureSize();
 }
 
-void Sprite::SetTexture(const std::string& textureFilePath)
+void Sprite::SetTexture(const std::string& textureFilePath, Engine::Base::TextureLoadOptions options)
 {
+    // Load first so a failed replacement leaves the current sprite usable.
+    Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath, options);
     textureFilePath_ = textureFilePath;
-    Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_);
-    textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_);
-    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
+    textureOptions_ = options;
+    textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_, textureOptions_);
+    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_, textureOptions_);
     textureLeftTop_ = { 0.0f, 0.0f };
     textureSize_ = { static_cast<float>(metadata.width), static_cast<float>(metadata.height) };
 }
@@ -36,6 +41,16 @@ void Sprite::Update()
 {
     UpdateVertexData();
     UpdateMatrices();
+}
+
+void Sprite::Update(const Matrix4x4& world,const Matrix4x4& projection)
+{
+    const auto finite=[](const Matrix4x4& m){for(const auto& row:m.m)for(float n:row)if(!std::isfinite(n))return false;return true;};
+    const auto combined=world*projection;
+    if(!finite(world) || !finite(projection) || !finite(combined))throw std::invalid_argument("Nonfinite Sprite matrices");
+    UpdateVertexData();
+    worldMatrix=world;projectionMatrix=projection;worldViewProjectionMatrix=combined;
+    transformationMatrixData_.World=world;transformationMatrixData_.WVP=combined;
 }
 
 void Sprite::Draw()
@@ -70,7 +85,7 @@ void Sprite::Draw()
     commandList->SetGraphicsRootConstantBufferView(0, materialAddress);
 
     // テクスチャSRV設定 (RootParameter[1])
-    commandList->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_));
+    commandList->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_, textureOptions_));
 
     // 行列CBV設定 (RootParameter[2])
     commandList->SetGraphicsRootConstantBufferView(2, transformAddress);
@@ -87,7 +102,7 @@ void Sprite::Draw()
 void Sprite::AdjustTextureSize()
 {
     // テクスチャメタデータを取得
-    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
+    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_, textureOptions_);
 
     // 切り出しサイズをテクスチャ全体に設定
     textureSize_ = { static_cast<float>(metadata.width), static_cast<float>(metadata.height) };
@@ -131,7 +146,7 @@ void Sprite::UpdateVertexData()
 
     // textureLeftTop_ と textureSize_ はピクセル単位の切り出し範囲。
     // シェーダーへ渡す UV は 0..1 の正規化座標なので、元テクスチャの幅/高さで割る。
-    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_);
+    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_, textureOptions_);
     const float texLeft = textureLeftTop_.x / metadata.width;
     const float texRight = (textureLeftTop_.x + textureSize_.x) / metadata.width;
     const float texTop = textureLeftTop_.y / metadata.height;

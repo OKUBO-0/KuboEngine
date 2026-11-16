@@ -13,6 +13,7 @@ std::unique_ptr<BaseScene> SceneFactory::CreateScene(const std::string& sceneNam
 
 	if (sceneName == "GAMEPLAY") {
 		newscene = std::make_unique<GamePlayScene>();
+		static_cast<GamePlayScene*>(newscene.get())->SetScenePath(gameplayScenePath_);
 	}
 	else if (sceneName == "TITLE") {
 		newscene = std::make_unique<TitleScene>();

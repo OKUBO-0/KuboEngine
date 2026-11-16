@@ -1,0 +1,4 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="engine_resource_checks.targets" />
+  <Import Project="player_runtime_checks.targets" />
+</Project>

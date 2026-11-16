@@ -18,6 +18,7 @@ constexpr float kMicrosecondsPerSecond = 1000000.0f;
 constexpr float kMinTargetFrameRate = 15.0f;
 constexpr float kMaxTargetFrameRate = 1000.0f;
 constexpr float kDefaultClearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
+constexpr DWORD kFenceWaitMilliseconds = 5000;
 
 double P95(std::vector<double> samples)
 {
@@ -42,7 +43,7 @@ namespace Engine::Base {
 
 DirectXCommon::~DirectXCommon()
 {
-	WaitForAllFrames();
+	PrepareForShutdown();
 	if (gpuTimestampReadback_ && gpuTimestampCpuData_) {
 		gpuTimestampReadback_->Unmap(0, nullptr);
 		gpuTimestampCpuData_ = nullptr;
@@ -164,6 +165,9 @@ void DirectXCommon::DeviceInitialize()
 
 void DirectXCommon::CommandInitialize()
 {
+	if (commandState_ != CommandState::Empty) {
+		throw std::logic_error("Command host already acquired or retired");
+	}
 #pragma region CommandQueue,CommandAllocator,CommandList
 	//コマンドキューを生成する
 	D3D12_COMMAND_QUEUE_DESC commandQueueDesc{};
@@ -187,6 +191,7 @@ void DirectXCommon::CommandInitialize()
 		nullptr,
 		IID_PPV_ARGS(&commandList));
 	ThrowIfFailed(hr, "ID3D12Device::CreateCommandList");
+	commandState_ = CommandState::Recording;
 #pragma endregion
 
 }
@@ -449,10 +454,22 @@ void DirectXCommon::ResizeSwapChainIfNeeded()
 
 void DirectXCommon::CloseAndExecuteCommandList()
 {
+	if (commandState_ != CommandState::Recording) {
+		throw std::logic_error("Submission requires a recording command list");
+	}
+	// Refuse submission before execution if completion cannot be tracked.
+	if (!commandQueue || !fence || !fenceEvent) {
+		throw std::logic_error("Submission requires initialized queue and completion fence");
+	}
 	hr = commandList->Close();
+	commandState_ = FAILED(hr) ? CommandState::Failed : CommandState::Closed;
 	ThrowIfFailed(hr, "ID3D12GraphicsCommandList::Close");
 	ID3D12CommandList* commandLists[] = { commandList.Get() };
 	commandQueue->ExecuteCommandLists(1, commandLists);
+	commandState_ = CommandState::Submitted;
+	// Present or Signal can fail after Execute; fence metadata alone cannot
+	// establish that this work has completed.
+	hasUnfencedSubmission_ = true;
 }
 
 void DirectXCommon::WaitForGpuCompletion()
@@ -464,12 +481,28 @@ void DirectXCommon::WaitForGpuCompletion()
 
 void DirectXCommon::WaitForAllFrames()
 {
+	if (hasUnfencedSubmission_) {
+		if (!commandQueue || !fence || !fenceEvent) {
+			throw std::logic_error("Submitted GPU work has no completion fence owner");
+		}
+		SignalFrame(frameContexts_[currentFrameIndex_]);
+	}
 	if (!fence || !fenceEvent) {
 		return;
 	}
 	for (const FrameContext& frameContext : frameContexts_) {
 		WaitForFrame(frameContext);
 	}
+}
+
+void DirectXCommon::PrepareForShutdown()
+{
+	if (commandState_ == CommandState::Retired) return;
+	// If completion fails, keep the list and GPU owners for an explicit retry.
+	WaitForAllFrames();
+	// Discard unsubmitted commands before their resources can be released.
+	commandList.Reset();
+	commandState_ = CommandState::Retired;
 }
 
 void DirectXCommon::InitializeFrameUploadArenas()
@@ -485,37 +518,72 @@ void DirectXCommon::InitializeFrameUploadArenas()
 
 void DirectXCommon::SignalFrame(FrameContext& frameContext)
 {
-	frameContext.fenceValue = ++nextFenceValue_;
-	ThrowIfFailed(
-		commandQueue->Signal(fence.Get(), frameContext.fenceValue),
-		"ID3D12CommandQueue::Signal");
+	const uint64_t candidateValue = nextFenceValue_ + 1;
+	const HRESULT signalResult = commandQueue->Signal(fence.Get(), candidateValue);
+	if (FAILED(signalResult)) {
+		lastSubmissionFenceFailure_ = signalResult;
+		ThrowIfFailed(signalResult, "ID3D12CommandQueue::Signal");
+	}
+	// Publish only a successfully enqueued fence. On failure, retain the
+	// submitted-work flag and previous values so explicit cleanup can retry.
+	frameContext.fenceValue = candidateValue;
+	nextFenceValue_ = candidateValue;
+	hasUnfencedSubmission_ = false;
 }
 
 void DirectXCommon::WaitForFrame(const FrameContext& frameContext)
 {
-	if (frameContext.fenceValue == 0 ||
-		fence->GetCompletedValue() >= frameContext.fenceValue) {
+	if (!fence) throw std::logic_error("GPU frame wait requires a fence owner");
+	const auto completedValue = [this] {
+		const auto completed = fence->GetCompletedValue();
+		// D3D12 reserves UINT64_MAX for device removal, not successful completion.
+		if (completed == UINT64_MAX) {
+			const HRESULT reason = device ? device->GetDeviceRemovedReason() : DXGI_ERROR_DEVICE_REMOVED;
+			ThrowIfFailed(FAILED(reason) ? reason : DXGI_ERROR_DEVICE_REMOVED,
+				"ID3D12Fence device removed");
+		}
+		return completed;
+	};
+	if (completedValue() >= frameContext.fenceValue) {
 		return;
 	}
-
+	if (!fenceEvent) throw std::logic_error("GPU frame wait requires an event owner");
 	ThrowIfFailed(
 		fence->SetEventOnCompletion(frameContext.fenceValue, fenceEvent),
 		"ID3D12Fence::SetEventOnCompletion");
-	const DWORD waitResult = WaitForSingleObject(fenceEvent, INFINITE);
-	if (waitResult != WAIT_OBJECT_0) {
-		ThrowIfFailed(
-			HRESULT_FROM_WIN32(GetLastError()),
-			"WaitForSingleObject fence");
+	const ULONGLONG deadline = GetTickCount64() + kFenceWaitMilliseconds;
+	while (true) {
+		const auto now = GetTickCount64();
+		const DWORD remainingWaitMs = now < deadline ? static_cast<DWORD>(deadline - now) : 0;
+		const DWORD waitResult = WaitForSingleObject(fenceEvent, remainingWaitMs);
+		if (waitResult == WAIT_FAILED) {
+			const DWORD error = GetLastError();
+			ThrowIfFailed(error ? HRESULT_FROM_WIN32(error) : E_FAIL, "WaitForSingleObject fence");
+		}
+		if (waitResult != WAIT_OBJECT_0 && waitResult != WAIT_TIMEOUT)
+			ThrowIfFailed(E_UNEXPECTED, "Unexpected GPU fence wait result");
+		// Recheck after a wake: an old event registration or device removal must
+		// not authorize allocator/resource reuse. A timeout/completion race may
+		// return successfully only when the actual completed value proves it safe.
+		if (completedValue() >= frameContext.fenceValue) return;
+		if (waitResult == WAIT_TIMEOUT || GetTickCount64() >= deadline)
+			ThrowIfFailed(HRESULT_FROM_WIN32(ERROR_TIMEOUT), "ID3D12Fence wait timeout");
+		// A stale signal consumes only the remaining budget, never a fresh 5s.
 	}
 }
 
 void DirectXCommon::ResetCommandObjects(uint32_t frameIndex)
 {
+	if (commandState_ != CommandState::Submitted || hasUnfencedSubmission_) {
+		throw std::logic_error("Reset requires fenced submitted commands");
+	}
+	commandState_ = CommandState::Failed;
 	FrameContext& frameContext = frameContexts_[frameIndex];
 	hr = frameContext.commandAllocator->Reset();
 	ThrowIfFailed(hr, "ID3D12CommandAllocator::Reset");
 	hr = commandList->Reset(frameContext.commandAllocator.Get(), nullptr);
 	ThrowIfFailed(hr, "ID3D12GraphicsCommandList::Reset");
+	commandState_ = CommandState::Recording;
 	frameContext.uploadOffset = 0;
 	frameContext.deferredReleaseResources.clear();
 }
@@ -524,6 +592,7 @@ void DirectXCommon::ResetCommandObjects(uint32_t frameIndex)
 
 void DirectXCommon::Begin()
 {
+	if (commandState_ != CommandState::Recording) throw std::logic_error("Begin requires recording commands");
 	//これから書き込むバックバッファのインデックスを取得する
 	currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
 	PrepareBackBufferForRendering(currentFrameIndex_);
@@ -537,6 +606,7 @@ void DirectXCommon::Begin()
 
 void DirectXCommon::End()
 {
+	if (commandState_ != CommandState::Recording) throw std::logic_error("End requires recording commands");
 	FrameContext& submittedFrame = frameContexts_[currentFrameIndex_];
 	const uint32_t timestampBase = currentFrameIndex_ * 4;
 	commandList->EndQuery(
@@ -568,6 +638,7 @@ void DirectXCommon::PrepareForFrame()
 
 void DirectXCommon::BeginGpuFrameTiming()
 {
+	if (commandState_ != CommandState::Recording) throw std::logic_error("GPU timing requires recording commands");
 	CollectCompletedGpuTiming(currentFrameIndex_);
 	FrameContext& frameContext = frameContexts_[currentFrameIndex_];
 	frameContext.shadowTimestampRecording = false;
@@ -995,6 +1066,14 @@ Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::UploadTextureData
 
 void DirectXCommon::CommandKick()
 {
+	// Collection during terminal cleanup must not submit discarded commands.
+	if (commandState_ == CommandState::Retired) { WaitForAllFrames(); return; }
+	if (commandState_ == CommandState::Submitted) {
+		WaitForAllFrames();
+		if (swapChain) currentFrameIndex_ = swapChain->GetCurrentBackBufferIndex();
+		ResetCommandObjects(currentFrameIndex_);
+		return;
+	}
 	// 初期化中に積んだコマンドを即時実行し、以後の生成処理で参照できる状態まで進める
 	CloseAndExecuteCommandList();
 	WaitForGpuCompletion();

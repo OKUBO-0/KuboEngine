@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace DirectX {
@@ -64,10 +65,12 @@ public:
 	uint32_t GetRemainingCount();
 	const std::vector<UsageRecord>& GetUsageRecords() const { return usageRecords_; }
 	UsageSummary GetUsageSummary() const;
-	void LabelUsage(uint32_t srvIndex, const std::string& usage);
+	// Diagnostic labels are best effort; their allocation must not change ownership.
+	uint32_t GetUsageLabelFailureCount() const noexcept { return usageLabelFailures_; }
+	void LabelUsage(uint32_t srvIndex, std::string_view usage);
 private:
 	std::shared_ptr<DirectXCommon> GetDirectXCommon() const;
-	void SetUsage(uint32_t srvIndex, const std::string& usage);
+	void SetUsage(uint32_t srvIndex, std::string_view usage) noexcept;
 	void ReclaimCompletedDescriptors();
 	void ValidateIndex(uint32_t srvIndex) const;
 	void ValidateAllocated(uint32_t srvIndex) const;
@@ -86,6 +89,7 @@ private:
 	std::vector<RetiredDescriptor> retiredDescriptors_;
 	std::vector<uint8_t> allocated_;
 	std::vector<UsageRecord> usageRecords_;
+	uint32_t usageLabelFailures_ = 0;
 	
 
 };

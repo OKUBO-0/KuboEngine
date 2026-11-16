@@ -1,9 +1,17 @@
 #include "ModelManager.h"
 #include "Model.h"
 #include "ModelCommon.h"
+#include "ModelAssetResolver.h"
+#include "../../base/AssetPath.h"
+#include "../../assets/AssetRevision.h"
+#include "../../assets/LeasedCache.h"
+#include "Object3D.h"
+#include "DirectXCommon.h"
 #include "TextureManager.h"
 #include <utility>
 #include <vector>
+#include <unordered_set>
+#include <stdexcept>
 
 namespace Engine::Graphics3D {
 
@@ -17,7 +25,9 @@ ModelManager* ModelManager::GetInstance()
 
 std::string ModelManager::MakeModelKey(const std::string& resourceRoot, const std::string& filePath)
 {
-	return resourceRoot + "::" + filePath;
+	// The root also controls fallback material lookup, so keep it in the identity.
+	return Engine::Base::NormalizeAssetPath(resourceRoot) + "::" +
+		Engine::Base::NormalizeAssetPath(ResolveModelAssetPath(resourceRoot, filePath));
 }
 
 void ModelManager::Finalize()
@@ -25,10 +35,12 @@ void ModelManager::Finalize()
 	for (auto& [key, model] : models) {
 		static_cast<void>(key);
 		if (model) {
+			Object3D::InvalidateModelCaches(model.get());
 			model->Finalize();
 		}
 	}
 	models.clear();
+	collectibleModels_.clear();
 	modelCommon.reset();
 	srvManager_ = nullptr;
 }
@@ -45,6 +57,72 @@ void ModelManager::Initialize(std::shared_ptr<Engine::Base::DirectXCommon> dxCom
 void ModelManager::LoadModel(const std::string& filePath)
 {
 	LoadModelFromResourceRoot("Resources", filePath);
+}
+
+Model* ModelManager::GetOrLoadModel(const std::string& filePath, const std::string& resourceRoot, const std::string& assetIdentity, const std::string& revision)
+{
+	return GetOrLoadModelInternal(filePath, resourceRoot, assetIdentity, revision, false).get();
+}
+std::shared_ptr<Model> ModelManager::AcquireModel(const std::string& filePath, const std::string& resourceRoot, const std::string& assetIdentity, const std::string& revision)
+{
+	return GetOrLoadModelInternal(filePath, resourceRoot, assetIdentity, revision, true);
+}
+void ModelManager::PinModel(Model* model)
+{
+	for (const auto& entry : models) if (entry.second.get() == model) { collectibleModels_.erase(entry.first); return; }
+}
+size_t ModelManager::CollectUnusedModels()
+{
+	if (!modelCommon) return 0;
+	const auto removed = Assets::CollectUnusedLeasedEntries(models, collectibleModels_,
+		[&] {
+			// Upload/state-transition commands may still be recorded, not submitted.
+			// A fence-only wait cannot protect resources referenced by that list.
+			auto graphics = modelCommon->GetDxCommon();
+			graphics->CommandKick();
+			graphics->WaitForAllFrames();
+		}, [](Model* model) {
+			Object3D::InvalidateModelCaches(model); model->Finalize();
+		});
+	Base::TextureManager::GetInstance()->CollectUnusedTextures();
+	return removed;
+}
+std::shared_ptr<Model> ModelManager::GetOrLoadModelInternal(const std::string& filePath, const std::string& resourceRoot, const std::string& assetIdentity, const std::string& revision, bool leased)
+{
+	if (!modelCommon) {
+		throw std::logic_error("ModelManager must be initialized before loading models");
+	}
+	if (filePath.empty() || resourceRoot.empty()) {
+		throw std::invalid_argument("Model path and resource root must not be empty");
+	}
+	// Retain old versions while live Object3Ds hold leases (or raw API pins). Distinct
+	// persistent identities must not share a GPU model just because a path is reused.
+	const auto identity = Assets::RevisionIdentity(assetIdentity, revision);
+	if (!identity.empty()) {
+		const auto key = MakeModelKey(resourceRoot, filePath) + "::identity:" + identity;
+		if (const auto found = models.find(key); found != models.end()) {
+			if (!leased) collectibleModels_.erase(key); // Raw-pointer exposure pins permanently.
+			return found->second;
+		}
+		const auto resolved = ResolveModelAssetPath(resourceRoot, filePath);
+		if (!std::filesystem::is_regular_file(Base::PathFromUtf8(resolved))) throw std::runtime_error("Model file not found: " + resolved);
+		auto model = std::make_shared<Model>();
+		try { model->Initialize(modelCommon.get(), resourceRoot, filePath, true, revision); }
+		catch (...) { model->Finalize(); throw; }
+		models.emplace(key, model);
+		if (leased) collectibleModels_.insert(key);
+		return model;
+	}
+	if (Model* model = FindModelFromResourceRoot(resourceRoot, filePath)) {
+		(void)model;
+		return models.at(MakeModelKey(resourceRoot, filePath));
+	}
+	const auto resolved = ResolveModelAssetPath(resourceRoot, filePath);
+	if (!std::filesystem::is_regular_file(Base::PathFromUtf8(resolved))) {
+		throw std::runtime_error("Model file not found: " + filePath + " (resolved: " + resolved + ")");
+	}
+	LoadModelFromResourceRoot(resourceRoot, filePath);
+	return models.at(MakeModelKey(resourceRoot, filePath));
 }
 
 void ModelManager::LoadModels(const std::vector<std::string>& filePaths)
@@ -78,10 +156,11 @@ void ModelManager::LoadModelsFromResourceRoot(
 	std::vector<std::string> texturePaths;
 	pendingModels.reserve(filePaths.size());
 	texturePaths.reserve(filePaths.size());
+	std::unordered_set<std::string> pendingKeys;
 
 	for (const std::string& filePath : filePaths) {
 		const std::string modelKey = MakeModelKey(resourceRoot, filePath);
-		if (models.contains(modelKey)) {
+		if (models.contains(modelKey) || !pendingKeys.insert(modelKey).second) {
 			continue;
 		}
 

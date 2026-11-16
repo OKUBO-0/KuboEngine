@@ -5,7 +5,12 @@
 #define DIRECTINPUT_VERSION 0x0800 // DirectInputのバージョン指定
 #include <dinput.h>
 #include <Vector2.h>
+#include <Vector3.h>
+#include <ActionMap.h>
+#include "InputFrame.h"
 #include <array>
+#include <string>
+#include <filesystem>
 template <class T>using ComPtr = Microsoft::WRL::ComPtr<T>;
 
 #include <Xinput.h>
@@ -22,6 +27,7 @@ namespace Engine::InputSystem {
 ///          押下・トリガー・座標・振動制御を提供する。
 class Input
 {
+	std::filesystem::path actionBindingsPath_;
 	Input() = default;
 	~Input() = default;
 	Input(Input&) = default;
@@ -48,11 +54,13 @@ public:
 	/// @brief 入力デバイスを初期化する
 	/// @param winApp ウィンドウ情報を持つアプリケーション管理クラス
 	/// @return なし
-	void Initialize(Engine::Base::WinApp* winApp);
+	void Initialize(Engine::Base::WinApp* winApp, const std::filesystem::path& projectRoot = {});
+	const std::filesystem::path& GetActionBindingsPath() const { return actionBindingsPath_; }
 	/// @brief 全入力デバイスの状態を更新する
 	/// @param なし
 	/// @return なし
 	void Update();
+	InputFrame CaptureFrame(bool enabled = true) const;
 
 	/// @brief キーが押下中かを判定する
 	/// @param keyNumber 判定したいキーコード
@@ -62,6 +70,25 @@ public:
 	/// @param keyNumber 判定したいキーコード
 	/// @return 押されたフレームなら true
 	bool TriggerKey(BYTE keyNumber);//押したとき
+
+	/// @brief アクション名にキーボード入力を割り当てる
+	void BindKeyAction(const std::string& action, BYTE keyNumber, const Vector3& contribution);
+	/// @brief ボタン扱いのアクション名にキーボード入力を割り当てる
+	void BindKeyAction(const std::string& action, BYTE keyNumber);
+	/// @brief アクションの押下状態を判定する
+	bool PushAction(const std::string& action) const;
+	/// @brief アクションが押された瞬間かを判定する
+	bool TriggerAction(const std::string& action) const;
+	/// @brief 押下中のキーに対応するアクション寄与を合算する
+	Vector3 EvaluateAction(const std::string& action) const;
+	/// @brief アクション割り当てを消去する
+	void ClearAction(const std::string& action);
+	/// @brief 現在のアクションマップを取得する
+	const ActionMap& GetActionMap() const { return actionMap_; }
+	void BindPadButtonAction(const std::string& action,GamepadButton button,const Vector3& contribution) {actionMap_.BindPadButton(action,button,contribution);}
+	void BindPadAxisAction(const std::string& action,ActionMap::PadAxis axis,const Vector3& contribution,float threshold) {actionMap_.BindPadAxis(action,axis,contribution,threshold);}
+	bool SaveActionBindings(const std::filesystem::path& path, std::string& error) const { return actionMap_.Save(path, error); }
+	bool LoadActionBindings(const std::filesystem::path& path, std::string& error) { return actionMap_.Load(path, error); }
 
 
 	/// @brief マウスボタンが押下中かを判定する
@@ -121,6 +148,7 @@ public:
 
 
 private:
+	GamepadSample CapturePadSample(bool previous) const noexcept;
 	ComPtr<IDirectInput8>directInput = nullptr;
 	BYTE key[256] = {};
 	BYTE preKey[256] = {};
@@ -136,6 +164,10 @@ private:
 	XINPUT_STATE state_; // 現在のゲームパッド状態
 	XINPUT_STATE prevState_; // 前回のゲームパッド状態
 	bool gamepadConnected_ = false;
+	bool previousGamepadConnected_ = false;
+	ActionMap actionMap_;
+
+	void InitializeDefaultActionMap();
 
 
 };

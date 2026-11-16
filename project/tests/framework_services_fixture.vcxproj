@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+ <PropertyGroup Label="Globals"><ProjectGuid>{A054E035-846B-45AD-9E0A-011A1B3469FD}</ProjectGuid><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+ <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v143</PlatformToolset><UseDebugLibraries>true</UseDebugLibraries></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+ <PropertyGroup><TargetName>FrameworkServicesChecks</TargetName><OutDir>$(MSBuildProjectDirectory)\bin\</OutDir><IntDir>$(MSBuildProjectDirectory)\obj\</IntDir></PropertyGroup>
+ <ItemDefinitionGroup><ClCompile><PreprocessorDefinitions>_DEBUG;KUBO_WITH_EDITOR;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>$(KuboProjectRoot);$(KuboProjectRoot)engine\editor;$(KuboProjectRoot)externals\imgui;$(KuboProjectRoot)externals\imgui_node_editor;$(KuboProjectRoot)externals\implot;$(KuboProjectRoot)externals\IconFontCppHeaders;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories><WarningLevel>Level3</WarningLevel></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>$(MSBuildProjectDirectory)\pinned-imgui.lib;Ole32.lib;User32.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+ <Import Project="$(KuboSdkRoot)KuboRuntime.props" />
+ <!-- This is a source probe, not SDK-only: use one original header universe. -->
+ <ItemDefinitionGroup><ClCompile><AdditionalIncludeDirectories>$(KuboProjectRoot);$(KuboProjectRoot)engine\base;$(KuboProjectRoot)engine\base\core;$(KuboProjectRoot)engine\base\directx;$(KuboProjectRoot)engine\base\render;$(KuboProjectRoot)engine\base\utility;$(KuboProjectRoot)engine\editor;$(KuboProjectRoot)engine\math\types;$(KuboProjectRoot)engine\math\data;$(KuboProjectRoot)engine\camera;$(KuboProjectRoot)engine\scene\core;$(KuboProjectRoot)engine\scene\entity;$(KuboProjectRoot)engine\3d\model;$(KuboProjectRoot)engine\3d\object;$(KuboProjectRoot)engine\particle\core;$(KuboProjectRoot)engine\audio;$(KuboProjectRoot)externals\imgui;$(KuboProjectRoot)externals\imgui_node_editor;$(KuboProjectRoot)externals\implot;$(KuboProjectRoot)externals\IconFontCppHeaders;$(KuboProjectRoot)externals\DirectXTex</AdditionalIncludeDirectories></ClCompile></ItemDefinitionGroup>
+ <ItemDefinitionGroup><ClCompile><AdditionalIncludeDirectories>$(KuboProjectRoot)engine\2d;$(KuboProjectRoot)engine\input;$(KuboProjectRoot)engine\Line;$(KuboProjectRoot)engine\skybox;$(KuboProjectRoot)engine\particle\behaviors;$(KuboProjectRoot)externals\assimp\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile></ItemDefinitionGroup>
+ <ItemGroup><ClCompile Include="framework_services_fixture.cpp" /><ClCompile Include="pinned_Framework.cpp" /></ItemGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+ <Target Name="CopyKuboRuntimeDeployment" />
+</Project>

@@ -1,7 +1,7 @@
 #include "GameOverScene.h"
 #include "Object3DCommon.h"
 #include "SpriteCommon.h"
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(KUBO_RUNTIME_ONLY)
 #include <imgui.h>
 #endif // _DEBUG
 #include "SceneManager.h"
@@ -20,7 +20,7 @@ void GameOverScene::Finalize()
 
 void GameOverScene::Update()
 {
-#ifdef _DEBUG
+#if defined(_DEBUG) && !defined(KUBO_RUNTIME_ONLY)
 	if (ImGui::CollapsingHeader("Model", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		ImGui::Text("gameOverScene");

@@ -1,4 +1,5 @@
 #include "Object3d.hlsli"
+#include "AuthoredLighting.hlsli"
 
 struct Material
 {
@@ -103,12 +104,20 @@ PixelShaderOutput main(VertexShaderOutput input)
     float4 materialColor = gMaterial.color * input.instanceColor;
     float3 surfaceColor = materialColor.rgb *
         lerp(float3(1.0f, 1.0f, 1.0f), textureColor.rgb, saturate(gEnvironment.textureInfluence));
-    if (gMaterial.enableLighting == 0 || gSceneLight.enable == 0)
+    if (gMaterial.enableLighting == 0 || (gAuthoredLights.mode == 0 && gSceneLight.enable == 0))
     {
         output.color = float4(surfaceColor, materialColor.a * textureColor.a);
         return output;
     }
 
+    if (gAuthoredLights.mode != 0)
+    {
+        float3 normal = AuthoredNormalize(input.normal);
+        float3 reflected = reflect(AuthoredNormalize(input.worldPosition - gCamera.worldPosition), normal);
+        float3 environment = gEnvironmentTexture.SampleLevel(gSampler, reflected, saturate(gEnvironment.roughness) * 6.0f).rgb * gEnvironment.reflectionStrength;
+        output.color = float4(EvaluateAuthoredLights(surfaceColor, normal, gCamera.worldPosition, input.worldPosition, gMaterial.shininess) + environment, materialColor.a * textureColor.a);
+        return output;
+    }
     float3 normal = normalize(input.normal);
     float3 lightDirection = normalize(-gSceneLight.direction);
     float3 toEye = normalize(gCamera.worldPosition - input.worldPosition);

@@ -1,0 +1,10 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Source-linked preflight only. This is not an external SDK consumer. -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)'=='KuboPlayer'"><TargetName>SdkRenderSourceProbe</TargetName></PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(MSBuildProjectName)'=='KuboPlayer'"><ClCompile><TreatWarningAsError>true</TreatWarningAsError><PreprocessorDefinitions>KUBO_SDK_RENDER_CHECKS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><SubSystem>Console</SubSystem></Link></ItemDefinitionGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)'=='KuboPlayer'">
+    <ClCompile Remove="main.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)sdk_prefab_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)player_lighting_fixture.cpp" />
+  </ItemGroup>
+</Project>

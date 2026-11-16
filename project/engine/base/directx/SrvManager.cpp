@@ -26,6 +26,7 @@ void SrvManager::Initialize(std::shared_ptr<DirectXCommon> dxCommon)
 	allocated_.assign(kMaxSRVCount, uint8_t{ 0 });
 	usageRecords_.clear();
 	usageRecords_.reserve(kMaxSRVCount);
+	usageLabelFailures_ = 0;
 
 }
 
@@ -214,7 +215,7 @@ SrvManager::UsageSummary SrvManager::GetUsageSummary() const
 	return summary;
 }
 
-void SrvManager::LabelUsage(uint32_t srvIndex, const std::string& usage)
+void SrvManager::LabelUsage(uint32_t srvIndex, std::string_view usage)
 {
 	ValidateAllocated(srvIndex);
 	SetUsage(srvIndex, usage);
@@ -235,17 +236,25 @@ void SrvManager::ValidateAllocated(uint32_t srvIndex) const
 	}
 }
 
-void SrvManager::SetUsage(uint32_t srvIndex, const std::string& usage)
+void SrvManager::SetUsage(uint32_t srvIndex, std::string_view usage) noexcept
 {
+	// Keep all owning-string construction inside this boundary, including Debug
+	// stdlib bookkeeping. Allocator state is authoritative even if telemetry fails.
+	try {
 	auto it = std::find_if(
 		usageRecords_.begin(),
 		usageRecords_.end(),
 		[srvIndex](const UsageRecord& record) { return record.index == srvIndex; });
 	if (it != usageRecords_.end()) {
-		it->usage = usage;
+		it->usage.assign(usage);
 		return;
 	}
-	usageRecords_.push_back({ srvIndex, usage });
+	usageRecords_.push_back({ srvIndex, std::string(usage) });
+	} catch (...) {
+		// Do not allocate while reporting a failed diagnostic. Preserve prior labels
+		// and expose bounded failure telemetry instead of throwing after a commit.
+		if (usageLabelFailures_ != UINT32_MAX) ++usageLabelFailures_;
+	}
 }
 
 }

@@ -414,6 +414,10 @@ void GraphicsPipeline::CreateSprite()
 		L"Resources/Shaders/sprite/Sprite.VS.hlsl",
 		L"Resources/Shaders/sprite/Sprite.PS.hlsl",
 	});
+	// Generic Canvas is an overlay; preserve the legacy Sprite depth policy.
+	CreatePipeline({"SpriteOverlay",rootSignatureSprite.Get(),
+		L"Resources/Shaders/sprite/Sprite.VS.hlsl",L"Resources/Shaders/sprite/Sprite.PS.hlsl",
+		PipelineInputLayout::Standard,PipelineBlendMode::Alpha,PipelineDepthMode::Disabled});
 
 }
 

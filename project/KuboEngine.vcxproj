@@ -13,20 +13,23 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{ef98aff0-4209-4567-86b0-8169a3fb1938}</ProjectGuid>
+    <ProjectGuid Condition="'$(KuboRuntimeOnly)'!='true'">{ef98aff0-4209-4567-86b0-8169a3fb1938}</ProjectGuid>
     <RootNamespace>CG201DirectX</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>KuboEngine</ProjectName>
+    <ProjectName Condition="'$(KuboRuntimeOnly)'!='true'">KuboEngine</ProjectName>
+    <KuboEditorDefinitions Condition="'$(KuboRuntimeOnly)'!='true'">KUBO_WITH_EDITOR</KuboEditorDefinitions>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType Condition="'$(KuboRuntimeLibrary)'=='true'">StaticLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType Condition="'$(KuboRuntimeLibrary)'=='true'">StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -75,13 +78,19 @@
       <TreatLinkerWarningAsErrors>true</TreatLinkerWarningAsErrors>
       <AdditionalOptions>/ignore:4049 /ignore:4098 /ignore:4099 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalLibraryDirectories>$(ProjectDir)externals\assimp\lib\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>assimp-vc143-mtd.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>assimp-vc143-mtd.lib;bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxcompiler.dll" "$(TargetDir)dxcompiler.dll" || exit /B 1
 copy /Y "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dxil.dll" || exit /B 1
 robocopy "$(ProjectDir)Resources" "$(TargetDir)Resources" /MIR /NFL /NDL /NJH /NJS /NP
 if ERRORLEVEL 8 exit /B 8
+if not exist "$(TargetDir)EditorResources\Fonts" mkdir "$(TargetDir)EditorResources\Fonts"
+copy /Y "$(ProjectDir)externals\IconFontCppHeaders\fa-solid-900.ttf" "$(TargetDir)EditorResources\Fonts\fa-solid-900.ttf" || exit /B 1
+if not exist "$(TargetDir)tools" mkdir "$(TargetDir)tools"
+copy /Y "$(ProjectDir)tools\package_project.ps1" "$(TargetDir)tools\package_project.ps1" || exit /B 1
+copy /Y "$(ProjectDir)tools\package_publication.ps1" "$(TargetDir)tools\package_publication.ps1" || exit /B 1
+copy /Y "$(TargetPath)" "$(TargetDir)KuboEditor.exe" || exit /B 1
 exit /B 0</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -91,7 +100,7 @@ exit /B 0</Command>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;$(KuboEditorDefinitions);_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
@@ -106,16 +115,19 @@ exit /B 0</Command>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(ProjectDir)externals\assimp\lib\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>assimp-vc143-mt.lib;bcrypt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxcompiler.dll" "$(TargetDir)dxcompiler.dll" || exit /B 1
 copy /Y "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dxil.dll" || exit /B 1
 robocopy "$(ProjectDir)Resources" "$(TargetDir)Resources" /MIR /NFL /NDL /NJH /NJS /NP
 if ERRORLEVEL 8 exit /B 8
-del /Q "$(TargetDir)*.lib" 2&gt;nul
-del /Q "$(TargetDir)*.pdb" 2&gt;nul
-del /Q "$(TargetDir)*.ilk" 2&gt;nul
+if not exist "$(TargetDir)tools" mkdir "$(TargetDir)tools"
+copy /Y "$(ProjectDir)tools\package_project.ps1" "$(TargetDir)tools\package_project.ps1" || exit /B 1
+copy /Y "$(ProjectDir)tools\package_publication.ps1" "$(TargetDir)tools\package_publication.ps1" || exit /B 1
+if not exist "$(TargetDir)EditorResources\Fonts" mkdir "$(TargetDir)EditorResources\Fonts"
+copy /Y "$(ProjectDir)externals\IconFontCppHeaders\fa-solid-900.ttf" "$(TargetDir)EditorResources\Fonts\fa-solid-900.ttf" || exit /B 1
+copy /Y "$(TargetPath)" "$(TargetDir)KuboEditor.exe" || exit /B 1
 exit /B 0</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -128,14 +140,42 @@ exit /B 0</Command>
     <ClCompile Include="engine\audio\Audio.cpp" />
     <ClCompile Include="engine\base\core\D3DResourceLeakChecker.cpp" />
     <ClCompile Include="engine\base\directx\DirectXCommon.cpp" />
+    <ClCompile Include="engine\input\ActionMap.cpp" />
     <ClCompile Include="engine\input\Input.cpp" />
     <ClCompile Include="engine\base\utility\Logger.cpp" />
     <ClCompile Include="engine\base\render\ImGuiManager.cpp" />
     <ClCompile Include="engine\editor\DebugEditorManager.cpp" />
     <ClCompile Include="engine\editor\ImGuizmoManager.cpp" />
     <ClCompile Include="engine\base\core\Framework.cpp" />
+    <ClCompile Include="engine\base\ProjectContext.cpp" />
+    <ClCompile Include="engine\app\Application.cpp" />
+    <ClCompile Include="engine\assets\AssetRegistry.cpp" />
+    <ClCompile Include="engine\assets\AssetSpriteDependencies.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\assets\AssetSceneDependencies.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\physics\PhysicsWorld.cpp" />
+    <ClCompile Include="engine\script\ScriptRuntime.cpp" />
+    <ClCompile Include="engine\script\LuaScript.cpp" />
+    <ClCompile Include="engine\services\GitWorkspace.cpp" />
+    <ClCompile Include="engine\services\UpdateService.cpp" />
+    <ClCompile Include="engine\services\McpCommandBridge.cpp" />
+    <ClCompile Include="externals\imgui_node_editor\crude_json.cpp" />
     <ClCompile Include="engine\scene\game\Game.cpp" />
     <ClCompile Include="engine\scene\game\GamePlayScene.cpp" />
+    <ClCompile Include="engine\scene\game\GamePlaySceneDocument.cpp" />
+    <ClCompile Include="engine\scene\core\SceneDocument.cpp" />
+    <ClCompile Include="engine\scene\entity\EntityWorld.cpp" />
+    <ClCompile Include="engine\scene\entity\ParticleComponents.cpp" />
+    <ClCompile Include="engine\scene\entity\RenderParticleFrame.cpp" />
+    <ClCompile Include="engine\scene\entity\EntitySceneParticles.cpp" />
+    <ClCompile Include="engine\editor\ParticleComponentInspector.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\editor\AssetThumbnailImage.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\editor\AssetModelThumbnail.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\editor\AssetThumbnailCache.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\scene\game\GameThumbnails.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\scene\game\GameHub.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\editor\ProjectPreviewCapture.cpp" Condition="'$(KuboRuntimeOnly)'!='true'" />
+    <ClCompile Include="engine\scene\entity\EntityScene.cpp" />
+    <ClCompile Include="engine\scene\entity\EntitySceneSprites.cpp" />
     <ClCompile Include="engine\scene\screens\GameClearScene.cpp" />
     <ClCompile Include="engine\scene\screens\GameOverScene.cpp" />
     <ClCompile Include="engine\base\render\GraphicsPipeline.cpp" />
@@ -288,8 +328,68 @@ exit /B 0</Command>
     <ClInclude Include="engine\scene\core\BaseScene.h" />
     <ClInclude Include="engine\camera\Camera.h" />
     <ClInclude Include="engine\audio\Audio.h" />
+    <ClInclude Include="engine\audio\WaveFile.h" />
+    <ClInclude Include="engine\audio\OwnedSoundBank.h" />
+    <ClInclude Include="engine\audio\ScriptAudioHost.h" />
+    <ClInclude Include="engine\audio\AudioComponent.h" />
+    <ClInclude Include="engine\animation\AnimatorComponent.h" />
+    <ClInclude Include="engine\scene\entity\RenderComponents.h" />
+    <ClInclude Include="engine\scene\entity\UIComponents.h" />
+    <ClInclude Include="engine\scene\entity\ParticleComponents.h" />
+    <ClInclude Include="engine\scene\entity\RenderParticleFrame.h" />
+    <ClInclude Include="engine\editor\ParticleComponentInspector.h" />
+    <ClInclude Include="engine\editor\AssetThumbnailImage.h" />
+    <ClInclude Include="engine\editor\AssetModelThumbnail.h" />
+    <ClInclude Include="engine\editor\AssetThumbnailCache.h" />
+    <ClInclude Include="engine\scene\entity\RenderSpriteFrame.h" />
+    <ClInclude Include="engine\assets\SpriteReference.h" />
+    <ClInclude Include="engine\assets\ExportSpriteDependencies.h" />
+    <ClInclude Include="engine\scene\entity\RenderLightFrame.h" />
+    <ClInclude Include="engine\editor\RenderComponentInspector.h" />
+    <ClInclude Include="engine\editor\UIComponentInspector.h" />
+    <ClInclude Include="engine\math\data\AuthoredLightData.h" />
+    <ClInclude Include="engine\animation\AnimationClipCatalog.h" />
+    <ClInclude Include="engine\animation\AnimationPose.h" />
+    <ClInclude Include="engine\animation\AnimatorControllerGraph.h" />
+    <ClInclude Include="engine\animation\AnimatorControllerText.h" />
+    <ClInclude Include="engine\animation\AnimatorControllerRuntime.h" />
+    <ClInclude Include="engine\assets\AnimatorControllerAsset.h" />
+    <ClInclude Include="engine\editor\AnimatorControllerSelection.h" />
+    <ClInclude Include="engine\animation\AnimatorBinding.h" />
+    <ClInclude Include="engine\script\ScriptAnimatorRequests.h" />
+    <ClInclude Include="engine\animation\AnimatorStateReader.h" />
+    <ClInclude Include="engine\audio\EntityAudioHost.h" />
+    <ClInclude Include="engine\assets\AudioReference.h" />
     <ClInclude Include="engine\base\core\D3DResourceLeakChecker.h" />
     <ClInclude Include="engine\base\directx\DirectXCommon.h" />
+    <ClInclude Include="engine\input\ActionMap.h" />
+    <ClInclude Include="engine\scene\core\SceneDocument.h" />
+    <ClInclude Include="engine\scene\entity\EntityWorld.h" />
+    <ClInclude Include="engine\scene\entity\EntityTransformMatrix.h" />
+    <ClInclude Include="engine\scene\entity\TransformConversion.h" />
+    <ClInclude Include="engine\editor\EntityHistory.h" />
+    <ClInclude Include="engine\editor\EditorCameraState.h" />
+    <ClInclude Include="engine\editor\EntityGizmoTransform.h" />
+    <ClInclude Include="engine\editor\GizmoSnapSettings.h" />
+    <ClInclude Include="engine\editor\ScenePicking.h" />
+    <ClInclude Include="engine\editor\EntityDocumentState.h" />
+    <ClInclude Include="engine\base\core\CloseRequestGate.h" />
+    <ClInclude Include="engine\scene\entity\EntityScene.h" />
+    <ClInclude Include="engine\physics\PhysicsComponents.h" />
+    <ClInclude Include="engine\physics\PhysicsWorld.h" />
+    <ClInclude Include="engine\physics\BoundsBroadPhase.h" />
+    <ClInclude Include="engine\script\ScriptComponent.h" />
+    <ClInclude Include="engine\script\ScriptReference.h" />
+    <ClInclude Include="engine\script\ScriptRuntime.h" />
+    <ClInclude Include="engine\script\LuaResourceBudget.h" />
+    <ClInclude Include="engine\script\ScriptAudioRequests.h" />
+    <ClInclude Include="engine\services\GitWorkspace.h" />
+    <ClInclude Include="engine\services\UpdateService.h" />
+    <ClInclude Include="engine\services\ExportJob.h" />
+    <ClInclude Include="engine\services\EditorMcpSession.h" />
+    <ClInclude Include="engine\services\McpCommandBridge.h" />
+    <ClInclude Include="engine\services\McpEntityArguments.h" />
+    <ClInclude Include="engine\services\McpComponentArguments.h" />
     <ClInclude Include="engine\input\Input.h" />
     <ClInclude Include="engine\base\utility\Logger.h" />
     <ClInclude Include="engine\math\types\Matrix3x3.h" />
@@ -313,6 +413,26 @@ exit /B 0</Command>
     <ClInclude Include="engine\editor\DebugEditorManager.h" />
     <ClInclude Include="engine\editor\ImGuizmoManager.h" />
     <ClInclude Include="engine\base\core\Framework.h" />
+    <ClInclude Include="engine\base\core\RunReport.h" />
+    <ClInclude Include="engine\services\McpDescriptorRetirement.h" />
+    <ClInclude Include="engine\services\McpProcessIdentity.h" />
+    <ClInclude Include="engine\base\ProjectContext.h" />
+    <ClInclude Include="engine\base\ProjectPaths.h" />
+    <ClInclude Include="engine\base\AtomicFile.h" />
+    <ClInclude Include="engine\editor\EditorSettingsFile.h" />
+    <ClInclude Include="engine\editor\NativeBuildSettings.h" />
+    <ClInclude Include="engine\app\Application.h" />
+    <ClInclude Include="engine\assets\AssetRegistry.h" />
+    <ClInclude Include="engine\assets\AssetSpriteDependencies.h" />
+    <ClInclude Include="engine\assets\AssetSceneDependencies.h" />
+    <ClInclude Include="engine\assets\AssetImportJob.h" />
+    <ClInclude Include="engine\assets\AssetMove.h" />
+    <ClInclude Include="engine\assets\AssetDependencies.h" />
+    <ClInclude Include="engine\assets\AssetImportFingerprint.h" />
+    <ClInclude Include="engine\assets\AssetRevision.h" />
+    <ClInclude Include="engine\assets\LeasedCache.h" />
+    <ClInclude Include="engine\assets\ModelReference.h" />
+    <ClInclude Include="engine\base\directx\TextureAssetResolver.h" />
     <ClInclude Include="engine\scene\game\Game.h" />
     <ClInclude Include="engine\scene\game\GamePlayScene.h" />
     <ClInclude Include="engine\scene\core\SceneFactory.h" />
@@ -326,6 +446,8 @@ exit /B 0</Command>
     <ClInclude Include="engine\particle\core\ParticleManager.h" />
     <ClInclude Include="engine\scene\states\PlayerControlState.h" />
     <ClInclude Include="engine\base\render\OffscreenRenderManager.h" />
+    <ClInclude Include="engine\base\render\ViewExtent.h" />
+    <ClInclude Include="engine\base\render\ViewResizeSchedule.h" />
     <ClInclude Include="engine\Line\Line.h" />
     <ClInclude Include="engine\Line\LineCommon.h" />
     <ClInclude Include="engine\particle\core\IParticleBehavior.h" />
@@ -337,6 +459,7 @@ exit /B 0</Command>
     <ProjectReference Include="externals\DirectXTex\DirectXTex_Desktop_2022_Win10.vcxproj">
       <Project>{371b9fa9-4c90-4ac6-a123-aced756d6c77}</Project>
     </ProjectReference>
+    <ProjectReference Include="externals\lua-5.4.9\KuboLua.vcxproj"><Project>{58F61EA2-8A70-46ED-9B43-A8CD891ABF52}</Project></ProjectReference>
     <ProjectReference Include="externals\imgui\imgui.vcxproj">
       <Project>{19cdd5d0-f891-4650-88f7-7c868eeffea5}</Project>
     </ProjectReference>
@@ -396,11 +519,19 @@ exit /B 0</Command>
     <ClCompile Include="engine\base\render\PipelineStateBuilder.cpp" />
     <ClCompile Include="engine\3d\model\ModelAssetResolver.cpp" />
     <ClCompile Include="engine\3d\model\ModelMeshConverter.cpp" />
+    <ClCompile Include="engine\scene\game\GameControllerRecovery.cpp" />
+    <ClCompile Include="engine\scene\game\GameControllerReload.cpp" />
+    <ClCompile Include="engine\editor\AnimatorControllerDetails.cpp" />
+    <ClCompile Include="engine\editor\AnimatorControllerPanel.cpp" />
+    <ClInclude Include="engine\editor\AnimatorControllerDetails.h" />
     <ClInclude Include="engine\base\directx\ShaderCompiler.h" />
     <ClInclude Include="engine\base\directx\HResult.h" />
     <ClInclude Include="engine\base\render\PipelineRootSignatureFactory.h" />
     <ClInclude Include="engine\base\render\PipelineStateBuilder.h" />
     <ClInclude Include="engine\3d\model\ModelAssetResolver.h" />
+    <ClInclude Include="engine\base\AssetPath.h" />
+    <ClInclude Include="engine\base\directx\TextureLoadOptions.h" />
+    <ClInclude Include="engine\3d\model\AnimationTime.h" />
     <ClInclude Include="engine\3d\model\ModelMeshConverter.h" />
     <None Include="Resources\Shaders\object\ObjectInstanced3d.VS.hlsl" />
     <None Include="Resources\Shaders\object\ObjectInstancedShadowMap.VS.hlsl" />
@@ -409,7 +540,28 @@ exit /B 0</Command>
     <None Include="Resources\Shaders\object\SkinningInstancedShadowMap.VS.hlsl" />
     <None Include="Resources\Shaders\object\SkinningShadowMap.VS.hlsl" />
   </ItemGroup>
+  <ItemDefinitionGroup>
+    <Manifest>
+      <AdditionalManifestFiles>$(MSBuildProjectDirectory)\engine\app\KuboEngine.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemGroup Condition="'$(KuboRuntimeLibrary)'!='true'">
+    <ResourceCompile Include="$(MSBuildThisFileDirectory)branding\KuboEngine.rc">
+      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)branding;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemGroup>
+  <Import Project="engine\app\PlayerBuild.targets" Condition="'$(KuboRuntimeOnly)'=='true'" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="CopyEditorSceneGrid" AfterTargets="Build" Condition="'$(KuboRuntimeOnly)'!='true'">
+    <ItemGroup>
+      <EditorSceneGridShader Include="$(MSBuildProjectDirectory)\EditorResources\Shaders\SceneGrid.*.hlsl" />
+    </ItemGroup>
+    <Copy SourceFiles="@(EditorSceneGridShader)" DestinationFolder="$(OutDir)EditorResources\Shaders" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyLuaLicense" AfterTargets="Build">
+    <MakeDir Directories="$(OutDir)ThirdPartyLicenses" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\externals\lua-5.4.9\LICENSE.txt" DestinationFiles="$(OutDir)ThirdPartyLicenses\Lua-5.4.9.txt" SkipUnchangedFiles="true" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

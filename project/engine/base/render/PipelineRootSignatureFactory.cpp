@@ -111,7 +111,7 @@ void CreateRootSignatureWithParameters(
 	CreateRootSignatureFromDesc(dxCommon, descriptionRootSignature, rootSignature);
 }
 
-std::array<D3D12_ROOT_PARAMETER, 9> CreateObjectRootParameters(
+std::array<D3D12_ROOT_PARAMETER, 10> CreateObjectRootParameters(
 	std::array<D3D12_DESCRIPTOR_RANGE, 3>& descriptorRanges)
 {
 	descriptorRanges[0] = CreateSrvDescriptorRange(0);
@@ -127,10 +127,11 @@ std::array<D3D12_ROOT_PARAMETER, 9> CreateObjectRootParameters(
 		CreateCbvRootParameter(3, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
+		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
 	};
 }
 
-std::array<D3D12_ROOT_PARAMETER, 10> CreateObjectInstancingRootParameters(
+std::array<D3D12_ROOT_PARAMETER, 11> CreateObjectInstancingRootParameters(
 	std::array<D3D12_DESCRIPTOR_RANGE, 4>& descriptorRanges)
 {
 	descriptorRanges[0] = CreateSrvDescriptorRange(0);
@@ -148,6 +149,7 @@ std::array<D3D12_ROOT_PARAMETER, 10> CreateObjectInstancingRootParameters(
 		CreateDescriptorTableRootParameter(&descriptorRanges[2], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
 		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
 	};
 }
 
@@ -170,7 +172,7 @@ std::array<D3D12_ROOT_PARAMETER, 2> CreateLineRootParameters(D3D12_DESCRIPTOR_RA
 	};
 }
 
-std::array<D3D12_ROOT_PARAMETER, 10> CreateSkinningRootParameters(
+std::array<D3D12_ROOT_PARAMETER, 11> CreateSkinningRootParameters(
 	std::array<D3D12_DESCRIPTOR_RANGE, 4>& descriptorRanges)
 {
 	descriptorRanges[0] = CreateSrvDescriptorRange(0);
@@ -188,10 +190,11 @@ std::array<D3D12_ROOT_PARAMETER, 10> CreateSkinningRootParameters(
 		CreateDescriptorTableRootParameter(&descriptorRanges[1], 1, D3D12_SHADER_VISIBILITY_VERTEX),
 		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
+		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
 	};
 }
 
-std::array<D3D12_ROOT_PARAMETER, 11> CreateSkinningInstancingRootParameters(
+std::array<D3D12_ROOT_PARAMETER, 12> CreateSkinningInstancingRootParameters(
 	std::array<D3D12_DESCRIPTOR_RANGE, 5>& descriptorRanges)
 {
 	descriptorRanges[0] = CreateSrvDescriptorRange(0);
@@ -211,6 +214,7 @@ std::array<D3D12_ROOT_PARAMETER, 11> CreateSkinningInstancingRootParameters(
 		CreateDescriptorTableRootParameter(&descriptorRanges[3], 1, D3D12_SHADER_VISIBILITY_PIXEL),
 		CreateCbvRootParameter(4, D3D12_SHADER_VISIBILITY_ALL),
 		CreateDescriptorTableRootParameter(&descriptorRanges[4], 1, D3D12_SHADER_VISIBILITY_VERTEX),
+		CreateCbvRootParameter(5, D3D12_SHADER_VISIBILITY_PIXEL),
 	};
 }
 
@@ -351,5 +355,16 @@ void CreateSkyboxRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** ro
 	CreateRootSignatureWithParameters(dxCommon, rootParameters.data(), static_cast<UINT>(rootParameters.size()),
 		&staticSampler, 1, rootSignature);
 }
+
+#ifndef KUBO_RUNTIME_ONLY
+void CreateEditorGridRootSignature(DirectXCommon& dxCommon, ID3D12RootSignature** rootSignature)
+{
+	D3D12_ROOT_PARAMETER camera{};
+	camera.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	camera.Constants.Num32BitValues = 32;
+	camera.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+	CreateRootSignatureWithParameters(dxCommon,&camera,1,nullptr,0,rootSignature);
+}
+#endif
 
 }

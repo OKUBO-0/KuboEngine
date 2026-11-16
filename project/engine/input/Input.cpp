@@ -1,7 +1,10 @@
 #include "Input.h"
 #include "HResult.h"
 #include "WinApp.h"
+#include "Logger.h"
+#include "engine/base/ProjectPaths.h"
 #include <cassert>
+#include <cstring>
 #pragma comment(lib,"dinput8.lib")
 #pragma comment(lib,"dxguid.lib")
 #include <cmath>
@@ -32,12 +35,20 @@ void Input::Finalize()
 	devMouse_.Reset();
 	directInput.Reset();
 	winApp_ = nullptr;
+	actionBindingsPath_.clear();
+	gamepadConnected_=previousGamepadConnected_=false;
+	ZeroMemory(&state_,sizeof(state_));ZeroMemory(&prevState_,sizeof(prevState_));
 
 }
 
-void Input::Initialize(Engine::Base::WinApp* winApp)
+void Input::Initialize(Engine::Base::WinApp* winApp, const std::filesystem::path& projectRoot)
 {
+	actionBindingsPath_ = Engine::Base::ProjectPaths(projectRoot).InputBindings();
 	winApp_ = winApp;
+	ZeroMemory(key,sizeof(key));ZeroMemory(preKey,sizeof(preKey));
+	ZeroMemory(&mouse,sizeof(mouse));ZeroMemory(&preMouse,sizeof(preMouse));
+	mousePos={};ZeroMemory(&state_,sizeof(state_));ZeroMemory(&prevState_,sizeof(prevState_));
+	gamepadConnected_=previousGamepadConnected_=false;
 	HRESULT hr;
 	// キーボードとマウスの両方で使う DirectInput の本体を生成する
 	//DirectInputのインスタンスを生成
@@ -65,6 +76,12 @@ void Input::Initialize(Engine::Base::WinApp* winApp)
 	hr = devMouse_->SetCooperativeLevel(winApp_->GetHwnd(), DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
 	Engine::Base::ThrowIfFailed(hr, "IDirectInputDevice8::SetCooperativeLevel mouse");
 
+	InitializeDefaultActionMap();
+	std::string bindingError;
+	const auto& bindingPath = actionBindingsPath_;
+	if (std::filesystem::exists(bindingPath) && !actionMap_.Load(bindingPath, bindingError)) {
+		Engine::Base::Logger::Log("Input bindings load failed: " + bindingError);
+	}
 
 }
 
@@ -75,7 +92,7 @@ void Input::Update()
 	//キーボード情報の取得
 	keyboard->Acquire();
 	//全キーボード入力情報を取得
-	keyboard->GetDeviceState(sizeof(key), key);
+	if (FAILED(keyboard->GetDeviceState(sizeof(key), key))) ZeroMemory(key,sizeof(key));
 
 
 	//前回のマウス入力を保存
@@ -83,7 +100,7 @@ void Input::Update()
 	//マウス情報の取得
 	devMouse_->Acquire();
 	//全マウス入力情報を取得
-	devMouse_->GetDeviceState(sizeof(mouse), &mouse);
+	if (FAILED(devMouse_->GetDeviceState(sizeof(mouse), &mouse))) ZeroMemory(&mouse,sizeof(mouse));
 	//マウス座標の取得
 	POINT point;
 	GetCursorPos(&point);
@@ -93,6 +110,7 @@ void Input::Update()
 
 	// ゲームパッドは前フレームとの差分も使うため状態を退避してから更新する
 	prevState_ = state_;
+	previousGamepadConnected_ = gamepadConnected_;
 
 	// XInputの状態を取得
 	ZeroMemory(&state_, sizeof(XINPUT_STATE));
@@ -102,6 +120,29 @@ void Input::Update()
 		gamepadConnected_ = false;
 	}
 	
+}
+
+GamepadSample Input::CapturePadSample(bool previous) const noexcept
+{
+	const auto& pad=(previous ? prevState_ : state_).Gamepad;
+	return {previous ? previousGamepadConnected_ : gamepadConnected_,pad.wButtons,
+		pad.sThumbLX,pad.sThumbLY,pad.sThumbRX,pad.sThumbRY,pad.bLeftTrigger,pad.bRightTrigger};
+}
+
+InputFrame Input::CaptureFrame(bool enabled) const
+{
+	std::array<bool,256> current{},previous{};
+	std::array<bool,8> buttons{},previousButtons{};
+	for(size_t index=0;index<current.size();++index) { current[index]=key[index]!=0;previous[index]=preKey[index]!=0; }
+	for(size_t index=0;index<buttons.size();++index) { buttons[index]=mouse.rgbButtons[index]!=0;previousButtons[index]=preMouse.rgbButtons[index]!=0; }
+	const bool available=enabled && winApp_ && GetForegroundWindow()==winApp_->GetHwnd();
+	auto frame=MakeInputFrame(actionMap_,current,previous,buttons,previousButtons,available,
+		CapturePadSample(false),CapturePadSample(true));
+	if(available) {
+		frame.mouseX=mousePos.x;frame.mouseY=mousePos.y;
+		frame.deltaX=static_cast<float>(mouse.lX);frame.deltaY=static_cast<float>(mouse.lY);frame.wheel=static_cast<float>(mouse.lZ)/WHEEL_DELTA;
+	}
+	return frame;
 }
 
 bool Input::PushKey(BYTE keyNumber)
@@ -123,6 +164,47 @@ bool Input::TriggerKey(BYTE keyNumber)
 	return false;
 
 
+}
+
+void Input::BindKeyAction(const std::string& action, BYTE keyNumber, const Vector3& contribution)
+{
+	actionMap_.Bind(action, keyNumber, contribution);
+}
+
+void Input::BindKeyAction(const std::string& action, BYTE keyNumber)
+{
+	actionMap_.Bind(action, keyNumber);
+}
+
+bool Input::PushAction(const std::string& action) const
+{
+	return actionMap_.Active(action, [this](int keyNumber) {
+		return keyNumber>=0 && keyNumber<256 && key[keyNumber] != 0;
+	},MakeGamepadFrame(CapturePadSample(false),CapturePadSample(true),true));
+}
+
+bool Input::TriggerAction(const std::string& action) const
+{
+	const auto found=actionMap_.Bindings().find(action);if(found==actionMap_.Bindings().end())return false;
+	const auto current=MakeGamepadFrame(CapturePadSample(false),CapturePadSample(true),true);
+	const auto previous=MakeGamepadFrame(CapturePadSample(true),{},true);
+	const auto down=[this](int code){return code>=0 && code<256 && key[code]!=0;};
+	const auto wasDown=[this](int code){return code>=0 && code<256 && preKey[code]!=0;};
+	for(const auto& binding:found->second)
+		if(ActionMap::IsActive(binding,ActionMap::Value(binding,down,current)) && !ActionMap::IsActive(binding,ActionMap::Value(binding,wasDown,previous)))return true;
+	return false;
+}
+
+Vector3 Input::EvaluateAction(const std::string& action) const
+{
+	return actionMap_.Evaluate(action, [this](int keyNumber) {
+		return keyNumber>=0 && keyNumber<256 && key[keyNumber] != 0;
+	},MakeGamepadFrame(CapturePadSample(false),CapturePadSample(true),true));
+}
+
+void Input::ClearAction(const std::string& action)
+{
+	actionMap_.ClearAction(action);
 }
 
 
@@ -202,6 +284,16 @@ void Input::SetVibration(float leftMotor, float rightMotor)
 	vibration.wRightMotorSpeed = static_cast<WORD>(rightMotor * kGamePadVibrationMaxValue);
 	XInputSetState(0, &vibration);
 
+}
+
+void Input::InitializeDefaultActionMap()
+{
+	BindKeyAction("move", DIK_W, Vector3{ 0.0f, 0.0f, 1.0f });
+	BindKeyAction("move", DIK_S, Vector3{ 0.0f, 0.0f, -1.0f });
+	BindKeyAction("move", DIK_A, Vector3{ -1.0f, 0.0f, 0.0f });
+	BindKeyAction("move", DIK_D, Vector3{ 1.0f, 0.0f, 0.0f });
+	BindKeyAction("start", DIK_SPACE);
+	BindKeyAction("toggle", DIK_SPACE);
 }
 
 }

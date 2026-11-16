@@ -1,10 +1,14 @@
 #include "WinApp.h"
 #include "HResult.h"
+#include "branding/EngineIcon.h"
+#include <stdexcept>
+#ifndef KUBO_RUNTIME_ONLY
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
 #include "imgui_impl_win32.h"
 // ImGui Win32 backend が提供する外部コールバック宣言。実装は imgui_impl_win32.cpp 側にある。
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#endif
 #pragma comment(lib,"winmm.lib")
 
 namespace Engine::Base {
@@ -16,14 +20,28 @@ LRESULT WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(createStruct->lpCreateParams));
 	}
 	WinApp* app = reinterpret_cast<WinApp*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+	// Do not destroy the Editor HWND before its document confirmation can draw.
+	if (msg == WM_CLOSE && app && app->closeRequests_.OnClose()) return 0;
 
+	#ifndef KUBO_RUNTIME_ONLY
 	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)) {
 
 		return true;
 
 	}
+	#endif
 	//メッセージに応じて固有の処理を行う
 	switch (msg) {
+	#ifndef KUBO_RUNTIME_ONLY
+	case WM_DPICHANGED:
+		if (app) app->windowDpi_ = HIWORD(wparam);
+		if (app && lparam && !app->fullscreen_ && !IsZoomed(hwnd) && !IsIconic(hwnd)) {
+			const auto& bounds = *reinterpret_cast<const RECT*>(lparam);
+			SetWindowPos(hwnd,nullptr,bounds.left,bounds.top,bounds.right-bounds.left,bounds.bottom-bounds.top,
+				SWP_NOZORDER | SWP_NOACTIVATE);
+		}
+		return 0;
+	#endif
 
 		//ウィンドウが破壊されたら
 	case WM_DESTROY:
@@ -45,20 +63,45 @@ LRESULT WinApp::WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 
 
+WinApp::~WinApp() { Finalize(); }
+
+#ifndef KUBO_RUNTIME_ONLY
+UINT WinApp::GetWindowDpi() const noexcept
+{
+	if (windowDpi_ != 0) return windowDpi_;
+	const UINT dpi = hwnd ? GetDpiForWindow(hwnd) : 0;
+	return dpi ? dpi : USER_DEFAULT_SCREEN_DPI;
+}
+#endif
+
 void WinApp::Initialize()
 {
-	timeBeginPeriod(1);
-	HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
-	ThrowIfFailed(hr, "CoInitializeEx");
-	RegisterWindowClass();
-	CreateMainWindow();
-	ShowWindow(hwnd, SW_SHOW);
+	if(hwnd || timerPeriodActive_ || comInitialized_)throw std::logic_error("WinApp is already initialized");
+	try {
+		if(timeBeginPeriod(1)!=TIMERR_NOERROR)throw std::runtime_error("timeBeginPeriod failed");
+		timerPeriodActive_=true;
+		const HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
+		ThrowIfFailed(hr, "CoInitializeEx");
+		comInitialized_=true; // S_FALSE also owns one matching CoUninitialize.
+		RegisterWindowClass();
+		CreateMainWindow();
+#ifndef KUBO_RUNTIME_ONLY
+		if (!deferInitialShow_)
+#endif
+		ShowWindow(hwnd, SW_SHOW);
+	} catch(...) {Finalize();throw;}
 }
 
 void WinApp::Finalize()
 {
-	CloseWindow(hwnd);
-	CoUninitialize();
+	if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);
+	hwnd = nullptr;
+#ifndef KUBO_RUNTIME_ONLY
+	windowDpi_ = 0;
+#endif
+	fullscreen_=false;
+	if(timerPeriodActive_){timerPeriodActive_=false;timeEndPeriod(1);}
+	if(comInitialized_){comInitialized_=false;CoUninitialize();}
 }
 
 void WinApp::ToggleFullscreen()
@@ -113,14 +156,13 @@ void WinApp::SetFullscreen(bool fullscreen)
 bool WinApp::ProcessMessage()
 {
 	MSG msg{};
-	if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+	while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+		// WM_DESTROY posts WM_QUIT. Drain it before another frame can
+		// attempt to present to a window destroyed by WM_CLOSE.
+		if (msg.message == WM_QUIT) return true;
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 
-	}
-	if (msg.message == WM_QUIT) {
-
-		return true;
 	}
 	return false;
 }
@@ -131,7 +173,14 @@ void WinApp::RegisterWindowClass()
 	wc.lpszClassName = L"WindowClass";
 	wc.hInstance = GetModuleHandle(nullptr);
 	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	RegisterClass(&wc);
+	wc.hIcon = Engine::Branding::LoadEngineIcon(wc.hInstance);
+	if(!RegisterClass(&wc)){
+		const DWORD error=GetLastError();WNDCLASS existing{};
+		// The class is process-owned and shared by same-engine windows. Never
+		// silently borrow a foreign callback registered under this legacy name.
+		if(error!=ERROR_CLASS_ALREADY_EXISTS || !GetClassInfo(wc.hInstance,wc.lpszClassName,&existing) || existing.lpfnWndProc!=WindowProc)
+			ThrowIfFailed(HRESULT_FROM_WIN32(error?error:ERROR_GEN_FAILURE),"RegisterClass");
+	}
 }
 
 void WinApp::CreateMainWindow()
@@ -151,6 +200,7 @@ void WinApp::CreateMainWindow()
 		nullptr,
 		wc.hInstance,
 		this);
+	if(!hwnd){const DWORD error=GetLastError();ThrowIfFailed(HRESULT_FROM_WIN32(error?error:ERROR_GEN_FAILURE),"CreateWindow");}
 }
 
 }

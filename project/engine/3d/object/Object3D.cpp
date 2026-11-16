@@ -7,6 +7,9 @@
 #include "SrvManager.h"
 #include "TextureManager.h"
 #include "ModelManager.h"
+#include "AnimationTime.h"
+#include "engine/animation/AnimationPose.h"
+#include "engine/assets/AnimatorControllerAsset.h"
 #include "CameraManager.h"
 #include <algorithm>
 #include <cmath>
@@ -15,10 +18,13 @@
 #include <numbers>
 #include <string>
 #include <string_view>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
 namespace {
+using Engine::Graphics3D::SkinCluster;
+using Engine::Graphics3D::WellForGPU;
 constexpr float kFixedAnimationDeltaTime = 1.0f / 60.0f;
 constexpr float kDefaultEnvironmentReflectionStrength = 0.5f;
 constexpr float kDefaultEnvironmentRoughness = 0.5f;
@@ -84,22 +90,40 @@ uint32_t QuantizeAnimationFrame(float animationTime)
 	return static_cast<uint32_t>(safeTime * kSkinPaletteCacheSampleRate);
 }
 
+bool FiniteMatrix(const Matrix4x4& matrix) {
+	for(const auto& row:matrix.m)for(float value:row)if(!std::isfinite(value))return false;
+	return true;
+}
+bool PrepareLayerPalette(const Skeleton& bind,const SkinCluster& skin,const std::vector<QuaternionTransform>& pose,
+	Skeleton& output,std::vector<Matrix4x4>& matrices,std::vector<WellForGPU>& palette) {
+	if(pose.size()!=bind.joints.size() || skin.inverseBindPoseMatrices.size()<pose.size())return false;
+	Skeleton candidate=bind;std::vector<Matrix4x4> nextMatrices(pose.size());std::vector<WellForGPU> nextPalette(pose.size());
+	for(size_t i=0;i<pose.size();++i) {
+		auto& joint=candidate.joints[i];
+		if(joint.index!=static_cast<int32_t>(i) || (joint.parent && (*joint.parent<0 || size_t(*joint.parent)>=i)))return false;
+		joint.transform=pose[i];joint.localMatrix=MyMath::MakeAffineMatrix(pose[i].scale,pose[i].rotate,pose[i].translate);
+		joint.skeletonSpaceMatrix=joint.parent?joint.localMatrix*candidate.joints[*joint.parent].skeletonSpaceMatrix:joint.localMatrix;
+		if(!FiniteMatrix(joint.localMatrix) || !FiniteMatrix(joint.skeletonSpaceMatrix) || !FiniteMatrix(skin.inverseBindPoseMatrices[i]))return false;
+		nextMatrices[i]=joint.skeletonSpaceMatrix;
+		nextPalette[i].skeletonSpaceMatrix=skin.inverseBindPoseMatrices[i]*joint.skeletonSpaceMatrix;
+		if(!FiniteMatrix(nextPalette[i].skeletonSpaceMatrix))return false;
+		nextPalette[i].skeletonSpaceInverseTransposeMatrix=MyMath::Transpose(nextPalette[i].skeletonSpaceMatrix.Inverse());
+		if(!FiniteMatrix(nextPalette[i].skeletonSpaceInverseTransposeMatrix))return false;
+	}
+	std::swap(output,candidate);matrices.swap(nextMatrices);palette.swap(nextPalette);return true;
+}
+
 void AdvanceAnimationTime(
 	float& animationTime,
 	const Animation& animation,
 	float animationSpeed,
-	bool animationLoop)
+	bool animationLoop,
+	float deltaTime, double* normalizedTime = nullptr)
 {
-	animationTime += kFixedAnimationDeltaTime *
-		(std::max)(0.0f, animationSpeed);
-	const float duration = animation.duration;
-	if (std::isfinite(duration) && duration > 0.0f) {
-		animationTime = animationLoop
-			? std::fmod(animationTime, duration)
-			: (std::min)(animationTime, duration);
-	} else {
-		animationTime = 0.0f;
-	}
+	animationTime = Engine::Graphics3D::AdvanceAnimationSeconds(
+		animationTime, animation.duration, deltaTime, animationSpeed, animationLoop);
+	if (normalizedTime) *normalizedTime = Engine::Graphics3D::AdvanceControllerNormalizedTime(
+		*normalizedTime, animationTime, animation.duration, deltaTime, animationSpeed, animationLoop);
 }
 }
 
@@ -108,6 +132,27 @@ namespace Engine::Graphics3D {
 Object3D::~Object3D()
 {
 	ReleaseSkinningDescriptors();
+	gSubmittedDrawObjects.erase(std::remove(gSubmittedDrawObjects.begin(), gSubmittedDrawObjects.end(), this), gSubmittedDrawObjects.end());
+	gSubmittedShadowObjects.erase(std::remove(gSubmittedShadowObjects.begin(), gSubmittedShadowObjects.end(), this), gSubmittedShadowObjects.end());
+}
+void Object3D::InvalidateModelCaches(const Model* model)
+{
+	for (auto it = gSkinPaletteCache.begin(); it != gSkinPaletteCache.end();) {
+		if (it->first.model == model) it = gSkinPaletteCache.erase(it); else ++it;
+	}
+}
+
+std::unique_ptr<Object3D> Object3D::Create(Object3DCommon* common,
+	const std::string& filePath, const std::string& resourceRoot, const std::string& assetIdentity, const std::string& revision)
+{
+	if (!common) {
+		throw std::invalid_argument("Object3D::Create requires rendering common services");
+	}
+	auto model = ModelManager::GetInstance()->AcquireModel(filePath, resourceRoot, assetIdentity, revision);
+	auto object = std::make_unique<Object3D>();
+	object->Initialize(common);
+	object->SetModelLease(std::move(model));
+	return object;
 }
 
 void Object3D::Initialize(Object3DCommon* object3DCommon)
@@ -124,7 +169,26 @@ void Object3D::Initialize(Object3DCommon* object3DCommon)
 
 void Object3D::Update()
 {
-	UpdateAnimationState();
+	Update(kFixedAnimationDeltaTime);
+}
+
+void Object3D::Update(float deltaTime)
+{
+	if(animationController_ && animationLayers_) UpdateLayeredController(deltaTime);
+	else {
+	if (animationController_ && std::isfinite(deltaTime) && deltaTime > 0 &&
+		std::isfinite(animationSpeed_) && animationSpeed_ > 0) {
+		const double observed=animationNormalizedTime_;
+		const bool changed=animationController_->Advance(0,controllerObservedTime_,observed,
+			[this](const auto& state,const auto& transition) {
+				struct Guard {bool& flag;explicit Guard(bool& f):flag(f){flag=true;}~Guard(){flag=false;}} guard(controllerTransition_);
+				if (!BlendToAnimationClip(state.clip,transition.blendSeconds)) return false;
+				SetAnimationSpeed(state.speed*animationControllerRate_);SetAnimationLoop(state.loop);return true;
+			});
+		controllerObservedTime_=changed ? 0 : observed;
+	}
+	UpdateAnimationState(deltaTime);
+	}
 	ApplyModelSettings();
 	UpdateTransformationMatrices();
 }
@@ -419,6 +483,8 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 		std::string clipName;
 		uint32_t sampleFrame = 0;
 		int32_t enableLighting = 0;
+		std::string skyboxFilePath;
+		float shininess=60,reflectionStrength=0,roughness=0,textureInfluence=1;
 
 		bool operator==(const BatchKey& other) const
 		{
@@ -426,7 +492,8 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 				model == other.model &&
 				sampleFrame == other.sampleFrame &&
 				clipName == other.clipName &&
-				enableLighting == other.enableLighting;
+				enableLighting == other.enableLighting && skyboxFilePath==other.skyboxFilePath &&
+                shininess==other.shininess && reflectionStrength==other.reflectionStrength && roughness==other.roughness && textureInfluence==other.textureInfluence;
 		}
 	};
 	struct BatchKeyHash {
@@ -441,6 +508,8 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 				(value << 6) + (value >> 2);
 			value ^= std::hash<int32_t>{}(key.enableLighting) + 0x9e3779b9u +
 				(value << 6) + (value >> 2);
+			for(const auto n:{key.shininess,key.reflectionStrength,key.roughness,key.textureInfluence})value^=std::hash<float>{}(n)+0x9e3779b9u+(value<<6)+(value>>2);
+            value^=std::hash<std::string>{}(key.skyboxFilePath)+0x9e3779b9u+(value<<6)+(value>>2);
 			return value;
 		}
 	};
@@ -471,6 +540,10 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 			object->skinPaletteCacheClipName_,
 			object->skinPaletteCacheSampleFrame_,
 			object->materialData_.enableLighting,
+            object->skyboxFilePath_,object->materialData_.shininess,
+            object->environmentReflectionSettingData_.reflectionStrength,
+            object->environmentReflectionSettingData_.roughness,
+            object->environmentReflectionSettingData_.textureInfluence,
 		};
 		Batch& batch = batches[key];
 		if (!batch.representative) {
@@ -484,6 +557,7 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 	}
 
 	for (Object3D* object : fallbackObjects) {
+		object->object3DCommon_->SkinningCommonDraw();
 		object->DrawSkinning();
 	}
 	for (auto& [key, batch] : batches) {
@@ -510,6 +584,7 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 			instanceAllocation.offset,
 			sizeof(ObjectInstanceForGPU));
 		if (instanceSrvIndex == UINT32_MAX) {
+			common->SkinningCommonDraw();
 			for (Object3D* batchObject : batch.objects) {
 				if (batchObject) {
 					batchObject->DrawSkinning();
@@ -550,7 +625,7 @@ void Object3D::DrawSkinningBatch(const std::vector<Object3D*>& objects)
 			Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
 				object->skyboxFilePath_));
 		commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
-		common->BindSceneLighting(true);
+		common->BindSceneLighting(true,true);
 		object->model_->DrawInstanced(
 			static_cast<UINT>(batch.instances.size()),
 			materialAddress,
@@ -569,6 +644,7 @@ void Object3D::DrawStaticBatch(const std::vector<Object3D*>& objects)
 		float reflectionStrength = 0.0f;
 		float roughness = 0.0f;
 		float textureInfluence = 0.0f;
+		float shininess=60;
 
 		bool operator==(const BatchKey& other) const
 		{
@@ -578,7 +654,7 @@ void Object3D::DrawStaticBatch(const std::vector<Object3D*>& objects)
 				enableLighting == other.enableLighting &&
 				reflectionStrength == other.reflectionStrength &&
 				roughness == other.roughness &&
-				textureInfluence == other.textureInfluence;
+				textureInfluence == other.textureInfluence && shininess==other.shininess;
 		}
 	};
 	struct BatchKeyHash {
@@ -597,6 +673,7 @@ void Object3D::DrawStaticBatch(const std::vector<Object3D*>& objects)
 				(value << 6) + (value >> 2);
 			value ^= std::hash<float>{}(key.textureInfluence) + 0x9e3779b9u +
 				(value << 6) + (value >> 2);
+			value ^= std::hash<float>{}(key.shininess)+0x9e3779b9u+(value<<6)+(value>>2);
 			return value;
 		}
 	};
@@ -623,6 +700,7 @@ void Object3D::DrawStaticBatch(const std::vector<Object3D*>& objects)
 			object->environmentReflectionSettingData_.reflectionStrength,
 			object->environmentReflectionSettingData_.roughness,
 			object->environmentReflectionSettingData_.textureInfluence,
+			object->materialData_.shininess,
 		};
 		Batch& batch = batches[key];
 		if (!batch.representative) {
@@ -692,7 +770,7 @@ void Object3D::DrawStaticBatch(const std::vector<Object3D*>& objects)
 			Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(
 				object->skyboxFilePath_));
 		commandList->SetGraphicsRootConstantBufferView(6, environmentAddress);
-		common->BindSceneLighting(false);
+		common->BindSceneLighting(false,true);
 		object->model_->DrawInstanced(
 			static_cast<UINT>(batch.instances.size()),
 			materialAddress,
@@ -900,7 +978,16 @@ void Object3D::DrawSkinningShadowBatch(const std::vector<Object3D*>& objects)
 
 void Object3D::SetModel(Model* model)
 {
+	if (modelLease_.get() != model) {
+		ModelManager::GetInstance()->PinModel(model);
+		modelLease_.reset();
+	}
 	model_ = model;
+	InitializeSkinningState();
+}
+void Object3D::SetModelLease(std::shared_ptr<Model> model)
+{
+	modelLease_ = std::move(model); model_ = modelLease_.get();
 	InitializeSkinningState();
 }
 
@@ -917,17 +1004,239 @@ void Object3D::SetModelFromResourceRoot(const std::string& resourceRoot, const s
 
 void Object3D::SetAnimationClip(const std::string& clipName)
 {
+	if (!controllerTransition_) {animationController_.reset();animationControllerRevision_.reset();animationLayers_.reset();}
+	animationBlendActive_ = false;
+	skinPaletteCacheKeyValid_ = false;
 	if (animationClipName_ == clipName) {
 		return;
 	}
 	animationClipName_ = clipName;
 	animationTime = 0.0f;
+	animationNormalizedTime_=controllerObservedTime_=0;
 	animationUpdateFrame_ = 0;
 	if (model_ && model_->FindAnimationClip(animationClipName_)) {
 		skeleton_ = model_->GetSkeleton();
 		SkeletonUpdate(skeleton_);
 		SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
 	}
+}
+
+bool Object3D::BlendToAnimationClip(const std::string& clipName, float durationSeconds)
+{
+	if (animationController_ && !controllerTransition_) return false;
+	if (!model_ || !model_->HasSkinningData() ||
+		!std::isfinite(durationSeconds) || durationSeconds < 0.0f || durationSeconds > 60.0f) return false;
+	const auto* source = model_->FindAnimationClip(animationClipName_);
+	const auto* target = model_->FindAnimationClip(clipName);
+	if (!target || target->nodeAnimations.empty() ||
+		model_->GetSkeleton().joints.empty()) return false;
+	std::vector<QuaternionTransform> admission, targetPose, snapshot;
+	if (!Engine::AnimationSystem::SampleLocalPose(model_->GetSkeleton(), *target, 0.0f, targetPose)) return false;
+	if (animationBlendActive_) {
+		snapshot = animationBlendLastPose_;
+		if (snapshot.size() != model_->GetSkeleton().joints.size() ||
+			!Engine::AnimationSystem::BlendLocalPoses(snapshot,targetPose,0.0f,admission)) return false;
+	} else if (!source || source->nodeAnimations.empty() ||
+		!Engine::AnimationSystem::SampleBlendedLocalPose(model_->GetSkeleton(), *source,
+			animationTime, *target, 0.0f, 0.0f, admission)) return false;
+	if (durationSeconds == 0.0f) { SetAnimationClip(clipName); ResetAnimationTime(); return true; }
+	// Complete potentially allocating strings before publishing the new intent.
+	std::string outgoing = animationClipName_, incoming = clipName;
+	animationBlendSourceClip_.swap(outgoing);
+	animationClipName_.swap(incoming);
+	animationBlendSnapshot_.swap(snapshot);
+	animationBlendLastPose_.swap(admission);
+	animationBlendSourceTime_ = animationTime;
+	animationBlendSourceSpeed_ = animationSpeed_;
+	animationBlendSourceLoop_ = animationLoop_;
+	animationTime = 0.0f;
+	animationNormalizedTime_=controllerObservedTime_=0;
+	animationBlendElapsed_ = 0.0f;
+	animationBlendDuration_ = durationSeconds;
+	animationBlendActive_ = true;
+	skinPaletteCacheKeyValid_ = false;
+	return true;
+}
+
+bool Object3D::BindAnimationController(std::string_view text)
+{
+	return BindAnimationController(text,1,true);
+}
+bool Object3D::BindAnimationController(std::string_view text,float authoredRate,bool playing)
+{
+	if (!model_ || !model_->HasSkinningData() || model_->GetSkeleton().joints.empty()) return false;
+	auto prepared=Engine::AnimationSystem::Controller::Runtime::FromText(text);
+	if (!prepared) return false;
+	const auto& definition=prepared->Definition();
+	if(!std::isfinite(authoredRate) || authoredRate<0)return false;
+	for(const auto& layer:definition.layers)for(const auto& state:layer.states)
+		if(double(state.speed)*authoredRate>(std::numeric_limits<float>::max)())return false;
+	const float effectiveRate=playing?authoredRate:0;
+	if(definition.layers.size()!=1 || definition.layers[0].mode!="override" || definition.layers[0].weight!=1 || !definition.layers[0].mask.empty()) {
+		auto player=Engine::AnimationSystem::Controller::LayeredPlayer::Prepare(*prepared,model_->GetSkeleton(),[this](const auto& name){return model_->FindAnimationClip(name);});
+		if(!player)return false;
+		std::unique_ptr<Engine::AnimationSystem::Controller::Runtime> nextRuntime;
+		std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> nextPlayer;
+		std::vector<QuaternionTransform> pose;
+		if(!player->PrepareFrame(*prepared,0,effectiveRate,[this](const auto& name){return model_->FindAnimationClip(name);},nextRuntime,nextPlayer,pose))return false;
+		Skeleton nextSkeleton;std::vector<Matrix4x4> nextMatrices;std::vector<WellForGPU> nextPalette;
+		if(!PrepareLayerPalette(model_->GetSkeleton(),model_->GetSkinCluster(),pose,nextSkeleton,nextMatrices,nextPalette))return false;
+		const auto& entry=*nextRuntime->ActiveState();std::string entryClip=entry.clip;
+		animationClipName_.swap(entryClip);animationController_.swap(nextRuntime);animationLayers_.swap(nextPlayer);
+		std::swap(skeleton_,nextSkeleton);skeletonPose_.swap(nextMatrices);skinPaletteData_.swap(nextPalette);
+		animationControllerRevision_.reset();animationControllerRate_=effectiveRate;animationSpeed_=entry.speed*effectiveRate;animationLoop_=entry.loop;
+		ResetAnimationTime();return true;
+	}
+	std::vector<QuaternionTransform> admission;
+	for (const auto& state:definition.layers[0].states) {
+		const auto* clip=model_->FindAnimationClip(state.clip);
+		if (!clip || clip->nodeAnimations.empty() || !Engine::AnimationSystem::SampleLocalPose(model_->GetSkeleton(),*clip,0,admission)) return false;
+	}
+	const auto& entry=*prepared->ActiveState();std::string entryClip=entry.clip;
+	const auto* clip=model_->FindAnimationClip(entryClip);
+	if (!Engine::AnimationSystem::SampleLocalPose(model_->GetSkeleton(),*clip,0,admission) || admission.size()!=skeleton_.joints.size()) return false;
+	animationClipName_.swap(entryClip);animationController_.swap(prepared);animationLayers_.reset();
+	animationControllerRate_=effectiveRate;animationSpeed_=entry.speed*effectiveRate;animationLoop_=entry.loop;ResetAnimationTime();
+	for(size_t i=0;i<admission.size();++i)skeleton_.joints[i].transform=admission[i];
+	SkeletonUpdate(skeleton_);SkinClusterUpdate(model_->GetSkinCluster(),skeleton_);
+	animationControllerRevision_.reset();
+	return true;
+}
+
+bool Object3D::BindAnimationControllerAsset(const Engine::Base::ProjectContext& project,
+	const Engine::Assets::AssetRegistry& registry,const std::string& guid,std::string& error,
+	const Engine::Assets::AnimatorControllerRevision* expected)
+{
+	return BindAnimationControllerAssetAtRate(project,registry,guid,1,true,error,expected);
+}
+bool Object3D::BindAnimationControllerAssetAtRate(const Engine::Base::ProjectContext& project,
+	const Engine::Assets::AssetRegistry& registry,const std::string& guid,float authoredRate,bool playing,
+	std::string& error,const Engine::Assets::AnimatorControllerRevision* expected)
+{
+	Engine::Assets::HeldAnimatorControllerAsset lease;
+	if (!lease.Open(project,registry,guid,error,expected)) return false;
+	// Prepare all revision allocation before live pose/controller publication.
+	std::shared_ptr<const Engine::Assets::AnimatorControllerRevision> revision=
+		std::make_shared<const Engine::Assets::AnimatorControllerRevision>(*lease.Snapshot());
+	if (!BindAnimationController(revision->bytes,authoredRate,playing)) {
+		error="Controller graph/clip/mask/palette or authored playback rate is incompatible with this Model";
+		return false;
+	}
+	animationControllerRevision_.swap(revision);error.clear();return true;
+}
+
+bool Object3D::SetControllerPlaybackRate(float rate)
+{
+	if(!animationController_ || !std::isfinite(rate) || rate<0)return false;
+	for(const auto& layer:animationController_->Definition().layers)for(const auto& state:layer.states)
+		if(double(state.speed)*rate>(std::numeric_limits<float>::max)())return false;
+	animationControllerRate_=rate;
+	animationSpeed_=animationController_->ActiveState()->speed*rate;return true;
+}
+
+void Object3D::SetAnimationSpeed(float speed) {
+	if(animationController_ && animationLayers_) {
+		const auto stateSpeed=animationController_->ActiveState()->speed;
+		const double rate=stateSpeed>0?double(speed)/stateSpeed:speed;
+		if(std::isfinite(rate) && rate>=0 && rate<=(std::numeric_limits<float>::max)() && SetControllerPlaybackRate(float(rate)))return;
+		animationControllerRate_=0;
+	}
+	animationSpeed_=speed;
+}
+void Object3D::ResetAnimationTime() {
+	animationTime=0;animationUpdateFrame_=0;skinPaletteCacheKeyValid_=false;animationBlendActive_=false;
+	animationNormalizedTime_=controllerObservedTime_=0;if(animationLayers_)animationLayers_->Reset();
+}
+std::optional<float> Object3D::GetControllerLayerWeight(size_t layer) const {
+	if(!animationController_ || !animationController_->ActiveState(layer))return {};
+	return animationLayers_?animationLayers_->Weight(layer):std::optional<float>(animationController_->Definition().layers[layer].weight);
+}
+std::optional<float> Object3D::GetControllerLayerTime(size_t layer) const {
+	if(!animationController_ || !animationController_->ActiveState(layer))return {};
+	return animationLayers_?std::optional<float>(animationLayers_->GetClock(layer)->time):std::optional<float>(animationTime);
+}
+std::optional<double> Object3D::GetControllerLayerProgress(size_t layer) const {
+	if(!animationController_ || !animationController_->ActiveState(layer))return {};
+	return animationLayers_?std::optional<double>(animationLayers_->GetClock(layer)->normalized):std::optional<double>(animationNormalizedTime_);
+}
+bool Object3D::SetControllerLayerWeight(size_t layer,float weight) {
+	if(!animationController_ || !animationController_->ActiveState(layer) || !std::isfinite(weight) || weight<0 || weight>1)return false;
+	if(animationLayers_)return animationLayers_->SetWeight(layer,weight);
+	if(weight==1)return true;
+	try {
+		float rate=0;auto player=PrepareControllerLayers(rate);
+		if(!player)return false;
+		if(!player->SetWeight(layer,weight))return false;
+		animationControllerRate_=rate;animationLayers_.swap(player);skinPaletteCacheKeyValid_=false;return true;
+	}catch(const std::exception&){return false;}
+}
+std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> Object3D::PrepareControllerLayers(float& rate) const {
+	using Player=Engine::AnimationSystem::Controller::LayeredPlayer;
+	if(!animationController_ || !model_)return {};
+	const auto speed=animationController_->ActiveState()->speed;
+	const double multiplier=animationLayers_?animationControllerRate_:(speed>0?double(animationSpeed_)/speed:animationControllerRate_);
+	if(!std::isfinite(multiplier) || multiplier<0 || multiplier>(std::numeric_limits<float>::max)())return {};
+	for(const auto& layer:animationController_->Definition().layers)for(const auto& state:layer.states)
+		if(double(state.speed)*multiplier>(std::numeric_limits<float>::max)())return {};
+	rate=float(multiplier);
+	if(animationLayers_)return std::make_unique<Player>(*animationLayers_);
+	auto player=Player::Prepare(*animationController_,model_->GetSkeleton(),[this](const auto& name){return model_->FindAnimationClip(name);});
+	if(!player)return {};
+	Player::Clock clock;clock.time=animationTime;clock.normalized=animationNormalizedTime_;clock.observed=controllerObservedTime_;
+	clock.blending=animationBlendActive_;clock.sourceClip=animationBlendSourceClip_;clock.sourceTime=animationBlendSourceTime_;
+	clock.sourceSpeed=animationBlendSourceSpeed_;clock.sourceLoop=animationBlendSourceLoop_;clock.elapsed=animationBlendElapsed_;clock.duration=animationBlendDuration_;
+	clock.snapshot=animationBlendSnapshot_;clock.lastPose=animationBlendLastPose_;player->AdoptBaseClock(std::move(clock));return player;
+}
+std::vector<std::string> Object3D::GetControllerStateNames(size_t layer) const {
+	std::vector<std::string> result;
+	if(animationController_ && layer<animationController_->Definition().layers.size())
+		for(const auto& state:animationController_->Definition().layers[layer].states)result.push_back(state.name);
+	return result;
+}
+bool Object3D::ForceControllerState(size_t layer,std::string_view name,float duration) {
+	if(!animationController_ || !animationController_->ActiveState(layer))return false;
+	try {
+		float rate=0;auto player=PrepareControllerLayers(rate);if(!player)return false;
+		std::unique_ptr<Engine::AnimationSystem::Controller::Runtime> nextRuntime;
+		std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> nextPlayer;std::vector<QuaternionTransform> pose;
+		if(!player->PrepareForcedFrame(*animationController_,layer,name,duration,rate,[this](const auto& clip){return model_->FindAnimationClip(clip);},nextRuntime,nextPlayer,pose))return false;
+		return CommitLayeredFrame(nextRuntime,nextPlayer,pose,rate);
+	}catch(const std::exception&){return false;}
+}
+std::optional<double> Object3D::GetControllerLayerNormalizedTime(size_t layer) const {
+	const auto progress=GetControllerLayerProgress(layer);
+	if(!progress || !std::isfinite(*progress) || *progress<0 || !model_)return {};
+	const auto* state=animationController_->ActiveState(layer);const auto* clip=model_->FindAnimationClip(state->clip);
+	if(!clip || !std::isfinite(clip->duration) || clip->duration<0)return {};
+	return state->loop && clip->duration>0?std::fmod(*progress,1.0):(std::min)(*progress,1.0);
+}
+void Object3D::UpdateLayeredController(float delta) {
+	if(!enableAnimation_ || !model_)return;
+	const auto& bound=animationLayers_->BindSkeleton();const auto& current=model_->GetSkeleton();
+	if(bound.joints.size()!=current.joints.size())return;
+	for(size_t i=0;i<bound.joints.size();++i)if(bound.joints[i].name!=current.joints[i].name || bound.joints[i].parent!=current.joints[i].parent)return;
+	std::unique_ptr<Engine::AnimationSystem::Controller::Runtime> nextRuntime;
+	std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> nextPlayer;std::vector<QuaternionTransform> pose;
+	if(!animationLayers_->PrepareFrame(*animationController_,delta,animationControllerRate_,[this](const auto& name){return model_->FindAnimationClip(name);},nextRuntime,nextPlayer,pose))return;
+	CommitLayeredFrame(nextRuntime,nextPlayer,pose,animationControllerRate_);
+}
+bool Object3D::CommitLayeredFrame(std::unique_ptr<Engine::AnimationSystem::Controller::Runtime>& nextRuntime,
+	std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer>& nextPlayer,
+	const std::vector<QuaternionTransform>& pose,float rate) {
+	if(!model_ || !nextRuntime || !nextPlayer)return false;
+	const auto& bound=nextPlayer->BindSkeleton();const auto& current=model_->GetSkeleton();
+	if(bound.joints.size()!=current.joints.size())return false;
+	for(size_t i=0;i<bound.joints.size();++i)if(bound.joints[i].name!=current.joints[i].name || bound.joints[i].parent!=current.joints[i].parent)return false;
+	Skeleton nextSkeleton;std::vector<Matrix4x4> nextMatrices;std::vector<WellForGPU> nextPalette;
+	if(!PrepareLayerPalette(bound,model_->GetSkinCluster(),pose,nextSkeleton,nextMatrices,nextPalette))return false;
+	const auto& state=*nextRuntime->ActiveState();std::string nextClip=state.clip;
+	const auto* baseClock=nextPlayer->GetClock(0);
+	const float baseTime=baseClock->time;const double baseNormalized=baseClock->normalized,baseObserved=baseClock->observed;
+	animationController_.swap(nextRuntime);animationLayers_.swap(nextPlayer);animationClipName_.swap(nextClip);
+	std::swap(skeleton_,nextSkeleton);skeletonPose_.swap(nextMatrices);skinPaletteData_.swap(nextPalette);
+	animationTime=baseTime;animationNormalizedTime_=baseNormalized;controllerObservedTime_=baseObserved;
+	animationControllerRate_=rate;animationSpeed_=state.speed*rate;animationLoop_=state.loop;skinPaletteCacheKeyValid_=false;
+	animationBlendActive_=false;return true;
 }
 
 void Object3D::SetAnimationUpdateStride(uint32_t stride)
@@ -938,6 +1247,11 @@ void Object3D::SetAnimationUpdateStride(uint32_t stride)
 bool Object3D::HasAnimationClip(const std::string& clipName) const
 {
 	return model_ && model_->FindAnimationClip(clipName) != nullptr;
+}
+
+std::vector<std::string> Object3D::GetAnimationClipNames() const
+{
+	return model_ ? model_->GetAnimationClipNames() : std::vector<std::string>{};
 }
 
 bool Object3D::CanDrawSkinning() const
@@ -1005,6 +1319,14 @@ Engine::Math::AABB Object3D::GetScaledModelAabb(float fallbackRadius) const
 			transform.translate.z + (std::max)(scaledMin.z, scaledMax.z),
 		},
 	};
+}
+
+bool Object3D::GetLocalModelBounds(Vector3& min, Vector3& max) const
+{
+	if (!model_ || !model_->HasBounds()) return false;
+	min = model_->GetModelData().localAabbMin;
+	max = model_->GetModelData().localAabbMax;
+	return true;
 }
 
 Engine::Math::OBB Object3D::GetScaledModelObb(float fallbackRadius) const
@@ -1132,6 +1454,8 @@ void Object3D::InitializeCameraResources()
 
 void Object3D::InitializeSkinningState()
 {
+	animationController_.reset();animationControllerRevision_.reset();animationLayers_.reset();animationNormalizedTime_=controllerObservedTime_=0;
+	animationBlendActive_ = false;
 	ReleaseSkinningDescriptors();
 	skeleton_ = {};
 	skeletonPose_.clear();
@@ -1168,15 +1492,48 @@ void Object3D::ReleaseSkinningDescriptors()
 	}
 }
 
-void Object3D::UpdateAnimationState()
+void Object3D::UpdateAnimationState(float deltaTime)
 {
 	if (!enableAnimation_ || !model_) {
 		skinPaletteCacheKeyValid_ = false;
 		return;
 	}
+	if (animationBlendActive_) {
+		// Blended palettes have two clocks/weight: never share a single-clip cache key.
+		skinPaletteCacheKeyValid_ = false;
+		const auto* source = model_->FindAnimationClip(animationBlendSourceClip_);
+		const auto* target = model_->FindAnimationClip(animationClipName_);
+		const bool frozen = !animationBlendSnapshot_.empty();
+		if ((!frozen && !source) || !target) return; // no default-clip fallback during a transition
+		const float step = std::isfinite(deltaTime) && deltaTime > 0.0f &&
+			std::isfinite(animationSpeed_) && animationSpeed_ > 0.0f ? deltaTime : 0.0f;
+		const float elapsed = (std::min)(animationBlendDuration_, animationBlendElapsed_ + step);
+		const float sourceTime = frozen ? animationBlendSourceTime_ : Engine::Graphics3D::AdvanceAnimationSeconds(animationBlendSourceTime_, source->duration, step, animationBlendSourceSpeed_, animationBlendSourceLoop_);
+		const float targetTime = Engine::Graphics3D::AdvanceAnimationSeconds(animationTime, target->duration, step, animationSpeed_, animationLoop_);
+		std::vector<QuaternionTransform> pose;
+		if (frozen) {
+			std::vector<QuaternionTransform> targetPose;
+			if (!Engine::AnimationSystem::SampleLocalPose(model_->GetSkeleton(),*target,targetTime,targetPose) ||
+				!Engine::AnimationSystem::BlendLocalPoses(animationBlendSnapshot_,targetPose,elapsed / animationBlendDuration_,pose)) return;
+		} else if (!Engine::AnimationSystem::SampleBlendedLocalPose(model_->GetSkeleton(), *source,
+			sourceTime, *target, targetTime, elapsed / animationBlendDuration_, pose)) return;
+		if (pose.size() != skeleton_.joints.size()) return;
+		for (size_t i = 0; i < pose.size(); ++i) skeleton_.joints[i].transform = pose[i];
+		SkeletonUpdate(skeleton_);
+		SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
+		animationBlendLastPose_.swap(pose);
+		animationTime = targetTime;
+		if (animationController_) animationNormalizedTime_=Engine::Graphics3D::AdvanceControllerNormalizedTime(
+			animationNormalizedTime_,targetTime,target->duration,step,animationSpeed_,animationLoop_);
+		animationBlendSourceTime_ = sourceTime;
+		animationBlendElapsed_ = elapsed;
+		if (elapsed >= animationBlendDuration_) animationBlendActive_ = false;
+		return;
+	}
 	const Animation* animation = model_->FindAnimationClip(animationClipName_);
 	std::string resolvedClipName = animationClipName_;
 	if (!animation) {
+		if (animationController_) { skinPaletteCacheKeyValid_=false;return; }
 		animation = model_->FindAnimationClip("default");
 		resolvedClipName = "default";
 	}
@@ -1193,7 +1550,7 @@ void Object3D::UpdateAnimationState()
 			animationTime,
 			*animation,
 			animationSpeed_,
-			animationLoop_);
+			animationLoop_, deltaTime, animationController_ ? &animationNormalizedTime_ : nullptr);
 		return;
 	}
 
@@ -1215,7 +1572,7 @@ void Object3D::UpdateAnimationState()
 			animationTime,
 			*animation,
 			animationSpeed_,
-			animationLoop_);
+			animationLoop_, deltaTime, animationController_ ? &animationNormalizedTime_ : nullptr);
 		return;
 	}
 
@@ -1238,7 +1595,7 @@ void Object3D::UpdateAnimationState()
 		animationTime,
 		*animation,
 		animationSpeed_,
-		animationLoop_);
+		animationLoop_, deltaTime, animationController_ ? &animationNormalizedTime_ : nullptr);
 }
 
 uint32_t Object3D::ResolveSkinPaletteSrvIndex()
@@ -1315,7 +1672,7 @@ void Object3D::ApplyModelSettings()
 
 void Object3D::UpdateTransformationMatrices()
 {
-	worldMatrix = MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+	worldMatrix = hasAuthoredWorldMatrix_ ? authoredWorldMatrix_ : MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 	transformationMatrixData_.World = worldMatrix;
 	transformationMatrixData_.worldInverseTranspose = MyMath::Transpose(worldMatrix.Inverse());
 
@@ -1328,7 +1685,7 @@ void Object3D::UpdateTransformationMatrices()
 
 	worldViewProjectionMatrix = worldMatrix * activeCamera->GetViewProjectionMatrix();
 	transformationMatrixData_.WVP = worldViewProjectionMatrix;
-	cameraForGpu_.worldPosition = activeCamera->GetTransform().translate;
+	cameraForGpu_.worldPosition = activeCamera->GetWorldPosition();
 }
 
 D3D12_GPU_VIRTUAL_ADDRESS Object3D::UploadFrameConstant(

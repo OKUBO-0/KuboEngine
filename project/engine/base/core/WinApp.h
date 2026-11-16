@@ -1,6 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <cstdint>
+#include "CloseRequestGate.h"
 
 /// @brief Win32 ウィンドウの生成とメッセージ処理を管理するクラス
 /// @details アプリケーションウィンドウの生成、破棄、メッセージポンプ処理を担当し、
@@ -11,6 +12,10 @@ class WinApp
 {
 
 public:
+	WinApp() = default;
+	~WinApp();
+	WinApp(const WinApp&) = delete;
+	WinApp& operator=(const WinApp&) = delete;
 
 	//クライアント領域のサイズ
 	static const int32_t kClientWidth = 1280;
@@ -52,8 +57,18 @@ public:
 	/// @param なし
 	/// @return 終了要求があれば true
 	bool ProcessMessage();
+	void SetCloseRequestDeferred(bool enabled) { closeRequests_.Enable(enabled); }
+	bool ConsumeCloseRequest() { return closeRequests_.Consume(); }
+#ifndef KUBO_RUNTIME_ONLY
+	void DeferInitialShow() noexcept { deferInitialShow_ = true; }
+	UINT GetWindowDpi() const noexcept;
+#endif
 
 private:
+#ifndef KUBO_RUNTIME_ONLY
+	bool deferInitialShow_ = false;
+	UINT windowDpi_ = 0;
+#endif
 	void RegisterWindowClass();
 	void CreateMainWindow();
 
@@ -63,6 +78,9 @@ private:
 	DWORD windowedStyle_ = WS_OVERLAPPEDWINDOW;
 	RECT windowedRect_{};
 	bool fullscreen_ = false;
+	bool timerPeriodActive_ = false;
+	bool comInitialized_ = false;
+	CloseRequestGate closeRequests_;
 
 
 };

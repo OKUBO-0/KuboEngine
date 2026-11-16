@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <KuboRuntimeOnly>true</KuboRuntimeOnly>
+    <ProjectGuid>{ABF70A22-E510-4C9F-A087-843863090B75}</ProjectGuid>
+    <ProjectName>KuboPlayer</ProjectName>
+  </PropertyGroup>
+  <!-- Thin executable consuming the reusable runtime archive; no Editor objects. -->
+  <Import Project="KuboEngine.vcxproj" />
+</Project>

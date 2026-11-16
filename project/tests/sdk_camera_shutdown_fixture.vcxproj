@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+ <PropertyGroup Label="Globals"><ProjectGuid>{9849B4CD-3025-41B6-8FAC-839318436AA1}</ProjectGuid><ProjectName>SdkCameraShutdownChecks</ProjectName><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+ <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet><UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries><UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+ <PropertyGroup><TargetName>SdkCameraShutdownChecks</TargetName><OutDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir><IntDir>$(MSBuildProjectDirectory)\obj\$(Configuration)\</IntDir></PropertyGroup>
+ <ItemDefinitionGroup><ClCompile><PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><WarningLevel>Level3</WarningLevel><TreatWarningAsError>true</TreatWarningAsError></ClCompile><Link><SubSystem>Console</SubSystem><AdditionalDependencies>Ole32.lib;User32.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+ <Import Project="$(KuboSdkRoot)KuboRuntime.props" />
+ <ItemGroup><ClCompile Include="camera_shutdown_checks.cpp" /></ItemGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+ <!-- CPU-only fixture: no runtime assets, window, device or deployment needed. -->
+ <Target Name="CopyKuboRuntimeDeployment" />
+</Project>

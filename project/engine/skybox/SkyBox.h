@@ -40,6 +40,8 @@ public:
 	void DrawImGuiDebug();
 	
 	std::string GetTextureFilePath() const { return textureFilePath_; }
+	const Vector3& GetScale() const { return transform.scale; }
+	void SetScale(const Vector3& scale) { transform.scale = scale; }
 
 private:
 	void InitializeGeometry();

@@ -22,11 +22,17 @@ public:
 	/// @param なし
 	/// @return なし
 	void Update();
+	void Update(float deltaTime);
+	float GetFrameDeltaTime() const { return frameDeltaTime_; }
+	BaseScene* GetCurrentScene() const { return currentScene.get(); }
+	float SimulationDeltaTime(float realDeltaTime) const;
 	/// @brief 現在シーンを描画する
 	/// @param なし
 	/// @return なし
 	void Draw();
 	/// @brief 管理中シーンの終了処理を行う
+	/// @details callback前に所有Sceneを退役し、callback例外も元のまま通知する。
+	///          再帰終了はno-op、終了中のScene/factory変更は拒否する。同じhost threadで使用する。
 	/// @param なし
 	/// @return なし
 	void Finalize();
@@ -34,7 +40,7 @@ public:
 	/// @brief シーン生成に使うファクトリを設定する
 	/// @param sceneFactory シーンファクトリ
 	/// @return なし
-	void SetSceneFactory(AbstractSceneFactory* sceneFactory) { this->sceneFactory = sceneFactory; }
+	void SetSceneFactory(AbstractSceneFactory* sceneFactory);
 
 	/// @brief シーン名を指定して遷移を要求する
 	/// @param sceneName 遷移先シーン名
@@ -55,6 +61,8 @@ private:
 	std::unique_ptr<BaseScene> currentScene = nullptr;
 	std::unique_ptr<BaseScene> nextScene = nullptr;
 	AbstractSceneFactory* sceneFactory = nullptr;
+	float frameDeltaTime_ = 1.0f / 60.0f;
+	bool finalizing_ = false;
 
 };
 

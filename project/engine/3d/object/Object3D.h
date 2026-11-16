@@ -6,8 +6,15 @@
 #include <wrl.h>
 #include <array>
 #include <cstdint>
+#include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
+#include "engine/animation/AnimatorControllerRuntime.h"
+#include "engine/animation/LayeredControllerPlayer.h"
+
+namespace Engine::Base {class ProjectContext;}
+namespace Engine::Assets {class AssetRegistry;struct AnimatorControllerRevision;}
 
 namespace Engine::Graphics3D {
 
@@ -26,6 +33,12 @@ class Object3D
 {
 public:
 	~Object3D();
+	static void InvalidateModelCaches(const Model* model);
+
+	// Caller owns the object; ModelManager owns its shared model. No automatic Update/Draw.
+	// Call after rendering services are initialized, before recording draws.
+	static std::unique_ptr<Object3D> Create(Object3DCommon* common,
+		const std::string& filePath, const std::string& resourceRoot = "Resources", const std::string& assetIdentity = {}, const std::string& revision = {});
 
 	/// @brief 描画に必要なGPUリソースを初期化する
 	/// @param object3DCommon 共通描画設定
@@ -36,6 +49,9 @@ public:
 	/// @param なし
 	/// @return なし
 	void Update();
+	void Update(float deltaTime);
+	float GetAnimationTime() const { return animationTime; }
+	void ResetAnimationTime();
 
 	void SkeletonUpdate( Skeleton& skeleton);
 	void ApplyAnimation(Skeleton& skeleton, const Animation& animation, float animationTime);
@@ -45,6 +61,7 @@ public:
 	/// @return なし
 	void Draw();
 	void DrawAnimated();
+	void RefreshViewTransform() { UpdateTransformationMatrices(); }
 	/// @brief スキニング描画用のコマンドを積む
 	/// @param なし
 	/// @return なし
@@ -70,14 +87,50 @@ public:
 	void SetModel(const std::string& filepath);
 	void SetModelFromResourceRoot(const std::string& resourceRoot, const std::string& filepath);
 	void SetAnimationClip(const std::string& clipName);
-	void SetAnimationSpeed(float animationSpeed) { animationSpeed_ = animationSpeed; }
+	// Strict admission; an interrupted blend uses its last sampled local pose.
+	bool BlendToAnimationClip(const std::string& clipName, float durationSeconds);
+	bool IsAnimationBlending() const { return animationLayers_ ? animationLayers_->IsBlending() : animationBlendActive_; }
+	bool BindAnimationController(std::string_view text);
+	// Admit the authored rate for every state before replacing the live owner.
+	// Paused owners still validate future Play at that rate.
+	bool BindAnimationController(std::string_view text,float authoredRate,bool playing);
+	// Explicit reload/assignment only; not an automatic filesystem watcher.
+	bool BindAnimationControllerAsset(const Engine::Base::ProjectContext& project,
+		const Engine::Assets::AssetRegistry& registry,const std::string& guid,std::string& error,
+		const Engine::Assets::AnimatorControllerRevision* expected=nullptr);
+	bool BindAnimationControllerAssetAtRate(const Engine::Base::ProjectContext& project,
+		const Engine::Assets::AssetRegistry& registry,const std::string& guid,float authoredRate,bool playing,
+		std::string& error,const Engine::Assets::AnimatorControllerRevision* expected=nullptr);
+	const Engine::Assets::AnimatorControllerRevision* GetControllerAssetRevision() const {return animationControllerRevision_.get();}
+	bool SetControllerFloat(std::string_view name,double value) {return animationController_ && animationController_->SetFloat(name,value);}
+	bool SetControllerBool(std::string_view name,bool value) {return animationController_ && animationController_->SetBool(name,value);}
+	bool SetControllerTrigger(std::string_view name) {return animationController_ && animationController_->SetTrigger(name);}
+	// Authored Scene speed multiplies state speed; Pause is rate zero.
+	bool SetControllerPlaybackRate(float rate);
+	std::string_view GetControllerState() const {return animationController_ ? std::string_view(animationController_->ActiveState()->name) : std::string_view{};}
+	std::string_view GetControllerState(size_t layer) const {const auto* state=animationController_?animationController_->ActiveState(layer):nullptr;return state?std::string_view(state->name):std::string_view{};}
+	bool SetControllerLayerWeight(size_t layer,float weight);
+    bool ForceControllerState(size_t layer,std::string_view name,float blendSeconds=0.2f);
+    std::vector<std::string> GetControllerStateNames(size_t layer) const;
+	std::optional<float> GetControllerLayerWeight(size_t layer) const;
+	std::optional<float> GetControllerLayerTime(size_t layer) const;
+	// Actual unwrapped normalized interval used for exit-time evaluation.
+	std::optional<double> GetControllerLayerProgress(size_t layer) const;
+	std::optional<double> GetControllerLayerNormalizedTime(size_t layer) const;
+	bool GetAnimationJointTransform(size_t index, QuaternionTransform& output) const {
+		if (index >= skeleton_.joints.size()) return false;
+		output = skeleton_.joints[index].transform; return true;
+	}
+	void SetAnimationSpeed(float animationSpeed);
 	void SetAnimationLoop(bool loop) { animationLoop_ = loop; }
 	void SetAnimationUpdateStride(uint32_t stride);
 	void SetFrustumCullingEnabled(bool enabled) { frustumCullingEnabled_ = enabled; }
 	bool HasAnimationClip(const std::string& clipName) const;
+	std::vector<std::string> GetAnimationClipNames() const;
 	bool CanDrawSkinning() const;
 	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;
 	Engine::Math::AABB GetScaledModelAabb(float fallbackRadius = 1.0f) const;
+	bool GetLocalModelBounds(Vector3& min, Vector3& max) const;
 	Engine::Math::OBB GetScaledModelObb(float fallbackRadius = 1.0f) const;
 
 	//環境マップ
@@ -90,6 +143,8 @@ public:
 
 	// transform
 	void SetTransform(const EulerTransform& transform) { this->transform = transform; }
+	void SetWorldMatrix(const Matrix4x4& matrix) { authoredWorldMatrix_ = matrix; hasAuthoredWorldMatrix_ = true; }
+	void ClearWorldMatrix() { hasAuthoredWorldMatrix_ = false; }
 	const EulerTransform& GetTransform() const { return transform; }
 
 	
@@ -156,8 +211,11 @@ public:
 
 	//ライトのオンオフ
 	void SetLighting(bool enable) { enableLighting = enable; }
+	bool GetLighting() const { return enableLighting; }
 
 	void SetColor(const Vector4& color) { color_ = color; }
+	bool SetShininess(float value) { if(!std::isfinite(value) || value<1 || value>1024)return false;materialData_.shininess=value;return true; }
+	float GetShininess() const {return materialData_.shininess;}
 	const Vector4& GetColor() const { return color_; }
 
 	void SetDebugName(const std::string& debugName) { debugName_ = debugName; }
@@ -178,7 +236,12 @@ private:
 	void InitializeCameraResources();
 	void InitializeSkinningState();
 	void ReleaseSkinningDescriptors();
-	void UpdateAnimationState();
+	void UpdateAnimationState(float deltaTime);
+	void UpdateLayeredController(float deltaTime);
+    std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> PrepareControllerLayers(float& rate) const;
+    bool CommitLayeredFrame(std::unique_ptr<Engine::AnimationSystem::Controller::Runtime>& runtime,
+        std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer>& player,
+        const std::vector<QuaternionTransform>& pose,float rate);
 	uint32_t ResolveSkinPaletteSrvIndex();
 	void ApplyModelSettings();
 	void UpdateTransformationMatrices();
@@ -188,6 +251,8 @@ private:
 	Object3DCommon* object3DCommon_ = nullptr;//Object3DCommonのポインタ
 
 	Model* model_ = nullptr;//モデルのポインタ
+	std::shared_ptr<Model> modelLease_;
+	void SetModelLease(std::shared_ptr<Model> model);
 
 	//トランスフォーム
 	TransformationMatrix transformationMatrixData_{};
@@ -202,6 +267,8 @@ private:
 	//SRT
 	EulerTransform transform;
 	Matrix4x4 worldMatrix;
+	Matrix4x4 authoredWorldMatrix_{};
+	bool hasAuthoredWorldMatrix_ = false;
 	Matrix4x4 worldViewProjectionMatrix;
 
 	//ライトのオンオフ
@@ -218,6 +285,21 @@ private:
 	bool animationLoop_ = true;
 	bool enableAnimation_= true;
 	std::string animationClipName_ = "default";
+	bool animationBlendActive_ = false;
+	std::string animationBlendSourceClip_;
+	float animationBlendSourceTime_ = 0.0f;
+	float animationBlendSourceSpeed_ = 1.0f;
+	bool animationBlendSourceLoop_ = true;
+	float animationBlendElapsed_ = 0.0f;
+	float animationBlendDuration_ = 0.0f;
+	std::vector<QuaternionTransform> animationBlendSnapshot_;
+	std::vector<QuaternionTransform> animationBlendLastPose_;
+	std::unique_ptr<Engine::AnimationSystem::Controller::Runtime> animationController_;
+	std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> animationLayers_;
+	std::shared_ptr<const Engine::Assets::AnimatorControllerRevision> animationControllerRevision_;
+	double animationNormalizedTime_=0,controllerObservedTime_=0;
+	bool controllerTransition_=false;
+	float animationControllerRate_=1;
 
 	Vector4 color_ = { 1.0f, 1.0f, 1.0f, 1.0f }; // デフォルトは白
 	static constexpr uint32_t kBufferedFrameCount = 2;

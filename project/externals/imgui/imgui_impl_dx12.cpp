@@ -61,6 +61,7 @@
 //  2018-02-22: Merged into master with all Win32 code synchronized to other examples.
 
 #include "imgui.h"
+#include <memory>
 #ifndef IMGUI_DISABLE
 #include "imgui_impl_dx12.h"
 
@@ -176,9 +177,12 @@ struct ImGui_ImplDX12_ViewportData
         SwapChain = nullptr;
         SwapChainWaitableObject = nullptr;
         NumFramesInFlight = num_frames_in_flight;
-        FrameCtx = new ImGui_ImplDX12_FrameContext[NumFramesInFlight];
+        // Keep both arrays owned locally until all allocations have succeeded.
+        auto frameCtx = std::make_unique<ImGui_ImplDX12_FrameContext[]>(NumFramesInFlight);
         FrameIndex = 0;
-        FrameRenderBuffers = new ImGui_ImplDX12_RenderBuffers[NumFramesInFlight];
+        auto frameRenderBuffers = std::make_unique<ImGui_ImplDX12_RenderBuffers[]>(NumFramesInFlight);
+        FrameCtx = frameCtx.release();
+        FrameRenderBuffers = frameRenderBuffers.release();
 
         for (UINT i = 0; i < NumFramesInFlight; ++i)
         {
@@ -210,6 +214,20 @@ struct ImGui_ImplDX12_ViewportData
         delete[] FrameRenderBuffers; FrameRenderBuffers = nullptr;
     }
 };
+
+// IM_NEW's placement delete does not release storage if construction throws.
+// Publish the completed object only after all viewport arrays are acquired.
+static ImGui_ImplDX12_ViewportData* ImGui_ImplDX12_AllocateViewportData(UINT frames)
+{
+    void* storage = ImGui::MemAlloc(sizeof(ImGui_ImplDX12_ViewportData));
+    if (!storage) throw std::bad_alloc();
+    try {
+        return IM_PLACEMENT_NEW(storage) ImGui_ImplDX12_ViewportData(frames);
+    } catch (...) {
+        ImGui::MemFree(storage);
+        throw;
+    }
+}
 
 struct VERTEX_CONSTANT_BUFFER_DX12
 {
@@ -1013,7 +1031,7 @@ bool ImGui_ImplDX12_Init(ImGui_ImplDX12_InitInfo* init_info)
     // Create a dummy ImGui_ImplDX12_ViewportData holder for the main viewport,
     // Since this is created and managed by the application, we will only use the ->Resources[] fields.
     ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-    main_viewport->RendererUserData = IM_NEW(ImGui_ImplDX12_ViewportData)(bd->numFramesInFlight);
+    main_viewport->RendererUserData = ImGui_ImplDX12_AllocateViewportData(bd->numFramesInFlight);
 
     ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
     platform_io.DrawCallback_ResetRenderState = ImGui_ImplDX12_DrawCallback_ResetRenderState;
@@ -1107,7 +1125,7 @@ void ImGui_ImplDX12_NewFrame()
 static void ImGui_ImplDX12_CreateWindow(ImGuiViewport* viewport)
 {
     ImGui_ImplDX12_Data* bd = ImGui_ImplDX12_GetBackendData();
-    ImGui_ImplDX12_ViewportData* vd = IM_NEW(ImGui_ImplDX12_ViewportData)(bd->numFramesInFlight);
+    ImGui_ImplDX12_ViewportData* vd = ImGui_ImplDX12_AllocateViewportData(bd->numFramesInFlight);
     viewport->RendererUserData = vd;
 
     // PlatformHandleRaw should always be a HWND, whereas PlatformHandle might be a higher-level handle (e.g. GLFWWindow*, SDL's WindowID).

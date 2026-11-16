@@ -7,6 +7,9 @@
 #include "SpriteCommon.h"
 #include "SceneManager.h"
 #include <imgui.h>
+#ifndef KUBO_RUNTIME_ONLY
+#include <imgui_internal.h>
+#endif
 #include "Input.h"
 #include "CameraManager.h"
 #include "ParticleEmitter.h"
@@ -30,6 +33,13 @@ constexpr float kEmitterFrequency = 1.0f;
 constexpr float kEmitterStartTime = 0.0f;
 constexpr uint32_t kAttackParticleEmitCount = 10;
 constexpr uint32_t kMagicCircleEmitCount = 1;
+#ifndef KUBO_RUNTIME_ONLY
+bool HasEditorFrame()
+{
+    const auto* context = ImGui::GetCurrentContext();
+    return context && context->WithinFrameScope;
+}
+#endif
 }
 
 GamePlayScene::GamePlayScene() = default;
@@ -37,11 +47,18 @@ GamePlayScene::~GamePlayScene() = default;
 
 void GamePlayScene::Initialize()
 {
+#ifndef KUBO_RUNTIME_ONLY
+    if (HasEditorFrame()) playback_ = Playback::Editing;
+#endif
     InitializeCameras();
     LoadSceneResources();
     InitializeSceneObjects();
     InitializeParticles();
     controlState_ = std::make_unique<IdlePlayerControlState>();
+    sceneSchema_ = CaptureScene();
+    std::error_code sceneError;
+    if (std::filesystem::exists(scenePath_, sceneError)) { LoadScene(scenePath_); }
+    recoveryAvailable_ = std::filesystem::exists(SceneDocument::AutosavePath(scenePath_), sceneError);
 }
 
 void GamePlayScene::InitializeCameras()
@@ -79,9 +96,8 @@ void GamePlayScene::InitializeSceneObjects()
 	skyBox->Initialize("Resources/textures/skybox/test.dds");
 
 	// プレイヤーモデル初期化
-    object3D = std::make_unique<Engine::Graphics3D::Object3D>();
-    object3D->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
-    object3D->SetModel("walk.gltf");
+    object3D = Engine::Graphics3D::Object3D::Create(
+        Engine::Graphics3D::Object3DCommon::GetInstance(), "walk.gltf");
     object3D->SetLighting(true);
     object3D->SetPointLightEnable(false);
     object3D->SetDirectionalLightIntensity(1.0f);
@@ -89,9 +105,8 @@ void GamePlayScene::InitializeSceneObjects()
     object3D->SetSkyboxFilePath(skyBox->GetTextureFilePath());
 
 	// 地形モデル初期化
-    terrain = std::make_unique<Engine::Graphics3D::Object3D>();
-    terrain->Initialize(Engine::Graphics3D::Object3DCommon::GetInstance());
-    terrain->SetModel("terrain.obj");
+    terrain = Engine::Graphics3D::Object3D::Create(
+        Engine::Graphics3D::Object3DCommon::GetInstance(), "terrain.obj");
     terrain->SetTransform(kTerrainTransform);
     terrain->SetLighting(true);
     terrain->SetDirectionalLightIntensity(1.0f);
@@ -133,13 +148,29 @@ void GamePlayScene::Finalize()
 
 void GamePlayScene::Update()
 {
-	UpdateInput();
+#ifndef KUBO_RUNTIME_ONLY
+    const bool editorFrame = HasEditorFrame();
+#endif
+    simulationDeltaTime_ = SimulationDeltaTime(SceneManager::GetInstance()->GetFrameDeltaTime());
+    if (simulationDeltaTime_ > 0.0f) {
+#ifndef KUBO_RUNTIME_ONLY
+        if (!editorFrame || (!ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive())) UpdateInput();
+#else
+        UpdateInput();
+#endif
+    }
 	UpdateSceneObjects();
+    stepPending_ = false;
 
-#ifdef _DEBUG
-    DrawDebugUi();
-
-#endif // _DEBUG
+#ifndef KUBO_RUNTIME_ONLY
+    if (editorFrame) {
+        const auto beforeUi = CaptureScene();
+        historyAction_ = false;
+        DrawDebugUi();
+        if (!historyAction_ && playback_ == Playback::Editing) { RecordEdit(beforeUi, CaptureScene(), !ImGui::IsAnyItemActive()); }
+        if (playback_ == Playback::Editing) { UpdateAutosave(SceneManager::GetInstance()->GetFrameDeltaTime()); }
+    }
+#endif
 }
 
 void GamePlayScene::UpdateInput()
@@ -175,7 +206,7 @@ void GamePlayScene::ApplyRotateInput(float rotateDeltaY)
 
 void GamePlayScene::UpdateToggleFlag(Engine::InputSystem::Input& input)
 {
-    if (input.TriggerGamePadButton(XINPUT_GAMEPAD_A)) {
+    if (input.TriggerGamePadButton(XINPUT_GAMEPAD_A) || input.TriggerAction("toggle")) {
         number = !number;
     }
 }
@@ -185,45 +216,52 @@ void GamePlayScene::UpdateSceneObjects()
     skyBox->Update();
     Engine::CameraSystem::CameraManager::GetInstance()->GetActiveCamera()->Update();
 
-    object3D->Update();
-    terrain->Update();
+    const float deltaTime = simulationDeltaTime_;
+    object3D->Update(deltaTime);
+    terrain->Update(deltaTime);
 
-    particleEmitter->Update();
-    particleEmitter2->Update();
+    particleEmitter->Update(deltaTime);
+    particleEmitter2->Update(deltaTime);
 
     sprite->Update();
 }
 
+#ifndef KUBO_RUNTIME_ONLY
 void GamePlayScene::DrawDebugUi()
 {
-    ImGui::Begin("シーン固有デバッグ");
+    if (!ImGui::Begin("シーン固有デバッグ")) { ImGui::End(); return; }
     ImGui::Text("number %d", number);
     ImGui::Text("Control State: %s", controlState_ ? controlState_->GetName() : "None");
 
     DrawSceneControlUi();
+    if (ImGui::CollapsingHeader("Sample objects")) {
+        DrawHierarchyUi();
+        DrawInspectorUi();
+    }
     DrawCameraControlUi();
     DrawObjectControlUi();
     DrawSpriteControlUi();
     DrawLightControlUi();
     DrawParticleControlUi();
-    ImGui::End();
-
-    skyBox->DrawImGuiDebug();
     DrawEnvironmentMapUi();
+    ImGui::End();
 }
 
 void GamePlayScene::DrawSceneControlUi()
 {
+    DrawSceneDocumentUi();
     if (!ImGui::CollapsingHeader("Scene Control", ImGuiTreeNodeFlags_DefaultOpen)) {
         return;
     }
 
+    ImGui::BeginDisabled(HasUnsavedScene());
     if (ImGui::Button("GameClearScene")) {
         SceneManager::GetInstance()->ChangeScene("GAMECLEAR");
     }
     if (ImGui::Button("GameOverScene")) {
         SceneManager::GetInstance()->ChangeScene("GAMEOVER");
     }
+    ImGui::EndDisabled();
 }
 
 void GamePlayScene::DrawCameraControlUi()
@@ -466,7 +504,10 @@ void GamePlayScene::DrawParticleControlUi()
 
 void GamePlayScene::DrawEnvironmentMapUi()
 {
-    ImGui::Begin("Environment Map");
+    if (!ImGui::CollapsingHeader("Environment Map")) return;
+
+    auto skyboxScale = skyBox->GetScale();
+    if (ImGui::DragFloat3("Skybox Scale", &skyboxScale.x, 0.01f, 0.0f, 10.0f)) skyBox->SetScale(skyboxScale);
 
     float reflectionStrength = object3D->GetEnvironmentReflectionStrength();
     float roughness = object3D->GetEnvironmentRoughness();
@@ -480,10 +521,9 @@ void GamePlayScene::DrawEnvironmentMapUi()
         object3D->SetEnvironmentRoughness(roughness);
         terrain->SetEnvironmentRoughness(roughness);
     }
-
-    ImGui::End();
 }
 
+#endif
 void GamePlayScene::Draw()
 {
     skyBox->Draw();
@@ -504,6 +544,18 @@ void GamePlayScene::Draw()
 	Engine::Graphics2D::SpriteCommon::GetInstance()->CommonDraw();
     sprite->Draw();
 #pragma endregion
+}
+
+EulerTransform GamePlayScene::GetPlayerTransform() const
+{
+    return object3D ? object3D->GetTransform() : EulerTransform{};
+}
+
+void GamePlayScene::SetPlayerTransform(const EulerTransform& transform)
+{
+    if (object3D) {
+        object3D->SetTransform(transform);
+    }
 }
 
 void GamePlayScene::LoadModel()

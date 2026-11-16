@@ -1,0 +1,49 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TargetName>$(ProjectName)</TargetName>
+    <IntDir>$(MSBuildProjectDirectory)\..\generated\obj\$(ProjectName)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>KUBO_RUNTIME_ONLY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- Embedded symbols make the archive reusable without a mutable compiler PDB. -->
+      <DebugInformationFormat Condition="'$(KuboRuntimeLibrary)'=='true'">OldStyle</DebugInformationFormat>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>copy /Y "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxcompiler.dll" "$(TargetDir)dxcompiler.dll" || exit /B 1
+copy /Y "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dxil.dll" || exit /B 1
+robocopy "$(ProjectDir)Resources" "$(TargetDir)Resources" /E /NFL /NDL /NJH /NJS /NP
+if ERRORLEVEL 8 exit /B 8
+exit /B 0</Command>
+      <Command Condition="'$(KuboRuntimeLibrary)'=='true'"></Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(KuboRuntimeLibrary)'!='true' and '$(Configuration)'=='Release'">
+    <Link>
+      <!-- A reusable archive can change debug formats/consumers; do not reuse stale LTCG caches. -->
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Remove="engine\scene\game\GameControllerReload.cpp" />
+    <ClCompile Remove="engine\editor\AnimatorControllerPanel.cpp" />
+    <ClCompile Remove="engine\scene\game\Game.cpp;engine\scene\game\GameControllerRecovery.cpp;engine\editor\AnimatorControllerDetails.cpp;engine\base\render\ImGuiManager.cpp;engine\editor\DebugEditorManager.cpp;engine\editor\ImGuizmoManager.cpp;engine\services\GitWorkspace.cpp;engine\services\UpdateService.cpp;engine\services\McpCommandBridge.cpp" />
+    <ClCompile Include="engine\app\RuntimeGame.cpp" />
+    <ProjectReference Remove="externals\imgui\imgui.vcxproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(KuboRuntimeLibrary)'=='true'">
+    <ClCompile Remove="main.cpp" />
+    <!-- Build these dependencies, but keep their archives separate for consumers. -->
+    <ProjectReference Update="@(ProjectReference)"><LinkLibraryDependencies>false</LinkLibraryDependencies></ProjectReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(KuboRuntimeLibrary)'!='true'">
+    <!-- The executable owns only its entry point; all runtime implementation is reusable. -->
+    <ClCompile Remove="@(ClCompile)" />
+    <ClCompile Include="main.cpp" />
+    <ProjectReference Include="KuboRuntime.vcxproj">
+      <Project>{66D4017C-616E-440C-AD4E-F931C8C36B23}</Project>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+      <UseLibraryDependencyInputs>false</UseLibraryDependencyInputs>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

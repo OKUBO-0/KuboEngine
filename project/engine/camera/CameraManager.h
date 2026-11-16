@@ -2,6 +2,7 @@
 #include <Camera.h>
 #include <unordered_map>
 #include <string>
+#include <string_view>
 #include <memory>
 
 /// @brief 複数カメラの登録とアクティブ切り替えを管理するクラス
@@ -12,7 +13,7 @@ class CameraManager
 {
 	CameraManager() = default;
 	~CameraManager() = default;
-	CameraManager(CameraManager&) = default;
+	CameraManager(CameraManager&) = delete;
 	CameraManager& operator=(CameraManager&) = delete;
 
 public:
@@ -48,6 +49,12 @@ public:
 	/// @return 見つかったカメラ。未登録なら nullptr
 	Camera* GetCamera(const std::string& name);
 
+	// Same-host-thread borrowed lookup/detach. Linear lookup avoids owning
+	// temporary names. Detach preserves a replacement registered by another owner.
+	Camera* FindCamera(std::string_view name) noexcept;
+	bool DetachCamera(std::string_view name, const Camera* expected,
+	    std::string_view preferredActive = {}) noexcept;
+
 	/// @brief 現在のアクティブカメラを取得する
 	/// @param なし
 	/// @return アクティブカメラ
@@ -55,7 +62,8 @@ public:
 
 	/// @brief 現在のアクティブカメラ名を取得する
 	/// @return アクティブカメラ名。未設定なら空文字
-	const std::string& GetActiveCameraName() const { return activeCameraName; }
+	// Borrowed reference: copy before a registry mutation if retention is needed.
+	const std::string& GetActiveCameraName() const { return activeCameraName ? *activeCameraName : emptyCameraName; }
 
 
 	/// @brief アクティブカメラを切り替える
@@ -70,7 +78,11 @@ private:
 	std::unordered_map<std::string, Camera*> cameras;
 
 	// アクティブカメラ名
-	std::string activeCameraName;
+	// unordered_map key references survive rehash. Clear/repoint BEFORE erase.
+	const std::string* activeCameraName = nullptr;
+	const std::string emptyCameraName;
+	using CameraIterator = decltype(cameras)::iterator;
+	CameraIterator FindRegistration(std::string_view name) noexcept;
 
 	//デフォルトカメラ
 	

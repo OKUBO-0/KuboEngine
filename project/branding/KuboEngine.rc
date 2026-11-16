@@ -1,0 +1,3 @@
+#include "EngineIconResource.h"
+
+IDI_KUBO_ENGINE ICON "KuboEngine.ico"

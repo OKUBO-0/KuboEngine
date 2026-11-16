@@ -148,6 +148,13 @@ public:
 	uint32_t GetCurrentFrameIndex() const { return currentFrameIndex_; }
 	uint64_t GetPendingSubmissionFenceValue() const { return nextFenceValue_ + 1; }
 	uint64_t GetCompletedFenceValue() const { return fence ? fence->GetCompletedValue() : 0; }
+	bool HasUnfencedSubmission() const noexcept { return hasUnfencedSubmission_; }
+	enum class CommandState { Empty, Recording, Closed, Submitted, Failed, Retired };
+	CommandState GetCommandState() const noexcept { return commandState_; }
+	// Terminal and retryable on wait failure; never submits recorded commands.
+	void PrepareForShutdown();
+	// Historical failure survives a successful retry; it is not a readiness flag.
+	HRESULT GetLastSubmissionFenceFailure() const noexcept { return lastSubmissionFenceFailure_; }
 	void WaitForAllFrames();
 	void BeginShadowGpuTiming();
 	void EndShadowGpuTiming();
@@ -344,6 +351,10 @@ private:
 	bool frameRateLimitEnabled_ = true;
 	bool vSyncEnabled_ = true;
 	float targetFrameRate_ = 60.0f;
+	// A successful Execute is not necessarily followed by a successful Signal.
+	bool hasUnfencedSubmission_ = false;
+	HRESULT lastSubmissionFenceFailure_ = S_OK;
+	CommandState commandState_ = CommandState::Empty;
 
 	
 

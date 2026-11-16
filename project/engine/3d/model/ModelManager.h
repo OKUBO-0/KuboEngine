@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 namespace Engine::Base {
 class DirectXCommon;
@@ -46,6 +47,15 @@ public:
 	void LoadModel(const std::string& filePath);
 	void LoadModels(const std::vector<std::string>& filePaths);
 
+	// Returns a shared, manager-owned model. Call after Initialize, before recording draws.
+	Model* GetOrLoadModel(const std::string& filePath, const std::string& resourceRoot = "Resources", const std::string& assetIdentity = {}, const std::string& revision = {});
+	std::shared_ptr<Model> AcquireModel(const std::string& filePath, const std::string& resourceRoot = "Resources", const std::string& assetIdentity = {}, const std::string& revision = {});
+	void PinModel(Model* model);
+	// Owner-thread only, before recording draws; flushes pending commands and waits
+	// submitted frames when needed. Return all leases before manager Finalize.
+	size_t CollectUnusedModels();
+	size_t GetCachedModelCount() const { return models.size(); }
+
 	/// @brief リソースルートを指定してモデルを読み込む
 	/// @param resourceRoot モデル探索の起点となるリソースルート
 	/// @param filePath 読み込むモデルのファイルパス
@@ -72,7 +82,9 @@ public:
 private:
 	static std::string MakeModelKey(const std::string& resourceRoot, const std::string& filePath);
 	//モデルデータ
-	std::map<std::string, std::unique_ptr < Model>> models;
+	std::shared_ptr<Model> GetOrLoadModelInternal(const std::string& filePath, const std::string& resourceRoot, const std::string& assetIdentity, const std::string& revision, bool leased);
+	std::map<std::string, std::shared_ptr<Model>> models;
+	std::unordered_set<std::string> collectibleModels_;
 
 	std::unique_ptr< ModelCommon> modelCommon = nullptr;
 	Engine::Base::SrvManager* srvManager_ = nullptr;

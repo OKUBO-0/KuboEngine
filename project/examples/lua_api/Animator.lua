@@ -1,0 +1,21 @@
+---@meta
+-- Annotation-only supplement, not a game Script asset/module. Runtime methods
+-- are supplied by KuboEngine; commands queue requests, not immediate playback.
+---@class KuboAnimatorSceneApi
+---@field animator fun(id: integer): string?, number?, boolean?, boolean? # clip, speed, loop, playOnAwake; nil when absent/missing
+---@field animator_state fun(id: integer): boolean?, boolean?, number? # current admitted owner: ready, playing, time; false,false,nil if unavailable; nil if Entity/Animator absent; requires same-World scoped source
+---@field set_animator fun(id: integer, clip: string, speed: number, loop: boolean, playOnAwake: boolean): boolean # active writable hook; errors discard an unhandled hook
+---@field remove_animator fun(id: integer): boolean # false when Entity/component absent
+---@field animator_play fun(id: integer): boolean # queued; active writable hook and enabled host required; false for missing/inactive/no Model/no Animator
+---@field animator_pause fun(id: integer): boolean # queued; true does not guarantee later owner admission
+---@field animator_stop fun(id: integer): boolean # queued; applied command stops and resets runtime time, never saved settings
+---@field animator_restart fun(id: integer): boolean # queued; applied command resets and plays; shares 64 successful Scene operations per hook
+---@field controller_state fun(id: integer, layer?: integer): string? # actual admitted state, not pending prediction; optional integer0..3 defaults0
+---@field controller_time fun(id: integer, layer?: integer): number? # actual clip seconds
+---@field controller_progress fun(id: integer, layer?: integer): number? # unwrapped exit progress
+---@field controller_normalized_time fun(id: integer, layer?: integer): number? # loop fraction or clamped completion
+---@field controller_layer_weight fun(id: integer, layer?: integer): number? # actual runtime weight
+---@field controller_set_layer_weight fun(id: integer, layer: integer, weight: number): boolean # queue finite0..1 weight, not immediate application
+---@field controller_play_state fun(id: integer, state: string, blendSeconds?: number, layer?: integer): boolean # queue explicit reentry; defaults .2 seconds/layer0; finite seconds0..60; UTF-8 state1..128 bytes; unknown state/owner may refuse at consumption
+---@type KuboAnimatorSceneApi
+scene = scene

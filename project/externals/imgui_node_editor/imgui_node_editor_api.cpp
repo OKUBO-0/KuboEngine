@@ -63,6 +63,8 @@ void ax::NodeEditor::DestroyEditor(EditorContext* ctx)
 
     if (lastContext != ctx)
         SetCurrentEditor(lastContext);
+    else
+        SetCurrentEditor(nullptr);
 }
 
 const ax::NodeEditor::Config& ax::NodeEditor::GetConfig(EditorContext* ctx)

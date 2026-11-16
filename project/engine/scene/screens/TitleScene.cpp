@@ -20,10 +20,11 @@ void TitleScene::Finalize()
 
 void TitleScene::Update()
 {
-	if (Engine::InputSystem::Input::GetInstance()->TriggerKey(DIK_SPACE)) {
+	if (Engine::InputSystem::Input::GetInstance()->TriggerAction("start")) {
 		SceneManager::GetInstance()->ChangeScene("GAMEPLAY");
 	}
 
+	#ifndef KUBO_RUNTIME_ONLY
 	if (ImGui::CollapsingHeader("Model", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		ImGui::Text("titleScene %d");
@@ -36,6 +37,7 @@ void TitleScene::Update()
 
 	}
 
+	#endif
 }
 
 void TitleScene::Draw()

@@ -13,6 +13,9 @@
 *.cache
 imgui.ini
 .debug_editor_windows.ini
+UserSettings/native-build.json
+UserSettings/native-build.json.lock
+UserSettings/ControllerLayouts/
 .env
 .env.example
 

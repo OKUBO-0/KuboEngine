@@ -20,6 +20,7 @@ public:
 	/// @param なし
 	/// @return なし
 	virtual void Update() = 0;
+	virtual float SimulationDeltaTime(float realDeltaTime) const { return realDeltaTime; }
 	/// @brief シーンの描画処理を行う
 	/// @param なし
 	/// @return なし

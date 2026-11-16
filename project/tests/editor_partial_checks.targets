@@ -1,0 +1,10 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <PropertyGroup Condition="'$(KuboPartialRoot)' != ''">
+  <OutDir>$(KuboPartialRoot)bin\</OutDir>
+  <IntDir>$(KuboPartialRoot)obj\$(MSBuildProjectName)\$(Configuration)\</IntDir>
+ </PropertyGroup>
+ <ItemGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine'">
+  <ClCompile Remove="main.cpp" />
+  <ClCompile Include="$(MSBuildThisFileDirectory)editor_partial_checks.cpp" />
+ </ItemGroup>
+</Project>

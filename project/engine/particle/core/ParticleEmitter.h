@@ -31,6 +31,7 @@ public:
 	/// @param なし
 	/// @return なし
 	void Update();
+	void Update(float deltaTime);
 
 	/// @brief 現在設定でパーティクル発生要求を送る
 	/// @param なし

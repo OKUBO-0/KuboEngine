@@ -1,4 +1,5 @@
 #pragma once
+#include "Logger.h"
 
 #include <Windows.h>
 #include <d3d12.h>
@@ -60,6 +61,7 @@ inline void ThrowIfFailed(
 	}
 	message << " at " << location.file_name()
 		<< ':' << std::dec << location.line();
+	Logger::Log(message.str(), Logger::Level::Error);
 	throw std::runtime_error(message.str());
 }
 

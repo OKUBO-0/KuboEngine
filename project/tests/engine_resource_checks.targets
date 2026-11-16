@@ -1,0 +1,24 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine'">
+    <TargetName>EngineResourceChecks</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine'">
+    <ClCompile><PreprocessorDefinitions>KUBO_APPLICATION_CHECKS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'KuboEngine'">
+    <ClCompile Remove="main.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)engine_resource_checks.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)authored_lighting_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)sprite_move_render_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)particle_group_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)particle_authoring_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)asset_thumbnail_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)game_render_inspector_checks.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)animator_host_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)runtime_prefab_host_fixture.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)shader_cache_checks.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)scene_editing_checks.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)gizmo_input_checks.cpp" />
+    <ClCompile Include="$(MSBuildThisFileDirectory)scene_grid_render_checks.cpp" />
+  </ItemGroup>
+</Project>

@@ -30,7 +30,7 @@ void SpriteCommon::Finalize()
     dxCommon_.reset();
 }
 
-void SpriteCommon::CommonDraw()
+void SpriteCommon::CommonDraw(bool overlay)
 {
     const auto dxCommon = dxCommon_.lock();
     if (!dxCommon) {
@@ -40,7 +40,7 @@ void SpriteCommon::CommonDraw()
     currentDrawStats_ = {};
     // RootSignatureとPSOを設定し、プリミティブトポロジを三角形リストに指定
     const auto rootSignature = graphicsPipeline_->GetRootSignatureSpriteHandle();
-    const auto pipelineState = graphicsPipeline_->GetGraphicsPipelineStateSpriteHandle();
+    const auto pipelineState = overlay?graphicsPipeline_->GetPipelineStateHandle("SpriteOverlay"):graphicsPipeline_->GetGraphicsPipelineStateSpriteHandle();
     dxCommon->GetCommandList()->SetGraphicsRootSignature(rootSignature.Get());
     dxCommon->GetCommandList()->SetPipelineState(pipelineState.Get());
     dxCommon->GetCommandList()->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

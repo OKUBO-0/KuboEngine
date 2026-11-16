@@ -27,8 +27,16 @@ Camera::Camera()
 
 void Camera::Update()
 {
-	projectionMatrix = MyMath::MakePerspectiveFovMatrix(fovY, aspectRatio, nearClip_, farClip);
-	worldMatrix = MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+	if (orthographic_) {
+		// Centered unit bounds supply the DX12 depth terms. Compute the scale
+		// directly in double to avoid overflowing height * aspect for large spans.
+		projectionMatrix = MyMath::MakeOrthographicMatrix(-1, 1, 1, -1, nearClip_, farClip);
+		projectionMatrix.m[0][0] = static_cast<float>(2.0 / orthographicHeight_ / aspectRatio);
+		projectionMatrix.m[1][1] = static_cast<float>(2.0 / orthographicHeight_);
+	} else {
+		projectionMatrix = MyMath::MakePerspectiveFovMatrix(fovY, aspectRatio, nearClip_, farClip);
+	}
+	worldMatrix = hasAuthoredWorldMatrix_ ? authoredWorldMatrix_ : MyMath::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 	viewMatrix = worldMatrix.Inverse();
 	viewProjectionMatrix = viewMatrix * projectionMatrix;
 
