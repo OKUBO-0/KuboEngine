@@ -159,7 +159,9 @@ exit /B 0</Command>
     <ClCompile Include="engine\services\UpdateService.cpp" />
     <ClCompile Include="engine\services\McpCommandBridge.cpp" />
     <ClCompile Include="externals\imgui_node_editor\crude_json.cpp" />
-    <ClCompile Include="engine\scene\game\Game.cpp" />
+    <ClCompile Include="engine\scene\game\Game.cpp">
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="engine\scene\game\GamePlayScene.cpp" />
     <ClCompile Include="engine\scene\game\GamePlaySceneDocument.cpp" />
     <ClCompile Include="engine\scene\core\SceneDocument.cpp" />
