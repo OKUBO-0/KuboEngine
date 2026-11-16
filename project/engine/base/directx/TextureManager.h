@@ -27,6 +27,7 @@ struct TextureLease {
 	std::string key;
 	uint32_t srvIndex = UINT32_MAX;
 	DirectX::TexMetadata metadata{};
+	D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle{};
 };
 
 class TextureManager

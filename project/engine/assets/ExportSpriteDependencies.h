@@ -34,7 +34,10 @@ inline ExportSpriteClosure ValidateExportSpriteDependencies(const Scene::EntityW
                 if(!scene.Load(destination,error))throw std::runtime_error("Export UI Button needs an Entity Scene: "+error);
             }
         }
-        if(entity.sprite.assetPath.empty() && entity.sprite.assetGuid.empty()){++result.unassigned;continue;}
+        if(!entity.sprite.HasImage()){
+            if(entity.sprite.text.empty())++result.unassigned;
+            continue;
+        }
         std::string error;const auto source=ResolveSpriteReference(entity.sprite,registry,root,error);
         if(source.empty())throw std::runtime_error("Export Sprite reference refused: "+error);
         copied(source);if(!entity.sprite.assetGuid.empty())copied(AssetRegistry::MetadataPath(source));

@@ -337,6 +337,7 @@ exit /B 0</Command>
     <ClInclude Include="engine\animation\AnimatorComponent.h" />
     <ClInclude Include="engine\scene\entity\RenderComponents.h" />
     <ClInclude Include="engine\scene\entity\UIComponents.h" />
+    <ClInclude Include="engine\scene\entity\UITextRaster.h" />
     <ClInclude Include="engine\scene\entity\ParticleComponents.h" />
     <ClInclude Include="engine\scene\entity\RenderParticleFrame.h" />
     <ClInclude Include="engine\editor\ParticleComponentInspector.h" />

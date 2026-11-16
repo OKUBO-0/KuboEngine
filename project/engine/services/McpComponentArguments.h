@@ -51,6 +51,13 @@ inline Scene::SceneValue McpComponentPatchSchema(const std::string& component) {
     if(component=="sprite"){
         auto& guid=schema["properties"]["buttonSceneGuid"];
         guid["type"]="string";guid["pattern"]="^([0-9a-f]{16}|[0-9a-f]{32})?$";
+        auto& label=schema["properties"]["text"];label["type"]="string";label["maxLength"]=4096.0;
+        number("textSize",8,256);
+        auto& alignment=schema["properties"]["textAlignment"];
+        alignment["type"]="string";alignment["enum"]=crude_json::array{"left","center","right"};
+        auto& color=schema["properties"]["textColor"];color["type"]="array";
+        color["minItems"]=color["maxItems"]=4.0;
+        color["items"]["type"]="number";color["items"]["minimum"]=0.0;color["items"]["maximum"]=1.0;
     }
     if(component=="light" || component=="material" || component=="sprite") {
         auto& color=schema["properties"]["color"];color["type"]="array";
@@ -130,6 +137,7 @@ inline bool ValidateMcpComponentArguments(const Scene::SceneValue& arguments,std
         else if(type=="string" && value.is_string()) {
             if(field=="asset")valid=component=="sprite"?Scene::UIComponentDetail::AssetPath(value.get<std::string>()):ValidMcpAssetPath(value.get<std::string>());
             else if(field=="buttonSceneGuid")valid=Scene::UIComponentDetail::Guid(value.get<std::string>());
+            else if(field=="text")valid=Scripting::ValidScriptText(value.get<std::string>(),4096);
             else if(definition.contains("enum"))for(const auto& allowed:definition["enum"].get<crude_json::array>())if(value.get<std::string>()==allowed.get<std::string>())valid=true;
         }
         else if(type=="array" && value.is_array() && value.get<crude_json::array>().size()==size_t(definition["minItems"].get<double>())) {

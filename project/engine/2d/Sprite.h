@@ -7,10 +7,12 @@
 #include "RenderingData.h"
 
 #include <array>
+#include <memory>
 #include <string>
 #include <wrl/client.h>
 #include <d3d12.h>
 
+namespace Engine::Base { struct TextureLease; }
 namespace Engine::Graphics2D {
 
 class SpriteCommon;
@@ -21,6 +23,7 @@ class Sprite
 public:
     /// 初期化処理（共通設定とテクスチャ読み込み）
     void Initialize(SpriteCommon* spriteCommon, const std::string& textureFilePath, Engine::Base::TextureLoadOptions options = {});
+    void Initialize(SpriteCommon* spriteCommon,std::shared_ptr<const Engine::Base::TextureLease> texture);
     void SetTexture(const std::string& textureFilePath, Engine::Base::TextureLoadOptions options = {});
 
     /// 毎フレーム更新（座標・回転・UVなど）
@@ -78,6 +81,7 @@ public:
 
 private:
     std::string textureFilePath_;
+    std::shared_ptr<const Engine::Base::TextureLease> textureLease_;
     Engine::Base::TextureLoadOptions textureOptions_{};
     std::string debugName_;
 

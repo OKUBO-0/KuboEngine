@@ -19,7 +19,19 @@ void Sprite::Initialize(SpriteCommon* spriteCommon, const std::string& textureFi
     textureOptions_ = options;
     spriteCommon_ = spriteCommon;
     Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath_, textureOptions_);
+    textureLease_.reset();
     textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_, textureOptions_);
+    InitializeMaterialData();
+    InitializeTransformationData();
+    AdjustTextureSize();
+}
+
+void Sprite::Initialize(SpriteCommon* spriteCommon,std::shared_ptr<const Engine::Base::TextureLease> texture)
+{
+    if(!texture || !texture->gpuHandle.ptr)throw std::invalid_argument("Sprite requires a live texture lease");
+    spriteCommon_=spriteCommon;
+    textureLease_=std::move(texture);
+    textureIndex=textureLease_->srvIndex;
     InitializeMaterialData();
     InitializeTransformationData();
     AdjustTextureSize();
@@ -31,6 +43,7 @@ void Sprite::SetTexture(const std::string& textureFilePath, Engine::Base::Textur
     Engine::Base::TextureManager::GetInstance()->LoadTexture(textureFilePath, options);
     textureFilePath_ = textureFilePath;
     textureOptions_ = options;
+    textureLease_.reset();
     textureIndex = Engine::Base::TextureManager::GetInstance()->GetTextureIndexByFilePath(textureFilePath_, textureOptions_);
     const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_, textureOptions_);
     textureLeftTop_ = { 0.0f, 0.0f };
@@ -85,7 +98,9 @@ void Sprite::Draw()
     commandList->SetGraphicsRootConstantBufferView(0, materialAddress);
 
     // テクスチャSRV設定 (RootParameter[1])
-    commandList->SetGraphicsRootDescriptorTable(1, Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_, textureOptions_));
+    const auto texture=textureLease_?textureLease_->gpuHandle:
+        Engine::Base::TextureManager::GetInstance()->GetSrvHandleGPU(textureFilePath_,textureOptions_);
+    commandList->SetGraphicsRootDescriptorTable(1,texture);
 
     // 行列CBV設定 (RootParameter[2])
     commandList->SetGraphicsRootConstantBufferView(2, transformAddress);
@@ -102,7 +117,8 @@ void Sprite::Draw()
 void Sprite::AdjustTextureSize()
 {
     // テクスチャメタデータを取得
-    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_, textureOptions_);
+    const auto& metadata=textureLease_?textureLease_->metadata:
+        Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_,textureOptions_);
 
     // 切り出しサイズをテクスチャ全体に設定
     textureSize_ = { static_cast<float>(metadata.width), static_cast<float>(metadata.height) };
@@ -146,7 +162,8 @@ void Sprite::UpdateVertexData()
 
     // textureLeftTop_ と textureSize_ はピクセル単位の切り出し範囲。
     // シェーダーへ渡す UV は 0..1 の正規化座標なので、元テクスチャの幅/高さで割る。
-    const DirectX::TexMetadata& metadata = Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_, textureOptions_);
+    const auto& metadata=textureLease_?textureLease_->metadata:
+        Engine::Base::TextureManager::GetInstance()->GetMetaData(textureFilePath_,textureOptions_);
     const float texLeft = textureLeftTop_.x / metadata.width;
     const float texRight = (textureLeftTop_.x + textureSize_.x) / metadata.width;
     const float texTop = textureLeftTop_.y / metadata.height;

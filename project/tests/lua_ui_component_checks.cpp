@@ -26,7 +26,9 @@ int main(){using namespace Engine;using namespace Scene;using namespace Scriptin
   assert(not scene.set_canvas(999,{}) and not scene.remove_canvas(999))
  end
  function on_update(e,dt)
-  local s=scene.sprite(e:id());s.color[1]=0.5;assert(scene.set_sprite(e:id(),s));assert(scene.sprite(e:id()).size[1]==120 and scene.sprite(e:id()).anchor[2]==0.5)
+  local s=scene.sprite(e:id());s.color[1]=0.5;s.text='得点 10';s.textSize=36;s.textAlignment='right';s.textColor={0,1,0,1}
+  assert(scene.set_sprite(e:id(),s));local updated=scene.sprite(e:id())
+  assert(updated.size[1]==120 and updated.anchor[2]==0.5 and updated.text=='得点 10' and updated.textSize==36 and updated.textAlignment=='right' and updated.textColor[2]==1)
  end
  function on_fixed_update(e,dt) assert(scene.set_canvas(2,{sortOrder=42}));assert(scene.canvas(2).enabled) end
  function on_destroy(e) assert(scene.remove_canvas(2));assert(scene.set_sprite(2,{})) end

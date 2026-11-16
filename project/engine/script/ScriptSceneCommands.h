@@ -58,10 +58,13 @@ public:
     const Scene::SpriteComponent* Sprite(Scene::EntityId id) const noexcept {const auto* record=Live(id);return record && record->hasSprite?&record->sprite:nullptr;}
     // Borrowed/trivial input keeps owning strings out of Lua's longjmp frames.
     struct SpriteInput {
-        std::string_view asset,guid,buttonSceneGuid;
+        std::string_view asset,guid,buttonSceneGuid,text;
         Vector2 size{100,100},pivot{0.5f,0.5f};Vector4 color{1,1,1,1};
         bool enabled=true,flipX=false,flipY=false;int sortOrder=0;
         Vector2 anchor{0,0};
+        float textSize=32;
+        Scene::UITextAlignment textAlignment=Scene::UITextAlignment::Center;
+        Vector4 textColor{1,1,1,1};
     };
     static_assert(std::is_trivially_destructible_v<SpriteInput>);
     Result SetCanvas(Scene::EntityId id,const Scene::CanvasComponent& value) noexcept {
@@ -83,6 +86,7 @@ public:
             value.enabled=input.enabled;value.flipX=input.flipX;value.flipY=input.flipY;value.sortOrder=input.sortOrder;
             value.anchor=input.anchor;
             value.buttonSceneGuid=input.buttonSceneGuid;
+            value.text=input.text;value.textSize=input.textSize;value.textAlignment=input.textAlignment;value.textColor=input.textColor;
             if(!value.IsValid())return Result::Invalid;
             if(!value.buttonSceneGuid.empty()){
                 if(!view_->assets_)return Result::Unavailable;

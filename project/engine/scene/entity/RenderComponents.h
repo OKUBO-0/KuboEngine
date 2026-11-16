@@ -44,9 +44,9 @@ inline bool Boolean(const SceneValue& object,const char* key,bool& value) {
     if(!object[key].is_boolean())return false;
     value=object[key].get<crude_json::boolean>();return true;
 }
-inline bool Color(const SceneValue& object,size_t count,float* output) {
-    if(!object.contains("color"))return true;
-    const auto& value=object["color"];
+inline bool Color(const SceneValue& object,size_t count,float* output,const char* key="color") {
+    if(!object.contains(key))return true;
+    const auto& value=object[key];
     if(!value.is_array() || value.get<crude_json::array>().size()!=count)return false;
     for(size_t i=0;i<count;++i){
         if(!value[i].is_number())return false;

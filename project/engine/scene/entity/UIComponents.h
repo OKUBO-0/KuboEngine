@@ -7,6 +7,21 @@
 
 namespace Engine::Scene {
 enum class CanvasScaleMode { ConstantPixels, ScaleWithOutput };
+enum class UITextAlignment { Left, Center, Right };
+inline constexpr const char* UITextAlignmentName(UITextAlignment alignment) noexcept {
+    switch(alignment){
+    case UITextAlignment::Left:return "left";
+    case UITextAlignment::Center:return "center";
+    case UITextAlignment::Right:return "right";
+    }
+    return nullptr;
+}
+inline bool ParseUITextAlignment(std::string_view name,UITextAlignment& alignment) noexcept {
+    for(auto value:{UITextAlignment::Left,UITextAlignment::Center,UITextAlignment::Right}){
+        if(name==UITextAlignmentName(value)){alignment=value;return true;}
+    }
+    return false;
+}
 // Authored data only: no viewport, GPU handle or computed layout is persisted.
 struct CanvasComponent {
     bool enabled=true;
@@ -25,6 +40,12 @@ struct SpriteComponent {
     int sortOrder=0;
     Vector2 anchor{0,0}; // Normalized point in the output; Transform sets its offset.
     std::string buttonSceneGuid; // Assigned when the Sprite acts as a Scene button.
+    std::string text;
+    float textSize=32;
+    UITextAlignment textAlignment=UITextAlignment::Center;
+    Vector4 textColor{1,1,1,1};
+    bool HasImage() const noexcept {return !assetPath.empty() || !assetGuid.empty();}
+    bool HasVisibleText() const noexcept {return !text.empty() && textColor.w>0;}
     bool IsValid() const noexcept;
 };
 namespace UIComponentDetail {
@@ -89,6 +110,8 @@ inline bool SpriteComponent::IsValid() const noexcept {
     return UIComponentDetail::AssetPath(assetPath) && UIComponentDetail::Guid(assetGuid) && UIComponentDetail::Guid(buttonSceneGuid) &&
         Range(size.x,0,16384) && Range(size.y,0,16384) && Range(pivot.x,-16,16) && Range(pivot.y,-16,16) &&
         Range(anchor.x,0,1) && Range(anchor.y,0,1) &&
+        Scripting::ValidScriptText(text,4096) && Range(textSize,8,256) && UITextAlignmentName(textAlignment) &&
+        Range(textColor.x,0,1) && Range(textColor.y,0,1) && Range(textColor.z,0,1) && Range(textColor.w,0,1) &&
         Range(color.x,0,1) && Range(color.y,0,1) && Range(color.z,0,1) && Range(color.w,0,1) && sortOrder>=-32768 && sortOrder<=32767;
 }
 inline bool DecodeCanvas(const SceneValue& value,CanvasComponent& output) noexcept {
@@ -112,7 +135,8 @@ inline bool DecodeCanvas(const SceneValue& value,CanvasComponent& output) noexce
 inline bool DecodeSprite(const SceneValue& value,SpriteComponent& output) noexcept {
     try {
         using namespace RenderComponentDetail;
-        if(!Keys(value,{"enabled","asset","guid","size","pivot","anchor","color","flipX","flipY","sortOrder","buttonSceneGuid"}))return false;
+        if(!Keys(value,{"enabled","asset","guid","size","pivot","anchor","color","flipX","flipY","sortOrder","buttonSceneGuid",
+            "text","textSize","textAlignment","textColor"}))return false;
         SpriteComponent candidate;
         for(const auto* key:{"asset","guid"})if(value.contains(key)){
             if(!value[key].is_string())return false;
@@ -122,6 +146,15 @@ inline bool DecodeSprite(const SceneValue& value,SpriteComponent& output) noexce
             if(!value["buttonSceneGuid"].is_string())return false;
             candidate.buttonSceneGuid=value["buttonSceneGuid"].get<crude_json::string>();
         }
+        if(value.contains("text")){
+            if(!value["text"].is_string())return false;
+            candidate.text=value["text"].get<crude_json::string>();
+        }
+        if(value.contains("textAlignment") && (!value["textAlignment"].is_string() ||
+            !ParseUITextAlignment(value["textAlignment"].get<crude_json::string>(),candidate.textAlignment)))return false;
+        float textColor[]{1,1,1,1};
+        if(!Number(value,"textSize",candidate.textSize,8,256) || !Color(value,4,textColor,"textColor"))return false;
+        candidate.textColor={textColor[0],textColor[1],textColor[2],textColor[3]};
         float color[]{1,1,1,1};
         if(!Boolean(value,"enabled",candidate.enabled) || !Boolean(value,"flipX",candidate.flipX) || !Boolean(value,"flipY",candidate.flipY) ||
             !UIComponentDetail::Pair(value,"size",candidate.size,0,16384) || !UIComponentDetail::Pair(value,"pivot",candidate.pivot,-16,16) ||
@@ -143,6 +176,15 @@ inline SceneValue EncodeSprite(const SpriteComponent& sprite) {
     v["size"]=UIComponentDetail::Pair(sprite.size);v["pivot"]=UIComponentDetail::Pair(sprite.pivot);
     if(sprite.anchor.x!=0 || sprite.anchor.y!=0)v["anchor"]=UIComponentDetail::Pair(sprite.anchor);
     if(!sprite.buttonSceneGuid.empty())v["buttonSceneGuid"]=sprite.buttonSceneGuid;
+    if(!sprite.text.empty())v["text"]=sprite.text;
+    if(sprite.textSize!=32)v["textSize"]=double(sprite.textSize);
+    if(sprite.textAlignment!=UITextAlignment::Center){
+        const auto* alignment=UITextAlignmentName(sprite.textAlignment);
+        v["textAlignment"]=alignment?alignment:"invalid";
+    }
+    const auto& textColor=sprite.textColor;
+    if(textColor.x!=1 || textColor.y!=1 || textColor.z!=1 || textColor.w!=1)
+        v["textColor"]=crude_json::array{double(textColor.x),double(textColor.y),double(textColor.z),double(textColor.w)};
     v["color"]=crude_json::array{double(sprite.color.x),double(sprite.color.y),double(sprite.color.z),double(sprite.color.w)};
     v["flipX"]=sprite.flipX;v["flipY"]=sprite.flipY;v["sortOrder"]=double(sprite.sortOrder);return v;
 }

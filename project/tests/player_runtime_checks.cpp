@@ -61,16 +61,24 @@ public:
         Require(++frames_<180,"Player Scene transition timed out");
         heard_ |= GetScriptAudioHost().VoiceCount()>0;
         arrived_=fixture_.Arrived(GetWorld());
-        if (arrived_ && button_) Require(frames_==24,"Player activated the wrong button or accepted an incomplete click");
+        if (arrived_ && button_ && !renderedHud_) Require(frames_==24,"Player activated the wrong button or accepted an incomplete click");
         if (arrived_ && !button_) Require(heard_ && GetScriptAudioHost().VoiceCount()==0,
             "Player transition did not submit the WAV or did not retire the previous scene's audio");
     }
-    bool IsEndRequest() const override {return arrived_ || RuntimeGame::IsEndRequest();}
-    bool Arrived() const {return arrived_;}
+    void Draw() override {
+        RuntimeGame::Draw();
+        if(button_ && frames_==9)Require(fixture_.DrawnText(*dxCommon,*offscreenRenderManager,false),"Player title label did not render");
+        if(button_ && arrived_){
+            Require(fixture_.DrawnText(*dxCommon,*offscreenRenderManager,true),"Player HUD label did not render");
+            renderedHud_=true;
+        }
+    }
+    bool IsEndRequest() const override {return Arrived() || RuntimeGame::IsEndRequest();}
+    bool Arrived() const {return arrived_ && (!button_ || renderedHud_);}
 private:
     RuntimeSceneTransitionFixture fixture_;
     static inline int frames_=0;
-    bool button_=false;
+    bool button_=false,renderedHud_=false;
     bool heard_=false,arrived_=false;
 };
 class AnimatorPlayerChecks final : public Engine::App::RuntimeGame {
@@ -189,7 +197,7 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR arguments,int) {
     if(mode=="--scene-transition" || mode=="--ui-button"){
         std::cout<<"RUNNER_MODE="<<mode<<'\n';
         try{const bool button=mode=="--ui-button";SceneTransitionPlayerChecks checks(button);checks.Run();Require(checks.Arrived(),"Player ended before the transition");
-            std::cout<<(button?"PASS: independent Player 4:3 letterbox, Button painter order, cancellation and destination Lua initialization\n":
+            std::cout<<(button?"PASS: independent Player 4:3 Japanese title and text-only HUD pixels, Button painter order and cancellation\n":
                 "PASS: independent Player movement, Trigger WAV and destination Lua initialization\n");return 0;}
         catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
     }

@@ -7,6 +7,7 @@
 #include "DirectXCommon.h"
 #include "TextureManager.h"
 #include "Sprite.h"
+#include "UITextRaster.h"
 #include "../../base/EngineResourcePath.h"
 #include <filesystem>
 #include <cmath>
@@ -66,9 +67,10 @@ void EntityScene::Finalize()
 void EntityScene::ResetWorldRenderState()
 {
     FinalizeParticles();
-    if (!models_.empty() || !sprites_.empty()) graphics_.WaitForAllFrames();
+    if (!models_.empty() || !sprites_.empty() || !texts_.empty()) graphics_.WaitForAllFrames();
     models_.clear();
     sprites_.clear();spriteFrame_.items.clear();
+    texts_.clear();textRasterizer_.reset();retiredTextTextures_=0;
     CancelUIButtons();
     reportedModelErrors_.clear();
     reportedSpriteErrors_.clear();

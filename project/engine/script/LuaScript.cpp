@@ -358,8 +358,8 @@ private:
     static void RenderScalar(lua_State* state,int table,const char* key,float& output,double lo,double hi){
         lua_pushstring(state,key);lua_rawget(state,table);if(!lua_isnil(state,-1))output=RenderNumber(state,-1,lo,hi);lua_pop(state,1);
     }
-    static void RenderColor(lua_State* state,int table,float* output,int count){
-        lua_pushliteral(state,"color");lua_rawget(state,table);
+    static void RenderColor(lua_State* state,int table,float* output,int count,const char* field="color"){
+        lua_pushstring(state,field);lua_rawget(state,table);
         if(lua_isnil(state,-1)){lua_pop(state,1);return;}luaL_checktype(state,-1,LUA_TTABLE);
         const auto colors=lua_absindex(state,-1);int seen=0;lua_pushnil(state);
         while(lua_next(state,colors)){
@@ -369,9 +369,9 @@ private:
         }
         if(seen!=count)luaL_error(state,"Wrong render color size");lua_pop(state,1);
     }
-    static void PushRenderColor(lua_State* state,std::initializer_list<float> values){
+    static void PushRenderColor(lua_State* state,std::initializer_list<float> values,const char* field="color"){
         lua_createtable(state,static_cast<int>(values.size()),0);lua_Integer i=0;
-        for(const auto v:values){lua_pushnumber(state,v);lua_rawseti(state,-2,++i);}lua_setfield(state,-2,"color");
+        for(const auto v:values){lua_pushnumber(state,v);lua_rawseti(state,-2,++i);}lua_setfield(state,-2,field);
     }
     static void PushRenderScalar(lua_State* state,const char* name,float value){lua_pushnumber(state,value);lua_setfield(state,-2,name);}
     static int SceneLight(lua_State* state){
@@ -445,12 +445,17 @@ private:
         const auto* value=Self(state).sceneCommands_.Sprite(SceneId(state));if(!value){lua_pushnil(state);return 1;}
         if(!value->IsValid())return luaL_error(state,"Invalid authored Sprite");
         // Borrow live immutable fields; no owning SpriteComponent crosses Lua allocation/longjmp.
-        lua_createtable(state,0,11);lua_pushboolean(state,value->enabled);lua_setfield(state,-2,"enabled");
+        lua_createtable(state,0,15);lua_pushboolean(state,value->enabled);lua_setfield(state,-2,"enabled");
         lua_pushlstring(state,value->assetPath.data(),value->assetPath.size());lua_setfield(state,-2,"asset");
         if(!value->assetGuid.empty()){lua_pushlstring(state,value->assetGuid.data(),value->assetGuid.size());lua_setfield(state,-2,"guid");}
         if(!value->buttonSceneGuid.empty()){
             lua_pushlstring(state,value->buttonSceneGuid.data(),value->buttonSceneGuid.size());lua_setfield(state,-2,"buttonSceneGuid");
         }
+        lua_pushlstring(state,value->text.data(),value->text.size());lua_setfield(state,-2,"text");
+        PushRenderScalar(state,"textSize",value->textSize);
+        lua_pushstring(state,Scene::UITextAlignmentName(value->textAlignment));lua_setfield(state,-2,"textAlignment");
+        const auto& tint=value->textColor;
+        PushRenderColor(state,{tint.x,tint.y,tint.z,tint.w},"textColor");
         PushUIPair(state,"size",value->size);PushUIPair(state,"pivot",value->pivot);PushRenderColor(state,{value->color.x,value->color.y,value->color.z,value->color.w});
         PushUIPair(state,"anchor",value->anchor);
         lua_pushboolean(state,value->flipX);lua_setfield(state,-2,"flipX");lua_pushboolean(state,value->flipY);lua_setfield(state,-2,"flipY");lua_pushinteger(state,value->sortOrder);lua_setfield(state,-2,"sortOrder");return 1;
@@ -468,9 +473,19 @@ private:
     }
     static int SceneSetSprite(lua_State* state){
         SceneWorld(state);if(lua_gettop(state)!=2)return luaL_error(state,"scene.set_sprite expects ID and settings table");
-        const auto id=SceneId(state);RenderKeys(state,2,{"enabled","asset","guid","size","pivot","anchor","color","flipX","flipY","sortOrder","buttonSceneGuid"});ScriptSceneCommands::SpriteInput value;
+        const auto id=SceneId(state);RenderKeys(state,2,{"enabled","asset","guid","size","pivot","anchor","color","flipX","flipY","sortOrder","buttonSceneGuid",
+            "text","textSize","textAlignment","textColor"});ScriptSceneCommands::SpriteInput value;
         value.asset=UIString(state,2,"asset");value.guid=UIString(state,2,"guid");value.sortOrder=UIOrder(state,2);
         value.buttonSceneGuid=UIString(state,2,"buttonSceneGuid");
+        value.text=UIString(state,2,"text");
+        if(!ValidScriptText(value.text,4096))return luaL_error(state,"UI text requires valid UTF-8 up to 4096 bytes");
+        RenderScalar(state,2,"textSize",value.textSize,8,256);
+        lua_pushliteral(state,"textAlignment");lua_rawget(state,2);
+        const bool hasAlignment=!lua_isnil(state,-1);lua_pop(state,1);
+        if(hasAlignment && !Scene::ParseUITextAlignment(UIString(state,2,"textAlignment"),value.textAlignment))
+            return luaL_error(state,"Unknown UI text alignment");
+        float textTint[]{1,1,1,1};RenderColor(state,2,textTint,4,"textColor");
+        value.textColor={textTint[0],textTint[1],textTint[2],textTint[3]};
         RenderBoolean(state,2,"enabled",value.enabled);RenderBoolean(state,2,"flipX",value.flipX);RenderBoolean(state,2,"flipY",value.flipY);
         UIPair(state,2,"size",value.size,0,16384);UIPair(state,2,"pivot",value.pivot,-16,16);float color[]{1,1,1,1};RenderColor(state,2,color,4);value.color={color[0],color[1],color[2],color[3]};
         UIPair(state,2,"anchor",value.anchor,0,1);

@@ -121,7 +121,7 @@ std::shared_ptr<const TextureLease> TextureManager::AcquireLoadedTexture(const s
 	const auto key = MakeTextureKey(opaque, {});
 	if (const auto found = textureLeases_.find(key.path); found != textureLeases_.end()) return found->second;
 	const auto& data = textureDatas.at(key);
-	auto lease = std::make_shared<const TextureLease>(TextureLease{key.path, data.srvIndex, data.metadata});
+	auto lease = std::make_shared<const TextureLease>(TextureLease{key.path, data.srvIndex, data.metadata, data.srvHandleGPU});
 	textureLeases_.emplace(key.path, lease);
 	return lease;
 }

@@ -85,7 +85,10 @@ inline RenderSpriteResult BuildRenderSpriteFrame(const EntityWorld& world,Base::
             if(hidden)continue;
             if(invalid){++candidate.skippedInvalidFrames;continue;}
             if(canvas==count){++candidate.withoutCanvas;continue;}
-            if(e.sprite.assetPath.empty() && e.sprite.assetGuid.empty()){++candidate.unassigned;continue;}
+            if(!e.sprite.HasImage() && !e.sprite.HasVisibleText()){
+                if(e.sprite.text.empty())++candidate.unassigned;
+                continue;
+            }
             if(e.sprite.size.x==0 || e.sprite.size.y==0 || e.sprite.color.w==0)continue;
             Matrix4x4 matrix{};
             for(size_t index=0;index<chain.size();++index){

@@ -25,6 +25,7 @@ namespace Engine::Base { class DirectXCommon; }
 namespace Engine::CameraSystem { class Camera; }
 namespace Engine::InputSystem { struct InputFrame; }
 namespace Engine::Scene {
+class UITextRasterizer;
 
 // Generic authored models plus painter-ordered screen overlay Canvas/Sprites.
 class EntityScene final : public BaseScene, public AnimationSystem::AnimatorStateReader {
@@ -90,6 +91,8 @@ private:
     void DrawParticles();
     void FinalizeParticles() noexcept;
     void SynchronizeSprites();
+    void SynchronizeUIText(const RenderSpriteFrame& frame);
+    void ReportSpriteError(const std::string& message);
     void DrawSprites();
     void SynchronizeCamera();
     Graphics3D::Object3D* ReadyController(EntityId id) const noexcept;
@@ -113,8 +116,25 @@ private:
     struct SpriteEntry {
         std::string asset,guid,authoredAsset;
         std::unique_ptr<Graphics2D::Sprite> object;
+        bool Matches(const SpriteComponent& sprite) const noexcept {
+            return object && guid==sprite.assetGuid && (!guid.empty() || authoredAsset==sprite.assetPath);
+        }
+    };
+    struct TextEntry {
+        std::string text;
+        Vector2 size{};
+        float textSize=0;
+        UITextAlignment alignment{};
+        std::unique_ptr<Graphics2D::Sprite> object;
+        bool Matches(const SpriteComponent& sprite) const noexcept {
+            return object && text==sprite.text && textSize==sprite.textSize &&
+                alignment==sprite.textAlignment && size.x==sprite.size.x && size.y==sprite.size.y;
+        }
     };
     std::unordered_map<EntityId,SpriteEntry> sprites_;
+    std::unordered_map<EntityId,TextEntry> texts_;
+    std::unique_ptr<UITextRasterizer> textRasterizer_;
+    size_t retiredTextTextures_=0;
     std::unordered_set<std::string> reportedSpriteErrors_;
     Base::ViewExtent uiOutputExtent_{};
     RenderSpriteFrame spriteFrame_;

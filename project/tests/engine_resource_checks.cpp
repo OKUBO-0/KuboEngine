@@ -2714,21 +2714,32 @@ public:
         } else {
             heard_ |= Access::ScriptAudio(*this).VoiceCount()>0;
             if (fixture_.Arrived(Access::Entities(*this))) {
-                if(button_)Require(frames_==24,"Editor activated the wrong button or accepted an incomplete click");
-                else Require(heard_,"Editor did not submit the trigger's WAV");
+                if(button_ && !renderedHud_){
+                    Require(frames_==24,"Editor activated the wrong button or accepted an incomplete click");
+                    return;
+                }
+                if(!button_)Require(heard_,"Editor did not submit the trigger's WAV");
                 std::string error;
                 Require(Access::Stop(*this,error),error);
                 stopped_=true;
-                std::cout<<(button_?"PASS: Editor Game viewport Button, cancellation, destination Lua and Stop snapshot\n":
+                std::cout<<(button_?"PASS: Editor 16:9 Japanese title and text-only HUD pixels, Button cancellation and Stop snapshot\n":
                     "PASS: Editor movement, Trigger WAV, destination Lua initialization and Stop snapshot\n");
             }
+        }
+    }
+    void Draw() override {
+        Game::Draw();
+        if(button_ && frames_==9)Require(fixture_.DrawnText(*dxCommon,*offscreenRenderManager,false),"Editor title label did not render");
+        if(button_ && fixture_.Arrived(Access::Entities(*this))){
+            Require(fixture_.DrawnText(*dxCommon,*offscreenRenderManager,true),"Editor HUD label did not render");
+            renderedHud_=true;
         }
     }
 private:
     RuntimeSceneTransitionFixture fixture_;
     std::string authored_;
     static inline int frames_=0;
-    bool button_=false;
+    bool button_=false,renderedHud_=false;
     bool heard_=false,stopped_=false;
 };
 

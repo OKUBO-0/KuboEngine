@@ -63,6 +63,20 @@ inline void DrawSpriteInspector(Scene::EntityWorld& world,Scene::EntityId id,con
     changed|=RenderInspectorCheckbox("Sprite Flip X",&value.flipX);
     changed|=RenderInspectorCheckbox("Sprite Flip Y",&value.flipY);
     changed|=ImGui::DragInt("Sprite Order",&value.sortOrder,1,-32768,32767);
+    std::array<char,4097> label{};
+    std::memcpy(label.data(),value.text.data(),(std::min)(value.text.size(),label.size()-1));
+    if(ImGui::InputTextMultiline("UI Text",label.data(),label.size(),ImVec2(0,60))){
+        value.text=label.data();changed=true;
+    }
+    ObserveUIInspector("UI Text");
+    if(!value.text.empty()){
+        changed|=ImGui::DragFloat("Text Size",&value.textSize,1,8,256,"%.0f",ImGuiSliderFlags_AlwaysClamp);
+        int alignment=static_cast<int>(value.textAlignment);
+        if(ImGui::Combo("Text Alignment",&alignment,"Left\0Center\0Right\0")){
+            value.textAlignment=static_cast<Scene::UITextAlignment>(alignment);changed=true;
+        }
+        changed|=ImGui::ColorEdit4("Text Tint",&value.textColor.x);
+    }
     ImGui::TextWrapped("Needs a Canvas on this Entity or an ancestor. Entity Transform sets the offset from the anchor, rotation and scale. Later Sprite order/ID draws on top within its Canvas group.");
     const auto* destination=registry.FindByGuid(value.buttonSceneGuid);
     const char* destinationLabel=value.buttonSceneGuid.empty()?"None":destination && destination->type==Assets::AssetType::Scene
@@ -84,7 +98,7 @@ inline void DrawSpriteInspector(Scene::EntityWorld& world,Scene::EntityId id,con
         }
         ImGui::EndCombo();
     }
-    if(ImGui::IsItemHovered())ImGui::SetTooltip("Load a Scene when the visible Sprite is clicked in Game.");
+    if(ImGui::IsItemHovered())ImGui::SetTooltip("Load a Scene when the visible Sprite or text is clicked in Game.");
     if(changed && !world.SetSprite(id,value))status="Sprite settings rejected: valid project-relative image/GUID and finite size/pivot/color/order required";
     if(RenderInspectorButton("Remove Sprite"))world.RemoveSprite(id);
 }

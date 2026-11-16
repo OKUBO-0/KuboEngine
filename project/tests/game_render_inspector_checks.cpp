@@ -22,10 +22,10 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,36> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,37> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
-    {"Button On Click"},{"Button Scene Choice"},
+    {"Button On Click"},{"Button Scene Choice"},{"UI Text"},
     {"Add Particle"},{"Remove Particle"},{"Particle Enabled"},{"Clear Particle Image"},{"Registered Particle Image"},{"Particle Texture Choice"},
     {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
     {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"},
@@ -353,6 +353,16 @@ public:
                 "Button Inspector did not assign a Scene GUID");
             Need(game.ApplyEditorHistory(false,error) && game.editorWorld_.Capture().dump()==savedWorld && !game.IsSceneDirty(),
                 "Button Scene assignment did not Undo in one step");
+            click("UI Text");
+            ImGui::GetIO().AddInputCharactersUTF8("ゲーム開始");
+            frame();
+            ImGui::ClearActiveID();
+            frame();
+            Need(game.editorWorld_.Find(id)->sprite.text=="ゲーム開始" && game.IsSceneDirty(),"Inspector lost the Japanese label");
+            Need(game.SaveSceneAs(root/"text.scene",error),error.c_str());
+            EntityWorld textScene;
+            Need(textScene.Load(root/"text.scene",error) && textScene.Find(id)->sprite.text=="ゲーム開始",
+                "Saved Scene lost the Japanese label");
             Need(game.GetEditorSelection()==std::vector<EntityId>{id} && Read(root/"entry.scene")==original && Read(root/"entry.kubo")==manifest && Read(image)==imageBytes && Read(Assets::AssetRegistry::MetadataPath(image))==metadata,"UI Inspector changed selection/source/identity files");
             game.editorWorld_.Find(id)->canvas.enabled=true;
             auto& layoutSprite=game.editorWorld_.Find(id)->sprite;

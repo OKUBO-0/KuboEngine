@@ -793,6 +793,7 @@
     <ClInclude Include="engine\editor\AssetModelThumbnail.h" />
     <ClInclude Include="engine\editor\AssetThumbnailCache.h" />
     <ClInclude Include="engine\scene\entity\ParticleComponents.h"><Filter>engine\scene</Filter></ClInclude>
+    <ClInclude Include="engine\scene\entity\UITextRaster.h"><Filter>engine\scene</Filter></ClInclude>
     <ClInclude Include="engine\scene\entity\RenderParticleFrame.h"><Filter>engine\scene</Filter></ClInclude>
   </ItemGroup>
 </Project>
