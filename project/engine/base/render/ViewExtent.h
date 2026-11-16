@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
-#include "Vector2.h"
+#include "../../math/types/Vector2.h"
 
 namespace Engine::Base {
 struct ViewExtent {
