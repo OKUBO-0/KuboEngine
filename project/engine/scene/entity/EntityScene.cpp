@@ -56,15 +56,25 @@ void EntityScene::Initialize()
 }
 void EntityScene::Finalize()
 {
-    FinalizeParticles();
     auto* manager = CameraSystem::CameraManager::GetInstance();
     manager->DetachCamera("__entity_scene_editor_camera", registeredEditorCamera_, previousCameraName_);
     registeredEditorCamera_ = nullptr;
     manager->DetachCamera("__entity_scene_camera", authoredCamera_.get(), previousCameraName_);
     authoredCamera_.reset();
+    ResetWorldRenderState();
+}
+void EntityScene::ResetWorldRenderState()
+{
+    FinalizeParticles();
     if (!models_.empty() || !sprites_.empty()) graphics_.WaitForAllFrames();
     models_.clear();
     sprites_.clear();spriteFrame_.items.clear();
+    reportedModelErrors_.clear();
+    reportedSpriteErrors_.clear();
+    lightingFrame_ = {};
+    lightingResult_ = RenderLightResult::Success;
+    spriteResult_ = RenderSpriteResult::Success;
+    reportedSkippedLights_ = 0;
     Graphics3D::ModelManager::GetInstance()->CollectUnusedModels();
 }
 void EntityScene::Update()

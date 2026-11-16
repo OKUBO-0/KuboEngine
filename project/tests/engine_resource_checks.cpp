@@ -3,6 +3,7 @@
 #endif
 #include "Framework.h"
 #include "application_check_mode.h"
+#include "runtime_scene_transition_fixture.h"
 #include "animator_host_fixture.h"
 #include "runtime_prefab_host_fixture.h"
 #include "startup_close_editor_fixture.h"
@@ -178,7 +179,7 @@ public:
         if(!game.entityHistory_.Record(before,game.editorWorld_,selection,selection,error))return false;
         game.entityHistory_.Commit();game.documentState_.Observe(game.editorWorld_);return true;
     }
-    static bool Stop(Game& game,std::string& error){return game.worldPlayback_.Stop(game.editorWorld_,game.scriptRuntime_,game.physicsWorld_,error);}
+    static bool Stop(Game& game,std::string& error){return game.StopEditorPlayback(error);}
 };
 }
 #endif
@@ -2666,6 +2667,47 @@ public:
     void Verify(){Require(finished_ && retired_,"Recovery native scenario incomplete");fixture_.VerifyGpu();}
 };
 
+class SceneTransitionEditorChecks final : public Engine::Scene::Game {
+    using Access=Engine::Scene::GameApplicationChecksAccess;
+public:
+    void Initialize() override {
+        fixture_.Prepare();
+        SetProjectRoot(fixture_.root);
+        SetProjectFile(fixture_.root/"entry.kubo");
+        SetProjectAssetRoot(fixture_.root/"Assets");
+        SetEditorMode(true);
+        std::string error;
+        Require(ConfigureStartupScene(fixture_.root/"Assets/entry.scene",error),error);
+        Game::Initialize();
+        Access::HideAssetBrowser(*this);
+        authored_=Access::World(*this);
+        Require(PlayEditorScene(error),error);
+    }
+    void Update() override {
+        Game::Update();
+        Require(++frames_<180,"Editor Scene transition timed out");
+        if (stopped_) {
+            Require(Access::World(*this)==authored_ && !IsSceneDirty() && Access::ScriptAudio(*this).VoiceCount()==0,
+                "Stop after Scene transition changed the authored world or left audio");
+            endRequest_=true;
+        } else {
+            heard_ |= Access::ScriptAudio(*this).VoiceCount()>0;
+            if (fixture_.Arrived(Access::Entities(*this))) {
+                Require(heard_,"Editor did not submit the trigger's WAV");
+                std::string error;
+                Require(Access::Stop(*this,error),error);
+                stopped_=true;
+                std::cout<<"PASS: Editor movement, Trigger WAV, destination Lua initialization and Stop snapshot\n";
+            }
+        }
+    }
+private:
+    RuntimeSceneTransitionFixture fixture_;
+    std::string authored_;
+    int frames_=0;
+    bool heard_=false,stopped_=false;
+};
+
 class FixedEditorHooksChecks final : public Engine::Scene::Game {
     using Access=Engine::Scene::GameApplicationChecksAccess;
 public:
@@ -2891,7 +2933,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     if(mode=="--particles"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunParticleGroupChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunAuthoredLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--prefab"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<PrefabEditorChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
-    if(!mode.empty() && mode!="--controller-owner-retry" && mode!="--controller-recovery" && mode!="--controller-save-as" && mode!="--controller-save" && mode!="--startup-close" && mode!="--animator" && mode!="--gizmo-input" && mode!="--shaders" && mode!="--render" && mode!="--generic-views" && mode!="--mcp-export-guard" && mode!="--fixed-hooks" && mode!="--git-index" && mode!="--shutdown") {std::cerr<<"Unknown Editor runner mode\n";return 1;}
+    if(!mode.empty() && mode!="--controller-owner-retry" && mode!="--controller-recovery" && mode!="--controller-save-as" && mode!="--controller-save" && mode!="--startup-close" && mode!="--animator" && mode!="--gizmo-input" && mode!="--shaders" && mode!="--render" && mode!="--generic-views" && mode!="--mcp-export-guard" && mode!="--fixed-hooks" && mode!="--scene-transition" && mode!="--git-index" && mode!="--shutdown") {std::cerr<<"Unknown Editor runner mode\n";return 1;}
     std::cout<<"RUNNER_MODE="<<mode<<'\n';
     if(mode=="--controller-owner-retry"){
         try{auto checks=std::make_unique<ControllerOwnerRetryEditorChecks>();checks->Run();checks->Verify();return 0;}
@@ -2925,6 +2967,11 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     }
     if(mode=="--git-index") {
         try{auto checks=std::make_unique<GitEditorIndexChecks>();checks->Run();checks->Verify();std::cout<<"PASS: actual Editor async history + staged/unstaged diff + Stage/Unstage/Commit, read/write job exclusion and stale refusal, authored World/selection/disk isolation and dirty read admission (not physical buttons)\n";return 0;}
+        catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
+    }
+    if(mode=="--scene-transition"){
+        std::cout<<"RUNNER_MODE="<<mode<<'\n';
+        try{auto checks=std::make_unique<SceneTransitionEditorChecks>();checks->Run();return 0;}
         catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
     }
     if(mode=="--fixed-hooks") {

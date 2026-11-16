@@ -1,5 +1,6 @@
 #include "RuntimeGame.h"
 #include "engine/scene/entity/EntityScene.h"
+#include "engine/scene/entity/RuntimeSceneTransition.h"
 #include "engine/script/ScriptReference.h"
 #include "SceneFactory.h"
 #include "SceneManager.h"
@@ -39,6 +40,7 @@ void RuntimeGame::Initialize()
     editorToolsEnabled_ = false;
     Base::Framework::Initialize();
     scripts_.SetAudioRequestsEnabled(true);
+    scripts_.SetSceneTransitionsEnabled(generic_ && !assetRoot_.empty());
     winApp->SetCloseRequestDeferred(false);
     auto factory = std::make_unique<Scene::SceneFactory>(GetProjectRoot());
     if (!generic_ && !scenePath_.empty()) factory->SetGameplayScenePath(scenePath_);
@@ -61,6 +63,24 @@ void RuntimeGame::Update()
     Scripting::ScriptRuntime::AnimatorReadScope animatorRead(scripts_,dynamic_cast<Scene::EntityScene*>(Scene::SceneManager::GetInstance()->GetCurrentScene()));
     scripts_.SetAnimatorRequestsEnabled(generic_ && dynamic_cast<Scene::EntityScene*>(Scene::SceneManager::GetInstance()->GetCurrentScene()));
     if (generic_ && frameDeltaTime_ > 0) {
+        if (auto* scene=dynamic_cast<Scene::EntityScene*>(Scene::SceneManager::GetInstance()->GetCurrentScene())) {
+            if (const auto request=scripts_.TakeReadySceneTransition(frameDeltaTime_)) {
+                Scene::EntityWorld next;
+                std::filesystem::path destination;
+                std::string error;
+                if (Scene::LoadRuntimeScene(*request,GetProjectRoot(),assetRoot_,assets_,next,destination,error)) {
+                    scripts_.Shutdown(world_);
+                    scriptAudio_.Clear();
+                    entityAudio_.Clear();
+                    physics_.ResetSimulation();
+                    scene->ResetWorldRenderState();
+                    world_.Swap(next);
+                    scenePath_.swap(destination);
+                    diagnosticLuaErrors_.clear();
+                    lastScriptLoadError_.clear();
+                } else Base::Logger::Log("Scene transition failed: "+error,Base::Logger::Level::Error);
+            }
+        }
         scripts_.SetInputFrame(InputSystem::Input::GetInstance()->CaptureFrame());
         std::string error;
         Scripting::LoadScriptWorldAssets(scripts_, world_, GetProjectRoot(), assets_, error);

@@ -14,6 +14,7 @@
 #include "engine/editor/PrefabEntityRestoration.h"
 #include "GamePlayScene.h"
 #include "../entity/EntityScene.h"
+#include "../entity/RuntimeSceneTransition.h"
 #include "engine/assets/ModelReference.h"
 #include "engine/assets/AssetSceneDependencies.h"
 #include "engine/script/ScriptReference.h"
@@ -203,6 +204,33 @@ void Game::Update()
 #endif
 	Engine::Scripting::ScriptRuntime::AnimatorReadScope animatorRead(scriptRuntime_,dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()));
 	const float genericDelta = editorMode_ ? (prefabRecoveryBlocked_?0.0f:worldPlayback_.SimulationDelta(frameDeltaTime_)) : frameDeltaTime_;
+	scriptRuntime_.SetSceneTransitionsEnabled(genericSceneSelected_ && !projectAssetRoot_.empty() &&
+		(!editorMode_ || worldPlayback_.GetState()!=WorldPlayback::State::Editing));
+	if (genericDelta>0 && !documentState_.HasPendingAction()) {
+		if (auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene())) {
+			if (const auto request=scriptRuntime_.TakeReadySceneTransition(genericDelta)) {
+				EntityWorld next;
+				std::filesystem::path destination;
+				std::string error;
+				if (LoadRuntimeScene(*request,GetProjectRoot(),projectAssetRoot_,projectAssets_,next,destination,error)) {
+					scriptRuntime_.Shutdown(editorWorld_);
+					scriptAudio_.Clear();
+					entityAudio_.Clear();
+					physicsWorld_.ResetSimulation();
+					scene->ResetWorldRenderState();
+					editorWorld_.Swap(next);
+					runtimeSceneChanged_ = true;
+					selectedEditorEntity_ = 0;
+					editorSelection_.Replace(0);
+					editorPickPending_ = false;
+					genericWorldStatus_ = "Playing Scene: " + Base::PathToUtf8(destination.filename());
+				} else {
+					genericWorldStatus_ = "Scene transition failed: " + error;
+					Base::Logger::Log(genericWorldStatus_,Base::Logger::Level::Error);
+				}
+			}
+		}
+	}
 	scriptRuntime_.SetAudioRequestsEnabled(genericWorldReady_ && (!editorMode_ || (!prefabRecoveryBlocked_ && worldPlayback_.GetState()!=WorldPlayback::State::Editing)));
 	scriptRuntime_.SetAnimatorRequestsEnabled(genericWorldReady_ && dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()) && (!editorMode_ || (!prefabRecoveryBlocked_ && worldPlayback_.GetState()!=WorldPlayback::State::Editing)));
 	if (genericWorldReady_ && genericDelta > 0.0f) {
@@ -2374,7 +2402,7 @@ void Game::DrawPrefabRecoveryWindow()
 		ImGui::TextWrapped("Pending source changes block authoring, saving, playback, asset writes, MCP edits and export. Inspection never deletes data. Closing this window does not release the guard.");
 		if(ImGui::Button("Refresh pending inventory")){std::string error;RefreshPrefabRecovery(error);}
 		if(worldPlayback_.GetState()!=WorldPlayback::State::Editing && ImGui::Button("Stop playback for recovery")){
-			std::string error;if(worldPlayback_.Stop(editorWorld_,scriptRuntime_,physicsWorld_,error)){
+			std::string error;if(StopEditorPlayback(error)){
 				selectedEditorEntity_=editorWorld_.Find(authoredSelection_)?authoredSelection_:0;editorSelection_.Replace(selectedEditorEntity_);
 				if(auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))scene->ResetAnimations();
 			}else prefabRecoveryStatus_=error;
@@ -2613,9 +2641,17 @@ bool Game::CreateLuaScriptAsset(const std::filesystem::path& path,std::string& e
 		if (std::filesystem::exists(root / ".kubo/asset-move.pending.json") ||
 			std::filesystem::exists(Assets::AssetRegistry::MetadataPath(destination)))
 			throw std::runtime_error("Recover the pending asset move or choose a name without existing metadata");
-		constexpr char source[] = R"(-- Attach this script to an Entity involved in a trigger overlap.
+		constexpr char source[] = R"(-- Attach to an Entity with an Is Trigger collider. Load Script Asset
+-- to edit the properties in the Inspector. Scene names are relative to Assets.
+properties = { visitor = "", destination_scene = "", sound = "", delay = 0.5 }
+
 function on_trigger_enter(entity, other_id)
-    -- Called once when the two colliders start overlapping.
+    local visitor = entity:property("visitor")
+    if visitor ~= "" and scene.find(visitor) ~= other_id then return end
+    local destination = entity:property("destination_scene")
+    if destination == "" or not scene.change_scene(destination, entity:property("delay")) then return end
+    local sound = entity:property("sound") -- Project-relative WAV path.
+    if sound ~= "" then audio.play(sound, false, 1) end
 end
 
 function on_trigger_exit(entity, other_id)
@@ -2801,7 +2837,7 @@ bool Game::RequestOpenScene(const std::filesystem::path& path,std::string& error
 		std::string relative;
 		if(!Engine::Editor::SelectProjectStartupScene(project,path,relative,error)) return false;
 		if(worldPlayback_.GetState()!=WorldPlayback::State::Editing) {
-			if(!worldPlayback_.Stop(editorWorld_,scriptRuntime_,physicsWorld_,error)) return false;
+			if(!StopEditorPlayback(error)) return false;
 			selectedEditorEntity_=editorWorld_.Find(authoredSelection_) ? authoredSelection_ : 0;
 			if(auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene())) scene->ResetAnimations();
 		}
@@ -2979,7 +3015,7 @@ void Game::RequestDocumentAction(Engine::Editor::EntityDocumentState::Action act
 	}
 	if (worldPlayback_.GetState() != WorldPlayback::State::Editing) {
 		std::string error;
-		if (!worldPlayback_.Stop(editorWorld_, scriptRuntime_, physicsWorld_, error)) { genericWorldStatus_ = error; return; }
+		if (!StopEditorPlayback(error)) { genericWorldStatus_ = error; return; }
 		selectedEditorEntity_ = editorWorld_.Find(authoredSelection_) ? authoredSelection_ : 0;
 		if (auto* scene = dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene())) scene->ResetAnimations();
 	}
@@ -3465,6 +3501,17 @@ bool Game::PlayEditorScene(std::string& error)
 		entityHistory_.Swap(settled);if(starting)authoredSelection_=selectedEditorEntity_;
 		error.clear();return true;
 	}catch(const std::exception& exception){error=exception.what();genericWorldStatus_="Play rejected: "+error;return false;}
+}
+
+bool Game::StopEditorPlayback(std::string& error)
+{
+	if (!worldPlayback_.Stop(editorWorld_,scriptRuntime_,physicsWorld_,error)) return false;
+	if (runtimeSceneChanged_) {
+		if (auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))
+			scene->ResetWorldRenderState();
+		runtimeSceneChanged_ = false;
+	}
+	return true;
 }
 
 void Game::SynchronizeGenericPlayer()

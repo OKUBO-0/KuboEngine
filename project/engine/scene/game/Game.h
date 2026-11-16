@@ -233,6 +233,7 @@ private:
 	void DrawAddComponentMenu(const EntityRecord& entity);
 	void DrawInspectorAssetDropTarget(const EntityRecord& entity);
 	bool CreateLuaScriptAsset(const std::filesystem::path& path,std::string& error);
+	bool StopEditorPlayback(std::string& error);
 	void DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewport);
 	bool DrawSceneAssetDropTarget(const Engine::Editor::DebugSceneViewportState& viewport);
 	bool PlaceSceneAsset(const std::string& guid,Vector3 position,std::string& error);
@@ -305,6 +306,7 @@ private:
 	Engine::AudioSystem::ScriptAudioHost scriptAudio_;
 	Engine::AudioSystem::EntityAudioHost entityAudio_;
 	Engine::Scene::WorldPlayback worldPlayback_;
+	bool runtimeSceneChanged_ = false;
 	Engine::Editor::EntityHistory entityHistory_;
 	Engine::Editor::EntityDocumentState documentState_;
 	Engine::Scene::EntityId authoredSelection_ = 0;

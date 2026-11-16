@@ -45,7 +45,7 @@ class LuaInstance final {
         StateLease(const StateLease&)=delete;
     };
 public:
-    LuaInstance(const std::string& source,const std::string& name,std::shared_ptr<const InputSystem::InputFrame> input,std::shared_ptr<ScriptAudioRequests> audio,std::shared_ptr<LuaResourceBudget> budget,std::shared_ptr<const ScriptSceneView> scene,std::shared_ptr<ScriptAnimatorRequests> animator) : lease_(std::move(budget)),input_(std::move(input)),audio_(std::move(audio)),scene_(std::move(scene)),animator_(std::move(animator)) {
+    LuaInstance(const std::string& source,const std::string& name,std::shared_ptr<const InputSystem::InputFrame> input,std::shared_ptr<ScriptAudioRequests> audio,std::shared_ptr<LuaResourceBudget> budget,std::shared_ptr<const ScriptSceneView> scene,std::shared_ptr<ScriptAnimatorRequests> animator,std::shared_ptr<ScriptSceneTransitions> transitions) : lease_(std::move(budget)),input_(std::move(input)),audio_(std::move(audio)),scene_(std::move(scene)),animator_(std::move(animator)),transitions_(std::move(transitions)) {
         state_=lua_newstate(Allocate,this);
         if(!state_) throw LuaScriptError("Cannot allocate Lua state");
         *static_cast<LuaInstance**>(lua_getextraspace(state_))=this;
@@ -70,6 +70,8 @@ public:
         audioOwner_->entity=entity.id;
         audioBatch_.clear();
         animatorBatch_.Clear();
+        transition_.reset();
+        invokingDestroy_ = hook==2;
         current_=&candidate;
         sceneCommands_.Begin(scene_.get(),candidate);
         try {
@@ -98,7 +100,9 @@ public:
             // Runtime passes Lua a detached hook record. Direct factory hosts
             // may still pass a live record, now invalid after World replacement.
             if(!replacedWorld || !borrowedLive)CommitSelf(entity,candidate);
-        } catch(...) { audioOwner_->alive=false;audioBatch_.clear();animatorBatch_.Clear();sceneCommands_.Clear();current_=nullptr; lua_settop(state_,0); throw; }
+            if (transition_) transitions_->Publish(std::move(*transition_));
+            transition_.reset();
+        } catch(...) { transition_.reset();audioOwner_->alive=false;audioBatch_.clear();animatorBatch_.Clear();sceneCommands_.Clear();current_=nullptr; lua_settop(state_,0); throw; }
     }
 private:
     static void CommitSelf(Scene::EntityRecord& entity,const Scene::EntityRecord& candidate) noexcept {
@@ -654,6 +658,25 @@ private:
         SceneWorld(state);const auto id=SceneId(state);const auto result=Self(state).sceneCommands_.RemoveAnimator(id);
         SceneStructuralError(state,result);lua_pushboolean(state,result==ScriptSceneCommands::Result::Success);return 1;
     }
+    static int SceneChange(lua_State* state) {
+        SceneWorld(state);
+        luaL_checktype(state,1,LUA_TSTRING);
+        size_t length=0;
+        const char* path=lua_tolstring(state,1,&length);
+        const auto delay=luaL_optnumber(state,2,0);
+        auto& self=Self(state);
+        const std::string_view destination(path,length);
+        const bool allowed=self.current_ && !self.invokingDestroy_ && self.transitions_ &&
+            self.transitions_->Available() && !self.transition_ &&
+            std::isfinite(delay) && delay>=0 && delay<=10 &&
+            !destination.empty() && ValidScriptText(destination,4096);
+        if (allowed) {
+            try {self.transition_.emplace(ScriptSceneTransition{std::string(destination),delay});}
+            catch (...) {return luaL_error(state,"Cannot stage scene transition");}
+        }
+        lua_pushboolean(state,allowed);
+        return 1;
+    }
     static int SceneSpawn(lua_State* state){
         SceneWorld(state);luaL_checktype(state,1,LUA_TSTRING);
         size_t length=0;const char* name=lua_tolstring(state,1,&length);
@@ -874,6 +897,7 @@ private:
         lua_pushcfunction(state,SceneSpawn);lua_setfield(state,-2,"spawn");
         lua_pushcfunction(state,SceneSpawnModel);lua_setfield(state,-2,"spawn_model");
         lua_pushcfunction(state,SceneSpawnPrefab);lua_setfield(state,-2,"spawn_prefab");
+        lua_pushcfunction(state,SceneChange);lua_setfield(state,-2,"change_scene");
         lua_pushcfunction(state,SceneClone);lua_setfield(state,-2,"clone");
         lua_pushboolean(state,false);lua_pushcclosure(state,SceneDestroy,1);lua_setfield(state,-2,"destroy");
         lua_pushboolean(state,true);lua_pushcclosure(state,SceneDestroy,1);lua_setfield(state,-2,"destroy_subtree");
@@ -897,6 +921,9 @@ private:
     std::shared_ptr<ScriptAnimatorRequests> animator_;
     ScriptAnimatorBatch animatorBatch_;
     std::shared_ptr<const ScriptSceneView> scene_;
+    std::shared_ptr<ScriptSceneTransitions> transitions_;
+    std::optional<ScriptSceneTransition> transition_;
+    bool invokingDestroy_ = false;
     std::shared_ptr<ScriptAudioOwner> audioOwner_=std::make_shared<ScriptAudioOwner>();
     std::vector<ScriptAudioRequest> audioBatch_;
     ScriptSceneCommands sceneCommands_;
@@ -907,15 +934,15 @@ private:
         "on_create","on_update","on_destroy","on_fixed_update","on_trigger_enter","on_trigger_exit"};
 };
 }
-std::function<ScriptCallbacks()> CreateLuaScriptFactory(const std::string& source,const std::string& name,std::shared_ptr<const InputSystem::InputFrame> input,ScriptProperties& defaults,std::shared_ptr<ScriptAudioRequests> audio,std::shared_ptr<LuaResourceBudget> budget,std::shared_ptr<const ScriptSceneView> scene,std::shared_ptr<ScriptAnimatorRequests> animator) {
+std::function<ScriptCallbacks()> CreateLuaScriptFactory(const std::string& source,const std::string& name,std::shared_ptr<const InputSystem::InputFrame> input,ScriptProperties& defaults,std::shared_ptr<ScriptAudioRequests> audio,std::shared_ptr<LuaResourceBudget> budget,std::shared_ptr<const ScriptSceneView> scene,std::shared_ptr<ScriptAnimatorRequests> animator,std::shared_ptr<ScriptSceneTransitions> transitions) {
     if(!budget)budget=std::make_shared<LuaResourceBudget>();
     auto retained=std::make_shared<LuaSourceLease>(source,budget);
     struct Seed { std::shared_ptr<LuaInstance> value; };
-    auto seed=std::make_shared<Seed>();seed->value=std::make_shared<LuaInstance>(retained->Bytes(),name,input,audio,budget,scene,animator);
+    auto seed=std::make_shared<Seed>();seed->value=std::make_shared<LuaInstance>(retained->Bytes(),name,input,audio,budget,scene,animator,transitions);
     defaults=seed->value->Defaults();
-    return [seed,retained,name,input,defaults,audio,budget,scene,animator]() {
+    return [seed,retained,name,input,defaults,audio,budget,scene,animator,transitions]() {
         auto state=std::exchange(seed->value,nullptr);
-        if(!state) state=std::make_shared<LuaInstance>(retained->Bytes(),name,input,audio,budget,scene,animator);
+        if(!state) state=std::make_shared<LuaInstance>(retained->Bytes(),name,input,audio,budget,scene,animator,transitions);
         state->SetDefaults(defaults);
         ScriptCallbacks callbacks;
         if(state->HasHook(0))callbacks.onCreate=[state](Scene::EntityRecord& entity){state->Call(0,entity);};

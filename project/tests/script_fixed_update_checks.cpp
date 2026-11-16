@@ -1,5 +1,6 @@
 #include "engine/script/ScriptRuntime.h"
 #include "engine/physics/PhysicsWorld.h"
+#include "engine/scene/entity/RuntimeSceneTransition.h"
 #include <Windows.h>
 #include <filesystem>
 #include <fstream>
@@ -92,6 +93,42 @@ end
         sensorFrame(0.1f);
         Require(sensorWorld.Find(output)->transform.position.x==3,"A new simulation retained stale trigger pairs");
         sensorScripts.Shutdown(sensorWorld);
+        Write(fixture/"bad-transition.lua","function on_update(e,dt) assert(scene.change_scene('ignored.scene')); error('abort transition') end");
+        Write(fixture/"transition.lua","local sent=false; function on_update(e,dt) if not sent then sent=true; assert(scene.change_scene('移動先.scene',0.25)); assert(not scene.change_scene('duplicate.scene')) end end");
+        ScriptRuntime transitionScripts;
+        EntityWorld transitionWorld;
+        const auto transitionOwner=transitionWorld.CreateEntity("Transition owner");
+        transitionWorld.SetScript(transitionOwner,"fault");
+        transitionScripts.SetSceneTransitionsEnabled(true);
+        Require(transitionScripts.LoadResolvedAsset("fault",fixture/"bad-transition.lua",error) &&
+            transitionScripts.LoadResolvedAsset("route",fixture/"transition.lua",error),error.c_str());
+        transitionScripts.Update(transitionWorld,0.1f);
+        Require(!transitionScripts.TakeReadySceneTransition(1),"Faulted hook published a transition");
+        transitionWorld.SetScript(transitionOwner,"route");
+        transitionScripts.Update(transitionWorld,0.1f);
+        Require(!transitionScripts.TakeReadySceneTransition(0) && !transitionScripts.TakeReadySceneTransition(0.125f),
+            "Paused time or partial delay consumed a pending scene");
+        const auto route=transitionScripts.TakeReadySceneTransition(0.125f);
+        Require(route && route->destination=="移動先.scene" && !transitionScripts.TakeReadySceneTransition(1),
+            "Delayed transition was lost or consumed more than once");
+        const auto assetRoot=fixture/"Assets";
+        std::filesystem::create_directory(assetRoot);
+        EntityWorld saved;
+        saved.CreateEntity("Destination");
+        Require(saved.Save(assetRoot/L"移動先.scene",error),error.c_str());
+        Engine::Assets::AssetRegistry registry;
+        Require(registry.Scan(assetRoot,error),error.c_str());
+        EntityWorld next;
+        std::filesystem::path path;
+        Require(Engine::Scene::LoadRuntimeScene(*route,fixture,assetRoot,registry,next,path,error) &&
+            next.GetEntities().front().name=="Destination","Destination scene did not load");
+        const auto old=next.Capture().dump();
+        Require(!Engine::Scene::LoadRuntimeScene({"../outside.scene",0},fixture,assetRoot,registry,next,path,error) &&
+            next.Capture().dump()==old,"Escaping scene path changed the loaded world");
+        const auto* asset=registry.FindByPath(path);
+        Require(asset && Engine::Scene::LoadRuntimeScene({"guid:"+asset->guid,0},fixture,assetRoot,registry,next,path,error),
+            "Scene GUID failed to resolve");
+        transitionScripts.Shutdown(transitionWorld);
         std::error_code cleanup;std::filesystem::remove_all(fixture,cleanup);std::cout<<"PASS: fixed-only Lua/native/legacy phases, partition equivalence, lifecycle, shared variable/fixed budget, fault/audio rollback and native peer progress\n";return 0;
     }catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<"; retained fixture "<<fixture<<'\n';return 1;}
 }

@@ -90,7 +90,7 @@ void Game::ConfigureEditorMenuCommands(Editor::DebugEditorMenuConfig& menu)
     if (state == State::Playing) menu.onPause = [this] { worldPlayback_.Pause(); };
     if (state != State::Editing) menu.onStop = [this] {
         std::string error;
-        if (!worldPlayback_.Stop(editorWorld_,scriptRuntime_,physicsWorld_,error)) {
+        if (!StopEditorPlayback(error)) {
             if (!error.empty()) genericWorldStatus_ = error;
             return;
         }

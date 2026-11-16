@@ -14,6 +14,7 @@
 #include "../input/FixedInputBuffer.h"
 #include "ScriptAudioRequests.h"
 #include "ScriptAnimatorRequests.h"
+#include "ScriptSceneTransition.h"
 #include "LuaResourceBudget.h"
 #include "ScriptSceneView.h"
 #include "ScriptAssetView.h"
@@ -88,6 +89,8 @@ public:
     void ResetInput() noexcept { inputFrame_->Reset();fixedInput_.Reset(); }
     InputSystem::FixedInputUsage GetFixedInputUsage() const noexcept {return fixedInput_.Usage();}
     void SetAudioRequestsEnabled(bool enabled) { audioRequests_->SetEnabled(enabled); }
+    void SetSceneTransitionsEnabled(bool enabled) {sceneTransitions_->SetEnabled(enabled);}
+    auto TakeReadySceneTransition(float seconds) {return sceneTransitions_->TakeReady(seconds);}
     std::vector<ScriptAudioRequest> TakeAudioRequests() { return audioRequests_->Take(); }
     void SetAnimatorRequestsEnabled(bool enabled) noexcept {animatorRequests_->SetEnabled(enabled);}
     ScriptAnimatorRequests::Pending TakeAnimatorRequests() noexcept {return animatorRequests_->Take();}
@@ -138,6 +141,7 @@ private:
     InputSystem::FixedInputBuffer fixedInput_;
     std::shared_ptr<ScriptAudioRequests> audioRequests_ = std::make_shared<ScriptAudioRequests>();
     std::shared_ptr<ScriptAnimatorRequests> animatorRequests_ = std::make_shared<ScriptAnimatorRequests>();
+    std::shared_ptr<ScriptSceneTransitions> sceneTransitions_ = std::make_shared<ScriptSceneTransitions>();
     std::shared_ptr<LuaResourceBudget> luaBudget_ = std::make_shared<LuaResourceBudget>();
     std::shared_ptr<ScriptSceneView> sceneView_ = std::make_shared<ScriptSceneView>();
     const AnimationSystem::AnimatorStateReader* animatorReader_=nullptr;

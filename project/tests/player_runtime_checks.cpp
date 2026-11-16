@@ -3,6 +3,7 @@
 #endif
 #include "engine/app/RuntimeGame.h"
 #include "application_check_mode.h"
+#include "runtime_scene_transition_fixture.h"
 #include "animator_host_fixture.h"
 #include "runtime_prefab_host_fixture.h"
 #include "player_lighting_fixture.h"
@@ -33,6 +34,32 @@
 #endif
 namespace {
 void Require(bool condition, const char* why) { if (!condition) throw std::runtime_error(why); }
+class SceneTransitionPlayerChecks final : public Engine::App::RuntimeGame {
+public:
+    void Initialize() override {
+        fixture_.Prepare();
+        SetProjectRoot(fixture_.root);
+        SetProjectFile(fixture_.root/"entry.kubo");
+        SetProjectAssetRoot(fixture_.root/"Assets");
+        std::string error;
+        Require(ConfigureStartupScene(fixture_.root/"Assets/entry.scene",error),error.c_str());
+        RuntimeGame::Initialize();
+    }
+    void Update() override {
+        RuntimeGame::Update();
+        Require(++frames_<180,"Player Scene transition timed out");
+        heard_ |= GetScriptAudioHost().VoiceCount()>0;
+        arrived_=fixture_.Arrived(GetWorld());
+        if (arrived_) Require(heard_ && GetScriptAudioHost().VoiceCount()==0,
+            "Player transition did not submit the WAV or did not retire the previous scene's audio");
+    }
+    bool IsEndRequest() const override {return arrived_ || RuntimeGame::IsEndRequest();}
+    bool Arrived() const {return arrived_;}
+private:
+    RuntimeSceneTransitionFixture fixture_;
+    int frames_=0;
+    bool heard_=false,arrived_=false;
+};
 class AnimatorPlayerChecks final : public Engine::App::RuntimeGame {
 public:
     void Initialize() override {
@@ -146,6 +173,12 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR arguments,int) {
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--ui"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerSpriteChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lua-ui"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerLuaUIChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
+    if(mode=="--scene-transition"){
+        std::cout<<"RUNNER_MODE="<<mode<<'\n';
+        try{SceneTransitionPlayerChecks checks;checks.Run();Require(checks.Arrived(),"Player ended before the transition");
+            std::cout<<"PASS: independent Player movement, Trigger WAV and destination Lua initialization\n";return 0;}
+        catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
+    }
     if(mode=="--prefab"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<PrefabPlayerChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(!mode.empty() && mode!="--animator" && mode!="--generic" && mode!="--lua" && mode!="--lua-failure" && mode!="--lua-input" && mode!="--lua-properties") {std::cerr<<"Unknown Player runner mode\n";return 1;}
     std::cout<<"RUNNER_MODE="<<mode<<'\n';

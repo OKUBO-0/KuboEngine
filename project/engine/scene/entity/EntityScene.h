@@ -52,6 +52,7 @@ public:
     // Non-owning transient editor view; caller must outlive the scene/clear it.
     void SetEditorCamera(CameraSystem::Camera* camera) { editorCamera_ = camera; }
     void ResetAnimations();
+    void ResetWorldRenderState();
     bool ControlAnimator(EntityId id, AnimationSystem::AnimatorCommand command);
     // Explicit source admission; repair failed initial/nonready owners privately.
     // Reset clocks/defaults, retain existing Pause intent and authored World.

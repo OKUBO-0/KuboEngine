@@ -21,6 +21,8 @@ $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-input-foc
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-endurance'}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-toolbar'}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--scene-asset-placement'}
+$applicationCases+=@{exe='EngineResourceChecks.exe';argument='--scene-transition'}
+$applicationCases+=@{exe='PlayerRuntimeChecks.exe';argument='--scene-transition'}
 $applicationIndex=0
 foreach($case in $applicationCases) {
     $applicationIndex++

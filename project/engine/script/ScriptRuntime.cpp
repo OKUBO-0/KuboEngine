@@ -124,7 +124,7 @@ bool ScriptRuntime::LoadResolvedAsset(const std::string& assetPath, const std::f
         for(auto& character:extension) if(character>=L'A' && character<=L'Z') character+=L'a'-L'A';
         if (extension == L".lua") {
             ScriptProperties defaults;
-            auto factory=CreateLuaScriptFactory(bytes,assetPath,inputFrame_,defaults,audioRequests_,luaBudget_,sceneView_,animatorRequests_);
+            auto factory=CreateLuaScriptFactory(bytes,assetPath,inputFrame_,defaults,audioRequests_,luaBudget_,sceneView_,animatorRequests_,sceneTransitions_);
             scripts_[assetPath]={std::move(factory),nextRevision_++,std::move(defaults),true};
             failedLoads_.erase(assetPath);
             error.clear();return true;
@@ -216,6 +216,7 @@ void ScriptRuntime::Unregister(const std::string& assetPath)
 
 void ScriptRuntime::Clear()
 {
+    sceneTransitions_->SetEnabled(false);
     audioRequests_->SetEnabled(false);
     animatorRequests_->SetEnabled(false);
     ResetInput();
@@ -396,6 +397,7 @@ void ScriptRuntime::Shutdown(Scene::EntityWorld& world)
     ResetInput();
     audioRequests_->Clear();
     animatorRequests_->Clear();
+    sceneTransitions_->Clear();
     if(firstFailure)std::rethrow_exception(firstFailure);
 }
 
