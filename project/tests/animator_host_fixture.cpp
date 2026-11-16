@@ -8,6 +8,13 @@ void AnimatorHostFixture::Observe(const Engine::Scene::EntityWorld& world,float 
         const auto status=scene->GetAnimatorRenderStatus(owner);
         Check(status.ready && scene->GetModelRenderStatus(owner).loaded,"Animator host renderer not ready");
         const auto controllerStatus=scene->GetAnimatorRenderStatus(controllerEntity);
+        const auto particleCount=scene->GetParticleRenderStatus().particles;
+        if(stage==0)Check(particleCount==0,"A paused animation emitted an event burst");
+        if(particleCount && !sawLandingBurst){
+            Check(particleCount==4,"The animation event emitted the wrong number of particles");
+            sawLandingBurst=true;
+            std::cout<<"PASS: Controller landing marker emitted four particles on the same Entity\n";
+        }
         Check(controllerStatus.ready && scene->GetModelRenderStatus(controllerEntity).loaded,"Scene Controller GUID renderer not ready");
         const auto* layerRecord=world.Find(controllerEntity);
         Check(layerRecord!=nullptr,"Layer reader Entity missing");
@@ -153,7 +160,7 @@ void AnimatorHostFixture::Observe(const Engine::Scene::EntityWorld& world,float 
         if(next==stage){Check(status.time==time,"Paused/zero-step host advanced Animator");return;}
         Check(next==stage+1 && delta>0,"Animator host hook count changed unexpectedly");
         Check(stage?record->transform.position.z==1 && record->transform.position.y==(lastPlaying?1:0) && std::abs(record->transform.position.x-time)<1e-5f:record->transform.position.z==0 && record->transform.position.x==-1,"Lua state did not sample actual pre-command owner");
-        if(next==8)Check(ticks>0,"Animator host never dispatched a fixed hook");
+        if(next==8)Check(ticks>0 && SawLandingBurst(),"Animator host never dispatched fixed update or landing event");
         float expected=time;bool playing=false;
         switch(next){
         case 1:case 4:case 8:expected=delta*0.5f;playing=true;break;

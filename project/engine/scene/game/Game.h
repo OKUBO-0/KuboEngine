@@ -232,6 +232,7 @@ private:
 	bool DrawHierarchyTree();
 	void DrawEditorCameraToolbar();
 	void DrawAnimationPreviewInspector(EntityScene& scene,const EntityRecord& entity);
+	void PreviewAnimationEvent(EntityId entity,float seconds,unsigned count);
 	void UpdateEditorAnimationPreview(EntityScene& scene,bool editing);
 	void DrawUILayout();
 	void DrawAddComponentMenu(const EntityRecord& entity);
@@ -326,6 +327,7 @@ private:
 	} clipPreview_;
 	EntityId particlePreviewEntity_=0;
 	bool particlePreviewPaused_=false,particlePreviewRestart_=false;
+	unsigned particlePreviewBurst_=0;
 	Engine::Editor::EntitySelection editorSelection_;
 	char hierarchySearch_[128]{};
 	HierarchyType hierarchyType_ = HierarchyType::All;

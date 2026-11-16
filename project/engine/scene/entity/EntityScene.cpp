@@ -72,6 +72,7 @@ void EntityScene::Finalize()
 void EntityScene::ResetWorldRenderState()
 {
     FinalizeParticles();
+    animationParticleBursts_.clear();
     ClearAnimationPreview();
     if (!models_.empty() || !sprites_.empty() || !texts_.empty()) graphics_.WaitForAllFrames();
     models_.clear();
@@ -207,6 +208,17 @@ void EntityScene::SynchronizeModels(float deltaSeconds)
         if (!world_.GetWorldMatrix(entity.id, worldMatrix)) continue;
         entry.object->SetWorldMatrix(worldMatrix);
         entry.object->Update(deltaSeconds);
+        if(entity.hasAnimator && entry.animatorReady && entity.hasParticle && entity.particle.enabled &&
+            !entity.animator.particleEvents.empty()){
+            if(const auto interval=entry.object->LastAnimationInterval()){
+                const auto count=AnimationSystem::CountAnimationParticles(entity.animator,interval->clip,
+                    interval->from,interval->to,interval->loop,4096);
+                if(count){
+                    auto& pending=animationParticleBursts_[entity.id];
+                    pending=(std::min)(4096u,pending+count);
+                }
+            }
+        }
     }
     Graphics3D::ModelManager::GetInstance()->CollectUnusedModels();
 }

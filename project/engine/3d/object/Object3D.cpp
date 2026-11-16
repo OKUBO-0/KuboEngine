@@ -174,7 +174,13 @@ void Object3D::Update()
 
 void Object3D::Update(float deltaTime)
 {
-	if(animationController_ && animationLayers_) UpdateLayeredController(deltaTime);
+	animationAdvanced_=false;
+	if(animationController_ && animationLayers_) {
+		if(UpdateLayeredController(deltaTime)){
+			animationFrameStart_=animationLayers_->GetClock(0)->frameStart;
+			animationAdvanced_=animationNormalizedTime_>animationFrameStart_;
+		}
+	}
 	else {
 	if (animationController_ && std::isfinite(deltaTime) && deltaTime > 0 &&
 		std::isfinite(animationSpeed_) && animationSpeed_ > 0) {
@@ -187,7 +193,9 @@ void Object3D::Update(float deltaTime)
 			});
 		controllerObservedTime_=changed ? 0 : observed;
 	}
+	animationFrameStart_=animationNormalizedTime_;
 	UpdateAnimationState(deltaTime);
+	animationAdvanced_=animationNormalizedTime_>animationFrameStart_;
 	}
 	ApplyModelSettings();
 	UpdateTransformationMatrices();
@@ -1145,6 +1153,7 @@ void Object3D::SetAnimationSpeed(float speed) {
 }
 void Object3D::ResetAnimationTime() {
 	animationTime=0;animationUpdateFrame_=0;skinPaletteCacheKeyValid_=false;animationBlendActive_=false;
+	animationAdvanced_=false;
 	animationNormalizedTime_=controllerObservedTime_=0;if(animationLayers_)animationLayers_->Reset();
 }
 std::optional<float> Object3D::GetControllerLayerWeight(size_t layer) const {
@@ -1210,15 +1219,15 @@ std::optional<double> Object3D::GetControllerLayerNormalizedTime(size_t layer) c
 	if(!clip || !std::isfinite(clip->duration) || clip->duration<0)return {};
 	return state->loop && clip->duration>0?std::fmod(*progress,1.0):(std::min)(*progress,1.0);
 }
-void Object3D::UpdateLayeredController(float delta) {
-	if(!enableAnimation_ || !model_)return;
+bool Object3D::UpdateLayeredController(float delta) {
+	if(!enableAnimation_ || !model_)return false;
 	const auto& bound=animationLayers_->BindSkeleton();const auto& current=model_->GetSkeleton();
-	if(bound.joints.size()!=current.joints.size())return;
-	for(size_t i=0;i<bound.joints.size();++i)if(bound.joints[i].name!=current.joints[i].name || bound.joints[i].parent!=current.joints[i].parent)return;
+	if(bound.joints.size()!=current.joints.size())return false;
+	for(size_t i=0;i<bound.joints.size();++i)if(bound.joints[i].name!=current.joints[i].name || bound.joints[i].parent!=current.joints[i].parent)return false;
 	std::unique_ptr<Engine::AnimationSystem::Controller::Runtime> nextRuntime;
 	std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> nextPlayer;std::vector<QuaternionTransform> pose;
-	if(!animationLayers_->PrepareFrame(*animationController_,delta,animationControllerRate_,[this](const auto& name){return model_->FindAnimationClip(name);},nextRuntime,nextPlayer,pose))return;
-	CommitLayeredFrame(nextRuntime,nextPlayer,pose,animationControllerRate_);
+	if(!animationLayers_->PrepareFrame(*animationController_,delta,animationControllerRate_,[this](const auto& name){return model_->FindAnimationClip(name);},nextRuntime,nextPlayer,pose))return false;
+	return CommitLayeredFrame(nextRuntime,nextPlayer,pose,animationControllerRate_);
 }
 bool Object3D::CommitLayeredFrame(std::unique_ptr<Engine::AnimationSystem::Controller::Runtime>& nextRuntime,
 	std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer>& nextPlayer,
@@ -1297,6 +1306,12 @@ std::optional<float> Object3D::GetControllerBlendProgress(size_t layer) const no
         return std::clamp(animationBlendElapsed_/animationBlendDuration_,0.f,1.f);
     }
     return {};
+}
+
+std::optional<Object3D::AnimationInterval> Object3D::LastAnimationInterval() const noexcept
+{
+	if(!animationAdvanced_)return {};
+	return AnimationInterval{animationClipName_,animationFrameStart_,animationNormalizedTime_,animationLoop_};
 }
 
 std::vector<std::string> Object3D::GetAnimationClipNames() const
@@ -1573,7 +1588,7 @@ void Object3D::UpdateAnimationState(float deltaTime)
 		SkinClusterUpdate(model_->GetSkinCluster(), skeleton_);
 		animationBlendLastPose_.swap(pose);
 		animationTime = targetTime;
-		if (animationController_) animationNormalizedTime_=Engine::Graphics3D::AdvanceControllerNormalizedTime(
+		animationNormalizedTime_=Engine::Graphics3D::AdvanceControllerNormalizedTime(
 			animationNormalizedTime_,targetTime,target->duration,step,animationSpeed_,animationLoop_);
 		animationBlendSourceTime_ = sourceTime;
 		animationBlendElapsed_ = elapsed;
@@ -1600,7 +1615,7 @@ void Object3D::UpdateAnimationState(float deltaTime)
 			animationTime,
 			*animation,
 			animationSpeed_,
-			animationLoop_, deltaTime, animationController_ ? &animationNormalizedTime_ : nullptr);
+			animationLoop_, deltaTime, &animationNormalizedTime_);
 		return;
 	}
 
@@ -1622,7 +1637,7 @@ void Object3D::UpdateAnimationState(float deltaTime)
 			animationTime,
 			*animation,
 			animationSpeed_,
-			animationLoop_, deltaTime, animationController_ ? &animationNormalizedTime_ : nullptr);
+			animationLoop_, deltaTime, &animationNormalizedTime_);
 		return;
 	}
 
@@ -1645,7 +1660,7 @@ void Object3D::UpdateAnimationState(float deltaTime)
 		animationTime,
 		*animation,
 		animationSpeed_,
-		animationLoop_, deltaTime, animationController_ ? &animationNormalizedTime_ : nullptr);
+		animationLoop_, deltaTime, &animationNormalizedTime_);
 }
 
 uint32_t Object3D::ResolveSkinPaletteSrvIndex()

@@ -101,6 +101,10 @@ end
         fixed=world.CreateEntity("Fixed Animator owner");Check(world.SetModel(fixed,"Assets/models/walk.gltf") && world.SetAnimator(fixed,settings) && world.SetScript(fixed,"Assets/fixed.lua"),"Fixed Animator host fixture failed");
         controllerEntity=world.CreateEntity("Scene Controller owner");auto controllerSettings=settings;
         controllerSettings.clip="not-a-real-legacy-clip";controllerSettings.controllerGuid=sceneControllerRegistry.FindByPath(root/"Assets/scene-controller.animfsm")->guid;
+        controllerSettings.particleEvents.push_back({"default",.001,4});
+        std::filesystem::copy_file(std::filesystem::current_path()/"Resources/textures/common/white.png",root/"Assets/burst.png");
+        Engine::Scene::ParticleComponent landing;landing.assetPath="Assets/burst.png";landing.burst=0;landing.rate=0;landing.lifetime=10;
+        Check(world.SetParticle(controllerEntity,landing),"Landing event Particle setup failed");
         Check(world.SetModel(controllerEntity,"Assets/models/walk.gltf") && world.SetAnimator(controllerEntity,controllerSettings),"Scene Controller authored assignment failed");
         std::string error;Check(world.Save(root/"entry.scene",error),error.c_str());baseline=world.Capture().dump();
         std::cout<<"ANIMATOR_HOST_FIXTURE="<<Engine::Base::PathToUtf8(root)<<'\n';
@@ -111,10 +115,12 @@ end
         Check(messages!=nullptr,"Animator GPU observer missing");
         for(UINT64 i=0;i<messages->GetNumStoredMessages();++i){SIZE_T bytes=0;Check(SUCCEEDED(messages->GetMessage(i,nullptr,&bytes)),"Animator GPU size failed");std::vector<unsigned char> storage(bytes);auto* message=reinterpret_cast<D3D12_MESSAGE*>(storage.data());Check(SUCCEEDED(messages->GetMessage(i,message,&bytes)),"Animator GPU read failed");Check(message->Severity!=D3D12_MESSAGE_SEVERITY_ERROR && message->Severity!=D3D12_MESSAGE_SEVERITY_CORRUPTION,"Animator host GPU error");}
     }
+    bool SawLandingBurst() const noexcept {return sawLandingBurst;}
     std::filesystem::path root;Engine::Scene::EntityId owner=0,fault=0,fixed=0,controllerEntity=0;std::string baseline;int stage=0;float time=0,fixedTicks=0,fixedTime=0,controllerTime=0;
 private:
     std::filesystem::path ownedRoot;
     Microsoft::WRL::ComPtr<ID3D12InfoQueue> messages;
     bool lastPlaying=false;
     bool blendChecked=false;
+    bool sawLandingBurst=false;
 };

@@ -335,14 +335,15 @@ void Game::Update()
         UpdateEditorAnimationPreview(*scene,editing);
         const auto* preview=editorWorld_.Find(particlePreviewEntity_);
         if(!editing || prefabRecoveryBlocked_ || documentState_.HasPendingAction() || !preview || !preview->hasParticle ||
-            preview->id!=selectedEditorEntity_)particlePreviewEntity_=0;
+            preview->id!=selectedEditorEntity_){particlePreviewEntity_=0;particlePreviewBurst_=0;}
         if(particlePreviewRestart_)scene->UpdateParticles(0,false);
         particlePreviewRestart_=false;
         scene->UpdateParticles(particlePreviewEntity_?frameDeltaTime_:
             editorMode_?worldPlayback_.SimulationDelta(frameDeltaTime_):frameDeltaTime_,
             genericWorldReady_&&(!editing||particlePreviewEntity_),
             prefabRecoveryBlocked_||(particlePreviewEntity_?particlePreviewPaused_:
-                (editorMode_&&worldPlayback_.GetState()==WorldPlayback::State::Paused)),particlePreviewEntity_);
+                (editorMode_&&worldPlayback_.GetState()==WorldPlayback::State::Paused)),particlePreviewEntity_,
+            std::exchange(particlePreviewBurst_,0));
 		if (editorPickPending_ && editorMode_ && editorViewEnabled_) {
 			Engine::Editor::ScenePickSegment segment;
 			if (Engine::Editor::MakeScenePickSegment(editorPickX_, editorPickY_, editorViewCamera_.GetViewProjectionMatrix(), segment)) {
@@ -685,8 +686,15 @@ void Game::DrawAnimationPreviewInspector(EntityScene& scene,const EntityRecord& 
 	}
 	clipPreview_.time=std::clamp(clipPreview_.time,0.f,*duration);
 	ImGui::BeginDisabled(*duration==0);
+	const float timelineWidth=ImGui::CalcItemWidth();
 	if(ImGui::SliderFloat("Preview Time",&clipPreview_.time,0,*duration,"%.3f s",ImGuiSliderFlags_AlwaysClamp)){
 		clipPreview_.active=true;clipPreview_.playing=false;
+	}
+	const auto minimum=ImGui::GetItemRectMin(),maximum=ImGui::GetItemRectMax();
+	for(const auto& event:entity.animator.particleEvents){
+		if(event.clip!=clipPreview_.clip)continue;
+		const float x=minimum.x+2+(std::max)(0.f,timelineWidth-4)*static_cast<float>(event.position);
+		ImGui::GetWindowDrawList()->AddLine({x,maximum.y-6},{x,maximum.y-1},IM_COL32(255,183,90,255),2);
 	}
 	if(ImGui::Button(clipPreview_.playing?"Pause Preview":"Play Preview")){
 		if(!clipPreview_.playing && clipPreview_.time>=*duration)clipPreview_.time=0;
@@ -698,11 +706,55 @@ void Game::DrawAnimationPreviewInspector(EntityScene& scene,const EntityRecord& 
 	}
 	ImGui::SameLine();
 	if(ImGui::Button("Close Preview")){clipPreview_.active=false;clipPreview_.playing=false;clipPreview_.time=0;}
+	if(*duration>0 && ImGui::TreeNode("Particle Events")){
+		auto animator=entity.animator;
+		auto& events=animator.particleEvents;
+		bool changed=false;
+		const auto canEmit=entity.hasParticle && entity.particle.enabled &&
+			(!entity.particle.assetPath.empty() || !entity.particle.assetGuid.empty());
+		if(!canEmit)ImGui::TextWrapped("Assign an enabled Particle emitter to this Entity to preview a burst.");
+		for(size_t index=0;index<events.size();++index){
+			auto& event=events[index];
+			if(event.clip!=clipPreview_.clip)continue;
+			ImGui::PushID(static_cast<int>(index));
+			float time=static_cast<float>(event.position * *duration);
+			ImGui::SetNextItemWidth(-85);
+			if(ImGui::SliderFloat("Time",&time,*duration/10000.f,*duration,"%.3f s",ImGuiSliderFlags_AlwaysClamp)){
+				event.position=double(time)/ *duration;changed=true;
+			}
+			int count=static_cast<int>(event.count);
+			if(ImGui::DragInt("Particle Count",&count,1,1,4096,"%d",ImGuiSliderFlags_AlwaysClamp)){
+				event.count=static_cast<unsigned>(count);changed=true;
+			}
+			ImGui::BeginDisabled(!canEmit);
+			if(ImGui::Button("Preview Burst"))PreviewAnimationEvent(entity.id,time,event.count);
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			const bool remove=ImGui::SmallButton("Remove");
+			ImGui::PopID();
+			if(remove){events.erase(events.begin()+index);changed=true;break;}
+		}
+		ImGui::BeginDisabled(events.size()>=AnimationSystem::AnimatorComponent::MaximumEvents);
+		if(ImGui::Button("Add Burst at Cursor")){
+			const auto position=std::clamp(double(clipPreview_.time)/ *duration,0.0001,1.0);
+			events.push_back({clipPreview_.clip,position,8});changed=true;
+		}
+		ImGui::EndDisabled();
+		if(changed && !editorWorld_.SetAnimator(entity.id,animator))genericWorldStatus_="Particle event could not be saved";
+		ImGui::TreePop();
+	}
 	ImGui::EndDisabled();
 	ImGui::TreePop();
 #else
 	(void)scene;(void)entity;
 #endif
+}
+
+void Game::PreviewAnimationEvent(EntityId entity,float seconds,unsigned count)
+{
+	clipPreview_.time=seconds;clipPreview_.active=true;clipPreview_.playing=false;
+	particlePreviewEntity_=entity;particlePreviewPaused_=false;
+	particlePreviewRestart_=true;particlePreviewBurst_=count;
 }
 
 void Game::UpdateEditorAnimationPreview(EntityScene& scene,bool editing)

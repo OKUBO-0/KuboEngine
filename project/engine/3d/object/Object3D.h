@@ -131,6 +131,8 @@ public:
 	bool SampleAnimationPreview(const std::string& clipName,float seconds);
 	void UpdatePreviewAppearance() { ApplyModelSettings(); }
 	std::optional<float> GetControllerBlendProgress(size_t layer) const noexcept;
+	struct AnimationInterval {std::string_view clip;double from,to;bool loop;};
+	std::optional<AnimationInterval> LastAnimationInterval() const noexcept;
 	std::vector<std::string> GetAnimationClipNames() const;
 	bool CanDrawSkinning() const;
 	float GetScaledModelBoundingRadius(float fallback = 1.0f) const;
@@ -242,7 +244,7 @@ private:
 	void InitializeSkinningState();
 	void ReleaseSkinningDescriptors();
 	void UpdateAnimationState(float deltaTime);
-	void UpdateLayeredController(float deltaTime);
+	bool UpdateLayeredController(float deltaTime);
     std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer> PrepareControllerLayers(float& rate) const;
     bool CommitLayeredFrame(std::unique_ptr<Engine::AnimationSystem::Controller::Runtime>& runtime,
         std::unique_ptr<Engine::AnimationSystem::Controller::LayeredPlayer>& player,
@@ -284,6 +286,8 @@ private:
 	CameraForGpu cameraForGpu_{};
 	//アニメーション
 	float animationTime = 0.0f;
+	double animationFrameStart_=0;
+	bool animationAdvanced_=false;
 	float animationSpeed_ = 1.0f;
 	uint32_t animationUpdateStride_ = 1;
 	uint32_t animationUpdateFrame_ = 0;

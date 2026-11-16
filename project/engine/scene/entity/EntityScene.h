@@ -51,7 +51,7 @@ public:
     void SynchronizeModels(float deltaSeconds);
     // Explicit host intent. Zero delta does not mean Editing/Stop; one call per
     // host frame advances fixed Particle ticks, independently of view draws.
-    void UpdateParticles(float deltaSeconds,bool running,bool paused=false,EntityId previewEntity=0);
+    void UpdateParticles(float deltaSeconds,bool running,bool paused=false,EntityId previewEntity=0,unsigned previewBurst=0);
     struct ParticleRenderStatus {RenderParticleResult result=RenderParticleResult::Success;size_t emitters=0,particles=0,dropped=0,steps=0;};
     ParticleRenderStatus GetParticleRenderStatus() const noexcept;
     RenderLightResult GetLightingResult() const noexcept {return lightingResult_;}
@@ -124,6 +124,7 @@ private:
     std::unordered_set<std::string> reportedModelErrors_;
     std::string environmentPath_;
     std::unordered_map<EntityId, RenderEntry> models_;
+    std::unordered_map<EntityId,unsigned> animationParticleBursts_;
     struct AnimationPreview {
         EntityId entity=0;
         std::string asset,revision,clip;

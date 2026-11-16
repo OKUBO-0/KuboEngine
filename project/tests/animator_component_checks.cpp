@@ -47,6 +47,30 @@ int main() {
         Require(!legacy["entities"][0].contains("animator"), "Absent Animator changed legacy serialization");
         Scene::EntityWorld old; Require(old.Restore(legacy, error) && !old.Find(root)->hasAnimator, "Legacy Scene migration failed");
         AnimationSystem::AnimatorComponent cfg; cfg.clip = "\xE8\xB5\xB0\xE3\x82\x8B"; cfg.speed = 2.5f; cfg.loop = false; cfg.playOnAwake = false;
+        auto eventSettings=cfg;
+        eventSettings.particleEvents={{cfg.clip,.25,4},{cfg.clip,1,2},{"other",.5,9}};
+        AnimationSystem::AnimatorComponent eventReload;
+        Require(AnimationSystem::DecodeAnimator(AnimationSystem::EncodeAnimator(eventSettings),eventReload) &&
+            eventReload.particleEvents.size()==3 && eventReload.particleEvents[0].clip==cfg.clip,"Particle events failed UTF-8 roundtrip");
+        using AnimationSystem::CountAnimationParticles;
+        Require(CountAnimationParticles(eventReload,cfg.clip,0,.25,false,1024)==4 &&
+            CountAnimationParticles(eventReload,cfg.clip,.25,1,false,1024)==2 &&
+            CountAnimationParticles(eventReload,cfg.clip,1,1,false,1024)==0 &&
+            CountAnimationParticles(eventReload,cfg.clip,.9,2.3,true,1024)==12 &&
+            CountAnimationParticles(eventReload,cfg.clip,0,10000,true,1024)==1024,
+            "Animation event boundary, loop or budget accounting");
+        auto badEvent=AnimationSystem::EncodeAnimator(eventSettings);
+        badEvent["particleEvents"][0][1]=0.0;
+        Require(!AnimationSystem::DecodeAnimator(badEvent,eventReload) && eventReload.particleEvents[0].position==.25,
+            "Malformed Particle event changed live settings");
+        Scene::EntityWorld markedPrefabWorld;
+        const auto markedEntity=markedPrefabWorld.CreateEntity("Marked Animator");
+        Value markedPrefab;
+        Require(markedPrefabWorld.SetAnimator(markedEntity,eventReload) &&
+            Editor::CapturePrefabSubtree(markedPrefabWorld,markedEntity,markedPrefab,error),"Particle event Prefab capture failed");
+        Scene::EntityWorld markedReload;
+        Require(markedReload.Restore(markedPrefab["world"],error) &&
+            markedReload.GetEntities().front().animator.particleEvents.size()==3,"Prefab roundtrip lost animation events");
         Require(world.SetAnimator(root, cfg), "Draft Animator without Model refused");
         const auto authored = world.Capture();
         Require(authored["entities"][0]["animator"].get<crude_json::object>().size() == 4, "Runtime fields persisted");

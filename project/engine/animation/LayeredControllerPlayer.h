@@ -10,7 +10,7 @@ class LayeredPlayer final {
 public:
     struct Clock {
         float time=0,sourceTime=0,sourceSpeed=1,elapsed=0,duration=0;
-        double normalized=0,observed=0;
+        double normalized=0,observed=0,frameStart=0;
         bool blending=false,sourceLoop=true;
         std::string sourceClip;
         std::vector<QuaternionTransform> snapshot,lastPose;
@@ -98,6 +98,7 @@ private:
                 clock.elapsed=elapsed;if(elapsed>=clock.duration)clock.blending=false;
             }else if(!SampleLocalPose(bind_,*target,clock.time,pose))return false;
             clock.time=nextTime;
+            clock.frameStart=clock.normalized;
             clock.normalized=Graphics3D::AdvanceControllerNormalizedTime(clock.normalized,nextTime,target->duration,targetStep,speed,state->loop);
             clock.lastPose=pose;
             const auto mode=definition.mode=="override"?PoseLayerMode::Override:PoseLayerMode::Additive;

@@ -9,6 +9,7 @@
 #include <limits>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 namespace Engine::Scene {
 namespace {
 constexpr float Step=1.f/60;
@@ -37,19 +38,22 @@ struct EntityScene::ParticleSceneState {
     struct Entry {std::string signature,name;Particle::ParticleGroupOwner owner;double remainder=0;uint32_t burst=0;};
     std::unordered_map<EntityId,Entry> entries;RenderParticleFrame frame;ParticleRenderStatus status;double accumulator=0;uint64_t generation=0,scope=0;bool drawFailure=false;
     EntityId preview=0;
+    bool eventPreview=false;
     ParticleSceneState(){static std::atomic<uint64_t> next{1};auto value=next.load();for(;;){if(value==(std::numeric_limits<uint64_t>::max)())throw std::overflow_error("Particle Scene scope exhausted");if(next.compare_exchange_weak(value,value+1)){scope=value;break;}}}
 };
 void EntityScene::ParticleStateDeleter::operator()(ParticleSceneState* state) const noexcept {delete state;}
 void EntityScene::FinalizeParticles() noexcept {particles_.reset();}
 EntityScene::ParticleRenderStatus EntityScene::GetParticleRenderStatus() const noexcept {return particles_?particles_->status:ParticleRenderStatus{};}
 bool EntityScene::IsParticlePreview() const noexcept {return particles_ && particles_->preview;}
-void EntityScene::UpdateParticles(float deltaSeconds,bool running,bool paused,EntityId previewEntity){
+void EntityScene::UpdateParticles(float deltaSeconds,bool running,bool paused,EntityId previewEntity,unsigned previewBurst){
+    auto bursts=std::exchange(animationParticleBursts_,{});
     if(!running){FinalizeParticles();return;}
     try {
         if(particles_ && particles_->preview!=previewEntity)FinalizeParticles();
         if(!particles_){
             particles_.reset(new ParticleSceneState);
             particles_->preview=previewEntity;
+            particles_->eventPreview=previewEntity && previewBurst>0;
         }
         auto& state=*particles_;state.status={};state.drawFailure=false;
         if(!std::isfinite(deltaSeconds)||deltaSeconds<0){state.entries.clear();state.frame.items.clear();state.accumulator=0;state.status.result=RenderParticleResult::InvalidComponent;return;}
@@ -66,17 +70,25 @@ void EntityScene::UpdateParticles(float deltaSeconds,bool running,bool paused,En
             try {
                 if(resolved.empty())throw std::runtime_error(error);
                 if(state.generation==(std::numeric_limits<uint64_t>::max)())throw std::overflow_error("Particle Scene owner names exhausted");
-                ParticleSceneState::Entry prepared;prepared.signature=signature;prepared.name="__entity_particles/"+std::to_string(state.scope)+"/"+std::to_string(++state.generation)+"/"+std::to_string(item.id);prepared.burst=item.settings.burst;
+                ParticleSceneState::Entry prepared;prepared.signature=signature;prepared.name="__entity_particles/"+std::to_string(state.scope)+"/"+std::to_string(++state.generation)+"/"+std::to_string(item.id);prepared.burst=state.eventPreview?0:item.settings.burst;
                 prepared.owner=manager->CreateOwnedParticleGroup(prepared.name,Base::PathToUtf8(resolved),Geometry(item.settings.geometry),std::make_unique<AuthoredParticleBehavior>(item.settings),item.settings.capacity);prepared.owner.SetLifetimeFade(false);
                 static_assert(std::is_nothrow_move_assignable_v<ParticleSceneState::Entry>);entry=std::move(prepared);
             }catch(const std::exception& failure){entry.signature=signature;state.status.result=RenderParticleResult::AssetFailure;Base::Logger::Log("Particle Entity "+std::to_string(item.id)+": "+failure.what(),Base::Logger::Level::Error);}
+        }
+        if(previewEntity){
+            if(auto it=state.entries.find(previewEntity);it!=state.entries.end() && it->second.owner)
+                it->second.burst=(std::min)(4096u,it->second.burst+(std::min)(4096u,previewBurst));
+        }else{
+            for(const auto& [id,count]:bursts)
+                if(auto it=state.entries.find(id);it!=state.entries.end() && it->second.owner)
+                    it->second.burst=(std::min)(4096u,it->second.burst+count);
         }
         if(!paused){
             state.accumulator+=(std::min)(double(deltaSeconds),.25);size_t remaining=1024;
             while(state.accumulator+1e-12>=double(Step)&&state.status.steps<8){
                 state.accumulator-=double(Step);++state.status.steps;
                 for(const auto& item:state.frame.items){auto& entry=state.entries.at(item.id);if(!entry.owner)continue;
-                    entry.owner.Update(Step);entry.remainder+=double(item.settings.rate)*double(Step);const auto periodic=static_cast<size_t>(std::floor(entry.remainder));entry.remainder-=double(periodic);const auto wanted=periodic+entry.burst;entry.burst=0;
+                    entry.owner.Update(Step);entry.remainder+=double(state.eventPreview?0:item.settings.rate)*double(Step);const auto periodic=static_cast<size_t>(std::floor(entry.remainder));entry.remainder-=double(periodic);const auto wanted=periodic+entry.burst;entry.burst=0;
                     const auto count=(std::min)({wanted,remaining,size_t(item.settings.capacity)});state.status.dropped+=wanted-count;remaining-=count;
                     const auto before=manager->GetActiveParticleCount(entry.name).value_or(0);if(count)entry.owner.Emit({0,0,0},static_cast<uint32_t>(count));const auto after=manager->GetActiveParticleCount(entry.name).value_or(0);state.status.dropped+=count-(after-before);entry.owner.Update(0);
                 }

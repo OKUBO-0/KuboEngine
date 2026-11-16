@@ -90,6 +90,7 @@ public:
     static void StartClipPreview(Game& game,EntityId id,float time,bool playing){
         game.clipPreview_={id,"default",time,true,playing};
     }
+    static void PreviewAnimationBurst(Game& game,EntityId id,float seconds,unsigned count){game.PreviewAnimationEvent(id,seconds,count);}
     static auto& ControllerPanel(Game& game){return game.controllerEditor_;}
     static auto& ControllerAssets(Game& game){return game.projectAssets_;}
     static size_t ControllerInventorySize(const Game& game){return game.controllerPendingEntries_.size();}
@@ -2439,7 +2440,7 @@ public:
     }
     void Update() override {
         Game::Update();++updates_;std::string error;
-        if(previewOnly_ && updates_<=3){
+        if(previewOnly_ && !previewBurstSeen_){
             auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
             Require(scene && Access::World(*this)==original_,"Animation preview changed authored Scene");
             const auto duration=scene->GetAnimationClipDuration(fixture_.controllerEntity,"default");
@@ -2451,14 +2452,23 @@ public:
                 Require(scene->GetAnimationPreviewTime()==*duration*0.75f,"Animation preview did not sample the requested time");
                 Access::StartClipPreview(*this,fixture_.controllerEntity,0,true);
             }
-            if(updates_==3)Require(scene->GetAnimationPreviewTime().value_or(0)>0,"Animation preview playback did not advance");
+            if(updates_==3){
+                Require(scene->GetAnimationPreviewTime().value_or(0)>0,"Animation preview playback did not advance");
+                Access::PreviewAnimationBurst(*this,fixture_.controllerEntity,static_cast<float>(.001 * *duration),4);
+            }
+            if(updates_>=4 && scene->GetParticleRenderStatus().particles){
+                Require(scene->GetParticleRenderStatus().particles==4 &&
+                    scene->GetAnimationPreviewTime()==static_cast<float>(.001 * *duration),
+                    "Animation event preview did not emit four particles at the marked pose");
+                previewBurstSeen_=true;
+            }
             return;
         }
-        if(previewOnly_ && updates_==4){
+        if(previewOnly_){
             Require(PlayEditorScene(error),error.c_str());
             auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
             Require(scene && !scene->GetAnimationPreviewTime(),"Play retained the Scene animation preview");
-            std::cout<<"PASS: Editor clip scrub and playback use a separate Scene pose and retire on Play\n";
+            std::cout<<"PASS: Editor clip scrub and playback use a separate Scene pose, preview a Particle event and retire on Play\n";
             finished_=true;return;
         }
         if(stopped_){Require(Access::Editing(*this) && Access::World(*this)==original_,"Animator Editor Stop did not preserve Editing snapshot");finished_=true;return;}
@@ -2489,10 +2499,10 @@ public:
     }
     bool IsEndRequest() const override {return finished_ || updates_>30 || Game::IsEndRequest();}
     void Finalize() override {Game::Finalize();retired_=true;}
-    void Verify(){fixture_.VerifyGpu();if(previewOnly_){Require(finished_ && draws_==3 && retired_,"Animator Editor preview incomplete");return;}Require(finished_ && pauseChecked_ && fixture_.stage==8 && draws_>=8 && retired_,"Animator Editor incomplete Pause/Stop/render/retirement");std::ifstream source(sourceFile_,std::ios::binary);Require(std::string(std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>())==sourceBytes_,"Controller draft changed source bytes");}
+    void Verify(){fixture_.VerifyGpu();if(previewOnly_){Require(finished_ && draws_>=4 && retired_ && previewBurstSeen_,"Animator Editor preview incomplete");return;}Require(finished_ && pauseChecked_ && fixture_.stage==8 && draws_>=8 && retired_,"Animator Editor incomplete Pause/Stop/render/retirement");std::ifstream source(sourceFile_,std::ios::binary);Require(std::string(std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>())==sourceBytes_,"Controller draft changed source bytes");}
 private:
     AnimatorHostFixture fixture_;std::string original_,pausedWorld_,sourceBytes_,draftText_;std::filesystem::path sourceFile_;int updates_=0,draws_=0;bool paused_=false,pauseChecked_=false,stopped_=false,finished_=false,retired_=false;
-    bool previewOnly_=false;
+    bool previewOnly_=false,previewBurstSeen_=false;
 };
 
 #include "controller_owner_retry_editor_checks.h"
