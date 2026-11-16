@@ -4,6 +4,7 @@
 #include "game_render_inspector_checks.h"
 #include "engine/scene/game/Game.h"
 #include "engine/editor/DebugEditorManager.h"
+#include "engine/editor/SceneGuideProjection.h"
 #include "engine/editor/RenderComponentInspector.h"
 #include "engine/editor/UIComponentInspector.h"
 #include <imgui_internal.h>
@@ -21,12 +22,13 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,32> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,34> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
     {"Add Particle"},{"Remove Particle"},{"Particle Enabled"},{"Clear Particle Image"},{"Registered Particle Image"},{"Particle Texture Choice"},
     {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
-    {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"}}};
+    {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"},
+    {"Add Component..."},{"Collider"}}};
 void Observe(const char* label,ImVec2 a,ImVec2 b,bool disabled){for(auto& item:items)if(!std::strcmp(item.label,label)){item.center={(a.x+b.x)/2,(a.y+b.y)/2};item.seen=true;item.disabled=disabled;item.mixed=(ImGui::GetItemFlags()&ImGuiItemFlags_MixedValue)!=0;}}
 struct GuiScope {
     ImGuiContext* previous=ImGui::GetCurrentContext();ImGuiContext* owned=ImGui::CreateContext();
@@ -39,6 +41,15 @@ namespace Engine::Scene {
 class GameRenderInspectorChecksAccess {
 public:
     static void RunSelection() {
+        Matrix4x4 projection{};
+        projection.m[0][0] = projection.m[1][1] = projection.m[2][2] = projection.m[2][3] = 1;
+        projection.m[3][2] = -0.5f;
+        Vector2 firstPoint{}, lastPoint{};
+        Need(Editor::ProjectSceneGuideLine({0.25f,0,-1},{0.25f,0,1},projection,firstPoint,lastPoint) &&
+            std::abs(firstPoint.x-0.5f) < 0.001f && std::abs(lastPoint.x-0.25f) < 0.001f,
+            "Scene guide did not clip at the near plane before projection");
+        Need(!Editor::ProjectSceneGuideLine({0,0,-2},{0,0,-1},projection,firstPoint,lastPoint),
+            "Scene guide projected geometry behind the camera");
         const auto root = std::filesystem::temp_directory_path() /
             (L"kubo-game-selection-inspector-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
         Need(std::filesystem::create_directory(root), "Selection fixture directory already exists");
@@ -159,6 +170,20 @@ public:
             Need(drawn("Range First") && drawn("Range Last") && !game.HasHierarchyHiddenSelection() &&
                 !item("Active (selection)").disabled && game.entityHistory_.UndoCount() == 1,
                 "Clearing filters did not restore selection editing without changing history");
+            click("Range First");
+            click("Add Component...");
+            frame();
+            frame();
+            ImGui::GetIO().AddInputCharactersUTF8("coll");
+            frame();
+            Need(drawn("Collider") && !drawn("Camera"), "Component popup did not filter by name");
+            click("Collider");
+            frame();
+            Need(game.editorWorld_.Find(first)->hasCollider && game.entityHistory_.UndoCount() == 2,
+                "Component popup did not add a single undoable Collider");
+            undoOrRedo("Entity Inspector", ImGuiKey_Z);
+            Need(!game.editorWorld_.Find(first)->hasCollider && game.GetEditorSelection() == std::vector<EntityId>{first},
+                "Undo of a component addition did not preserve the selection");
             Need(Read(game.genericWorldPath_) == baseline, "Inspector modified the saved Scene without saving");
             std::cout << "PASS: actual Hierarchy Shift-click, mixed Active, Undo/Redo, name/type filters, ancestor context, hidden-selection lock and search focus\n";
         } catch (...) {

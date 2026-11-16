@@ -372,6 +372,7 @@ exit /B 0</Command>
     <ClInclude Include="engine\editor\EntityGizmoTransform.h" />
     <ClInclude Include="engine\editor\GizmoSnapSettings.h" />
     <ClInclude Include="engine\editor\ScenePicking.h" />
+    <ClInclude Include="engine\editor\SceneGuideProjection.h" />
     <ClInclude Include="engine\editor\EntityDocumentState.h" />
     <ClInclude Include="engine\base\core\CloseRequestGate.h" />
     <ClInclude Include="engine\scene\entity\EntityScene.h" />

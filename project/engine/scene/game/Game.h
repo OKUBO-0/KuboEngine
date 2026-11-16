@@ -229,6 +229,9 @@ private:
 	bool HasHierarchyHiddenSelection() const;
 	bool DrawHierarchyTree();
 	void DrawEditorCameraToolbar();
+	void DrawAddComponentMenu(const EntityRecord& entity);
+	void DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewport);
+	void UpdateEditorViewCamera();
 	void FocusEditorSelection();
 	bool DrawEntityGizmo(const Engine::Editor::DebugSceneViewportState& viewport);
 	void DrawExportWindow();
@@ -259,6 +262,8 @@ private:
 	bool gameScriptInputAllowed_ = false;
 	bool editorViewEnabled_ = true;
 	bool editorGridVisible_ = true;
+	bool editorSelectionGuides_ = false;
+	bool editorComponentGuides_ = false;
 	void ResetEditorGridDefault();
 	bool editorPickPending_ = false;
 	bool editorPickAdditive_ = false;

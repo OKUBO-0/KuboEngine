@@ -380,6 +380,9 @@
     <ClInclude Include="engine\editor\ScenePicking.h">
       <Filter>engine\editor</Filter>
     </ClInclude>
+    <ClInclude Include="engine\editor\SceneGuideProjection.h">
+      <Filter>engine\editor</Filter>
+    </ClInclude>
     <ClInclude Include="engine\editor\EntityDocumentState.h">
       <Filter>engine\editor</Filter>
     </ClInclude>

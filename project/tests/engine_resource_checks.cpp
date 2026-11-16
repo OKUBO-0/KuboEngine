@@ -99,6 +99,10 @@ public:
         game.editorGridVisible_ = grid;
         game.gizmoEnabled_ = gizmo;
     }
+    static void SetSceneGuides(Game& game, bool enabled) {
+        game.editorSelectionGuides_ = enabled;
+        game.editorComponentGuides_ = enabled;
+    }
     static void FocusSceneSelection(Game& game) { game.FocusEditorSelection(); }
     static Vector3 SceneCameraPosition(const Game& game) { return game.editorCameraState_.position; }
     static bool GameViewportReceivesInput(const Game& game) { return game.gameScriptInputAllowed_; }
@@ -793,6 +797,8 @@ public:
         if (frame_ == 23) {
             Require(!IsSceneDirty() && SceneContains("Toolbar edit"), "Toolbar Save did not publish the Scene");
             Create("Menu edit");
+            Require(Access::Entities(*this).SetCollider(1,{}) && Access::Entities(*this).SetLight(1,{}),
+                "Could not add Scene guide fixture components");
         }
         if (frame_ == 34) {
             Require(!IsSceneDirty() && SceneContains("Menu edit"), "File menu Save did not publish the Scene");
@@ -809,6 +815,28 @@ public:
             Require(!IsSceneDirty() && !controls_["Save Scene (Ctrl+S)"].disabled && controls_["Stop and Restore Scene"].disabled,
                 "Stop did not restore the editing controls and Scene state");
             std::cout << "PASS: Game focus guard; Ctrl+S, toolbar and File menu saves; dirty name and Play/Pause/Stop at 880px/144 DPI\n";
+            std::string error;
+            Require(SelectEditorEntity(1,false,false,error),error);
+            ImGui::SetWindowFocus("Scene");
+            Access::FocusSceneSelection(*this);
+            sourceBeforeGuides_ = Access::World(*this);
+            Access::SetSceneGuides(*this,true);
+        }
+        if (frame_ == 65) {
+            const auto* sceneWindow = ImGui::FindWindowByName("Scene");
+            Require(HasGuideColor(sceneWindow,IM_COL32(110,190,255,255)) &&
+                HasGuideColor(sceneWindow,IM_COL32(115,234,162,255)) &&
+                HasGuideColor(sceneWindow,IM_COL32(255,217,112,255)),
+                "Scene draw list did not contain selection, collider and light guides");
+            ImGui::SetWindowFocus("Game");
+        }
+        if (frame_ == 69) {
+            const auto* gameWindow = ImGui::FindWindowByName("Game");
+            Require(gameWindow && gameWindow->Active && !HasGuideColor(gameWindow,IM_COL32(110,190,255,255)) &&
+                !HasGuideColor(gameWindow,IM_COL32(115,234,162,255)) && !HasGuideColor(gameWindow,IM_COL32(255,217,112,255)) &&
+                !IsSceneDirty() && Access::World(*this) == sourceBeforeGuides_,
+                "Scene guides affected the Game draw list or authored Scene");
+            std::cout << "PASS: Scene selection, collider and light guides draw only in Scene and leave the authored world unchanged\n";
             endRequest_ = true;
         }
         Game::Update();
@@ -820,6 +848,11 @@ public:
     }
 
 private:
+    static bool HasGuideColor(const ImGuiWindow* window, ImU32 color) {
+        return window && std::any_of(window->DrawList->VtxBuffer.begin(),window->DrawList->VtxBuffer.end(),
+            [color](const ImDrawVert& vertex) {return vertex.col == color;});
+    }
+
     void Create(const char* name) {
         Engine::Scene::EntityId created{};
         std::string error;
@@ -853,6 +886,7 @@ private:
     }
 
     static inline EditorToolbarChecks* current_ = nullptr;
+    std::string sourceBeforeGuides_;
     std::unordered_map<std::string, Control> controls_;
     int frame_ = 0;
 };

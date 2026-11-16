@@ -41,6 +41,8 @@
 #include "engine/editor/EntityBatchReparent.h"
 #include "engine/editor/EntityGroupTransform.h"
 #include "engine/editor/DocumentShortcuts.h"
+#include "engine/editor/SceneGuideProjection.h"
+#include "IconsFontAwesome5.h"
 #include <commdlg.h>
 #pragma comment(lib,"comdlg32.lib")
 #include <imgui.h>
@@ -279,10 +281,7 @@ void Game::Update()
 			[](uint64_t id,const std::string& error) {Engine::Base::Logger::Log("Editor AudioSource Entity "+std::to_string(id)+": "+error,Engine::Base::Logger::Level::Error);});
 		scene->SetSceneAspectRatio(editorMode_ && offscreenRenderManager->HasEditorView() ? offscreenRenderManager->GetEditorViewExtent().Aspect() : GetGameOutputExtent().Aspect());
 		scene->SetUIOutputExtent(GetGameOutputExtent());
-		editorViewCamera_.SetTranslate(editorCameraState_.position);
-		editorViewCamera_.SetRotate(editorCameraState_.rotation);
-		editorViewCamera_.SetOrthographic(editorCameraState_.orthographic, editorCameraState_.height);
-		editorViewCamera_.SetFarClip(editorCameraState_.farClip);
+		UpdateEditorViewCamera();
 		scene->SetEditorCamera(editorMode_ && editorViewEnabled_ ? &editorViewCamera_ : nullptr);
 		const auto animatorRequests=scriptRuntime_.TakeAnimatorRequests();
 		if(animatorRequests.count){scene->SynchronizeModels(0);scene->ApplyAnimatorRequests(animatorRequests);}
@@ -383,6 +382,8 @@ void Game::DrawDebugEditorShell()
 				}
 			}, [this,&gizmoVisited](const Engine::Editor::DebugSceneViewportState& viewport) {
 				if (!genericSceneSelected_) return false;
+				UpdateEditorViewCamera();
+				DrawSceneGuides(viewport);
 				gizmoVisited = true; return DrawEntityGizmo(viewport);
 			});
 		if (!viewport.drawn || !debugSceneViewOpen_) sceneResizeSchedule_.Cancel();
@@ -538,6 +539,10 @@ void Game::DrawEditorCameraToolbar()
 			if (ImGui::Button("Right")) setView({0,-quarterTurn,0},true);
 			ImGui::SameLine();
 			if (ImGui::Button("Perspective")) setView({0.42f,-0.65f,0},false);
+			if (ImGui::Button("2D (XY)")) {
+				editorGridVisible_ = false;
+				setView({0,0,0},true);
+			}
 			ImGui::SliderFloat("Fly speed", &editorCameraState_.speed,0.1f,100.0f,"%.1f",ImGuiSliderFlags_AlwaysClamp);
 			if (ImGui::Button("Reset camera")) editorCameraState_.Reset();
 			ImGui::TextUnformatted("RMB + WASD/QE: fly   Shift: faster   Wheel: zoom");
@@ -548,6 +553,8 @@ void Game::DrawEditorCameraToolbar()
 		if (ImGui::BeginPopup("Scene Display")) {
 			ImGui::Checkbox("XZ floor grid", &editorGridVisible_);
 			ImGui::Checkbox("Transform gizmo", &gizmoEnabled_);
+			ImGui::Checkbox("Selection bounds", &editorSelectionGuides_);
+			ImGui::Checkbox("Camera, light and collider guides", &editorComponentGuides_);
 			ImGui::EndPopup();
 		}
 		fitButton("Frame selection");
@@ -626,6 +633,79 @@ bool Game::SelectEditorEntityFromRows(EntityId id,bool additive,bool range,std::
 	entityHistory_.Commit();selectedEditorEntity_=editorSelection_.Primary();error.clear();return true;
 }
 
+void Game::UpdateEditorViewCamera()
+{
+	editorViewCamera_.SetTranslate(editorCameraState_.position);
+	editorViewCamera_.SetRotate(editorCameraState_.rotation);
+	editorViewCamera_.SetOrthographic(editorCameraState_.orthographic,editorCameraState_.height);
+	editorViewCamera_.SetFarClip(editorCameraState_.farClip);
+	if (offscreenRenderManager->HasEditorView())
+		editorViewCamera_.SetAspectRatio(offscreenRenderManager->GetEditorViewExtent().Aspect());
+	editorViewCamera_.Update();
+}
+
+void Game::DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewport)
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+	using namespace Engine::Editor;
+	if (!editorViewEnabled_ || (!editorSelectionGuides_ && !editorComponentGuides_)) return;
+	if (worldPlayback_.GetState() != WorldPlayback::State::Editing || HasHierarchyHiddenSelection()) return;
+	const auto* scene = dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene());
+	const auto& viewProjection = editorViewCamera_.GetViewProjectionMatrix();
+	const auto screen = [&](Vector2 ndc) {
+		return ImVec2{viewport.min.x + (ndc.x + 1) * viewport.size.x * 0.5f,
+			viewport.min.y + (1 - ndc.y) * viewport.size.y * 0.5f};
+	};
+	auto* draw = ImGui::GetWindowDrawList();
+	draw->PushClipRect({viewport.min.x,viewport.min.y},
+		{viewport.min.x + viewport.size.x,viewport.min.y + viewport.size.y},true);
+	const auto line = [&](Vector3 a, Vector3 b, ImU32 color) {
+		Vector2 start{}, end{};
+		if (ProjectSceneGuideLine(a,b,viewProjection,start,end)) {
+			draw->AddLine(screen(start),screen(end),IM_COL32(0,0,0,190),3.0f);
+			draw->AddLine(screen(start),screen(end),color,1.5f);
+		}
+	};
+	const auto box = [&](const SceneBounds& bounds, ImU32 color) {
+		const auto corner = [&](int i) {
+			return Vector3{i & 1 ? bounds.max.x : bounds.min.x,
+				i & 2 ? bounds.max.y : bounds.min.y,i & 4 ? bounds.max.z : bounds.min.z};
+		};
+		for (int i = 0; i < 8; ++i) {
+			for (const int axis : {1,2,4}) {
+				if (!(i & axis)) line(corner(i),corner(i | axis),color);
+			}
+		}
+	};
+	for (const EntityId id : GetEditorSelection()) {
+		const auto* entity = editorWorld_.Find(id);
+		Matrix4x4 world{};
+		if (!entity || !editorWorld_.GetWorldMatrix(id,world)) continue;
+		const Vector3 center{world.m[3][0],world.m[3][1],world.m[3][2]};
+		SceneBounds bounds{};
+		constexpr ImU32 selectionColor = IM_COL32(110,190,255,255);
+		if (editorSelectionGuides_ && scene && scene->GetWorldModelBounds(id,bounds))
+			box(bounds,selectionColor);
+		if (editorComponentGuides_ && entity->hasCollider) {
+			const auto half = entity->collider.halfExtents;
+			if (TransformSceneBounds({half * -1,half},world,bounds))
+				box(bounds,entity->collider.isTrigger ? IM_COL32(207,159,255,255) : IM_COL32(115,234,162,255));
+		}
+		Vector2 marker{}, unused{};
+		if (!ProjectSceneGuideLine(center,center,viewProjection,marker,unused)) continue;
+		const auto position = screen(marker);
+		if (editorSelectionGuides_) draw->AddCircle(position,4,selectionColor,0,1.5f);
+		if (editorComponentGuides_ && entity->hasCamera)
+			draw->AddText({position.x+8,position.y-ImGui::GetFontSize()},IM_COL32(142,221,255,255),ICON_FA_VIDEO);
+		if (editorComponentGuides_ && entity->hasLight)
+			draw->AddText({position.x+8,position.y},IM_COL32(255,217,112,255),ICON_FA_LIGHTBULB);
+	}
+	draw->PopClipRect();
+#else
+	(void)viewport;
+#endif
+}
+
 bool Game::DrawEntityGizmo(const Engine::Editor::DebugSceneViewportState& viewport)
 {
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
@@ -656,10 +736,6 @@ bool Game::DrawEntityGizmo(const Engine::Editor::DebugSceneViewportState& viewpo
 	if (!group && !Engine::Editor::GizmoWorldToLocal(world,parent,entity->transform,checked,error)) {
 		genericWorldStatus_ = "Gizmo unavailable: " + error; Gizmo::Enable(false); finish(); return false;
 	}
-	editorViewCamera_.SetTranslate(editorCameraState_.position); editorViewCamera_.SetRotate(editorCameraState_.rotation);
-	editorViewCamera_.SetOrthographic(editorCameraState_.orthographic,editorCameraState_.height);
-	editorViewCamera_.SetAspectRatio(offscreenRenderManager->GetEditorViewExtent().Aspect());
-	editorViewCamera_.SetFarClip(editorCameraState_.farClip); editorViewCamera_.Update();
 	Gizmo::Enable(viewport.inputActive || gizmoDragActive_);
 	Gizmo::SetOrthographic(editorCameraState_.orthographic); Gizmo::SetDrawlist();
 	Gizmo::SetRect(viewport.min.x,viewport.min.y,viewport.size.x,viewport.size.y);
@@ -1431,6 +1507,56 @@ bool Game::DrawHierarchyTree()
 	return false;
 }
 
+void Game::DrawAddComponentMenu(const EntityRecord& entity)
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+	const auto* unavailable = SceneEditUnavailableReason(Engine::Editor::SceneEditAction::Duplicate);
+	ImGui::BeginDisabled(unavailable != nullptr);
+	if (ImGui::Button("Add Component...")) ImGui::OpenPopup("Add Component");
+#if defined(KUBO_APPLICATION_CHECKS)
+	Engine::Editor::ObserveRenderInspectorChecks("Add Component...");
+#endif
+	ImGui::EndDisabled();
+	if (unavailable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+		ImGui::SetTooltip("%s",unavailable);
+	if (!ImGui::BeginPopup("Add Component")) return;
+	if (unavailable) ImGui::CloseCurrentPopup();
+	static ImGuiTextFilter search;
+	if (ImGui::IsWindowAppearing()) {
+		search.Clear();
+		ImGui::SetKeyboardFocusHere();
+	}
+	search.Draw("##ComponentSearch",ImGui::GetFontSize()*13);
+	bool matches = false;
+	const auto option = [&](const char* name, bool installed, auto setter) {
+		if (!search.PassFilter(name)) return;
+		matches = true;
+		if (ImGui::Selectable(name,false,installed || unavailable ? ImGuiSelectableFlags_Disabled : 0) &&
+			!(editorWorld_.*setter)(entity.id,{}))
+			genericWorldStatus_ = std::string("Could not add ") + name;
+#if defined(KUBO_APPLICATION_CHECKS)
+		Engine::Editor::ObserveRenderInspectorChecks(name);
+#endif
+		if (installed && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			ImGui::SetTooltip("Already added");
+	};
+	option("Animator",entity.hasAnimator,&EntityWorld::SetAnimator);
+	option("Audio Source",entity.hasAudio,&EntityWorld::SetAudio);
+	option("Camera",entity.hasCamera,&EntityWorld::SetCamera);
+	option("Canvas",entity.hasCanvas,&EntityWorld::SetCanvas);
+	option("Collider",entity.hasCollider,&EntityWorld::SetCollider);
+	option("Light",entity.hasLight,&EntityWorld::SetLight);
+	option("Material",entity.hasMaterial,&EntityWorld::SetMaterial);
+	option("Particle",entity.hasParticle,&EntityWorld::SetParticle);
+	option("Rigid Body",entity.hasRigidBody,&EntityWorld::SetRigidBody);
+	option("Sprite",entity.hasSprite,&EntityWorld::SetSprite);
+	if (!matches) ImGui::TextDisabled("No matching components");
+	ImGui::EndPopup();
+#else
+	(void)entity;
+#endif
+}
+
 void Game::DrawGenericEntityEditor()
 {
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
@@ -1637,6 +1763,7 @@ void Game::DrawGenericEntityEditor()
 			if (!entity) {
 				ImGui::TextUnformatted("Select an entity from the hierarchy.");
 			} else {
+				DrawAddComponentMenu(*entity);
 				char name[128]{};
 				if(!entity->prefabLink.is_null())ImGui::TextWrapped("Linked Prefab source GUID: %s",entity->prefabLink["sourceGuid"].get<crude_json::string>().c_str());
 				strncpy_s(name, entity->name.c_str(), _TRUNCATE);
