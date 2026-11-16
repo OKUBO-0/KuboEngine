@@ -69,6 +69,7 @@ void EntityScene::ResetWorldRenderState()
     if (!models_.empty() || !sprites_.empty()) graphics_.WaitForAllFrames();
     models_.clear();
     sprites_.clear();spriteFrame_.items.clear();
+    CancelUIButtons();
     reportedModelErrors_.clear();
     reportedSpriteErrors_.clear();
     lightingFrame_ = {};

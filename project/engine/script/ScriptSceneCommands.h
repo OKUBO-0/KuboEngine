@@ -58,7 +58,7 @@ public:
     const Scene::SpriteComponent* Sprite(Scene::EntityId id) const noexcept {const auto* record=Live(id);return record && record->hasSprite?&record->sprite:nullptr;}
     // Borrowed/trivial input keeps owning strings out of Lua's longjmp frames.
     struct SpriteInput {
-        std::string_view asset,guid;
+        std::string_view asset,guid,buttonSceneGuid;
         Vector2 size{100,100},pivot{0.5f,0.5f};Vector4 color{1,1,1,1};
         bool enabled=true,flipX=false,flipY=false;int sortOrder=0;
         Vector2 anchor{0,0};
@@ -82,7 +82,12 @@ public:
             Scene::SpriteComponent value;value.assetPath=input.asset;value.assetGuid=input.guid;value.size=input.size;value.pivot=input.pivot;value.color=input.color;
             value.enabled=input.enabled;value.flipX=input.flipX;value.flipY=input.flipY;value.sortOrder=input.sortOrder;
             value.anchor=input.anchor;
+            value.buttonSceneGuid=input.buttonSceneGuid;
             if(!value.IsValid())return Result::Invalid;
+            if(!value.buttonSceneGuid.empty()){
+                if(!view_->assets_)return Result::Unavailable;
+                if(!view_->assets_->ButtonDestination(value.buttonSceneGuid)){failed_=true;return Result::Invalid;}
+            }
             if(!input.asset.empty() || !input.guid.empty()){
                 if(!view_->assets_)return Result::Unavailable;
                 ScriptPrefabAdmission::Reference reference;

@@ -2,6 +2,9 @@
   <PropertyGroup Condition="'$(MSBuildProjectName)'=='KuboPlayer'">
     <TargetName>PlayerRuntimeChecks</TargetName>
   </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(MSBuildProjectName)'=='KuboPlayer' Or '$(MSBuildProjectName)'=='KuboRuntime'">
+    <ClCompile><PreprocessorDefinitions>KUBO_APPLICATION_CHECKS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup Condition="'$(MSBuildProjectName)'=='KuboPlayer'">
     <ClCompile Remove="main.cpp" />
     <ClCompile Include="$(MSBuildThisFileDirectory)player_runtime_checks.cpp" />

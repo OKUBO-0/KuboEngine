@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <optional>
+#include "Vector2.h"
 
 namespace Engine::Base {
 struct ViewExtent {
@@ -21,6 +23,12 @@ inline ViewRect GamePresentationRect(ViewExtent window,ViewExtent game) {
         width=static_cast<uint32_t>((std::max)(uint64_t(1),uint64_t(window.height)*game.width/game.height));
     else height=static_cast<uint32_t>((std::max)(uint64_t(1),uint64_t(window.width)*game.height/game.width));
     return {(window.width-width)/2,(window.height-height)/2,width,height};
+}
+inline std::optional<Vector2> GameOutputPoint(Vector2 point,Vector2 origin,Vector2 size,ViewExtent output) {
+    if(!(size.x>0 && size.y>0))return std::nullopt;
+    const float x=(point.x-origin.x)/size.x,y=(point.y-origin.y)/size.y;
+    if(!(x>=0 && x<1 && y>=0 && y<1))return std::nullopt;
+    return Vector2{x*output.width,y*output.height};
 }
 // Minimized/invalid panels do not replace the last usable extent. Bound allocation
 // cost uniformly, retaining aspect except for unavoidable integer rounding.

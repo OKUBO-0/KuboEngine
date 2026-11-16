@@ -22,6 +22,7 @@
 #include "TextureManager.h"
 #include "DebugEditorManager.h"
 #include "ImGuiManager.h"
+#include "engine/input/Input.h"
 #include "Logger.h"
 #include "Game.h"
 #include "GamePlayScene.h"
@@ -2672,20 +2673,38 @@ public:
 class SceneTransitionEditorChecks final : public Engine::Scene::Game {
     using Access=Engine::Scene::GameApplicationChecksAccess;
 public:
+    explicit SceneTransitionEditorChecks(bool button=false):button_(button){}
+    ~SceneTransitionEditorChecks() override {Engine::InputSystem::captureInputChecksOverride=nullptr;}
     void Initialize() override {
-        fixture_.Prepare();
+        fixture_.Prepare(button_);
         SetProjectRoot(fixture_.root);
         SetProjectFile(fixture_.root/"entry.kubo");
         SetProjectAssetRoot(fixture_.root/"Assets");
         SetEditorMode(true);
+        if(button_)SetGameOutputExtent({1280,720});
         std::string error;
         Require(ConfigureStartupScene(fixture_.root/"Assets/entry.scene",error),error);
         Game::Initialize();
         Access::HideAssetBrowser(*this);
         authored_=Access::World(*this);
         Require(PlayEditorScene(error),error);
+        if(button_){
+            Engine::InputSystem::captureInputChecksOverride=[](Engine::InputSystem::InputFrame& input,bool enabled) {
+                RuntimeSceneTransitionFixture::ButtonInput(input,enabled,frames_);
+            };
+            ImGuiContextHook hook{};
+            hook.Type=ImGuiContextHookType_NewFramePre;
+            hook.Callback=[](ImGuiContext*,ImGuiContextHook*) {
+                if(auto* window=ImGui::FindWindowByName("Game")){
+                    const auto center=window->InnerRect.GetCenter();
+                    ImGui::GetIO().AddMousePosEvent(RuntimeSceneTransitionFixture::ButtonTestOutside(frames_)?0:center.x,center.y+20);
+                }
+            };
+            ImGui::AddContextHook(ImGui::GetCurrentContext(),&hook);
+        }
     }
     void Update() override {
+        if(button_ && frames_==7)ImGui::SetWindowFocus("Game");
         Game::Update();
         Require(++frames_<180,"Editor Scene transition timed out");
         if (stopped_) {
@@ -2695,18 +2714,21 @@ public:
         } else {
             heard_ |= Access::ScriptAudio(*this).VoiceCount()>0;
             if (fixture_.Arrived(Access::Entities(*this))) {
-                Require(heard_,"Editor did not submit the trigger's WAV");
+                if(button_)Require(frames_==24,"Editor activated the wrong button or accepted an incomplete click");
+                else Require(heard_,"Editor did not submit the trigger's WAV");
                 std::string error;
                 Require(Access::Stop(*this,error),error);
                 stopped_=true;
-                std::cout<<"PASS: Editor movement, Trigger WAV, destination Lua initialization and Stop snapshot\n";
+                std::cout<<(button_?"PASS: Editor Game viewport Button, cancellation, destination Lua and Stop snapshot\n":
+                    "PASS: Editor movement, Trigger WAV, destination Lua initialization and Stop snapshot\n");
             }
         }
     }
 private:
     RuntimeSceneTransitionFixture fixture_;
     std::string authored_;
-    int frames_=0;
+    static inline int frames_=0;
+    bool button_=false;
     bool heard_=false,stopped_=false;
 };
 
@@ -2935,7 +2957,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     if(mode=="--particles"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunParticleGroupChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunAuthoredLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--prefab"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<PrefabEditorChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
-    if(!mode.empty() && mode!="--controller-owner-retry" && mode!="--controller-recovery" && mode!="--controller-save-as" && mode!="--controller-save" && mode!="--startup-close" && mode!="--animator" && mode!="--gizmo-input" && mode!="--shaders" && mode!="--render" && mode!="--generic-views" && mode!="--mcp-export-guard" && mode!="--fixed-hooks" && mode!="--scene-transition" && mode!="--git-index" && mode!="--shutdown") {std::cerr<<"Unknown Editor runner mode\n";return 1;}
+    if(!mode.empty() && mode!="--controller-owner-retry" && mode!="--controller-recovery" && mode!="--controller-save-as" && mode!="--controller-save" && mode!="--startup-close" && mode!="--animator" && mode!="--gizmo-input" && mode!="--shaders" && mode!="--render" && mode!="--generic-views" && mode!="--mcp-export-guard" && mode!="--fixed-hooks" && mode!="--scene-transition" && mode!="--ui-button" && mode!="--git-index" && mode!="--shutdown") {std::cerr<<"Unknown Editor runner mode\n";return 1;}
     std::cout<<"RUNNER_MODE="<<mode<<'\n';
     if(mode=="--controller-owner-retry"){
         try{auto checks=std::make_unique<ControllerOwnerRetryEditorChecks>();checks->Run();checks->Verify();return 0;}
@@ -2971,9 +2993,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
         try{auto checks=std::make_unique<GitEditorIndexChecks>();checks->Run();checks->Verify();std::cout<<"PASS: actual Editor async history + staged/unstaged diff + Stage/Unstage/Commit, read/write job exclusion and stale refusal, authored World/selection/disk isolation and dirty read admission (not physical buttons)\n";return 0;}
         catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
     }
-    if(mode=="--scene-transition"){
+    if(mode=="--scene-transition" || mode=="--ui-button"){
         std::cout<<"RUNNER_MODE="<<mode<<'\n';
-        try{auto checks=std::make_unique<SceneTransitionEditorChecks>();checks->Run();return 0;}
+        try{auto checks=std::make_unique<SceneTransitionEditorChecks>(mode=="--ui-button");checks->Run();return 0;}
         catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
     }
     if(mode=="--fixed-hooks") {

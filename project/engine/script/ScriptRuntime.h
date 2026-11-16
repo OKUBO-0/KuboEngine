@@ -90,6 +90,7 @@ public:
     InputSystem::FixedInputUsage GetFixedInputUsage() const noexcept {return fixedInput_.Usage();}
     void SetAudioRequestsEnabled(bool enabled) { audioRequests_->SetEnabled(enabled); }
     void SetSceneTransitionsEnabled(bool enabled) {sceneTransitions_->SetEnabled(enabled);}
+    void QueueSceneTransition(ScriptSceneTransition request) noexcept {sceneTransitions_->Publish(std::move(request));}
     auto TakeReadySceneTransition(float seconds) {return sceneTransitions_->TakeReady(seconds);}
     std::vector<ScriptAudioRequest> TakeAudioRequests() { return audioRequests_->Take(); }
     void SetAnimatorRequestsEnabled(bool enabled) noexcept {animatorRequests_->SetEnabled(enabled);}

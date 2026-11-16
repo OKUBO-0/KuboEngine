@@ -13,6 +13,7 @@
 #include "../../animation/AnimatorBinding.h"
 #include "../../animation/AnimatorStateReader.h"
 #include "../../script/ScriptAnimatorRequests.h"
+#include "../../script/ScriptSceneTransition.h"
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -22,6 +23,7 @@ namespace Engine::Graphics2D { class Sprite; }
 namespace Engine::Assets { struct AnimatorControllerRevision; }
 namespace Engine::Base { class DirectXCommon; }
 namespace Engine::CameraSystem { class Camera; }
+namespace Engine::InputSystem { struct InputFrame; }
 namespace Engine::Scene {
 
 // Generic authored models plus painter-ordered screen overlay Canvas/Sprites.
@@ -41,6 +43,8 @@ public:
     void SetUIOutputExtent(Base::ViewExtent extent);
     RenderSpriteResult GetSpriteResult() const noexcept {return spriteResult_;}
     const RenderSpriteFrame& GetSpriteFrame() const noexcept {return spriteFrame_;}
+    std::optional<Scripting::ScriptSceneTransition> UpdateUIButtons(const InputSystem::InputFrame& input,std::optional<Vector2> point);
+    void CancelUIButtons() noexcept;
     void SynchronizeModels(float deltaSeconds);
     // Explicit host intent. Zero delta does not mean Editing/Stop; one call per
     // host frame advances fixed Particle ticks, independently of view draws.
@@ -115,6 +119,8 @@ private:
     Base::ViewExtent uiOutputExtent_{};
     RenderSpriteFrame spriteFrame_;
     RenderSpriteResult spriteResult_=RenderSpriteResult::Success;
+    EntityId hoveredButton_=0,pressedButton_=0;
+    std::string pressedButtonScene_;
     std::unique_ptr<CameraSystem::Camera> authoredCamera_;
     CameraSystem::Camera* editorCamera_ = nullptr;
     CameraSystem::Camera* registeredEditorCamera_ = nullptr;

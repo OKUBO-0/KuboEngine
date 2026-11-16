@@ -3,12 +3,51 @@
 #include "SpriteCommon.h"
 #include "Logger.h"
 #include "../../assets/SpriteReference.h"
+#include "../../input/InputFrame.h"
 #include <stdexcept>
 
 namespace Engine::Scene {
 void EntityScene::SetUIOutputExtent(Base::ViewExtent extent) {
     if(!Base::ValidGameOutputExtent(extent))throw std::invalid_argument("Invalid UI output extent");
     uiOutputExtent_=extent;
+}
+void EntityScene::CancelUIButtons() noexcept {
+    hoveredButton_=pressedButton_=0;
+    pressedButtonScene_.clear();
+}
+std::optional<Scripting::ScriptSceneTransition> EntityScene::UpdateUIButtons(const InputSystem::InputFrame& input,
+    std::optional<Vector2> point) {
+    if(!input.available || !point || spriteResult_!=RenderSpriteResult::Success || uiOutputExtent_!=spriteFrame_.extent){
+        CancelUIButtons();
+        return std::nullopt;
+    }
+    hoveredButton_=0;
+    const SpriteComponent* selected=nullptr;
+    // Match the most recent rendered frame and consider enabled buttons in reverse paint order.
+    for(auto item=spriteFrame_.items.rbegin();item!=spriteFrame_.items.rend();++item){
+        if(!item->ContainsOutputPoint(*point))continue;
+        const auto* entity=world_.Find(item->entity);
+        if(!entity || !entity->active || !entity->hasSprite || !entity->sprite.enabled ||
+            entity->sprite.buttonSceneGuid.empty())continue;
+        const auto found=sprites_.find(item->entity);
+        if(found==sprites_.end() || !found->second.object || entity->sprite.assetGuid!=found->second.guid ||
+            (entity->sprite.assetGuid.empty() && entity->sprite.assetPath!=found->second.authoredAsset))continue;
+        hoveredButton_=item->entity;
+        selected=&entity->sprite;
+        break;
+    }
+    const auto& mouse=input.mouse[0];
+    if(mouse.pressed){
+        pressedButton_=hoveredButton_;
+        pressedButtonScene_=selected?selected->buttonSceneGuid:std::string{};
+    }
+    if(mouse.down)return std::nullopt;
+    const bool clicked=mouse.released && selected && hoveredButton_==pressedButton_ &&
+        selected->buttonSceneGuid==pressedButtonScene_;
+    pressedButton_=0;
+    pressedButtonScene_.clear();
+    if(clicked)return Scripting::ScriptSceneTransition{"guid:"+selected->buttonSceneGuid,0};
+    return std::nullopt;
 }
 void EntityScene::SynchronizeSprites() {
     RenderSpriteFrame frame;
@@ -63,7 +102,12 @@ void EntityScene::DrawSprites() {
         if(!entity || entity->sprite.assetGuid!=found->second.guid ||
             (entity->sprite.assetGuid.empty() && entity->sprite.assetPath!=found->second.authoredAsset))continue;
         auto& sprite=*found->second.object;
-        sprite.SetAnchorPoint(item.pivot);sprite.SetColor(item.color);
+        auto color=item.color;
+        if(item.entity==hoveredButton_ && !entity->sprite.buttonSceneGuid.empty()){
+            const float factor=item.entity==pressedButton_?0.74f:0.88f;
+            color.x*=factor;color.y*=factor;color.z*=factor;
+        }
+        sprite.SetAnchorPoint(item.pivot);sprite.SetColor(color);
         sprite.SetIsFlipX(item.flipX);sprite.SetIsFlipY(item.flipY);
         sprite.Update(item.world,spriteFrame_.projection);sprite.Draw();
     }

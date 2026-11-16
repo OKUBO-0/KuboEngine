@@ -1,6 +1,9 @@
 #pragma once
 
 #include "engine/scene/entity/EntityWorld.h"
+#include "engine/base/EngineResourcePath.h"
+#include "engine/assets/AssetRegistry.h"
+#include "engine/input/InputFrame.h"
 #include "wave_fixture.h"
 #include <Windows.h>
 #include <fstream>
@@ -17,7 +20,7 @@ public:
         }
     }
 
-    void Prepare() {
+    void Prepare(bool button=false) {
         const auto directory=std::filesystem::temp_directory_path()/
             (L"kubo-scene-transition-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64()));
         if (!std::filesystem::create_directory(directory)) throw std::runtime_error("Transition fixture already exists");
@@ -64,12 +67,37 @@ function on_update(e,dt) end
         std::string error;
         if (!start.Save(root/"Assets/entry.scene",error) ||
             !destination.Save(root/L"Assets/移動先.scene",error)) throw std::runtime_error(error);
+        if(button){
+            const auto image=Engine::Base::ResolveEngineResource("Resources/textures/common/white.png");
+            std::filesystem::copy_file(image,root/"Assets/white.png");
+            Engine::Assets::AssetRegistry assets;
+            if(!assets.Scan(root/"Assets",error))throw std::runtime_error(error);
+            const auto* next=assets.FindByPath(root/L"Assets/移動先.scene");
+            const auto* entry=assets.FindByPath(root/"Assets/entry.scene");
+            if(!next || !entry)throw std::runtime_error("Button Scene assets missing");
+            EntityWorld title;
+            const auto canvas=title.CreateEntity("Title Canvas");
+            const auto covered=title.CreateEntity("Covered Button",canvas),click=title.CreateEntity("Play Button",canvas);
+            Engine::Scene::SpriteComponent sprite;
+            sprite.assetPath="Assets/white.png";sprite.size={420,240};sprite.anchor={0.5f,0.5f};
+            sprite.buttonSceneGuid=entry->guid;
+            if(!title.SetCanvas(canvas,{}) || !title.SetSprite(covered,sprite))throw std::runtime_error("Could not create title Canvas");
+            sprite.buttonSceneGuid=next->guid;sprite.sortOrder=1;sprite.flipX=true;
+            if(!title.SetSprite(click,sprite) || !title.Save(root/"Assets/entry.scene",error))throw std::runtime_error(error);
+        }
     }
 
     bool Arrived(const Engine::Scene::EntityWorld& world) const {
         const auto* entity=world.Find(1);
         return entity && entity->name=="Arrived" && entity->transform.position.z==123 &&
             world.GetEntities().size()==1;
+    }
+    static bool ButtonTestOutside(int frame) {return frame==11 || frame==12;}
+    static void ButtonInput(Engine::InputSystem::InputFrame& input,bool enabled,int frame) {
+        input.available=enabled && frame!=16;
+        const bool press=frame==10 || frame==12 || frame==15 || frame==21;
+        const bool release=frame==11 || frame==13 || frame==17 || frame==22;
+        input.mouse[0]={press,press,release};
     }
 
 private:

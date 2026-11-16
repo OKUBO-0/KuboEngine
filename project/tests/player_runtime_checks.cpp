@@ -36,13 +36,24 @@ namespace {
 void Require(bool condition, const char* why) { if (!condition) throw std::runtime_error(why); }
 class SceneTransitionPlayerChecks final : public Engine::App::RuntimeGame {
 public:
+    explicit SceneTransitionPlayerChecks(bool button=false):button_(button){}
+    ~SceneTransitionPlayerChecks() override {Engine::InputSystem::captureInputChecksOverride=nullptr;}
     void Initialize() override {
-        fixture_.Prepare();
+        fixture_.Prepare(button_);
         SetProjectRoot(fixture_.root);
         SetProjectFile(fixture_.root/"entry.kubo");
         SetProjectAssetRoot(fixture_.root/"Assets");
         std::string error;
         Require(ConfigureStartupScene(fixture_.root/"Assets/entry.scene",error),error.c_str());
+        if(button_){
+            SetGameOutputExtent({960,720});
+            Engine::InputSystem::captureInputChecksOverride=[](Engine::InputSystem::InputFrame& input,bool enabled){
+                RuntimeSceneTransitionFixture::ButtonInput(input,enabled,frames_);
+                const auto rect=Engine::Base::GamePresentationRect({1280,720},{960,720});
+                input.mouseX=RuntimeSceneTransitionFixture::ButtonTestOutside(frames_)?float(rect.left)-1:float(rect.left+rect.width/2);
+                input.mouseY=float(rect.top+rect.height/2);
+            };
+        }
         RuntimeGame::Initialize();
     }
     void Update() override {
@@ -50,14 +61,16 @@ public:
         Require(++frames_<180,"Player Scene transition timed out");
         heard_ |= GetScriptAudioHost().VoiceCount()>0;
         arrived_=fixture_.Arrived(GetWorld());
-        if (arrived_) Require(heard_ && GetScriptAudioHost().VoiceCount()==0,
+        if (arrived_ && button_) Require(frames_==24,"Player activated the wrong button or accepted an incomplete click");
+        if (arrived_ && !button_) Require(heard_ && GetScriptAudioHost().VoiceCount()==0,
             "Player transition did not submit the WAV or did not retire the previous scene's audio");
     }
     bool IsEndRequest() const override {return arrived_ || RuntimeGame::IsEndRequest();}
     bool Arrived() const {return arrived_;}
 private:
     RuntimeSceneTransitionFixture fixture_;
-    int frames_=0;
+    static inline int frames_=0;
+    bool button_=false;
     bool heard_=false,arrived_=false;
 };
 class AnimatorPlayerChecks final : public Engine::App::RuntimeGame {
@@ -173,10 +186,11 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR arguments,int) {
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--ui"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerSpriteChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lua-ui"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerLuaUIChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
-    if(mode=="--scene-transition"){
+    if(mode=="--scene-transition" || mode=="--ui-button"){
         std::cout<<"RUNNER_MODE="<<mode<<'\n';
-        try{SceneTransitionPlayerChecks checks;checks.Run();Require(checks.Arrived(),"Player ended before the transition");
-            std::cout<<"PASS: independent Player movement, Trigger WAV and destination Lua initialization\n";return 0;}
+        try{const bool button=mode=="--ui-button";SceneTransitionPlayerChecks checks(button);checks.Run();Require(checks.Arrived(),"Player ended before the transition");
+            std::cout<<(button?"PASS: independent Player 4:3 letterbox, Button painter order, cancellation and destination Lua initialization\n":
+                "PASS: independent Player movement, Trigger WAV and destination Lua initialization\n");return 0;}
         catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
     }
     if(mode=="--prefab"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<PrefabPlayerChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}

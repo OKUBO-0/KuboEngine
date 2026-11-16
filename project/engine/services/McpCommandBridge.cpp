@@ -136,6 +136,7 @@ Engine::Scene::SceneValue McpCommandBridge::Handle(const Engine::Scene::SceneVal
             if(component=="script" && !ValidateAsset(validated.script.assetPath,validated.script.assetGuid,Assets::AssetType::Script,assets_,projectRoot_,error))return Error(id,error.c_str(),-32000);
             if(component=="audio" && !ValidateAsset(validated.audio.assetPath,validated.audio.assetGuid,Assets::AssetType::Audio,assets_,projectRoot_,error))return Error(id,error.c_str(),-32000);
             if(component=="sprite" && !ValidateAsset(validated.sprite.assetPath,validated.sprite.assetGuid,Assets::AssetType::Texture,assets_,projectRoot_,error))return Error(id,error.c_str(),-32000);
+            if(component=="sprite" && !ValidateAsset({},validated.sprite.buttonSceneGuid,Assets::AssetType::Scene,assets_,projectRoot_,error))return Error(id,error.c_str(),-32000);
             const auto apply=[&](Scene::EntityRecord& target) {
                 if(component=="camera"){target.hasCamera=validated.hasCamera;target.camera=validated.camera;}
                 else if(component=="collider"){target.hasCollider=validated.hasCollider;target.collider=validated.collider;}

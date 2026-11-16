@@ -81,7 +81,15 @@ void RuntimeGame::Update()
                 } else Base::Logger::Log("Scene transition failed: "+error,Base::Logger::Level::Error);
             }
         }
-        scripts_.SetInputFrame(InputSystem::Input::GetInstance()->CaptureFrame());
+        auto input=InputSystem::Input::GetInstance()->CaptureFrame();
+        if(auto* scene=dynamic_cast<Scene::EntityScene*>(Scene::SceneManager::GetInstance()->GetCurrentScene())){
+            const auto extent=GetGameOutputExtent();
+            const auto rect=Base::GamePresentationRect({Base::WinApp::kClientWidth,Base::WinApp::kClientHeight},extent);
+            const auto point=Base::GameOutputPoint({input.mouseX,input.mouseY},{float(rect.left),float(rect.top)},
+                {float(rect.width),float(rect.height)},extent);
+            if(auto request=scene->UpdateUIButtons(input,point))scripts_.QueueSceneTransition(std::move(*request));
+        }
+        scripts_.SetInputFrame(std::move(input));
         std::string error;
         Scripting::LoadScriptWorldAssets(scripts_, world_, GetProjectRoot(), assets_, error);
         if (!error.empty() && error != lastScriptLoadError_)

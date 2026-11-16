@@ -22,6 +22,10 @@ class WinApp;
 
 namespace Engine::InputSystem {
 
+#if defined(KUBO_APPLICATION_CHECKS)
+inline void (*captureInputChecksOverride)(InputFrame&,bool)=nullptr;
+#endif
+
 /// @brief キーボード、マウス、ゲームパッド入力を統合管理するクラス
 /// @details DirectInput と XInput を使って各デバイスの入力状態を更新し、
 ///          押下・トリガー・座標・振動制御を提供する。

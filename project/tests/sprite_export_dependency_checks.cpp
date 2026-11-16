@@ -11,8 +11,13 @@ int main(){using namespace Engine;using namespace Assets;std::filesystem::path r
     Write(image,"dependency fixture, not decoded image data");Write(root/"Assets/script.lua","return {}\n");Write(root/"Resources/outside.png","outside copy roots");
     Scene::EntityWorld world;const auto canvas=world.CreateEntity("Canvas"),a=world.CreateEntity("Sprite",canvas),b=world.CreateEntity("Disabled Sprite",canvas),draft=world.CreateEntity("Draft",canvas);
     Need(world.SetCanvas(canvas,{}) && world.SetSprite(draft,{}),"Export setup");
-    AssetRegistry registry;std::string error;Need(registry.Scan(root/"Assets",error),error.c_str());const auto guid=registry.FindByPath(image)->guid,scriptGuid=registry.FindByPath(root/"Assets/script.lua")->guid;
-    Scene::SpriteComponent sprite;sprite.assetGuid=guid;sprite.assetPath="Assets/stale-hint.png";Need(world.SetSprite(a,sprite),"Sprite setup");sprite.enabled=false;Need(world.SetSprite(b,sprite),"Disabled Sprite setup");world.Find(b)->active=false;
+    const auto destination=root/L"Assets/次.scene";
+    Scene::EntityWorld next;next.CreateEntity("Destination");
+    AssetRegistry registry;std::string error;Need(next.Save(destination,error),error.c_str());Need(registry.Scan(root/"Assets",error),error.c_str());
+    const auto guid=registry.FindByPath(image)->guid,scriptGuid=registry.FindByPath(root/"Assets/script.lua")->guid;
+    Scene::SpriteComponent sprite;sprite.assetGuid=guid;sprite.assetPath="Assets/stale-hint.png";
+    sprite.buttonSceneGuid=registry.FindByPath(destination)->guid;
+    Need(world.SetSprite(a,sprite),"Sprite setup");sprite.enabled=false;Need(world.SetSprite(b,sprite),"Disabled Sprite setup");world.Find(b)->active=false;
     Need(world.Save(scene,error),error.c_str());Prefab::PrefabValue prefab;Need(Prefab::CapturePrefabSubtree(world,canvas,prefab,error),error.c_str());Write(file,prefab.dump());Need(registry.Scan(root/"Assets",error),error.c_str());
     const auto originalScene=Read(scene),originalPrefab=Read(file),identity=Read(AssetRegistry::MetadataPath(image)),manifest=Read(project);
     const auto startup=[&](){return ValidateExportStartupSpriteDependencies(project,{"Assets"});};
@@ -27,11 +32,14 @@ int main(){using namespace Engine;using namespace Assets;std::filesystem::path r
         const auto original=inPrefab?prefab:world.Capture();
         const auto edit=[&](const char* key,const Scene::SceneValue& value){auto changed=original;auto& entities=inPrefab?changed["world"]["entities"]:changed["entities"];entities[1]["sprite"][key]=value;Write(target,changed.dump());refuse(inPrefab);Write(target,inPrefab?originalPrefab:originalScene);};
         edit("guid",std::string(16,'f'));edit("guid",scriptGuid);edit("size",crude_json::array{-1.0,100.0});edit("asset","../escape.png");
+        edit("buttonSceneGuid",std::string(16,'f'));edit("buttonSceneGuid",guid);
         auto outside=original;auto& entities=inPrefab?outside["world"]["entities"]:outside["entities"];entities[1]["sprite"]["asset"]="Resources/outside.png";entities[1]["sprite"].get<crude_json::object>().erase("guid");Write(target,outside.dump());refuse(inPrefab);
         if(inPrefab)Need(ValidateExportPrefabDependencies(project,{"Assets/ui.prefab"},{"Assets","Resources"}).sprites.sprites==2,"Copied Prefab texture refused");
         else Need(ValidateExportStartupSpriteDependencies(project,{"Assets","Resources"}).sprites==2,"Copied Scene texture refused");
         Write(target,inPrefab?originalPrefab:originalScene);
     }
+    const auto destinationBytes=Read(destination);
+    Write(destination,R"({"notAnEntityScene":true})");refuse(false);refuse(true);Write(destination,destinationBytes);
     auto changed=Scene::SceneValue::parse(identity);changed["guid"]=std::string(16,'e');Write(AssetRegistry::MetadataPath(image),changed.dump());refuse(false);refuse(true);Write(AssetRegistry::MetadataPath(image),identity);
     const auto held=root/"held.png";std::filesystem::rename(image,held);refuse(false);refuse(true);std::filesystem::rename(held,image);
     // A legacy path-only image remains supported and must not create a sidecar.

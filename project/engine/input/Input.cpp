@@ -142,6 +142,9 @@ InputFrame Input::CaptureFrame(bool enabled) const
 		frame.mouseX=mousePos.x;frame.mouseY=mousePos.y;
 		frame.deltaX=static_cast<float>(mouse.lX);frame.deltaY=static_cast<float>(mouse.lY);frame.wheel=static_cast<float>(mouse.lZ)/WHEEL_DELTA;
 	}
+#if defined(KUBO_APPLICATION_CHECKS)
+	if(captureInputChecksOverride)captureInputChecksOverride(frame,enabled);
+#endif
 	return frame;
 }
 

@@ -22,9 +22,10 @@ namespace {
 void Need(bool ok,const char* why){if(!ok)throw std::runtime_error(why);}
 std::string Read(const std::filesystem::path& path){std::ifstream in(path,std::ios::binary);Need(in.good(),"Inspector source read failed");return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};}
 struct Item {const char* label;ImVec2 center{};bool seen=false,disabled=false,mixed=false;};
-std::array<Item,34> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
+std::array<Item,36> items{{{"Add Light"},{"Remove Light"},{"Add Material"},{"Remove Material"},{"Light Enabled"},{"Material Lighting"},
     {"Add Canvas"},{"Remove Canvas"},{"Canvas Enabled"},{"Add Sprite"},{"Remove Sprite"},{"Sprite Enabled"},
     {"Sprite Flip X"},{"Sprite Flip Y"},{"Clear Sprite Image"},{"Registered Sprite Image"},{"Sprite Texture Choice"},
+    {"Button On Click"},{"Button Scene Choice"},
     {"Add Particle"},{"Remove Particle"},{"Particle Enabled"},{"Clear Particle Image"},{"Registered Particle Image"},{"Particle Texture Choice"},
     {"Hierarchy search"},{"Range First"},{"Range Last"},{"Active (selection)"},
     {"Hierarchy type filter"},{"Clear hierarchy filters"},{"Camera"},{"Unselected"},{"Child camera"},
@@ -284,6 +285,9 @@ public:
         try {
             {std::ofstream out(root/"entry.kubo",std::ios::binary);out<<R"({"name":"UI Inspector","engineVersion":"0.1.0","startupScene":"entry.scene","assetDirectory":"Assets"})";out.close();Need(!out.fail(),"UI manifest write failed");}
             const auto image=root/L"Assets/白.png";{std::ofstream out(image,std::ios::binary);out<<"identity fixture only, not a decoded image";out.close();Need(!out.fail(),"UI image identity write failed");}
+            const auto destination=root/L"Assets/遷移先.scene";
+            EntityWorld next;next.CreateEntity("Destination");
+            std::string sceneError;Need(next.Save(destination,sceneError),sceneError.c_str());
             for(const auto* file:{"shape.obj","step.lua","tone.wav"}){std::ofstream out(root/"Assets"/file,std::ios::binary);out<<"move reference fixture only";out.close();Need(!out.fail(),"Game asset guard fixture write failed");}
             Game game;game.SetProjectRoot(root);game.SetProjectFile(root/"entry.kubo");game.SetProjectAssetRoot(root/"Assets");game.SetEditorMode(true);
             const auto id=game.editorWorld_.CreateEntity("UI target");game.genericWorldReady_=game.genericSceneSelected_=game.genericInspectorOpen_=true;game.genericHierarchyOpen_=false;game.selectedEditorEntity_=id;game.editorSelection_.Replace(id);
@@ -315,7 +319,7 @@ public:
                 frame();frame();const Item* selected=nullptr;for(const auto& item:items)if(!std::strcmp(item.label,label))selected=&item;
                 if(!selected || !selected->seen || selected->disabled!=disabled)throw std::runtime_error(std::string("UI widget missing/disabled mismatch: ")+label);
                 const auto center=selected->center;Need(center.x>0 && center.x<1800 && center.y>0 && center.y<1800,"UI widget outside fixture viewport");
-                if(std::strcmp(label,"Sprite Texture Choice"))ImGui::FocusWindow(ImGui::FindWindowByName("Entity Inspector"));
+                if(std::strcmp(label,"Sprite Texture Choice") && std::strcmp(label,"Button Scene Choice"))ImGui::FocusWindow(ImGui::FindWindowByName("Entity Inspector"));
                 auto& io=ImGui::GetIO();io.AddMousePosEvent(center.x,center.y);frame();io.AddMouseButtonEvent(0,true);frame();io.AddMouseButtonEvent(0,false);frame();
             };
             const auto press=[&](ImGuiKey key){ImGui::FocusWindow(ImGui::FindWindowByName("Entity Inspector"));ImGui::ClearActiveID();auto& io=ImGui::GetIO();io.AddKeyEvent(ImGuiMod_Ctrl,true);frame();io.AddKeyEvent(key,true);frame();io.AddKeyEvent(key,false);io.AddKeyEvent(ImGuiMod_Ctrl,false);frame();};
@@ -343,6 +347,12 @@ public:
             Need(game.ApplyEditorHistory(false,error) && game.editorWorld_.Capture().dump()==savedWorld && !game.IsSceneDirty(),"Image clear Undo lost GUID/source");
             click("Remove Sprite");click("Remove Canvas");Need(!game.editorWorld_.Find(id)->hasSprite && !game.editorWorld_.Find(id)->hasCanvas && game.IsSceneDirty(),"UI removal failed");
             Need(game.ApplyEditorHistory(false,error) && game.ApplyEditorHistory(false,error) && game.editorWorld_.Capture().dump()==savedWorld && !game.IsSceneDirty(),"UI removal Undo failed");
+            click("Button On Click");click("Button Scene Choice");
+            const auto* buttonScene=game.projectAssets_.FindByPath(destination);
+            Need(buttonScene && game.editorWorld_.Find(id)->sprite.buttonSceneGuid==buttonScene->guid && game.IsSceneDirty(),
+                "Button Inspector did not assign a Scene GUID");
+            Need(game.ApplyEditorHistory(false,error) && game.editorWorld_.Capture().dump()==savedWorld && !game.IsSceneDirty(),
+                "Button Scene assignment did not Undo in one step");
             Need(game.GetEditorSelection()==std::vector<EntityId>{id} && Read(root/"entry.scene")==original && Read(root/"entry.kubo")==manifest && Read(image)==imageBytes && Read(Assets::AssetRegistry::MetadataPath(image))==metadata,"UI Inspector changed selection/source/identity files");
             game.editorWorld_.Find(id)->canvas.enabled=true;
             auto& layoutSprite=game.editorWorld_.Find(id)->sprite;

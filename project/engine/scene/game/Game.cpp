@@ -193,6 +193,7 @@ void Game::Update()
 	}
 	if (editorMode_ && winApp->ConsumeCloseRequest()) RequestDocumentAction(Engine::Editor::EntityDocumentState::Action::Close);
 	gameScriptInputAllowed_ = false;
+	gameUIPointer_.reset();
 #if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
 	const bool drawEditorBeforeSimulation = editorMode_ && genericSceneSelected_;
 	float editorWheel = 0.0f;
@@ -249,6 +250,16 @@ void Game::Update()
 		// The Editor's Win32 backend consumes wheel events once per ImGui frame.
 		if (editorMode_ && inputFrame.available) inputFrame.wheel = editorWheel;
 #endif
+		if (auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene())) {
+			auto point=gameUIPointer_;
+			if (!editorMode_) {
+				const auto extent=GetGameOutputExtent();
+				const auto rect=Base::GamePresentationRect({Base::WinApp::kClientWidth,Base::WinApp::kClientHeight},extent);
+				point=Base::GameOutputPoint({inputFrame.mouseX,inputFrame.mouseY},{float(rect.left),float(rect.top)},
+					{float(rect.width),float(rect.height)},extent);
+			}
+			if (auto request=scene->UpdateUIButtons(inputFrame,point)) scriptRuntime_.QueueSceneTransition(std::move(*request));
+		}
 		scriptRuntime_.SetInputFrame(std::move(inputFrame));
 		std::string scriptError;
 		if (!Engine::Scripting::LoadScriptWorldAssets(scriptRuntime_, editorWorld_, GetProjectRoot(), projectAssets_, scriptError)) {
@@ -262,7 +273,10 @@ void Game::Update()
 	else if(genericWorldReady_){
 		physicsWorld_.Advance(editorWorld_,0);
 		// A zero host delta is not a Pause. Preserve queued input while Playing.
-		if(editorMode_ && (prefabRecoveryBlocked_ || worldPlayback_.GetState()!=WorldPlayback::State::Playing))scriptRuntime_.ResetInput();
+		if(editorMode_ && (prefabRecoveryBlocked_ || worldPlayback_.GetState()!=WorldPlayback::State::Playing)){
+			scriptRuntime_.ResetInput();
+			if(auto* scene=dynamic_cast<EntityScene*>(SceneManager::GetInstance()->GetCurrentScene()))scene->CancelUIButtons();
+		}
 	}
 	if (genericWorldReady_) {
 		const auto& physicsDiagnostic=physicsWorld_.GetDiagnostic();
@@ -449,6 +463,10 @@ void Game::DrawDebugEditorShell()
 		const auto gameViewport = Engine::Editor::DebugEditorManager::DrawSceneViewport(&debugGameViewOpen_, [this] { const auto output=GetGameOutputExtent();ImGui::Text("Output: %u x %u",output.width,output.height);ImGui::TextUnformatted("Authored game camera; simulation follows Play/Pause. Hover image for script input."); },
 			"Game", offscreenRenderManager->GetImGuiSceneTextureHandle().ptr);
 		gameScriptInputAllowed_ = gameViewport.drawn && gameViewport.inputActive;
+		if (gameScriptInputAllowed_) {
+			const auto mouse=ImGui::GetIO().MousePos;
+			gameUIPointer_=Base::GameOutputPoint({mouse.x,mouse.y},gameViewport.min,gameViewport.size,GetGameOutputExtent());
+		}
 	}
 	if (uiLayoutOpen_) DrawUILayout();
 	std::function<void(const std::filesystem::path&)> openAssetScene;

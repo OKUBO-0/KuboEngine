@@ -90,6 +90,10 @@ public:
         default:return Result::Invalid;
         }
     }
+    bool ButtonDestination(const std::string& guid) const {
+        std::string error;
+        return !Assets::ResolveAssetReference({},guid,Assets::AssetType::Scene,registry_,root_,error).empty();
+    }
 private:
     const Assets::AssetRegistry& registry_;
     std::filesystem::path root_;

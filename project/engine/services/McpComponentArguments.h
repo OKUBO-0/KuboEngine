@@ -48,6 +48,10 @@ inline Scene::SceneValue McpComponentPatchSchema(const std::string& component) {
             pair("referenceSize",1,16384);auto& mode=schema["properties"]["scaleMode"];mode["type"]="string";mode["enum"]=crude_json::array{"constantPixels","scaleWithOutput"};
         }else{pair("size",0,16384);pair("pivot",-16,16);pair("anchor",0,1);boolean("flipX");boolean("flipY");}
     }
+    if(component=="sprite"){
+        auto& guid=schema["properties"]["buttonSceneGuid"];
+        guid["type"]="string";guid["pattern"]="^([0-9a-f]{16}|[0-9a-f]{32})?$";
+    }
     if(component=="light" || component=="material" || component=="sprite") {
         auto& color=schema["properties"]["color"];color["type"]="array";
         color["minItems"]=color["maxItems"]=component=="light"?3.0:4.0;
@@ -125,6 +129,7 @@ inline bool ValidateMcpComponentArguments(const Scene::SceneValue& arguments,std
         else if(type=="integer")valid=validNumber(value,definition) && std::floor(value.get<double>())==value.get<double>();
         else if(type=="string" && value.is_string()) {
             if(field=="asset")valid=component=="sprite"?Scene::UIComponentDetail::AssetPath(value.get<std::string>()):ValidMcpAssetPath(value.get<std::string>());
+            else if(field=="buttonSceneGuid")valid=Scene::UIComponentDetail::Guid(value.get<std::string>());
             else if(definition.contains("enum"))for(const auto& allowed:definition["enum"].get<crude_json::array>())if(value.get<std::string>()==allowed.get<std::string>())valid=true;
         }
         else if(type=="array" && value.is_array() && value.get<crude_json::array>().size()==size_t(definition["minItems"].get<double>())) {

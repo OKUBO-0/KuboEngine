@@ -64,6 +64,27 @@ inline void DrawSpriteInspector(Scene::EntityWorld& world,Scene::EntityId id,con
     changed|=RenderInspectorCheckbox("Sprite Flip Y",&value.flipY);
     changed|=ImGui::DragInt("Sprite Order",&value.sortOrder,1,-32768,32767);
     ImGui::TextWrapped("Needs a Canvas on this Entity or an ancestor. Entity Transform sets the offset from the anchor, rotation and scale. Later Sprite order/ID draws on top within its Canvas group.");
+    const auto* destination=registry.FindByGuid(value.buttonSceneGuid);
+    const char* destinationLabel=value.buttonSceneGuid.empty()?"None":destination && destination->type==Assets::AssetType::Scene
+        ?destination->relativePath.c_str():"Missing Scene";
+    const bool chooseScene=ImGui::BeginCombo("Button On Click",destinationLabel);
+    ObserveUIInspector("Button On Click");
+    if(chooseScene){
+        if(ImGui::Selectable("None",value.buttonSceneGuid.empty())){value.buttonSceneGuid.clear();changed=true;}
+        for(const auto& asset:registry.GetAssets()){
+            if(asset.type!=Assets::AssetType::Scene || !Scene::ModelComponent::IsValidGuid(asset.guid))continue;
+            const bool selected=ImGui::Selectable(asset.relativePath.c_str(),value.buttonSceneGuid==asset.guid);
+            ObserveUIInspector("Button Scene Choice");
+            if(selected){
+                Scene::EntityWorld scene;
+                std::string error;
+                if(scene.Load(registry.ResolveGuid(asset.guid),error)){value.buttonSceneGuid=asset.guid;changed=true;}
+                else status="Button needs an Entity Scene: "+error;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    if(ImGui::IsItemHovered())ImGui::SetTooltip("Load a Scene when the visible Sprite is clicked in Game.");
     if(changed && !world.SetSprite(id,value))status="Sprite settings rejected: valid project-relative image/GUID and finite size/pivot/color/order required";
     if(RenderInspectorButton("Remove Sprite"))world.RemoveSprite(id);
 }

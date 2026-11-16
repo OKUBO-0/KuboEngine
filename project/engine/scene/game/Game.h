@@ -271,6 +271,7 @@ private:
 	bool uiLayoutOpen_ = false;
 	int uiLayoutOutput_ = 0;
 	bool gameScriptInputAllowed_ = false;
+	std::optional<Vector2> gameUIPointer_;
 	bool editorViewEnabled_ = true;
 	bool editorGridVisible_ = true;
 	bool editorSelectionGuides_ = false;

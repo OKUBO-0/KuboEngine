@@ -14,6 +14,11 @@ int main() {
         Require(GamePresentationRect({1280,720},{512,768})==ViewRect{400,0,480,720},"Portrait presentation was stretched");
         Require(GamePresentationRect({1280,720},{1024,256})==ViewRect{0,200,1280,320},"Wide presentation was stretched");
         Require(GamePresentationRect({0,0},{512,768})==ViewRect{},"Invalid presentation generated a viewport");
+        const auto pointer=GameOutputPoint({250,100},{150,50},{200,100},{960,720});
+        Require(pointer && pointer->x==480 && pointer->y==360 &&
+            !GameOutputPoint({149,100},{150,50},{200,100},{960,720}) &&
+            !GameOutputPoint({350,100},{150,50},{200,100},{960,720}),
+            "Pointer mapping disagrees with the visible fitted Game image");
         Require(PanelViewExtent(430.9f,250.8f,extent) && extent==ViewExtent{430,250},"Pixel extent rounding failed");
         Require(PanelViewExtent(400,800,extent) && extent.Aspect()==0.5f,"Portrait aspect failed");
         Require(PanelViewExtent(8192,4096,extent) && extent==ViewExtent{2048,1024},"Uniform resource bound failed");

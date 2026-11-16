@@ -14,7 +14,11 @@ inline std::string_view Text(const crude_json::value& value,const char* key){
     if(!Scripting::ValidScriptText(text,4096))throw std::runtime_error("Scene asset reference text is invalid/over 4096 bytes");return text;
 }
 template<class Consumer> void Visit(const crude_json::value& entity,SceneAssetReferenceScope scope,Consumer consume){
-    if(entity.contains("sprite")){Scene::SpriteComponent sprite;if(!Scene::DecodeSprite(entity["sprite"],sprite))throw std::runtime_error("Sprite dependency component invalid");consume(Reference{"Sprite",sprite.assetPath,sprite.assetGuid,AssetType::Texture,false,true});}
+    if(entity.contains("sprite")){
+        Scene::SpriteComponent sprite;if(!Scene::DecodeSprite(entity["sprite"],sprite))throw std::runtime_error("Sprite dependency component invalid");
+        consume(Reference{"Sprite",sprite.assetPath,sprite.assetGuid,AssetType::Texture,false,true});
+        if(scope==SceneAssetReferenceScope::All)consume(Reference{"UI Button",{},sprite.buttonSceneGuid,AssetType::Scene});
+    }
     if(scope==SceneAssetReferenceScope::SpriteOnly)return;
     if(entity.contains("particle")){Scene::ParticleComponent value;if(!Scene::DecodeParticle(entity["particle"],value))throw std::runtime_error("Particle dependency component invalid");consume(Reference{"Particle",value.assetPath,value.assetGuid,AssetType::Texture,false,true,true});}
     consume(Reference{"Model",Text(entity,"model"),Text(entity,"modelGuid"),AssetType::Model});
@@ -31,7 +35,10 @@ template<class Consumer> void Visit(const crude_json::value& entity,SceneAssetRe
     }
 }
 template<class Consumer> void Visit(const Scene::EntityRecord& entity,SceneAssetReferenceScope scope,Consumer consume){
-    if(entity.hasSprite)consume(Reference{"Sprite",entity.sprite.assetPath,entity.sprite.assetGuid,AssetType::Texture,false,true});
+    if(entity.hasSprite){
+        consume(Reference{"Sprite",entity.sprite.assetPath,entity.sprite.assetGuid,AssetType::Texture,false,true});
+        if(scope==SceneAssetReferenceScope::All)consume(Reference{"UI Button",{},entity.sprite.buttonSceneGuid,AssetType::Scene});
+    }
     if(scope==SceneAssetReferenceScope::SpriteOnly)return;
     if(entity.hasParticle)consume(Reference{"Particle",entity.particle.assetPath,entity.particle.assetGuid,AssetType::Texture,false,true,true});
     if(entity.hasModel)consume(Reference{"Model",entity.model.assetPath,entity.model.assetGuid,AssetType::Model});

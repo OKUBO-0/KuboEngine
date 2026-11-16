@@ -21,9 +21,19 @@ inline ExportSpriteClosure ValidateExportSpriteDependencies(const Scene::EntityW
         if(!order)throw std::runtime_error("Cannot compare Sprite export paths");
         return order==CSTR_LESS_THAN;
     };
-    ExportSpriteClosure result;std::set<std::wstring,decltype(less)> textures(less);
+    ExportSpriteClosure result;std::set<std::wstring,decltype(less)> textures(less),buttonScenes(less);
     for(const auto& entity:world.GetEntities())if(entity.hasSprite){
         if(!entity.sprite.IsValid())throw std::runtime_error("Export Sprite has invalid authored fields");
+        if(!entity.sprite.buttonSceneGuid.empty()){
+            std::string error;
+            const auto destination=ResolveAssetReference({},entity.sprite.buttonSceneGuid,AssetType::Scene,registry,root,error);
+            if(destination.empty())throw std::runtime_error("Export UI Button destination refused: "+error);
+            copied(destination);copied(AssetRegistry::MetadataPath(destination));
+            if(buttonScenes.insert(destination.native()).second){
+                Scene::EntityWorld scene;
+                if(!scene.Load(destination,error))throw std::runtime_error("Export UI Button needs an Entity Scene: "+error);
+            }
+        }
         if(entity.sprite.assetPath.empty() && entity.sprite.assetGuid.empty()){++result.unassigned;continue;}
         std::string error;const auto source=ResolveSpriteReference(entity.sprite,registry,root,error);
         if(source.empty())throw std::runtime_error("Export Sprite reference refused: "+error);
