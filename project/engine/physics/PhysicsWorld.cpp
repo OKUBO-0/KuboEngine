@@ -1,5 +1,6 @@
 #include "PhysicsWorld.h"
 #include "BoundsBroadPhase.h"
+#include "ColliderGeometry.h"
 #include "../scene/entity/EntityTransformMatrix.h"
 
 #include <algorithm>
@@ -40,6 +41,16 @@ bool ColliderHalf(const Matrix4x4& matrix,Vector3 half,Vector3& result)
         std::abs(double(matrix.m[0][2]))*half.x+std::abs(double(matrix.m[1][2]))*half.y+std::abs(double(matrix.m[2][2]))*half.z,result);
 }
 
+bool BuildCollider(const ColliderComponent& component,const Matrix4x4& matrix,
+    Vector3& half,Geometry::Rounded& round)
+{
+    if (!component.HasValidShape()) return false;
+    if (component.shape==ColliderShape::Box) return ColliderHalf(matrix,component.halfExtents,half);
+    round=Geometry::TransformRounded(component,matrix);
+    return FloatVector(round.radius+std::abs(round.halfAxis[0]),round.radius+std::abs(round.halfAxis[1]),
+        round.radius+std::abs(round.halfAxis[2]),half);
+}
+
 bool InverseLinear(const Matrix4x4& matrix,double inverse[3][3])
 {
     for(const auto& row:matrix.m) for(float value:row) if(!std::isfinite(value)) return false;
@@ -63,6 +74,7 @@ struct Node {
     Matrix4x4 world{};
     double inverse[3][3]{};
     Vector3 start{},position{},velocity{},half{};
+    Geometry::Rounded round{};
     size_t parent=0,owner=0;
     double inverseMass=0;
     bool valid=false,collider=false,grounded=false;
@@ -124,7 +136,7 @@ bool BuildFrame(const Scene::EntityWorld& world,std::vector<Node>& nodes,std::st
         node.start=node.position={node.world.m[3][0],node.world.m[3][1],node.world.m[3][2]};
         node.valid=true;node.velocity=entity.rigidBody.velocity;node.inverseMass=InverseMass(entity);
         if(entity.hasCollider) {
-            node.collider=ColliderHalf(node.world,entity.collider.halfExtents,node.half);
+            node.collider=BuildCollider(entity.collider,node.world,node.half,node.round);
         }
     }
     // A shape belongs to the nearest explicit RigidBody, including static ones.
@@ -207,11 +219,12 @@ void QueryColliders(const Scene::EntityWorld& world,PhysicsQueryFilter filter,st
         for(;;){QueryWork(budget);if(!framesValid[cursor]){usable=false;break;}if(!entities[cursor].parent)break;const auto found=indices.find(entities[cursor].parent);if(found==indices.end()){usable=false;break;}cursor=found->second;}
         if(!usable)continue;
         const auto& matrix=matrices[i];Vector3 half{};Bounds bounds{};
-        if(!ColliderHalf(matrix,entity.collider.halfExtents,half))continue;
+        Geometry::Rounded round;
+        if(!BuildCollider(entity.collider,matrix,half,round))continue;
         const Vector3 center{matrix.m[3][0],matrix.m[3][1],matrix.m[3][2]};
         if(!FloatVector(double(center.x)-half.x,double(center.y)-half.y,double(center.z)-half.z,bounds.min) ||
             !FloatVector(double(center.x)+half.x,double(center.y)+half.y,double(center.z)+half.z,bounds.max))continue;
-        QueryWork(budget);visit(entity,bounds);
+        QueryWork(budget);visit(entity,bounds,round,center);
     }
 }
 
@@ -226,7 +239,8 @@ PhysicsQueryResult PhysicsWorld::Raycast(const Scene::EntityWorld& world,Vector3
     PhysicsQueryBudget local;auto& budget=shared?*shared:local;
     try{
         PhysicsRayHit hit;double closest=maximumDistance;
-        QueryColliders(world,filter,overrides,budget,[&](const Scene::EntityRecord& entity,const Bounds& bounds){
+        QueryColliders(world,filter,overrides,budget,[&](const Scene::EntityRecord& entity,const Bounds& bounds,
+            const Geometry::Rounded& round,Vector3 center){
             const double low[]{bounds.min.x,bounds.min.y,bounds.min.z},high[]{bounds.max.x,bounds.max.y,bounds.max.z};
             double near=0,far=maximumDistance;Vector3 normal{};bool inside=true;
             for(size_t axis=0;axis<3;++axis)inside=inside && start[axis]>=low[axis] && start[axis]<=high[axis];
@@ -236,6 +250,12 @@ PhysicsQueryResult PhysicsWorld::Raycast(const Scene::EntityWorld& world,Vector3
                 const float sign=unit[axis]>0?-1.0f:1.0f;if(first>last)std::swap(first,last);
                 if(first>near){near=first;normal={};if(axis==0)normal.x=sign;else if(axis==1)normal.y=sign;else normal.z=sign;}
                 far=std::min(far,last);if(near>far)return;
+            }
+            if (round.radius) {
+                QueryWork(budget,3);
+                if (!Geometry::RayRounded(round,Geometry::ToPoint(center),{{start[0],start[1],start[2]}},
+                    {{unit[0],unit[1],unit[2]}},closest,near,normal)) return;
+                inside=near==0;
             }
             if(hit.entity && (near>closest || (near==closest && entity.id>hit.entity)))return;
             Vector3 point{};if(!FloatVector(start[0]+unit[0]*near,start[1]+unit[1]*near,start[2]+unit[2]*near,point))throw QueryAbort{PhysicsQueryResult::Invalid};
@@ -255,8 +275,16 @@ PhysicsQueryResult PhysicsWorld::OverlapBox(const Scene::EntityWorld& world,Vect
     PhysicsQueryBudget local;auto& budget=shared?*shared:local;
     try{
         std::vector<Scene::EntityId> hits;
-        QueryColliders(world,filter,overrides,budget,[&](const Scene::EntityRecord& entity,const Bounds& bounds){
+        QueryColliders(world,filter,overrides,budget,[&](const Scene::EntityRecord& entity,const Bounds& bounds,
+            const Geometry::Rounded& round,Vector3 shapeCenter){
             if(!BoundsBroadPhase::Overlap(target,bounds))return;
+            if (round.radius) {
+                QueryWork(budget,8);
+                const auto pair=Geometry::ClosestBox(Geometry::ToPoint(shapeCenter)-round.halfAxis,
+                    round.halfAxis*2,target);
+                const auto separation=pair.second-pair.first;
+                if (Geometry::Dot(separation,separation)>round.radius*round.radius) return;
+            }
             if(hits.size()==PhysicsQueryBudget::MaxHits){budget.exhausted=true;throw QueryAbort{PhysicsQueryResult::Limit};}hits.push_back(entity.id);
         });
         std::sort(hits.begin(),hits.end());output.swap(hits);return PhysicsQueryResult::Success;
@@ -338,6 +366,9 @@ bool PhysicsWorld::StepInternal(Scene::EntityWorld& world,float deltaSeconds,std
                 (normal.z != 0.0f && secondCenter.z < firstCenter.z)) {
                 normal *= -1.0f;
             }
+            if ((nodes[i].round.radius || nodes[j].round.radius) &&
+                !Geometry::RoundedContact(nodes[i].round,Geometry::ToPoint(firstCenter),a,
+                    nodes[j].round,Geometry::ToPoint(secondCenter),b,normal,penetration)) continue;
             const bool trigger = first.collider.isTrigger || second.collider.isTrigger;
             events_.push_back({first.id, second.id, normal, penetration, trigger});
             if (trigger) {
@@ -436,11 +467,17 @@ bool PhysicsWorld::StepInternal(Scene::EntityWorld& world,float deltaSeconds,std
         for (const auto j : broadPhase.Query(a,0)) {
             if (i==j || (entities[j].collider.isTrigger && j<i) ||
                 (nodes[i].owner<nodes.size() && nodes[i].owner==nodes[j].owner)) continue;
-            Bounds b{};
-            if (!MakeBounds(nodes,j,b,center) ||
+            Bounds b{};Vector3 other{};
+            if (!MakeBounds(nodes,j,b,other) ||
                 std::min(a.max.x,b.max.x)<=std::max(a.min.x,b.min.x) ||
                 std::min(a.max.y,b.max.y)<=std::max(a.min.y,b.min.y) ||
                 std::min(a.max.z,b.max.z)<=std::max(a.min.z,b.min.z)) continue;
+            if (nodes[i].round.radius || nodes[j].round.radius) {
+                Vector3 normal{};
+                float depth=0;
+                if (!Geometry::RoundedContact(nodes[i].round,Geometry::ToPoint(center),a,
+                    nodes[j].round,Geometry::ToPoint(other),b,normal,depth)) continue;
+            }
             if (triggers->size() == MaximumFrameEvents) {
                 diagnostic_ = "Physics trigger overlap limit exceeded";
                 return false;

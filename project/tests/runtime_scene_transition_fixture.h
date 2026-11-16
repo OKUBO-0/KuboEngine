@@ -49,8 +49,13 @@ function on_update(e,dt) end
         using Engine::Scene::EntityWorld;
         EntityWorld start;
         const auto sensor=start.CreateEntity("Sensor"),visitor=start.CreateEntity("Visitor");
-        if (!start.SetCollider(sensor,{{1,1,1},true}) || !start.SetScript(sensor,"Assets/trigger.lua") ||
-            !start.SetCollider(visitor,{{1,1,1},false}) || !start.SetScript(visitor,"Assets/move.lua"))
+        Engine::Physics::ColliderComponent trigger,ball;
+        trigger.shape=Engine::Physics::ColliderShape::Capsule;
+        trigger.halfSegment=1;
+        trigger.isTrigger=true;
+        ball.shape=Engine::Physics::ColliderShape::Sphere;
+        if (!start.SetCollider(sensor,trigger) || !start.SetScript(sensor,"Assets/trigger.lua") ||
+            !start.SetCollider(visitor,ball) || !start.SetScript(visitor,"Assets/move.lua"))
             throw std::runtime_error("Cannot author Trigger fixture");
         start.Find(visitor)->transform.position={10,0,0};
         EntityWorld destination;

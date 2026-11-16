@@ -317,6 +317,9 @@
     <ClInclude Include="engine\physics\PhysicsComponents.h">
       <Filter>engine\physics</Filter>
     </ClInclude>
+    <ClInclude Include="engine\physics\ColliderGeometry.h">
+      <Filter>engine\physics</Filter>
+    </ClInclude>
     <ClInclude Include="engine\physics\BoundsBroadPhase.h">
       <Filter>engine\physics</Filter>
     </ClInclude>

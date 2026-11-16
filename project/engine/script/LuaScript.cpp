@@ -513,6 +513,35 @@ private:
         const auto result=Self(state).sceneCommands_.SetCollider(id,value);
         SceneStructuralError(state,result);lua_pushboolean(state,result==ScriptSceneCommands::Result::Success);return 1;
     }
+    static int SceneColliderShape(lua_State* state) {
+        SceneWorld(state);
+        const auto* value=Self(state).sceneCommands_.Collider(SceneId(state));
+        if (!value) {lua_pushnil(state);return 1;}
+        lua_pushstring(state,value->shape==Physics::ColliderShape::Sphere ? "sphere" :
+            value->shape==Physics::ColliderShape::Capsule ? "capsule" : "box");
+        lua_pushnumber(state,value->radius);
+        lua_pushnumber(state,value->halfSegment);
+        return 3;
+    }
+    static int SceneSetRoundCollider(lua_State* state) {
+        SceneWorld(state);
+        const auto id=SceneId(state);
+        const char* const shapes[]={"sphere","capsule",nullptr};
+        Physics::ColliderComponent value;
+        value.shape=luaL_checkoption(state,2,nullptr,shapes)==0 ?
+            Physics::ColliderShape::Sphere : Physics::ColliderShape::Capsule;
+        constexpr auto maximum=(std::numeric_limits<float>::max)();
+        value.radius=PhysicsNumber(state,3,(std::numeric_limits<float>::denorm_min)(),maximum);
+        value.halfSegment=PhysicsNumber(state,4,0,maximum);
+        luaL_checktype(state,5,LUA_TBOOLEAN);
+        value.isTrigger=lua_toboolean(state,5)!=0;
+        value.friction=PhysicsNumber(state,6,0,1);
+        value.restitution=PhysicsNumber(state,7,0,1);
+        const auto result=Self(state).sceneCommands_.SetCollider(id,value);
+        SceneStructuralError(state,result);
+        lua_pushboolean(state,result==ScriptSceneCommands::Result::Success);
+        return 1;
+    }
     static Physics::PhysicsQueryFilter QueryFilter(lua_State* state,int first){
         Physics::PhysicsQueryFilter filter;
         if(lua_gettop(state)>=first)filter.ignore=SceneId(state,first,true);
@@ -879,10 +908,12 @@ private:
         lua_pushboolean(state,false);lua_pushcclosure(state,SceneRemoveRender,1);lua_setfield(state,-2,"remove_light");
         lua_pushboolean(state,true);lua_pushcclosure(state,SceneRemoveRender,1);lua_setfield(state,-2,"remove_material");
         lua_pushcfunction(state,SceneCollider);lua_setfield(state,-2,"collider");
+        lua_pushcfunction(state,SceneColliderShape);lua_setfield(state,-2,"collider_shape");
         lua_pushcfunction(state,SceneRaycast);lua_setfield(state,-2,"raycast");
         lua_pushcfunction(state,SceneOverlapBox);lua_setfield(state,-2,"overlap_box");
         lua_pushcfunction(state,SceneRigidBody);lua_setfield(state,-2,"rigid_body");
         lua_pushcfunction(state,SceneSetCollider);lua_setfield(state,-2,"set_collider");
+        lua_pushcfunction(state,SceneSetRoundCollider);lua_setfield(state,-2,"set_round_collider");
         lua_pushcfunction(state,SceneSetRigidBody);lua_setfield(state,-2,"set_rigid_body");
         lua_pushboolean(state,false);lua_pushcclosure(state,SceneRemovePhysics,1);lua_setfield(state,-2,"remove_collider");
         lua_pushboolean(state,true);lua_pushcclosure(state,SceneRemovePhysics,1);lua_setfield(state,-2,"remove_rigid_body");

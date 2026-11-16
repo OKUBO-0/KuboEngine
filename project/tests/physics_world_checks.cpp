@@ -11,6 +11,67 @@ void Require(bool condition, const char* message)
     if (!condition) throw std::runtime_error(message);
 }
 
+void CheckRoundedColliders()
+{
+    using namespace Engine::Physics;
+    using namespace Engine::Scene;
+    EntityWorld world;
+    const auto box=world.CreateEntity("Box"),sphere=world.CreateEntity("Sphere"),capsule=world.CreateEntity("Capsule");
+    ColliderComponent ball, tube;
+    ball.shape=ColliderShape::Sphere;ball.radius=0.3f;
+    tube.shape=ColliderShape::Capsule;tube.halfSegment=2;tube.isTrigger=true;
+    Require(world.SetCollider(box,{{1,1,1}}) && world.SetCollider(sphere,ball) && world.SetCollider(capsule,tube),
+        "Failed to author rounded colliders");
+    auto& capsuleTransform=world.Find(capsule)->transform;
+    capsuleTransform.position={10,0,0};
+    capsuleTransform.rotation.z=1.57079632679f;
+    world.Find(sphere)->transform.position={1.2f,1.2f,1.2f};
+    PhysicsWorld physics;
+    physics.Step(world,1.0f/60);
+    Require(physics.GetEvents().empty(),"Sphere AABB corner was mistaken for a contact");
+    world.Find(sphere)->transform.position={1.1f,1.1f,1.1f};
+    physics.Step(world,1.0f/60);
+    Require(physics.GetEvents().size()==1 && physics.GetEvents().front().normal.x>0.55f &&
+        physics.GetEvents().front().normal.y>0.55f && physics.GetEvents().front().normal.z>0.55f,
+        "Sphere against box corner did not produce a rounded normal");
+    PhysicsRayHit hit;
+    Require(PhysicsWorld::Raycast(world,{11.5f,0,-3},{0,0,1},10,hit)==PhysicsQueryResult::Success &&
+        hit.entity==capsule && std::abs(hit.distance-2.5f)<0.001f && hit.normal.z<-0.99f,
+        "Raycast did not hit the rotated capsule cylinder");
+    Require(PhysicsWorld::Raycast(world,{12.4f,0.4f,-3},{0,0,1},10,hit)==PhysicsQueryResult::Success && !hit.entity,
+        "Raycast hit a capsule AABB corner");
+    Require(PhysicsWorld::Raycast(world,{12.25f,0,-3},{0,0,1},10,hit)==PhysicsQueryResult::Success &&
+        hit.entity==capsule && hit.distance>2.55f && hit.distance<2.58f && hit.normal.x>0.45f,
+        "Raycast did not hit the capsule cap");
+    std::vector<EntityId> hits;
+    Require(PhysicsWorld::OverlapBox(world,{12.4f,0.4f,0},{0.01f,0.01f,0.01f},hits)==PhysicsQueryResult::Success &&
+        hits.empty(),"OverlapBox accepted an empty capsule AABB corner");
+    Require(PhysicsWorld::OverlapBox(world,{11.8f,0,0},{0.01f,0.01f,0.01f},hits)==PhysicsQueryResult::Success &&
+        hits==std::vector<EntityId>{capsule},"OverlapBox missed the capsule body");
+    world.Find(sphere)->transform.position={11,0.7f,0};
+    std::vector<TriggerEvent> edges;
+    const auto advance=[&]{physics.Advance(world,1.0f/60,{},[&](auto events){edges.insert(edges.end(),events.begin(),events.end());});};
+    advance();advance();
+    world.Find(sphere)->transform.position.y=0.9f;
+    advance();
+    Require(edges.size()==2 && edges[0].first==sphere && edges[0].second==capsule && edges[0].entered && !edges[1].entered,
+        "Sphere/capsule trigger edges lost their rounded contact semantics");
+    world.Find(sphere)->transform.position={0,2,0};
+    world.SetRigidBody(sphere,{});
+    for (int i=0;i<90;++i) physics.Step(world,1.0f/60);
+    Require(world.Find(sphere)->rigidBody.grounded && std::abs(world.Find(sphere)->transform.position.y-1.3f)<0.01f,
+        "Sphere did not settle against the surface of the box");
+    const auto snapshot=world.Capture();
+    Require(!snapshot["entities"][size_t(0)]["collider"].contains("shape"),"Existing Box serialization changed");
+    EntityWorld restored;
+    std::string error;
+    Require(restored.Restore(snapshot,error) && restored.Find(box)->collider.shape==ColliderShape::Box &&
+        restored.Find(sphere)->collider.shape==ColliderShape::Sphere &&
+        restored.Find(capsule)->collider.shape==ColliderShape::Capsule &&
+        restored.Find(capsule)->collider.halfSegment==2 && restored.Capture().dump()==snapshot.dump(),
+        "Rounded shape save/load did not round-trip");
+}
+
 void CheckMassResponse()
 {
     using namespace Engine::Physics;
@@ -132,6 +193,7 @@ int main()
     try {
         CheckMassResponse();
         CheckMaterials();
+        CheckRoundedColliders();
         EntityWorld world;
         const EntityId floor = world.CreateEntity("Floor");
         const EntityId player = world.CreateEntity("Player");
@@ -156,6 +218,7 @@ int main()
         for (const auto& event : physics.GetEvents()) foundTrigger = foundTrigger || event.trigger;
         Require(foundTrigger, "Trigger collision event was not emitted");
         std::cout << "PASS: gravity, mass-weighted AABB response, pair momentum, separation, grounded and trigger events\n";
+        std::cout << "PASS: Sphere/Box response, rounded normals, rotated Capsule raycast/overlap, trigger edges and Scene round-trip\n";
         std::cout << "PASS: elastic/partial bounce, friction blend/cap/stop, momentum/energy, static support threshold, order/trigger/separation and overflow/nonfinite isolation\n";
         return 0;
     } catch (const std::exception& exception) {

@@ -20,6 +20,9 @@ int main(){try{
   assert(scene.set_rigid_body(id,4,5,6,2,true,false));assert(e:velocity()==4)
   e:set_velocity(7,0,0);assert(scene.velocity(id)==7 and scene.rigid_body(id)==7)
   local copy=scene.clone(id);assert(copy==3 and scene.rigid_body(copy)==7 and scene.collider(copy)==2)
+  assert(scene.set_round_collider(copy,"capsule",0.25,1.5,true,0,0))
+  local kind,radius,half=scene.collider_shape(copy);assert(kind=="capsule" and radius==0.25 and half==1.5)
+  assert(scene.collider_shape(id)=="box")
   assert(scene.set_rigid_body(2,9,0,0,3,false,false));assert(scene.set_velocity(2,8,0,0))
   assert(scene.set_rigid_body(2,6,0,0,4,true,false));assert(scene.velocity(2)==6)
   assert(scene.remove_rigid_body(2) and scene.rigid_body(2)==nil and scene.velocity(2)==nil)
@@ -41,6 +44,8 @@ int main(){try{
  )");
  EntityWorld world;world.CreateEntity("Self");world.CreateEntity("Peer");world.SetScript(1,"success.lua");ScriptRuntime runtime;Load(runtime,root,"success.lua");runtime.Update(world,0.1f);
  Need(runtime.GetLastError(1).empty() && world.Find(1)->hasRigidBody && world.Find(1)->rigidBody.velocity.x==7 && world.Find(1)->collider.halfExtents.y==3 && world.Find(2)->rigidBody.velocity.x==5 && !world.Find(2)->hasCollider && world.Find(3)->rigidBody.velocity.x==7,"Lua Physics Create/Update/self addition/clone/order publication failed");
+ Need(world.Find(3)->collider.shape==Physics::ColliderShape::Capsule &&
+  world.Find(3)->collider.radius==0.25f && world.Find(3)->collider.halfSegment==1.5f,"Lua capsule did not publish");
  world.RemoveScript(3);Physics::PhysicsWorld physics;physics.Advance(world,1.0f/60.0f,[&](float dt){runtime.FixedUpdate(world,dt);});
  Need(runtime.GetLastError(1).empty() && world.Find(1)->rigidBody.velocity.x==3 && world.Find(1)->transform.position.x>1,"Fixed Physics edit not consumed by solver");runtime.Shutdown(world);Need(world.Find(2)->hasCollider && world.Find(2)->collider.isTrigger,"Live Destroy Physics edit failed");
  // Full settings and all scalar/Audio prefixes are private until hook success.

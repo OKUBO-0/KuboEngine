@@ -43,10 +43,10 @@ struct PhysicsQueryBudget {
     size_t queries=0,work=0;bool exhausted=false;
 };
 
-/// @brief Lightweight deterministic AABB physics used by the generic entity world.
+/// @brief Lightweight deterministic box, sphere and capsule physics for entity worlds.
 class PhysicsWorld final {
 public:
-    // Current-pose world AABBs, not triangles/OBBs/swept collision. Inclusive
+    // Current-pose shapes; boxes use their world AABB. Inclusive
     // touching; nearest hit then lowest ID. Inside/on-boundary ray: t=0,n=0.
     // Success miss: hit.entity=0. Failures leave caller output unchanged.
     static PhysicsQueryResult Raycast(const Scene::EntityWorld& world,Vector3 origin,Vector3 direction,float maximumDistance,

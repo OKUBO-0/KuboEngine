@@ -379,6 +379,7 @@ exit /B 0</Command>
     <ClInclude Include="engine\base\core\CloseRequestGate.h" />
     <ClInclude Include="engine\scene\entity\EntityScene.h" />
     <ClInclude Include="engine\physics\PhysicsComponents.h" />
+    <ClInclude Include="engine\physics\ColliderGeometry.h" />
     <ClInclude Include="engine\physics\PhysicsWorld.h" />
     <ClInclude Include="engine\physics\BoundsBroadPhase.h" />
     <ClInclude Include="engine\script\ScriptComponent.h" />

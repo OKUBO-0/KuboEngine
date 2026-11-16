@@ -15,6 +15,7 @@
 #include "GamePlayScene.h"
 #include "../entity/EntityScene.h"
 #include "../entity/RuntimeSceneTransition.h"
+#include "engine/physics/ColliderGeometry.h"
 #include "engine/assets/ModelReference.h"
 #include "engine/assets/AssetSceneDependencies.h"
 #include "engine/script/ScriptReference.h"
@@ -719,9 +720,40 @@ void Game::DrawSceneGuides(const Engine::Editor::DebugSceneViewportState& viewpo
 		if (editorSelectionGuides_ && scene && scene->GetWorldModelBounds(id,bounds))
 			box(bounds,selectionColor);
 		if (editorComponentGuides_ && entity->hasCollider) {
-			const auto half = entity->collider.halfExtents;
-			if (TransformSceneBounds({half * -1,half},world,bounds))
-				box(bounds,entity->collider.isTrigger ? IM_COL32(207,159,255,255) : IM_COL32(115,234,162,255));
+			const auto color = entity->collider.isTrigger ? IM_COL32(207,159,255,255) : IM_COL32(115,234,162,255);
+			if (entity->collider.shape==Physics::ColliderShape::Box) {
+				const auto half = entity->collider.halfExtents;
+				if (TransformSceneBounds({half * -1,half},world,bounds)) box(bounds,color);
+			} else {
+				using namespace Physics::Geometry;
+				const auto round=TransformRounded(entity->collider,world);
+				const auto middle=ToPoint(center);
+				const double length=std::sqrt(Dot(round.halfAxis,round.halfAxis));
+				const auto axis=length>0 ? round.halfAxis*(1/length) : Point{{0,1,0}};
+				const auto tangent=Cross(axis,std::abs(axis[0])<0.8 ? Point{{1,0,0}} : Point{{0,1,0}});
+				const auto u=tangent*(1/std::sqrt(Dot(tangent,tangent))),v=Cross(axis,u);
+				const auto arc=[&](Point origin,Point a,Point b,double angle,double span) {
+					Point previous=origin+(a*std::cos(angle)+b*std::sin(angle))*round.radius;
+					for(int i=1;i<=24;++i) {
+						const double t=angle+span*i/24;
+						const auto next=origin+(a*std::cos(t)+b*std::sin(t))*round.radius;
+						line(ToVector(previous),ToVector(next),color);
+						previous=next;
+					}
+				};
+				constexpr double pi=3.141592653589793;
+				arc(middle+round.halfAxis,u,v,0,2*pi);
+				if (length>0) arc(middle-round.halfAxis,u,v,0,2*pi);
+				for (const auto tangentAxis : {u,v}) {
+					arc(middle+round.halfAxis,tangentAxis,axis,0,pi);
+					arc(middle-round.halfAxis,tangentAxis,axis,pi,pi);
+					if (length==0) continue;
+					for (const double sign : {-1.0,1.0}) {
+						const auto side=middle+tangentAxis*(sign*round.radius);
+						line(ToVector(side-round.halfAxis),ToVector(side+round.halfAxis),color);
+					}
+				}
+			}
 		}
 		Vector2 marker{}, unused{};
 		if (!ProjectSceneGuideLine(center,center,viewProjection,marker,unused)) continue;
@@ -2226,11 +2258,20 @@ void Game::DrawGenericEntityEditor()
 						bool enabled = true;
 						if (ImGui::Checkbox("Collider Enabled", &enabled) && !enabled) editorWorld_.RemoveCollider(entity->id);
 						if (entity->hasCollider) {
-							ImGui::DragFloat3("Half Extents", &entity->collider.halfExtents.x, 0.01f, 0.0f, 100.0f);
+							auto& collider=entity->collider;
+							int shape=static_cast<int>(collider.shape);
+							if (ImGui::Combo("Shape",&shape,"Box\0Sphere\0Capsule\0"))
+								collider.shape=static_cast<Physics::ColliderShape>(shape);
+							if (collider.shape==Physics::ColliderShape::Box)
+								ImGui::DragFloat3("Half Extents",&collider.halfExtents.x,0.01f,0,100,"%.3f",ImGuiSliderFlags_AlwaysClamp);
+							else
+								ImGui::DragFloat("Radius",&collider.radius,0.01f,0.001f,100,"%.3f",ImGuiSliderFlags_AlwaysClamp);
+							if (collider.shape==Physics::ColliderShape::Capsule)
+								ImGui::DragFloat("Half Segment (local Y)",&collider.halfSegment,0.01f,0,100,"%.3f",ImGuiSliderFlags_AlwaysClamp);
 							ImGui::Checkbox("Is Trigger", &entity->collider.isTrigger);
 							ImGui::SliderFloat("Friction", &entity->collider.friction, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 							ImGui::SliderFloat("Restitution", &entity->collider.restitution, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-							ImGui::TextWrapped("AABB surface material: friction uses both colliders; restitution bounces above 0.5 units/s. Triggers have no response.");
+							ImGui::TextWrapped("Friction uses both colliders; restitution bounces above 0.5 units/s. Triggers report overlap.");
 						}
 					}
 				}

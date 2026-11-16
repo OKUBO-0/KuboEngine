@@ -464,8 +464,7 @@ void EntityWorld::RemoveCamera(EntityId id)
 bool EntityWorld::SetCollider(EntityId id, const Physics::ColliderComponent& collider)
 {
     auto* entity = FindMutable(id);
-    if (!entity || !std::isfinite(collider.halfExtents.x) || !std::isfinite(collider.halfExtents.y) ||
-        !std::isfinite(collider.halfExtents.z) || collider.halfExtents.x < 0.0f || collider.halfExtents.y < 0.0f || collider.halfExtents.z < 0.0f ||
+    if (!entity || !collider.HasValidShape() ||
         !std::isfinite(collider.friction) || collider.friction < 0.0f || collider.friction > 1.0f ||
         !std::isfinite(collider.restitution) || collider.restitution < 0.0f || collider.restitution > 1.0f) {
         return false;
@@ -615,6 +614,12 @@ SceneValue EntityWorld::Capture() const
         value["collider"]["trigger"] = entity.collider.isTrigger;
         value["collider"]["friction"] = double(entity.collider.friction);
         value["collider"]["restitution"] = double(entity.collider.restitution);
+        if (entity.collider.shape!=Physics::ColliderShape::Box) {
+            value["collider"]["shape"] = entity.collider.shape==Physics::ColliderShape::Sphere ? "sphere" : "capsule";
+            value["collider"]["radius"] = double(entity.collider.radius);
+            if (entity.collider.shape==Physics::ColliderShape::Capsule)
+                value["collider"]["halfSegment"] = double(entity.collider.halfSegment);
+        }
         value["rigidBody"]["enabled"] = entity.hasRigidBody;
         value["rigidBody"]["velocity"] = Vector(entity.rigidBody.velocity);
         value["rigidBody"]["mass"] = double(entity.rigidBody.mass);
@@ -744,6 +749,25 @@ bool EntityWorld::Restore(const SceneValue& value, std::string& error)
                 if (entity.collider.halfExtents.x < 0.0f || entity.collider.halfExtents.y < 0.0f || entity.collider.halfExtents.z < 0.0f)
                     throw std::runtime_error("Collider half extents must be non-negative");
                 if (collider.contains("trigger") && collider["trigger"].is_boolean()) entity.collider.isTrigger = collider["trigger"].get<crude_json::boolean>();
+                if (collider.contains("shape")) {
+                    if (!collider["shape"].is_string()) throw std::runtime_error("Invalid collider shape");
+                    const auto shape=collider["shape"].get<std::string>();
+                    if (shape=="sphere") entity.collider.shape=Physics::ColliderShape::Sphere;
+                    else if (shape=="capsule") entity.collider.shape=Physics::ColliderShape::Capsule;
+                    else if (shape!="box") throw std::runtime_error("Unknown collider shape");
+                }
+                const auto dimension=[&](const char* key,float& output) {
+                    if (!collider.contains(key)) return;
+                    const auto& value=collider[key];
+                    if (!value.is_number()) throw std::runtime_error(std::string("Invalid collider ")+key);
+                    const auto number=value.get<double>();
+                    if (!std::isfinite(number) || number<0 || number>std::numeric_limits<float>::max())
+                        throw std::runtime_error(std::string("Invalid collider ")+key);
+                    output=static_cast<float>(number);
+                };
+                dimension("radius",entity.collider.radius);
+                dimension("halfSegment",entity.collider.halfSegment);
+                if (!entity.collider.HasValidShape()) throw std::runtime_error("Invalid collider dimensions");
                 for(const auto key:{"friction","restitution"}) if(collider.contains(key)) {
                     if(!collider[key].is_number()) throw std::runtime_error("Collider material must be numeric");
                     const auto coefficient=collider[key].get<crude_json::number>();

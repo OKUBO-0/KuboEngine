@@ -155,8 +155,7 @@ public:
         output=record->rigidBody;output.velocity=*velocity;return true;
     }
     Result SetCollider(Scene::EntityId id,const Physics::ColliderComponent& value) noexcept {
-        if(!id || id>Scene::EntityWorld::MaximumEntityId || !Finite(value.halfExtents) ||
-            value.halfExtents.x<0 || value.halfExtents.y<0 || value.halfExtents.z<0 ||
+        if(!id || id>Scene::EntityWorld::MaximumEntityId || !value.HasValidShape() ||
             !std::isfinite(value.friction) || value.friction<0 || value.friction>1 ||
             !std::isfinite(value.restitution) || value.restitution<0 || value.restitution>1)return Result::Invalid;
         if(!Writable() || prepared_)return Result::Unavailable;

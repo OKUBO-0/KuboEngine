@@ -812,7 +812,9 @@ public:
         if (frame_ == 23) {
             Require(!IsSceneDirty() && SceneContains("Toolbar edit"), "Toolbar Save did not publish the Scene");
             Create("Menu edit");
-            Require(Access::Entities(*this).SetCollider(1,{}) && Access::Entities(*this).SetLight(1,{}),
+            Engine::Physics::ColliderComponent guideCollider;
+            guideCollider.shape=Engine::Physics::ColliderShape::Capsule;
+            Require(Access::Entities(*this).SetCollider(1,guideCollider) && Access::Entities(*this).SetLight(1,{}),
                 "Could not add Scene guide fixture components");
         }
         if (frame_ == 34) {
