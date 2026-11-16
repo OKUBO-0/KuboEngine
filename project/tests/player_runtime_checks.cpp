@@ -105,6 +105,100 @@ public:
     void Finalize() override{RuntimeGame::Finalize();retired_=true;}
     void Verify(){Require(fixture_.Done() && draws_>=15 && retired_,"Prefab Player scenario incomplete");fixture_.VerifyGpu();const auto* record=GetWorld().Find(4);Require(record && !record->script.started && record->transform.rotation.y==0.75f,"Prefab Player Script Destroy did not retire");Require(GetEntityAudioHost().SourceCount()==0 && GetEntityAudioHost().VoiceCount()==0 && GetEntityAudioHost().BufferBytes()==0 && GetScriptAudioHost().OwnerCount()==0 && GetScriptAudioHost().VoiceCount()==0 && GetScriptAudioHost().BufferBytes()==0,"Prefab Player retained Audio owners");std::cout<<"PASS: actual Player Prefab spawn/new Model+Animator+Script Create/Update/Fixed+Physics+muted component/Lua Audio, failed-peer isolation, rendered frames and Destroy/owned cleanup/GPU errors0\n";}
 };
+class CorridorPlayerChecks final : public Engine::App::RuntimeGame {
+    using Entity=Engine::Scene::EntityRecord;
+    inline static CorridorPlayerChecks* instance_=nullptr;
+    Microsoft::WRL::ComPtr<ID3D12InfoQueue> messages_;
+    unsigned frames_=0,stageFrames_=0,resultDraws_=0,wallSamples_=0;
+    bool wall_=false,model_=false,prefab_=false,sparks_=false,hud_=false;
+    float x_=0;
+    const Entity* Find(std::string_view name) const {
+        const auto& entities=GetWorld().GetEntities();
+        const auto found=std::find_if(entities.begin(),entities.end(),[&](const auto& entity){return entity.name==name;});
+        return found==entities.end()?nullptr:&*found;
+    }
+public:
+    ~CorridorPlayerChecks() override {
+        Engine::InputSystem::captureInputChecksOverride=nullptr;
+        instance_=nullptr;
+    }
+    void Initialize() override {
+        using namespace Engine;
+        wchar_t manifest[32768]{};
+        const auto chars=GetEnvironmentVariableW(L"KUBO_CORRIDOR_PROJECT",manifest,32768);
+        Require(chars && chars<32768,"KUBO_CORRIDOR_PROJECT must point to the authored corridor manifest");
+        Base::ProjectContext project;
+        std::string error;
+        Require(project.Open(manifest,error),error.c_str());
+        SetProjectRoot(project.GetRootPath());
+        SetProjectFile(project.GetProjectFile());
+        SetProjectAssetRoot(project.ResolvePath(project.GetSettings().assetDirectory));
+        SetGameOutputExtent(project.GetSettings().gameOutput);
+        Require(ConfigureStartupScene(project.ResolvePath(project.GetSettings().startupScene),error),error.c_str());
+        Microsoft::WRL::ComPtr<ID3D12Debug1> validation;
+        Require(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&validation))),"Corridor GPU validation missing");
+        validation->EnableDebugLayer();validation->SetEnableGPUBasedValidation(TRUE);
+        RuntimeGame::Initialize();
+        Require(SUCCEEDED(dxCommon->GetDevice()->QueryInterface(IID_PPV_ARGS(&messages_))),"Corridor GPU queue missing");
+        instance_=this;
+        InputSystem::captureInputChecksOverride=[](InputSystem::InputFrame& input,bool enabled){
+            const auto& check=*instance_;
+            std::array<bool,256> keys{},previous{};
+            std::array<bool,8> buttons{},previousButtons{};
+            if(check.stageFrames_){
+                keys[check.wall_?DIK_W:DIK_A]=true;
+            }else{
+                buttons[0]=check.frames_==9;
+                previousButtons[0]=check.frames_==10;
+            }
+            input=InputSystem::MakeInputFrame(InputSystem::Input::GetInstance()->GetActionMap(),
+                keys,previous,buttons,previousButtons,enabled);
+            input.mouseX=640;input.mouseY=462;
+        };
+    }
+    void Update() override {
+        RuntimeGame::Update();
+        ++frames_;
+        Require(frames_<600,"Corridor did not finish the title, level and result flow");
+        const auto* scene=dynamic_cast<Engine::Scene::EntityScene*>(Engine::Scene::SceneManager::GetInstance()->GetCurrentScene());
+        Require(scene,"Corridor lost its Entity Scene");
+        for(const auto& entity:GetWorld().GetEntities())Require(GetLuaError(entity.id).empty(),GetLuaError(entity.id).c_str());
+        if(const auto* runner=Find("Runner")){
+            ++stageFrames_;
+            const auto previousX=x_;
+            x_=runner->transform.position.x;
+            Require(x_>=-2.08f,"The runner passed through the left corridor wall");
+            if(!wall_ && GetPhysicsAdvanceUsage().steps){
+                wallSamples_=x_<-1.86f && std::abs(x_-previousX)<.003f?wallSamples_+1:0;
+                wall_=wallSamples_>=4;
+            }
+            model_|=scene->GetModelRenderStatus(runner->id).loaded;
+            if(const auto* beacon=Find("Exit Beacon"))prefab_|=scene->GetModelRenderStatus(beacon->id).loaded;
+            const auto* hud=Find("Stage HUD");
+            Require(hud && scene->GetSpriteResult()==Engine::Scene::RenderSpriteResult::Success,"Corridor HUD missing");
+            hud_|=hud->sprite.text=="到達！ 結果画面へ";
+            if(const auto* emitter=Find("Goal Sparks");emitter && emitter->active)
+                sparks_|=scene->GetParticleRenderStatus().particles>0;
+        }
+    }
+    void Draw() override {
+        RuntimeGame::Draw();
+        if(Find("Clear Heading"))++resultDraws_;
+    }
+    bool IsEndRequest() const override {return resultDraws_>=6 || RuntimeGame::IsEndRequest();}
+    void Verify() {
+        Require(resultDraws_>=6 && wall_ && model_ && prefab_ && sparks_ && hud_,"Corridor lost input/wall/model/Prefab/HUD/particles/results coverage");
+        for(UINT64 i=0;i<messages_->GetNumStoredMessagesAllowedByRetrievalFilter();++i){
+            SIZE_T bytes=0;messages_->GetMessage(i,nullptr,&bytes);
+            std::vector<unsigned char> data(bytes);
+            auto* message=reinterpret_cast<D3D12_MESSAGE*>(data.data());
+            Require(SUCCEEDED(messages_->GetMessage(i,message,&bytes)),"Corridor GPU message retrieval");
+            Require(message->Severity!=D3D12_MESSAGE_SEVERITY_ERROR &&
+                message->Severity!=D3D12_MESSAGE_SEVERITY_CORRUPTION,message->pDescription);
+        }
+        std::cout<<"PASS: standard Player runtime corridor (injected mouse and A/W states), solid wall, spawned Prefab, goal HUD and live particles, results and GPU diagnostics\n";
+    }
+};
 class PlayerChecks final : public Engine::App::RuntimeGame {
 public:
     bool IsEndRequest() const override { return frames_>=9 || RuntimeGame::IsEndRequest(); }
@@ -190,6 +284,10 @@ int WINAPI WinMain(HINSTANCE,HINSTANCE,LPSTR arguments,int) {
     _CrtSetReportMode(_CRT_ASSERT,_CRTDBG_MODE_FILE); _CrtSetReportFile(_CRT_ASSERT,_CRTDBG_FILE_STDERR);
 #endif
     const auto mode=ApplicationCheckMode(arguments);
+    if(mode=="--phase8-corridor"){
+        try{CorridorPlayerChecks checks;checks.Run();checks.Verify();return 0;}
+        catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}
+    }
     if(mode=="--particles"||mode=="--particle-export"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerParticleChecks(mode=="--particle-export");return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--ui"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunPlayerSpriteChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
