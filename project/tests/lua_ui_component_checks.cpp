@@ -15,9 +15,9 @@ int main(){using namespace Engine;using namespace Scene;using namespace Scriptin
  function on_create(e)
   local id=e:id();assert(scene.canvas(id)==nil and scene.sprite(id)==nil)
   assert(scene.set_canvas(id,{referenceSize={640,360},scaleMode='constantPixels',sortOrder=-3}))
-  assert(scene.set_sprite(id,{asset='Assets/白.png',size={120,80},pivot={0.25,0.75},color={0.25,0.5,1,0.75},flipX=true,sortOrder=12}))
+  assert(scene.set_sprite(id,{asset='Assets/白.png',size={120,80},pivot={0.25,0.75},anchor={1,0.5},color={0.25,0.5,1,0.75},flipX=true,sortOrder=12}))
   local c=scene.canvas(id);assert(c.enabled and c.referenceSize[1]==640 and c.scaleMode=='constantPixels' and c.sortOrder==-3)
-  local s=scene.sprite(id);assert(s.asset=='Assets/白.png' and #s.guid==32 and s.size[1]==120 and s.flipX and s.color[4]==0.75)
+  local s=scene.sprite(id);assert(s.asset=='Assets/白.png' and #s.guid==32 and s.size[1]==120 and s.flipX and s.color[4]==0.75 and s.anchor[1]==1 and s.anchor[2]==0.5)
   s.size[1]=999;assert(scene.sprite(id).size[1]==120)
   local clone=assert(scene.clone(id));assert(clone==3 and scene.canvas(clone).sortOrder==-3 and scene.sprite(clone).flipX)
   assert(scene.set_canvas(2,{enabled=false}));assert(scene.canvas(2).referenceSize[1]==1280 and not scene.canvas(2).enabled)
@@ -26,7 +26,7 @@ int main(){using namespace Engine;using namespace Scene;using namespace Scriptin
   assert(not scene.set_canvas(999,{}) and not scene.remove_canvas(999))
  end
  function on_update(e,dt)
-  local s=scene.sprite(e:id());s.color[1]=0.5;assert(scene.set_sprite(e:id(),s));assert(scene.sprite(e:id()).size[1]==120)
+  local s=scene.sprite(e:id());s.color[1]=0.5;assert(scene.set_sprite(e:id(),s));assert(scene.sprite(e:id()).size[1]==120 and scene.sprite(e:id()).anchor[2]==0.5)
  end
  function on_fixed_update(e,dt) assert(scene.set_canvas(2,{sortOrder=42}));assert(scene.canvas(2).enabled) end
  function on_destroy(e) assert(scene.remove_canvas(2));assert(scene.set_sprite(2,{})) end

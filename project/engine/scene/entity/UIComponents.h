@@ -23,6 +23,7 @@ struct SpriteComponent {
     Vector4 color{1,1,1,1};
     bool flipX=false,flipY=false;
     int sortOrder=0;
+    Vector2 anchor{0,0}; // Normalized point in the output; Transform sets its offset.
     bool IsValid() const noexcept;
 };
 namespace UIComponentDetail {
@@ -86,6 +87,7 @@ inline bool SpriteComponent::IsValid() const noexcept {
     using RenderComponentDetail::Range;
     return UIComponentDetail::AssetPath(assetPath) && UIComponentDetail::Guid(assetGuid) &&
         Range(size.x,0,16384) && Range(size.y,0,16384) && Range(pivot.x,-16,16) && Range(pivot.y,-16,16) &&
+        Range(anchor.x,0,1) && Range(anchor.y,0,1) &&
         Range(color.x,0,1) && Range(color.y,0,1) && Range(color.z,0,1) && Range(color.w,0,1) && sortOrder>=-32768 && sortOrder<=32767;
 }
 inline bool DecodeCanvas(const SceneValue& value,CanvasComponent& output) noexcept {
@@ -109,7 +111,7 @@ inline bool DecodeCanvas(const SceneValue& value,CanvasComponent& output) noexce
 inline bool DecodeSprite(const SceneValue& value,SpriteComponent& output) noexcept {
     try {
         using namespace RenderComponentDetail;
-        if(!Keys(value,{"enabled","asset","guid","size","pivot","color","flipX","flipY","sortOrder"}))return false;
+        if(!Keys(value,{"enabled","asset","guid","size","pivot","anchor","color","flipX","flipY","sortOrder"}))return false;
         SpriteComponent candidate;
         for(const auto* key:{"asset","guid"})if(value.contains(key)){
             if(!value[key].is_string())return false;
@@ -118,6 +120,7 @@ inline bool DecodeSprite(const SceneValue& value,SpriteComponent& output) noexce
         float color[]{1,1,1,1};
         if(!Boolean(value,"enabled",candidate.enabled) || !Boolean(value,"flipX",candidate.flipX) || !Boolean(value,"flipY",candidate.flipY) ||
             !UIComponentDetail::Pair(value,"size",candidate.size,0,16384) || !UIComponentDetail::Pair(value,"pivot",candidate.pivot,-16,16) ||
+            !UIComponentDetail::Pair(value,"anchor",candidate.anchor,0,1) ||
             !Color(value,4,color) || !UIComponentDetail::Order(value,candidate.sortOrder))return false;
         candidate.color={color[0],color[1],color[2],color[3]};
         if(!candidate.IsValid())return false;
@@ -133,6 +136,7 @@ inline SceneValue EncodeCanvas(const CanvasComponent& canvas) {
 inline SceneValue EncodeSprite(const SpriteComponent& sprite) {
     SceneValue v;v["enabled"]=sprite.enabled;v["asset"]=sprite.assetPath;if(!sprite.assetGuid.empty())v["guid"]=sprite.assetGuid;
     v["size"]=UIComponentDetail::Pair(sprite.size);v["pivot"]=UIComponentDetail::Pair(sprite.pivot);
+    if(sprite.anchor.x!=0 || sprite.anchor.y!=0)v["anchor"]=UIComponentDetail::Pair(sprite.anchor);
     v["color"]=crude_json::array{double(sprite.color.x),double(sprite.color.y),double(sprite.color.z),double(sprite.color.w)};
     v["flipX"]=sprite.flipX;v["flipY"]=sprite.flipY;v["sortOrder"]=double(sprite.sortOrder);return v;
 }

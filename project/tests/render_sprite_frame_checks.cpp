@@ -36,6 +36,18 @@ int main(){using namespace Engine::Scene;try{
     auto constant=world;constant.Find(canvas)->canvas.scaleMode=CanvasScaleMode::ConstantPixels;
     Need(BuildRenderSpriteFrame(constant,{640,180},other)==RenderSpriteResult::Success && MatrixSame(other.items[1].world,size*composed),"ConstantPixels scaled");
     Need(BuildRenderSpriteFrame(world,{640,180},other)==RenderSpriteResult::Success && std::abs(other.items[1].world.m[3][0]-2*frame.items[1].world.m[3][0])<1e-4f && other.items[1].world.m[3][1]==frame.items[1].world.m[3][1],"Independent output axes");
+    auto anchored=constant;
+    anchored.Find(a)->sprite.anchor={1,0.5f};
+    EntityWorld reloaded;
+    std::string error;
+    Need(reloaded.Restore(anchored.Capture(),error),"Restore anchored Sprite");
+    for(const auto extent:{Engine::Base::ViewExtent{1280,720},Engine::Base::ViewExtent{960,720}}){
+        auto expected=size*composed;
+        expected.m[3][0]+=extent.width;
+        expected.m[3][1]+=0.5f*extent.height;
+        Need(BuildRenderSpriteFrame(reloaded,extent,other)==RenderSpriteResult::Success &&
+            other.items.size()==2 && MatrixSame(other.items[1].world,expected),"Anchored position at alternate aspect");
+    }
     auto nested=world;settings.sortOrder=-5;settings.scaleMode=CanvasScaleMode::ConstantPixels;Need(nested.SetCanvas(parent,settings),"Nested Canvas setup");
     Need(BuildRenderSpriteFrame(nested,{320,180},other)==RenderSpriteResult::Success && other.items[0].entity==a && other.items[0].canvas==parent && MatrixSame(other.items[0].world,size*composed),"Nearest Canvas/double scale/sort group");
     nested.Find(canvas)->canvas.enabled=false;Need(BuildRenderSpriteFrame(nested,{320,180},other)==RenderSpriteResult::Success && other.items.empty(),"Nested Canvas bypassed disabled outer Canvas");

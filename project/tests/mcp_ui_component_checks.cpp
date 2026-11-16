@@ -28,12 +28,15 @@ int main(){using namespace Engine;using V=Scene::SceneValue;std::filesystem::pat
  Need(!call("canvas",V::parse(R"({"enabled":false})"))["result"]["updated"].get<bool>(),"Canvas no-op changed");
  V assigned=V::parse(R"({"asset":"Assets/stale.png","size":[120,80],"color":[1,0.5,0,0.75],"flipX":true,"sortOrder":12})");assigned["guid"]=guid;
  Need(call("sprite",assigned).contains("result"),"Sprite live GUID add failed");
+ Need(call("sprite",V::parse(R"({"anchor":[1,0.5]})")).contains("result") &&
+    world.Find(id)->sprite.anchor.x==1 && world.Find(id)->sprite.anchor.y==0.5f,"Sprite anchor patch failed");
  const auto before=world.Capture();Need(call("sprite",V::parse(R"({"pivot":[0.2,0.8]})")).contains("result") && world.Find(id)->sprite.assetGuid==guid && world.Find(id)->sprite.size.x==120 && world.Find(id)->sprite.color.w==0.75f && world.Find(id)->sprite.flipX && world.AllocationHighWatermark()==retired+1,"Sprite partial patch lost fields/allocator");
  Editor::EntityHistory history;Need(history.Record(before,world,id,id,error),error.c_str());history.Commit();const auto edited=world.Capture().dump();auto selection=id;Need(history.Undo(world,selection,error) && world.Capture().dump()==before.dump() && history.Redo(world,selection,error) && world.Capture().dump()==edited,"MCP UI authored history snapshots failed");world.Find(id)->script.started=true;world.Find(peer)->script.started=true;world.Find(peer)->rigidBody.grounded=true;
  // Explicit Undo/Restore has its existing allocator semantics. Retire a fresh
  // identity afterwards to isolate the MCP no-reconstruction guarantee.
  world.DestroyEntity(world.CreateEntity("Retired after history"));const auto expectedNext=world.AllocationHighWatermark();
  const auto reject=[&](const char* component,const char* patch){const auto snapshot=world.Capture().dump();const auto high=world.AllocationHighWatermark();Need(call(component,V::parse(patch)).contains("error") && world.Capture().dump()==snapshot && world.AllocationHighWatermark()==high,"Refused UI patch published fields/IDs");};
+ reject("sprite",R"({"anchor":[1.1,0]})");
  for(const auto* component:{"canvas","sprite"})for(const auto* patch:{"{}","[]","true",R"({"unknown":true})",R"({"enabled":1})",R"({"sortOrder":0.5})",R"({"sortOrder":1e-100})",R"({"sortOrder":32768})",R"({"sortOrder":-32769})"})reject(component,patch);
  for(const auto* patch:{R"({"referenceSize":[0,720]})",R"({"referenceSize":[640]})",R"({"referenceSize":[640,true]})",R"({"scaleMode":""})",R"({"scaleMode":2})"})reject("canvas",patch);
  for(const auto* patch:{R"({"size":[-1e-100,1]})",R"({"size":[16385,1]})",R"({"pivot":[0,17]})",R"({"color":[1,1,1]})",R"({"color":[1,1,1,-1e-100]})",R"({"asset":"../escape.png"})",R"({"asset":"Assets\\bad.png"})",R"({"asset":"Assets/CON.png"})",R"({"guid":"BAD"})",R"({"guid":"ffffffffffffffff"})"})reject("sprite",patch);

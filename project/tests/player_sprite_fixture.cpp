@@ -128,6 +128,7 @@ function on_destroy(e) assert(scene.remove_sprite(e:id()));assert(scene.remove_c
         if(draws_==12){world.SetSprite(3,base_);world.Find(2)->active=false;}
         if(draws_==13){world.Find(2)->active=true;world.RemoveSprite(3);}
         if(draws_==14){world.SetSprite(3,base_);world.Find(3)->sprite.color={0,1,0,1};}
+        if(draws_==15){world.Find(2)->transform.position.x=0;world.Find(3)->sprite.anchor={0.25f,0};}
         RuntimeGame::Update();
     }
     void Draw() override {
@@ -150,12 +151,13 @@ function on_destroy(e) assert(scene.remove_sprite(e:id()));assert(scene.remove_c
         if(draws_==3 || draws_==5 || draws_==8 || draws_==9 || draws_==11 || draws_==12 || draws_==13)Need(center==baseline_,"Hidden/unassigned/bad GUID/invalid/removed UI left stale pixels");
         if(draws_==5)Need(channel(pixels[1],1),"Parent translation lost");
         if(draws_==6)Need(channel(pixels[2],1) && pixels[1]==baseline_,"ConstantPixels output sizing incorrect");
+        if(draws_==15)Need(channel(pixels[1],1) && center==baseline_,"Sprite anchor missed output pixels");
         std::cout<<"PLAYER_UI_PIXEL stage="<<draws_<<" frame="<<dxCommon->GetCurrentFrameIndex()<<" rgb="<<int(center[0])<<','<<int(center[1])<<','<<int(center[2])<<'\n';++draws_;
     }
-    bool IsEndRequest() const override{return draws_>=(scripted_?12:15) || RuntimeGame::IsEndRequest();}
+    bool IsEndRequest() const override{return draws_>=(scripted_?12:16) || RuntimeGame::IsEndRequest();}
     void Finalize() override{RuntimeGame::Finalize();retired_=true;if(queue_)CleanGpu();}
     void Verify(){
-        Need(retired_ && draws_==(scripted_?12:15) && (indices_&(indices_-1)),"UI fixture lacked frames/multiple indices/shutdown");CleanGpu();
+        Need(retired_ && draws_==(scripted_?12:16) && (indices_&(indices_-1)),"UI fixture lacked frames/multiple indices/shutdown");CleanGpu();
         Need(original_[0]==Read(manifest_) && original_[1]==Read(root_/"entry.scene") && original_[2]==Read(root_/L"Assets/白.png"),"UI rendering modified authored sources");
         if(scripted_){
             Need(fixed_ && !GetWorld().Find(3)->hasSprite && !GetWorld().Find(1)->hasCanvas && !GetWorld().Find(3)->script.started,"Actual UI Fixed/Destroy/retirement missing");

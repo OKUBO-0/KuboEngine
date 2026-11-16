@@ -33,7 +33,8 @@ struct RenderSpriteFrame {
 // scaleWithOutput stretches X/Y independently to the actual output extent.
 // Any inactive Entity/disabled Canvas ancestor suppresses its entire subtree.
 // Nested Canvas chooses its own scale (never multiplies ancestor canvas scales).
-// No clipping, text/input, world-space UI, anchors or asset resolution here.
+// Anchors offset the composed position in output pixels; Canvas scaling
+// still controls the authored Transform offset and rect size.
 inline RenderSpriteResult BuildRenderSpriteFrame(const EntityWorld& world,Base::ViewExtent extent,RenderSpriteFrame& output) noexcept {
     if(!Base::ValidGameOutputExtent(extent))return RenderSpriteResult::InvalidExtent;
     try {
@@ -83,7 +84,9 @@ inline RenderSpriteResult BuildRenderSpriteFrame(const EntityWorld& world,Base::
             const float sy=settings.scaleMode==CanvasScaleMode::ConstantPixels?1.0f:float(extent.height)/settings.referenceSize.y;
             const Matrix4x4 size{{{e.sprite.size.x,0,0,0},{0,e.sprite.size.y,0,0},{0,0,1,0},{0,0,0,1}}};
             const Matrix4x4 scale{{{sx,0,0,0},{0,sy,0,0},{0,0,1,0},{0,0,0,1}}};
-            const auto pixels=size*matrix*scale;
+            auto pixels=size*matrix*scale;
+            pixels.m[3][0]+=e.sprite.anchor.x*extent.width;
+            pixels.m[3][1]+=e.sprite.anchor.y*extent.height;
             bool bounded=true;for(const auto& row:pixels.m)for(float n:row)if(!std::isfinite(n) || std::abs(n)>1e20f)bounded=false;
             const double a=pixels.m[0][0],b=pixels.m[0][1],c=pixels.m[1][0],d=pixels.m[1][1];
             const auto bound=(std::max)({std::abs(a),std::abs(b),std::abs(c),std::abs(d)});

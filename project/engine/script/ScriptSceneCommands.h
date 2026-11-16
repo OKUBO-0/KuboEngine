@@ -61,6 +61,7 @@ public:
         std::string_view asset,guid;
         Vector2 size{100,100},pivot{0.5f,0.5f};Vector4 color{1,1,1,1};
         bool enabled=true,flipX=false,flipY=false;int sortOrder=0;
+        Vector2 anchor{0,0};
     };
     static_assert(std::is_trivially_destructible_v<SpriteInput>);
     Result SetCanvas(Scene::EntityId id,const Scene::CanvasComponent& value) noexcept {
@@ -80,6 +81,7 @@ public:
         try {
             Scene::SpriteComponent value;value.assetPath=input.asset;value.assetGuid=input.guid;value.size=input.size;value.pivot=input.pivot;value.color=input.color;
             value.enabled=input.enabled;value.flipX=input.flipX;value.flipY=input.flipY;value.sortOrder=input.sortOrder;
+            value.anchor=input.anchor;
             if(!value.IsValid())return Result::Invalid;
             if(!input.asset.empty() || !input.guid.empty()){
                 if(!view_->assets_)return Result::Unavailable;

@@ -56,12 +56,14 @@ inline void DrawSpriteInspector(Scene::EntityWorld& world,Scene::EntityId id,con
     if(RenderInspectorButton("Clear Sprite Image")){value.assetPath.clear();value.assetGuid.clear();changed=true;}
     ImGui::TextWrapped("Editing the path clears GUID ownership. Use project-relative UTF-8 with forward slashes. Empty image is a draft and does not draw; a bad GUID never falls back to its hint.");
     changed|=ImGui::DragFloat2("Sprite Size",&value.size.x,1,0,16384);
+    changed|=ImGui::DragFloat2("Sprite Anchor",&value.anchor.x,0.01f,0,1,"%.2f",ImGuiSliderFlags_AlwaysClamp);
+    if(ImGui::IsItemHovered())ImGui::SetTooltip("Output position from (0, 0) top left to (1, 1) bottom right.");
     changed|=ImGui::DragFloat2("Sprite Pivot",&value.pivot.x,0.01f,-16,16);
     changed|=ImGui::ColorEdit4("Sprite Tint",&value.color.x);
     changed|=RenderInspectorCheckbox("Sprite Flip X",&value.flipX);
     changed|=RenderInspectorCheckbox("Sprite Flip Y",&value.flipY);
     changed|=ImGui::DragInt("Sprite Order",&value.sortOrder,1,-32768,32767);
-    ImGui::TextWrapped("Needs a Canvas on this Entity or an ancestor. Entity Transform sets reference-pixel position/rotation/scale; size/pivot define the quad. Later Sprite order/ID draws on top within its Canvas group.");
+    ImGui::TextWrapped("Needs a Canvas on this Entity or an ancestor. Entity Transform sets the offset from the anchor, rotation and scale. Later Sprite order/ID draws on top within its Canvas group.");
     if(changed && !world.SetSprite(id,value))status="Sprite settings rejected: valid project-relative image/GUID and finite size/pivot/color/order required";
     if(RenderInspectorButton("Remove Sprite"))world.RemoveSprite(id);
 }

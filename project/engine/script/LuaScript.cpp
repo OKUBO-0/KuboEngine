@@ -445,10 +445,11 @@ private:
         const auto* value=Self(state).sceneCommands_.Sprite(SceneId(state));if(!value){lua_pushnil(state);return 1;}
         if(!value->IsValid())return luaL_error(state,"Invalid authored Sprite");
         // Borrow live immutable fields; no owning SpriteComponent crosses Lua allocation/longjmp.
-        lua_createtable(state,0,9);lua_pushboolean(state,value->enabled);lua_setfield(state,-2,"enabled");
+        lua_createtable(state,0,10);lua_pushboolean(state,value->enabled);lua_setfield(state,-2,"enabled");
         lua_pushlstring(state,value->assetPath.data(),value->assetPath.size());lua_setfield(state,-2,"asset");
         if(!value->assetGuid.empty()){lua_pushlstring(state,value->assetGuid.data(),value->assetGuid.size());lua_setfield(state,-2,"guid");}
         PushUIPair(state,"size",value->size);PushUIPair(state,"pivot",value->pivot);PushRenderColor(state,{value->color.x,value->color.y,value->color.z,value->color.w});
+        PushUIPair(state,"anchor",value->anchor);
         lua_pushboolean(state,value->flipX);lua_setfield(state,-2,"flipX");lua_pushboolean(state,value->flipY);lua_setfield(state,-2,"flipY");lua_pushinteger(state,value->sortOrder);lua_setfield(state,-2,"sortOrder");return 1;
     }
     static int SceneSetCanvas(lua_State* state){
@@ -464,10 +465,11 @@ private:
     }
     static int SceneSetSprite(lua_State* state){
         SceneWorld(state);if(lua_gettop(state)!=2)return luaL_error(state,"scene.set_sprite expects ID and settings table");
-        const auto id=SceneId(state);RenderKeys(state,2,{"enabled","asset","guid","size","pivot","color","flipX","flipY","sortOrder"});ScriptSceneCommands::SpriteInput value;
+        const auto id=SceneId(state);RenderKeys(state,2,{"enabled","asset","guid","size","pivot","anchor","color","flipX","flipY","sortOrder"});ScriptSceneCommands::SpriteInput value;
         value.asset=UIString(state,2,"asset");value.guid=UIString(state,2,"guid");value.sortOrder=UIOrder(state,2);
         RenderBoolean(state,2,"enabled",value.enabled);RenderBoolean(state,2,"flipX",value.flipX);RenderBoolean(state,2,"flipY",value.flipY);
         UIPair(state,2,"size",value.size,0,16384);UIPair(state,2,"pivot",value.pivot,-16,16);float color[]{1,1,1,1};RenderColor(state,2,color,4);value.color={color[0],color[1],color[2],color[3]};
+        UIPair(state,2,"anchor",value.anchor,0,1);
         const auto result=Self(state).sceneCommands_.SetSprite(id,value);SceneStructuralError(state,result);lua_pushboolean(state,result==ScriptSceneCommands::Result::Success);return 1;
     }
     static int SceneRemoveUI(lua_State* state){

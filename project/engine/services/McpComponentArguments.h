@@ -46,7 +46,7 @@ inline Scene::SceneValue McpComponentPatchSchema(const std::string& component) {
         const auto pair=[&](const char* field,double lo,double hi){auto& v=schema["properties"][field];v["type"]="array";v["minItems"]=v["maxItems"]=2.0;v["items"]["type"]="number";v["items"]["minimum"]=lo;v["items"]["maximum"]=hi;};
         if(component=="canvas"){
             pair("referenceSize",1,16384);auto& mode=schema["properties"]["scaleMode"];mode["type"]="string";mode["enum"]=crude_json::array{"constantPixels","scaleWithOutput"};
-        }else{pair("size",0,16384);pair("pivot",-16,16);boolean("flipX");boolean("flipY");}
+        }else{pair("size",0,16384);pair("pivot",-16,16);pair("anchor",0,1);boolean("flipX");boolean("flipY");}
     }
     if(component=="light" || component=="material" || component=="sprite") {
         auto& color=schema["properties"]["color"];color["type"]="array";
