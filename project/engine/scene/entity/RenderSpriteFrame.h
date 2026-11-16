@@ -15,6 +15,23 @@ struct RenderSpriteItem {
     Vector2 pivot{};
     Vector4 color{};
     bool flipX=false,flipY=false;
+
+    Vector2 OutputPoint(Vector2 uv) const noexcept {
+        const float x=(uv.x-pivot.x)*(flipX?-1.0f:1.0f);
+        const float y=(uv.y-pivot.y)*(flipY?-1.0f:1.0f);
+        return {world.m[3][0]+x*world.m[0][0]+y*world.m[1][0],
+                world.m[3][1]+x*world.m[0][1]+y*world.m[1][1]};
+    }
+
+    bool ContainsOutputPoint(Vector2 point) const noexcept {
+        const double a=world.m[0][0],b=world.m[0][1],c=world.m[1][0],d=world.m[1][1];
+        const double determinant=a*d-b*c;
+        if (determinant==0) return false;
+        const double dx=double(point.x)-world.m[3][0],dy=double(point.y)-world.m[3][1];
+        const double u=(dx*d-dy*c)/determinant*(flipX?-1:1)+pivot.x;
+        const double v=(dy*a-dx*b)/determinant*(flipY?-1:1)+pivot.y;
+        return u>=0 && u<=1 && v>=0 && v<=1;
+    }
 };
 struct RenderSpriteFrame {
     static constexpr size_t MaximumSprites=1024,MaximumEntities=10000,MaximumWork=262144;

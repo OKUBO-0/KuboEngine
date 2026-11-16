@@ -230,6 +230,7 @@ private:
 	bool HasHierarchyHiddenSelection() const;
 	bool DrawHierarchyTree();
 	void DrawEditorCameraToolbar();
+	void DrawUILayout();
 	void DrawAddComponentMenu(const EntityRecord& entity);
 	void DrawInspectorAssetDropTarget(const EntityRecord& entity);
 	bool CreateLuaScriptAsset(const std::filesystem::path& path,std::string& error);
@@ -267,6 +268,8 @@ private:
 	std::string initialSceneName_;
 	bool debugSceneViewOpen_ = true;
 	bool debugGameViewOpen_ = true;
+	bool uiLayoutOpen_ = false;
+	int uiLayoutOutput_ = 0;
 	bool gameScriptInputAllowed_ = false;
 	bool editorViewEnabled_ = true;
 	bool editorGridVisible_ = true;

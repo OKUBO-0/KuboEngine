@@ -343,6 +343,7 @@ void Game::DrawDebugEditorShell()
 	Engine::Editor::DebugEditorMenuItem windowItems[] = {
 		{ "Scene", &debugSceneViewOpen_, "", "view.scene" },
 		{ "Game", &debugGameViewOpen_, "", "view.game" },
+		{ "UI Layout", &uiLayoutOpen_, "", "view.ui-layout" },
 		{ "Entity Hierarchy", &genericHierarchyOpen_, "", "view.hierarchy" },
 		{ "Entity Inspector", &genericInspectorOpen_, "", "view.inspector" },
 		{ "Console", &debugConsoleOpen_, "", "view.console" },
@@ -449,6 +450,7 @@ void Game::DrawDebugEditorShell()
 			"Game", offscreenRenderManager->GetImGuiSceneTextureHandle().ptr);
 		gameScriptInputAllowed_ = gameViewport.drawn && gameViewport.inputActive;
 	}
+	if (uiLayoutOpen_) DrawUILayout();
 	std::function<void(const std::filesystem::path&)> openAssetScene;
 	if (CanOpenScene()) openAssetScene = [this](const std::filesystem::path& path) {
 		std::string error;
@@ -535,6 +537,88 @@ void Game::FocusEditorSelection()
 	Matrix4x4 world{};
 	if (editorWorld_.GetWorldMatrix(selectedEditorEntity_, world))
 		editorCameraState_.Focus({world.m[3][0], world.m[3][1], world.m[3][2]});
+}
+
+void Game::DrawUILayout()
+{
+#if defined(KUBO_WITH_EDITOR) || defined(_DEBUG)
+	ImGui::SetNextWindowSize({620,420},ImGuiCond_FirstUseEver);
+	if (!ImGui::Begin("UI Layout",&uiLayoutOpen_)) {
+		ImGui::End();
+		return;
+	}
+	if (!genericSceneSelected_ || !genericWorldReady_) {
+		ImGui::TextUnformatted("Open a Scene with a Canvas to preview its UI.");
+		ImGui::End();
+		return;
+	}
+	ImGui::SetNextItemWidth(150);
+	ImGui::Combo("Preview Output",&uiLayoutOutput_,"Project Output\0HD 16:9\0SD 4:3\0");
+	const Base::ViewExtent presets[] = {GetGameOutputExtent(),{1280,720},{960,720}};
+	const auto extent=presets[uiLayoutOutput_];
+	ImGui::SameLine();
+	ImGui::Text("%u x %u",extent.width,extent.height);
+	RenderSpriteFrame frame;
+	const auto result=BuildRenderSpriteFrame(editorWorld_,extent,frame);
+	if (result!=RenderSpriteResult::Success || frame.items.empty()) {
+		ImGui::TextUnformatted(result==RenderSpriteResult::Success ?
+			"Assign a Sprite image to an active Entity under a Canvas." : "UI layout unavailable for this Scene.");
+		ImGui::End();
+		return;
+	}
+
+	const auto available=ImGui::GetContentRegionAvail();
+	const float scale=(std::min)(available.x/extent.width,available.y/extent.height);
+	if (scale<=0 || scale*extent.width<1 || scale*extent.height<1) {
+		ImGui::End();
+		return;
+	}
+	const auto cursor=ImGui::GetCursorScreenPos();
+	const ImVec2 size(scale*extent.width,scale*extent.height);
+	const ImVec2 min(cursor.x+(available.x-size.x)*0.5f,cursor.y+(available.y-size.y)*0.5f);
+	const ImVec2 max(min.x+size.x,min.y+size.y);
+	ImGui::SetCursorScreenPos(min);
+	ImGui::InvisibleButton("UI Output",size);
+	const auto mouse=ImGui::GetIO().MousePos;
+	const Vector2 inOutput{(mouse.x-min.x)/scale,(mouse.y-min.y)/scale};
+	const auto hovered=ImGui::IsItemHovered();
+	EntityId hit=0;
+	if (hovered) {
+		for (auto item=frame.items.rbegin();item!=frame.items.rend();++item) {
+			if (item->ContainsOutputPoint(inOutput)) {hit=item->entity;break;}
+		}
+	}
+	if (ImGui::IsItemClicked() && worldPlayback_.GetState()==WorldPlayback::State::Editing) {
+		std::string error;
+		if (SelectEditorEntity(hit,ImGui::GetIO().KeyCtrl,false,error)) {
+			if (hit) genericInspectorOpen_=true;
+		} else genericWorldStatus_=error;
+	}
+
+	auto* draw=ImGui::GetWindowDrawList();
+	draw->AddRectFilled(min,max,IM_COL32(18,22,29,255));
+	draw->PushClipRect(min,max,true);
+	const auto onPanel=[&](Vector2 point) {return ImVec2(min.x+point.x*scale,min.y+point.y*scale);};
+	for (const auto& item:frame.items) {
+		const ImVec2 corners[] = {onPanel(item.OutputPoint({0,0})),onPanel(item.OutputPoint({1,0})),
+			onPanel(item.OutputPoint({1,1})),onPanel(item.OutputPoint({0,1}))};
+		const bool selected=editorSelection_.Contains(item.entity);
+		const ImU32 color=selected?IM_COL32(103,209,255,255):item.entity==hit?IM_COL32(194,213,229,255):IM_COL32(98,121,144,255);
+		draw->AddPolyline(corners,4,color,selected?2.0f:1.0f,ImDrawFlags_Closed);
+		if (selected) {
+			const auto* entity=editorWorld_.Find(item.entity);
+			const auto pivot=onPanel(item.OutputPoint(item.pivot));
+			const auto anchor=onPanel({entity->sprite.anchor.x*extent.width,entity->sprite.anchor.y*extent.height});
+			draw->AddLine(anchor,pivot,IM_COL32(103,209,255,135));
+			draw->AddCircle(anchor,4.0f,color);
+			draw->AddCircleFilled(pivot,3.0f,color);
+		}
+	}
+	draw->PopClipRect();
+	draw->AddRect(min,max,IM_COL32(114,137,155,255));
+	if (const auto* entity=editorWorld_.Find(hit)) ImGui::SetTooltip("%s",entity->name.c_str());
+	ImGui::End();
+#endif
 }
 
 void Game::DrawEditorCameraToolbar()

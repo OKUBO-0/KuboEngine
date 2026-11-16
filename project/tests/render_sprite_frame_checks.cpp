@@ -47,6 +47,12 @@ int main(){using namespace Engine::Scene;try{
         expected.m[3][1]+=0.5f*extent.height;
         Need(BuildRenderSpriteFrame(reloaded,extent,other)==RenderSpriteResult::Success &&
             other.items.size()==2 && MatrixSame(other.items[1].world,expected),"Anchored position at alternate aspect");
+        const auto& item=other.items[1];
+        const auto center=item.OutputPoint({0.5f,0.5f});
+        const auto left=item.OutputPoint({0,0});
+        Need(std::abs(left.x-(expected.m[3][0]+0.25f*expected.m[0][0]-0.75f*expected.m[1][0]))<1e-4f &&
+            item.ContainsOutputPoint(center) && !item.ContainsOutputPoint(item.OutputPoint({1.2f,0.5f})),
+            "UI quad or picking disagrees with mirrored Sprite geometry");
     }
     auto nested=world;settings.sortOrder=-5;settings.scaleMode=CanvasScaleMode::ConstantPixels;Need(nested.SetCanvas(parent,settings),"Nested Canvas setup");
     Need(BuildRenderSpriteFrame(nested,{320,180},other)==RenderSpriteResult::Success && other.items[0].entity==a && other.items[0].canvas==parent && MatrixSame(other.items[0].world,size*composed),"Nearest Canvas/double scale/sort group");

@@ -344,6 +344,34 @@ public:
             click("Remove Sprite");click("Remove Canvas");Need(!game.editorWorld_.Find(id)->hasSprite && !game.editorWorld_.Find(id)->hasCanvas && game.IsSceneDirty(),"UI removal failed");
             Need(game.ApplyEditorHistory(false,error) && game.ApplyEditorHistory(false,error) && game.editorWorld_.Capture().dump()==savedWorld && !game.IsSceneDirty(),"UI removal Undo failed");
             Need(game.GetEditorSelection()==std::vector<EntityId>{id} && Read(root/"entry.scene")==original && Read(root/"entry.kubo")==manifest && Read(image)==imageBytes && Read(Assets::AssetRegistry::MetadataPath(image))==metadata,"UI Inspector changed selection/source/identity files");
+            game.editorWorld_.Find(id)->canvas.enabled=true;
+            auto& layoutSprite=game.editorWorld_.Find(id)->sprite;
+            layoutSprite.enabled=true;layoutSprite.size={900,540};layoutSprite.anchor={0.5f,0.5f};
+            game.uiLayoutOpen_=true;
+            const auto projectOutput=game.GetGameOutputExtent();
+            const auto layoutWorld=game.editorWorld_.Capture().dump();
+            const auto layoutFrame=[&] {
+                ImGui::NewFrame();ImGui::SetNextWindowPos({40,40},ImGuiCond_Always);
+                game.DrawUILayout();ImGui::Render();
+            };
+            for (const int preset : {1,2}) {
+                game.uiLayoutOutput_=preset;
+                Need(game.SelectEditorEntity(0,false,false,error),error.c_str());
+                layoutFrame();layoutFrame();
+                auto* window=ImGui::FindWindowByName("UI Layout");
+                Need(window,"UI Layout window did not open");
+                ImGui::FocusWindow(window);
+                const auto center=window->InnerRect.GetCenter();
+                auto& io=ImGui::GetIO();
+                io.AddMousePosEvent(center.x,center.y+12);layoutFrame();
+                io.AddMouseButtonEvent(0,true);layoutFrame();
+                io.AddMouseButtonEvent(0,false);layoutFrame();
+                Need(game.GetEditorSelection()==std::vector<EntityId>{id} && game.genericInspectorOpen_,
+                    "UI Layout preview did not select the visible Sprite");
+            }
+            Need(game.editorWorld_.Capture().dump()==layoutWorld && game.GetGameOutputExtent()==projectOutput,
+                "UI Layout preview changed authored fields or project output");
+            std::cout<<"PASS: UI Layout at 16:9 and 4:3 selects a Sprite in the Inspector without changing Scene data or project output\n";
             std::cout<<"PASS: actual Game headless Canvas/Sprite Inspector mouse Add/Remove/checkbox/Unicode Texture GUID picker/clear, CtrlZ/Y+grouped history/dirty/Save As, Play+document Stop restoration and pending/recovery guards; authored files preserved (not GPU/physical UI/Lua)\n";
         }catch(...){std::cerr<<"GAME_UI_INSPECTOR_FIXTURE_RETAINED="<<root<<'\n';throw;}
         std::error_code ignored;std::filesystem::remove_all(root,ignored);
