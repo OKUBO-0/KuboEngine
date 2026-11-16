@@ -343,7 +343,7 @@ void Game::DrawDebugEditorShell()
 		debugAudioOpen_ = false;
 		imGuiManager->RequestDockWorkspace(diagnostics);
 	};
-	menuConfig.helpText = "KuboEngine Editor\nCtrl+K: Search editor commands\nCtrl+Z / Ctrl+Y: Undo / Redo in scene tools\nCtrl+D: Duplicate selection\nDelete: Remove selection in Hierarchy";
+	menuConfig.helpText = "KuboEngine Editor\nCtrl+K: Search editor commands\nCtrl+S: Save in scene tools\nCtrl+Z / Ctrl+Y: Undo / Redo in scene tools\nCtrl+D: Duplicate selection\nDelete: Remove selection in Hierarchy";
 	menuConfig.onExport = [this]() { OpenExportWindow(); };
 	menuConfig.onProjectSettings = [this]() { OpenProjectSettings(); };
 	menuConfig.onOpenScene = [this]() { BrowseOpenScene(); };
@@ -1562,9 +1562,14 @@ void Game::DrawGenericEntityEditor()
 			if(batchParentChosen){std::string error;if(ReparentEditorSelection(batchParent,keepWorldOnReparent_,error))resetBaseline();}
 			ImGui::EndDisabled();
 			ImGui::SameLine();
+			const auto* saveBusy = EditorDocumentBusyReason();
+			ImGui::BeginDisabled(saveBusy != nullptr);
 			if (ImGui::Button("Save Scene")) {
 				SaveGenericDocument();
 			}
+			ImGui::EndDisabled();
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				ImGui::SetTooltip("%s",saveBusy ? saveBusy : "Save Scene (Ctrl+S)");
 			ImGui::SameLine();
 			ImGui::BeginDisabled(genericWorldPath_.empty());
 			if (ImGui::Button("Load Scene")) {

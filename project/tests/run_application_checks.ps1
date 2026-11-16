@@ -19,6 +19,7 @@ $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--selection-inspec
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-input-focus'}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-input-focus-oversized'}
 $applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-endurance'}
+$applicationCases+=@{exe='EngineResourceChecks.exe';argument='--editor-toolbar'}
 $applicationIndex=0
 foreach($case in $applicationCases) {
     $applicationIndex++

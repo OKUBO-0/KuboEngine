@@ -51,6 +51,14 @@ void Game::ConfigureEditorMenuCommands(Editor::DebugEditorMenuConfig& menu)
     menu.onSceneEdit = [this](Editor::SceneEditAction action) { RunSceneEditAction(action); };
     using Display = Editor::DebugPlaybackState;
     const auto* busy = EditorDocumentBusyReason();
+    const auto setDocument = [&](const std::filesystem::path& path, bool dirty) {
+        menu.sceneName = path.empty() ? "Untitled Scene" : Base::PathToUtf8(path.filename());
+        menu.scenePath = Base::PathToUtf8(path);
+        menu.sceneDirty = dirty;
+        menu.saveLabel = "Save Scene";
+        menu.saveUnavailableReason = busy ? busy : "Stop playback before saving the Scene.";
+        menu.playbackUnavailableReason = busy;
+    };
     if (!genericSceneSelected_) {
         auto* sample = dynamic_cast<GamePlayScene*>(SceneManager::GetInstance()->GetCurrentScene());
         if (!sample) return;
@@ -58,8 +66,7 @@ void Game::ConfigureEditorMenuCommands(Editor::DebugEditorMenuConfig& menu)
         const auto state = sample->GetPlayback();
         menu.playbackState = state == SampleState::Playing ? Display::Playing :
             state == SampleState::Paused ? Display::Paused : Display::Stopped;
-        menu.saveLabel = "Save Scene";
-        menu.saveUnavailableReason = busy ? busy : "Stop playback before saving the Scene.";
+        setDocument(sample->GetScenePath(), sample->HasUnsavedScene());
         if (busy) return;
         if (state == SampleState::Editing) {
             menu.onSave = [this,sample] { sample->SaveCurrentScene(); genericWorldStatus_ = sample->GetSceneFileStatus(); };
@@ -74,8 +81,7 @@ void Game::ConfigureEditorMenuCommands(Editor::DebugEditorMenuConfig& menu)
     const auto state = worldPlayback_.GetState();
     menu.playbackState = state == State::Playing ? Display::Playing :
         state == State::Paused ? Display::Paused : Display::Stopped;
-    menu.saveLabel = "Save Scene";
-    menu.saveUnavailableReason = busy ? busy : "Stop playback before saving the Scene.";
+    setDocument(documentState_.Path(), documentState_.IsDirty());
     if (busy) return;
     if (state == State::Editing) {
         menu.onSave = [this] { SaveGenericDocument(); };

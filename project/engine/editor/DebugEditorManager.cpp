@@ -1,4 +1,5 @@
 #include "DebugEditorManager.h"
+#include "DocumentShortcuts.h"
 #include "Logger.h"
 #include "engine/base/ProjectPaths.h"
 #include "EditorSettingsFile.h"
@@ -570,12 +571,54 @@ void DrawFileCommands(const DebugEditorMenuConfig& config, Draw draw, Separator 
 	}
 }
 
+const char* SaveShortcut(const DebugEditorMenuConfig& config, const char* name)
+{
+	return config.saveLabel && std::string_view(name) == config.saveLabel ? "Ctrl+S" : nullptr;
+}
+
+void DrawUnavailableReason(bool enabled, const char* reason)
+{
+	if (!enabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+		ImGui::SetTooltip("%s", reason ? reason : "Unavailable in the current editor state.");
+}
+
+const char* PlaybackStateLabel(DebugPlaybackState state)
+{
+	switch (state) {
+	case DebugPlaybackState::Playing: return "Playing";
+	case DebugPlaybackState::Paused: return "Paused";
+	case DebugPlaybackState::Stopped: return "Editing";
+	case DebugPlaybackState::Unavailable: return "No scene";
+	}
+	return "No scene";
+}
+
+template<class Draw>
+void DrawPlaybackCommands(const DebugEditorMenuConfig& config, Draw draw)
+{
+	if (config.playbackState == DebugPlaybackState::Unavailable) return;
+	const bool paused = config.playbackState == DebugPlaybackState::Paused;
+	const auto reason = [&](const char* stateReason) {
+		return config.playbackUnavailableReason ? config.playbackUnavailableReason : stateReason;
+	};
+	draw(paused ? "Resume Scene" : "Play Scene", ICON_FA_PLAY "##EditorPlay", config.onPlay,
+		reason("The Scene is already playing."));
+	draw("Pause Scene", ICON_FA_PAUSE "##EditorPause", config.onPause,
+		reason("Play the Scene before pausing."));
+	draw("Stop and Restore Scene", ICON_FA_STOP "##EditorStop", config.onStop,
+		reason("The Scene is already in Editing mode."));
+}
+
 void DrawEditorCommands(const DebugEditorMenuConfig& config)
 {
 	static ImGuiTextFilter filter;
 	if (!ImGui::BeginPopupModal("Editor Commands",nullptr,ImGuiWindowFlags_AlwaysAutoResize)) return;
 	if (ImGui::IsWindowAppearing()) { filter.Clear(); ImGui::SetKeyboardFocusHere(); }
-	filter.Draw("Search",370);
+	const auto& style = ImGui::GetStyle();
+	const float viewportWidth = ImGui::GetMainViewport()->WorkSize.x;
+	const float searchWidth = (std::max)(1.0f, (std::min)(ImGui::GetFontSize() * 26.0f,
+		viewportWidth - style.WindowPadding.x * 4.0f - ImGui::CalcTextSize("Search").x));
+	filter.Draw("Search",searchWidth);
 	bool hasMatches = false;
 	const auto item = [&](const char* name,bool enabled,const auto& execute,const char* unavailable = nullptr) {
 		if (!filter.PassFilter(name)) return;
@@ -584,8 +627,7 @@ void DrawEditorCommands(const DebugEditorMenuConfig& config)
 			ImGui::CloseCurrentPopup();
 			execute();
 		}
-		if (!enabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-			ImGui::SetTooltip("%s",unavailable ? unavailable : "Unavailable in the current editor state.");
+		DrawUnavailableReason(enabled,unavailable);
 	};
 	DrawFileCommands(config,[&](const char* name,const auto& action,bool enabled,const char* reason) {
 		item(name,enabled,action,reason);
@@ -601,34 +643,60 @@ void DrawEditorCommands(const DebugEditorMenuConfig& config)
 	ImGui::EndPopup();
 }
 
-void DrawPlaybackToolbar(const DebugEditorMenuConfig& config)
+void DrawDocumentStatus(const DebugEditorMenuConfig& config, float available)
+{
+	if (config.sceneName.empty() || available < ImGui::GetFontSize() * 7.0f) return;
+	const ImVec4 tint = config.sceneDirty ? ImVec4{0.99f,0.77f,0.46f,1.0f} : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+	const std::string label = config.sceneDirty ? "* " + config.sceneName : config.sceneName;
+	const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+	const float width = (std::min)(available, size.x);
+	const ImVec2 start = ImGui::GetCursorScreenPos();
+	const ImVec2 end{start.x + width, start.y + size.y};
+	ImGui::Dummy({width, size.y});
+#if defined(KUBO_APPLICATION_CHECKS)
+	ObserveRenderInspectorChecks(label.c_str());
+#endif
+	ImGui::PushStyleColor(ImGuiCol_Text,tint);
+	ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(),start,end,end.x,label.c_str(),label.c_str()+label.size(),&size);
+	ImGui::PopStyleColor();
+	if (ImGui::IsItemHovered()) {
+		ImGui::BeginTooltip();
+		ImGui::TextUnformatted(config.scenePath.empty() ? config.sceneName.c_str() : config.scenePath.c_str());
+		ImGui::TextUnformatted(config.sceneDirty ? "Unsaved changes" : "Saved");
+		ImGui::EndTooltip();
+	}
+}
+
+void DrawEditorToolbar(const DebugEditorMenuConfig& config)
 {
 	if (config.playbackState == DebugPlaybackState::Unavailable) return;
-	const bool playing = config.playbackState == DebugPlaybackState::Playing;
-	const bool paused = config.playbackState == DebugPlaybackState::Paused;
-	const char* state = playing ? "Playing" : paused ? "Paused" : "Editing";
+	const char* state = PlaybackStateLabel(config.playbackState);
 	const auto& style = ImGui::GetStyle();
 	const float buttonWidth = ImGui::GetFrameHeight() * 1.3f;
-	const float groupWidth = buttonWidth * 3 + style.ItemSpacing.x * 3 + ImGui::CalcTextSize(state).x;
+	const float groupWidth = buttonWidth * 4 + style.ItemSpacing.x * 4 + ImGui::CalcTextSize(state).x;
+	const float maxX = ImGui::GetWindowWidth() - style.WindowPadding.x;
 	const float start = (std::max)(ImGui::GetCursorPosX() + style.ItemSpacing.x,
 		(ImGui::GetWindowWidth() - groupWidth) / 2);
-	if (start + groupWidth > ImGui::GetWindowWidth() - style.WindowPadding.x) return;
+	if (start + groupWidth > maxX) return;
 	ImGui::SetCursorPosX(start);
-	const auto button = [&](const char* icon, const char* tooltip, ImVec4 color,
-		const std::function<void()>& action) {
+	const auto button = [&](const char* label, const char* icon, const std::function<void()>& action, const char* reason) {
 		ImGui::BeginDisabled(!action);
-		ImGui::PushStyleColor(ImGuiCol_Text,color);
 		if (ImGui::Button(icon,{buttonWidth,0}) && action) action();
-		ImGui::PopStyleColor();
-		if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",tooltip);
+#if defined(KUBO_APPLICATION_CHECKS)
+		ObserveRenderInspectorChecks(label);
+#endif
 		ImGui::EndDisabled();
+		if (action && ImGui::IsItemHovered()) ImGui::SetTooltip("%s",label);
+		DrawUnavailableReason(bool(action),reason);
 		ImGui::SameLine();
 	};
-	button(ICON_FA_PLAY "##EditorPlay",paused ? "Resume scene" : "Play scene",
-		{0.48f,0.88f,0.67f,1.0f},config.onPlay);
-	button(ICON_FA_PAUSE "##EditorPause","Pause simulation",{0.98f,0.77f,0.46f,1.0f},config.onPause);
-	button(ICON_FA_STOP "##EditorStop","Stop and restore the editing scene",{0.99f,0.57f,0.57f,1.0f},config.onStop);
-	ImGui::TextDisabled("%s",state);
+	button("Save Scene (Ctrl+S)", ICON_FA_SAVE "##EditorSave", config.onSave, config.saveUnavailableReason);
+	DrawPlaybackCommands(config,button);
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(state);
+	ImGui::SameLine(0, style.ItemSpacing.x * 2.0f);
+	ImGui::AlignTextToFramePadding();
+	DrawDocumentStatus(config,maxX-ImGui::GetCursorPosX());
 }
 
 } // namespace
@@ -720,6 +788,12 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 	ApplyPersistedWindowItems(config.windowItems, config.windowItemCount);
 	ApplyPersistedWindowItems(config.editItems, config.editItemCount);
 	ApplyPersistedWindowItems(config.objectItems, config.objectItemCount);
+	if (config.saveLabel && (DocumentShortcuts::TakeSave("Scene") ||
+		DocumentShortcuts::TakeSave("Entity Hierarchy") ||
+		DocumentShortcuts::TakeSave("Entity Inspector") ||
+		DocumentShortcuts::TakeSave("シーン固有デバッグ"))) {
+		if (config.onSave) config.onSave();
+	}
 	if (!ImGui::BeginMainMenuBar()) {
 		return;
 	}
@@ -732,11 +806,21 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 		!ImGui::IsPopupOpen(nullptr,ImGuiPopupFlags_AnyPopupId|ImGuiPopupFlags_AnyPopupLevel) &&
 		ImGui::IsKeyPressed(ImGuiKey_K,false);
 
-	if (ImGui::BeginMenu(ICON_FA_FOLDER_OPEN " File")) {
-		DrawFileCommands(config,[](const char* name,const auto& action,bool enabled,const char* reason) {
-			if (ImGui::MenuItem(name,nullptr,false,enabled)) action();
-			if (!enabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-				ImGui::SetTooltip("%s",reason ? reason : "Unavailable in the current editor state.");
+	const bool fileOpen = ImGui::BeginMenu(ICON_FA_FOLDER_OPEN " File");
+#if defined(KUBO_APPLICATION_CHECKS)
+	if (!fileOpen) ObserveRenderInspectorChecks("File menu");
+#endif
+	if (fileOpen) {
+		if (!config.sceneName.empty()) {
+			ImGui::TextDisabled("%s%s",config.sceneDirty ? "* " : "",config.sceneName.c_str());
+			ImGui::Separator();
+		}
+		DrawFileCommands(config,[&](const char* name,const auto& action,bool enabled,const char* reason) {
+			if (ImGui::MenuItem(name,SaveShortcut(config,name),false,enabled)) action();
+#if defined(KUBO_APPLICATION_CHECKS)
+			ObserveRenderInspectorChecks(name);
+#endif
+			DrawUnavailableReason(enabled,reason);
 		},[] { ImGui::Separator(); });
 		ImGui::EndMenu();
 	}
@@ -745,7 +829,7 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 			const char* unavailable = config.sceneEditUnavailableReason ? config.sceneEditUnavailableReason(command.action) : nullptr;
 			if (ImGui::MenuItem(command.label,command.shortcut,false,bool(config.onSceneEdit) && !unavailable))
 				config.onSceneEdit(command.action);
-			if (unavailable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s",unavailable);
+			DrawUnavailableReason(bool(config.onSceneEdit) && !unavailable,unavailable);
 		}
 		if (!config.onSceneEdit) ImGui::TextDisabled("Available in an idle, editable Scene.");
 		ImGui::EndMenu();
@@ -788,10 +872,12 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 	if ((config.playbackState != DebugPlaybackState::Unavailable || config.onGoGame || config.onGoResult) &&
 		ImGui::BeginMenu(ICON_FA_GAMEPAD " Game")) {
 		if (config.playbackState != DebugPlaybackState::Unavailable) {
-			const char* playLabel = config.playbackState == DebugPlaybackState::Paused ? "Resume Scene" : "Play Scene";
-			if (ImGui::MenuItem(playLabel,nullptr,false,bool(config.onPlay))) config.onPlay();
-			if (ImGui::MenuItem("Pause Scene",nullptr,false,bool(config.onPause))) config.onPause();
-			if (ImGui::MenuItem("Stop and Restore Scene",nullptr,false,bool(config.onStop))) config.onStop();
+			ImGui::TextDisabled("%s",PlaybackStateLabel(config.playbackState));
+			ImGui::Separator();
+			DrawPlaybackCommands(config,[](const char* label,const char*,const auto& action,const char* reason) {
+				if (ImGui::MenuItem(label,nullptr,false,bool(action))) action();
+				DrawUnavailableReason(bool(action),reason);
+			});
 		}
 		if (config.onGoGame && ImGui::MenuItem(ICON_FA_PLAY " Game")) {
 			config.onGoGame();
@@ -810,7 +896,7 @@ void DebugEditorManager::DrawMainMenu(const DebugEditorMenuConfig& config)
 		}
 		ImGui::EndMenu();
 	}
-	DrawPlaybackToolbar(config);
+	DrawEditorToolbar(config);
 	if (showCommands) ImGui::OpenPopup("Editor Commands");
 	DrawEditorCommands(config);
 

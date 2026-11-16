@@ -49,6 +49,7 @@
 #include <atomic>
 #include <array>
 #include <chrono>
+#include <unordered_map>
 #include "engine/base/AssetPath.h"
 #include "engine/scene/entity/EntityScene.h"
 #include "CameraManager.h"
@@ -736,6 +737,124 @@ protected:
 private:
     std::filesystem::path fixture_;
     std::string baseline_;
+};
+
+class EditorToolbarChecks final : public EditorViewportFixture {
+    struct Control {
+        ImVec2 center{};
+        bool seen = false;
+        bool disabled = false;
+    };
+
+public:
+    void Initialize() override {
+        EditorViewportFixture::Initialize();
+        current_ = this;
+        Engine::Editor::renderInspectorChecksObserver = [](const char* label, ImVec2 min, ImVec2 max, bool disabled) {
+            current_->controls_[label] = {{(min.x + max.x) / 2, (min.y + max.y) / 2}, true, disabled};
+        };
+        ImGuiContextHook hook{};
+        hook.Type = ImGuiContextHookType_NewFramePre;
+        hook.UserData = this;
+        hook.Callback = [](ImGuiContext*, ImGuiContextHook* current) {
+            static_cast<EditorToolbarChecks*>(current->UserData)->SendInput();
+        };
+        ImGui::AddContextHook(ImGui::GetCurrentContext(), &hook);
+    }
+
+    ~EditorToolbarChecks() override {
+        Engine::Editor::renderInspectorChecksObserver = nullptr;
+        current_ = nullptr;
+    }
+
+    void Update() override {
+        if (frame_ == 4) {
+            Create("Shortcut edit");
+            ImGui::SetWindowFocus("Game");
+        }
+        if (frame_ == 9) {
+            Require(IsSceneDirty(), "Ctrl+S was accepted from the Game view");
+            ImGui::SetWindowFocus("Entity Hierarchy");
+        }
+        if (frame_ == 14) {
+            Require(!IsSceneDirty() && SceneContains("Shortcut edit"), "Ctrl+S did not save from Hierarchy");
+            Create("Toolbar edit");
+            RECT rect{};
+            const auto window = winApp->GetHwnd();
+            Require(GetWindowRect(window, &rect) != FALSE, "Cannot read toolbar test window bounds");
+            rect.right = rect.left + 880;
+            rect.bottom = rect.top + 640;
+            SendMessageW(window, WM_DPICHANGED, MAKEWPARAM(144,144), reinterpret_cast<LPARAM>(&rect));
+        }
+        if (frame_ == 18) {
+            Require(controls_["* entry.scene"].seen && !controls_["Save Scene (Ctrl+S)"].disabled,
+                "Narrow toolbar lost the dirty Scene name or Save button");
+        }
+        if (frame_ == 23) {
+            Require(!IsSceneDirty() && SceneContains("Toolbar edit"), "Toolbar Save did not publish the Scene");
+            Create("Menu edit");
+        }
+        if (frame_ == 34) {
+            Require(!IsSceneDirty() && SceneContains("Menu edit"), "File menu Save did not publish the Scene");
+        }
+        if (frame_ == 43) {
+            Require(controls_["Save Scene (Ctrl+S)"].disabled && !controls_["Pause Scene"].disabled,
+                "Play did not disable Save or enable Pause");
+        }
+        if (frame_ == 52) {
+            Require(controls_["Resume Scene"].seen && !controls_["Resume Scene"].disabled && controls_["Pause Scene"].disabled,
+                "Pause did not expose Resume");
+        }
+        if (frame_ == 61) {
+            Require(!IsSceneDirty() && !controls_["Save Scene (Ctrl+S)"].disabled && controls_["Stop and Restore Scene"].disabled,
+                "Stop did not restore the editing controls and Scene state");
+            std::cout << "PASS: Game focus guard; Ctrl+S, toolbar and File menu saves; dirty name and Play/Pause/Stop at 880px/144 DPI\n";
+            endRequest_ = true;
+        }
+        Game::Update();
+    }
+
+    void Draw() override {
+        Game::Draw();
+        ++frame_;
+    }
+
+private:
+    void Create(const char* name) {
+        Engine::Scene::EntityId created{};
+        std::string error;
+        Require(CreateEditorEntity(name, 0, created, error), error);
+    }
+
+    bool SceneContains(std::string_view name) const {
+        std::ifstream input(GetProjectRoot() / "entry.scene", std::ios::binary);
+        const std::string bytes{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        return bytes.find(name) != std::string::npos;
+    }
+
+    void SendInput() {
+        auto& io = ImGui::GetIO();
+        io.AddKeyEvent(ImGuiMod_Ctrl, (frame_ >= 5 && frame_ <= 6) || (frame_ >= 10 && frame_ <= 11));
+        io.AddKeyEvent(ImGuiKey_S, frame_ == 6 || frame_ == 11);
+        const char* target = nullptr;
+        int press = -1;
+        if (frame_ >= 18 && frame_ <= 22) { target = "Save Scene (Ctrl+S)"; press = 20; }
+        if (frame_ >= 24 && frame_ <= 28) { target = "File menu"; press = 26; }
+        if (frame_ >= 29 && frame_ <= 33) { target = "Save Scene"; press = 31; }
+        if (frame_ >= 36 && frame_ <= 42) { target = "Play Scene"; press = 39; }
+        if (frame_ >= 45 && frame_ <= 51) { target = "Pause Scene"; press = 48; }
+        if (frame_ >= 54 && frame_ <= 60) { target = "Stop and Restore Scene"; press = 57; }
+        if (target) {
+            const auto& control = controls_[target];
+            Require(control.seen, target);
+            io.AddMousePosEvent(control.center.x, control.center.y);
+        }
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, frame_ == press);
+    }
+
+    static inline EditorToolbarChecks* current_ = nullptr;
+    std::unordered_map<std::string, Control> controls_;
+    int frame_ = 0;
 };
 
 class EditorInputFocusChecks final : public EditorViewportFixture {
@@ -2537,6 +2656,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR arguments, int)
     if(mode=="--asset-thumbnails"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunAssetThumbnailChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--scene-grid"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunSceneGridRenderChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--editor-endurance"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<EditorEnduranceChecks>();checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
+    if(mode=="--editor-toolbar"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<EditorToolbarChecks>();checks->Run();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--editor-input-focus" || mode=="--editor-input-focus-oversized"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{auto checks=std::make_unique<EditorInputFocusChecks>(mode=="--editor-input-focus-oversized");checks->Run();checks->Verify();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--particles"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunParticleGroupChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}
     if(mode=="--lights"){std::cout<<"RUNNER_MODE="<<mode<<'\n';try{RunAuthoredLightingChecks();return 0;}catch(const std::exception& error){std::cerr<<"FAIL: "<<error.what()<<'\n';return 1;}}

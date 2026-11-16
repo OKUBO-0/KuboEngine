@@ -50,6 +50,9 @@ struct DebugEditorMenuConfig {
 	const char* saveLabel = nullptr;
 	const char* saveUnavailableReason = nullptr;
 	std::function<void()> onSave;
+	std::string sceneName;
+	std::string scenePath;
+	bool sceneDirty = false;
 	const char* restoreLabel = nullptr;
 	std::function<void()> onRestore;
 	std::function<void()> onExport;
@@ -69,6 +72,7 @@ struct DebugEditorMenuConfig {
 	std::function<void()> onGoGame;
 	std::function<void()> onGoResult;
 	DebugPlaybackState playbackState = DebugPlaybackState::Unavailable;
+	const char* playbackUnavailableReason = nullptr;
 	std::function<void()> onPlay;
 	std::function<void()> onPause;
 	std::function<void()> onStop;
